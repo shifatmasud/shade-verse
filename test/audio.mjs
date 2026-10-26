@@ -1,0 +1,13 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage(); await p.setViewport({ width:390, height:780, hasTouch:true, isMobile:true });
+const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+await p.goto('http://localhost:4173/',{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
+const before = await p.evaluate(()=>!!(window.__audio&&window.__audio.ctx()));
+await p.evaluate(()=>window.__game.start()); await new Promise(r=>setTimeout(r,600));
+const r=await p.evaluate(async()=>{const A=window.__audio,c=A.ctx(); const out={created:!!c,state:c&&c.state,hasWind:!!A.wind()};
+ const s=window.__game.sim; s.vel=[0,0,45]; s.ground=false; await new Promise(r=>setTimeout(r,900)); out.windGainFast=A.wind()?A.wind().g.gain.value:null;
+ document.querySelector('.mute').click(); await new Promise(r=>setTimeout(r,900)); out.muted=A.muted(); out.windGainMuted=A.wind()?A.wind().g.gain.value:null; return out;});
+console.log('before start ctx exists:',before, JSON.stringify(r),'errors',JSON.stringify(errs));
+const ok = before===false && r.created && r.hasWind && r.muted && r.windGainMuted<r.windGainFast && errs.length===0;
+console.log(ok?'AUDIO PASS':'AUDIO FAIL'); await b.close(); process.exit(ok?0:1);

@@ -64,7 +64,7 @@ export function App() {
     }, []); // eslint-disable-line
 
     function start() {
-        try { const AC = (window as any).AudioContext || (window as any).webkitAudioContext; if (!actx.current && AC) actx.current = new AC(); } catch (e) { /* ignore */ }
+        try { const AC = (window as any).AudioContext || (window as any).webkitAudioContext; if (!actx.current && AC) actx.current = new AC(); (window as any).__audio = { ctx: () => actx.current, wind: () => wind.current, muted: () => mutedRef.current }; } catch (e) { /* ignore */ }
         if (actx.current && !wind.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); wind.current = { g, f }; } catch (e) { /* ignore */ } }
         gsap.fromTo(fx, { fov: 22 }, { fov: 0, duration: 1.4, ease: 'power3.out' });
         resetSim(sim); lastScore.current = 0; sim.mode = 'play'; showToast('Hold SWING to fire a web, release to let go', 3500);
@@ -104,6 +104,7 @@ export function App() {
             <div className="chip"><span className="lab">BEACON {hud.bn}</span><b>{hud.bd}m</b></div>
         </div>
         <div className="dbg">{dbg}</div>
+        <div id="bmark" className="bmark">▲</div>
         <div className="vig" />
         <div className="speedlines" />
         <button className="mute" aria-label={muted ? 'Unmute' : 'Mute'} onClick={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }}>{muted ? '🔇' : '🔊'}</button>

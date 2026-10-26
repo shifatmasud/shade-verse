@@ -84,6 +84,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const gold = useMemo(() => new THREE.MeshLambertMaterial({ color: '#f2c038' }), []);
     const dark = useMemo(() => new THREE.MeshLambertMaterial({ color: '#171a2c' }), []);
     const red = useMemo(() => new THREE.MeshLambertMaterial({ color: '#d9344f', side: THREE.DoubleSide }), []);
+    const bv = useMemo(() => new THREE.Vector3(), []);
     const beaconRef = useRef<THREE.Mesh>(null!);
     const eye = useMemo(() => new THREE.MeshBasicMaterial({ color: '#7ffcff' }), []);
     const visor = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0b0c18' }), []);
@@ -153,7 +154,20 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             w.quaternion.setFromUnitVectors(Y, new THREE.Vector3(dx / l, dy / l, dz / l));
             w.scale.set(1, l, 1);
         }
-        { const bm = beaconRef.current; bm.position.set(sim.beacon[0], sim.beacon[1] + 30, sim.beacon[2]); bm.scale.set(1 + 0.08 * Math.sin(sim.t * 3), 1, 1 + 0.08 * Math.sin(sim.t * 3)); }
+        { const bm = beaconRef.current; bm.position.set(sim.beacon[0], sim.beacon[1] + 45, sim.beacon[2]); bm.scale.set(1 + 0.08 * Math.sin(sim.t * 3), 1, 1 + 0.08 * Math.sin(sim.t * 3)); }
+        { // edge-aware beacon marker (DOM, no React state)
+            const el = document.getElementById('bmark');
+            if (el) {
+                bv.set(sim.beacon[0], sim.beacon[1] + 6, sim.beacon[2]).project(camera);
+                let x = bv.x, y = bv.y; const behind = bv.z > 1;
+                if (behind) { x = -x; y = -y; }
+                const m = Math.max(Math.abs(x) / 0.82, Math.abs(y) / 0.8, 1);
+                const onScreen = !behind && m <= 1;
+                x = x / (onScreen ? 1 : m); y = y / (onScreen ? 1 : m);
+                el.style.transform = 'translate(' + (((x + 1) / 2) * window.innerWidth - 20).toFixed(0) + 'px,' + (((1 - y) / 2) * window.innerHeight - 20).toFixed(0) + 'px) rotate(' + (onScreen ? 180 : Math.atan2(-y, x) * 57.3 + 90).toFixed(0) + 'deg)';
+                el.style.opacity = sim.mode === 'play' ? '1' : '0';
+            }
+        }
         // orbs
         const t = sim.t;
         let nb = -1, nd = 1e9;
@@ -174,7 +188,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     });
 
     return <>
-        <mesh ref={beaconRef} frustumCulled={false}><cylinderGeometry args={[2.2, 2.2, 60, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.35} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
+        <mesh ref={beaconRef} frustumCulled={false}><cylinderGeometry args={[4, 4, 90, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
         <color attach="background" args={[FOG[0], FOG[1], FOG[2]]} />
         <hemisphereLight args={['#b9a8ff', '#3a2748', 1.15]} />
         <directionalLight position={[-30, 60, 20]} intensity={1.8} color="#ffc89a" />

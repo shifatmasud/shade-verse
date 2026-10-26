@@ -27,3 +27,7 @@ Free roam: no timer or game over (FLIGHT counter counts up), falls cost nothing,
 
 ## v0.7
 Rooftop beacons (route objective, +5 score, cyan light pillar, distance HUD). Fixed QA regressions: best score now persists on any new high (was only on game over), orb toast shows +N, fall toast no longer mentions a time penalty. Stale '+3s' pickup claims in earlier entries are obsolete: pickup adds score only since v0.6. Harness test/assert.mjs asserts orb 0->1, beacon +5, best persisted, mode stays play, no page errors: PASS (software GL).
+
+## v0.8
+Beacon: edge-aware cyan arrow marker, wider pillar. HUD chips restyled with Shade DS dark-theme tokens (own repo shifatmasud/Shade-DS, Theme.tsx surfaces #121212, borders #333, text #E0E0E0/#AAAAAA); only token values reused, no components.
+Evidence (local, headless Chrome SwiftShader 390x780): 5.5 min soak (test/soak.mjs): 333 s, 214 swings, heap 9-10 MB flat with forced GC, fps 45-53 after warmup (software GL, adaptive scale), 0 page errors, mode stayed play. Audio (test/audio.mjs): no AudioContext before the Play gesture, context running after Play, wind node present, wind gain 0.008 at speed and 0 when muted: PASS. assert.mjs now also requires localStorage best. Real-device FPS and real audio output on a phone: UNTESTED.

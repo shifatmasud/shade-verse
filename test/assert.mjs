@@ -10,5 +10,5 @@ const r=await p.evaluate(async()=>{const s=window.__game.sim; const o=s.orbs[0];
  const bc=s.beacon; s.pos=[bc[0],bc[1],bc[2]-2]; s.vel=[0,0,0]; await new Promise(r=>setTimeout(r,400)); out.afterBeacon=s.score; out.beaconN=s.beaconN;
  await new Promise(r=>setTimeout(r,400)); out.best=s.best; out.stored=localStorage.getItem('webswinger3d-best'); out.mode=s.mode; return out;});
 console.log(JSON.stringify(r),'errors',JSON.stringify(errs));
-const ok = r.orb===1 && r.beaconN===1 && r.afterBeacon===6 && r.best===6 && r.mode==='play' && errs.length===0;
+const ok = r.orb===1 && r.beaconN===1 && r.afterBeacon===6 && r.best===6 && r.stored==='6' && r.mode==='play' && errs.length===0;
 console.log(ok?'ASSERT PASS':'ASSERT FAIL'); await b.close(); process.exit(ok?0:1);
