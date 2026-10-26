@@ -5,6 +5,7 @@ export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number
 export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
 export const FOG: V3 = [0.86, 0.52, 0.5];
 const G = 27;
+export const JUMP_V = 16;
 
 let seedv = 1337;
 const rnd = () => { seedv = (seedv * 1664525 + 1013904223) % 4294967296; return seedv / 4294967296; };
@@ -77,13 +78,14 @@ function buildWorld() {
 export const world = buildWorld();
 const blds = world.blds;
 
-export interface Enemy { x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number }
+export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number }
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
     yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
     hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number;
+    wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
 }
 export interface Input { attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean }
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void }
@@ -93,7 +95,7 @@ export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing
 export function createSim(): Sim {
     let best = 0;
     try { best = parseInt(localStorage.getItem('webswinger3d-best') || '0', 10) || 0; } catch (e) { /* ignore */ }
-    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0 };
+    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0, wall: null, wallB: -1, wallT: 0, vaulted: 0 };
     resetSim(s);
     return s;
 }
@@ -120,6 +122,10 @@ function newBeacon(s: Sim): V3 {
     return [(b.x0 + b.x1) / 2, b.h + 1.5, (b.z0 + b.z1) / 2];
 }
 function spawnEnemy(s: Sim): Enemy {
+    if (Math.random() < 0.4) {
+        const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return d > 30 && d < 150 && b.h < 60; });
+        if (cand.length) { const b = cand[Math.floor(Math.random() * cand.length)]; return { roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 }, x: (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * 6, y: b.h + 1, z: (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * 6, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 }; }
+    }
     for (let k = 0; k < 60; k++) {
         const x = (Math.floor(Math.random() * (N - 1)) - (N - 2) / 2) * CELL + (Math.random() < 0.5 ? -CELL / 2 + 0 : CELL / 2 - 0), z = (Math.random() - 0.5) * 2 * (HALF - 40);
         const sx = Math.round((x - CELL / 2) / CELL) * CELL + CELL / 2;
@@ -136,7 +142,7 @@ export function resetSim(s: Sim) {
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
-    s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
+    s.wall = null; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
 }
 
@@ -157,15 +163,18 @@ function findAnchor(s: Sim): V3 {
     return best || [p[0] + fx * 24, p[1] + 26, p[2] + fz * 24];
 }
 
+let hitN: [number, number] | null = null, hitB = -1;
 function collide(s: Sim, prevY: number) {
-    const p = s.pos, v = s.vel; s.ground = false;
+    const p = s.pos, v = s.vel; s.ground = false; hitN = null; hitB = -1;
     const hw = 0.5, hh = 1.0;
-    for (const b of blds) {
-        if (p[0] + hw <= b.x0 || p[0] - hw >= b.x1 || p[2] + hw <= b.z0 || p[2] - hw >= b.z1 || p[1] - hh >= b.h || p[1] + hh <= 0) continue;
+    for (let bi = 0; bi < blds.length; bi++) {
+        const b = blds[bi];
+        if (p[0] + hw <= b.x0 || p[0] - hw >= b.x1 || p[2] + hw <= b.z0 || p[2] - hw >= b.z1 || p[1] - hh > b.h + 0.05 || p[1] + hh <= 0) continue;
         if (prevY - hh >= b.h - 0.6 && v[1] <= 0.5) { p[1] = b.h + hh; if (v[1] < 0) v[1] = 0; s.ground = true; s.safe = [p[0], p[1], p[2]]; continue; }
         const l = p[0] + hw - b.x0, r = b.x1 - (p[0] - hw), f = p[2] + hw - b.z0, k = b.z1 - (p[2] - hw), m = Math.min(l, r, f, k);
-        if (m === l) { p[0] -= l; if (v[0] > 0) v[0] *= -0.1; } else if (m === r) { p[0] += r; if (v[0] < 0) v[0] *= -0.1; }
-        else if (m === f) { p[2] -= f; if (v[2] > 0) v[2] *= -0.1; } else { p[2] += k; if (v[2] < 0) v[2] *= -0.1; }
+        hitB = bi;
+        if (m === l) { p[0] -= l; if (v[0] > 0) v[0] *= -0.1; hitN = [-1, 0]; } else if (m === r) { p[0] += r; if (v[0] < 0) v[0] *= -0.1; hitN = [1, 0]; }
+        else if (m === f) { p[2] -= f; if (v[2] > 0) v[2] *= -0.1; hitN = [0, -1]; } else { p[2] += k; if (v[2] < 0) v[2] *= -0.1; hitN = [0, 1]; }
     }
     const lim = HALF - 3;
     if (p[0] > lim) { p[0] = lim; v[0] = Math.min(v[0], 0); } if (p[0] < -lim) { p[0] = -lim; v[0] = Math.max(v[0], 0); }
@@ -186,19 +195,31 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
 
     if (input.swingQ && !s.web) {
         s.anchor = findAnchor(s); s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); s.swings++;
-        const d = norm(sub(s.anchor, p)); v[0] += d[0] * 6; v[1] += d[1] * 4; v[2] += d[2] * 6; s.ground = false; ev.attach();
+        const d = norm(sub(s.anchor, p)); v[0] += d[0] * 6; v[1] += d[1] * 4; v[2] += d[2] * 6; s.ground = false; s.wall = null; ev.attach();
     }
     input.swingQ = false;
     if (!swingHeld && s.web) { s.web = false; v[1] += 3; ev.release(); }
     if (input.jumpQ) {
         input.jumpQ = false;
-        if (s.ground) { v[1] = 11.5; s.ground = false; ev.jump(); }
+        if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
+        else if (s.ground) { v[1] = JUMP_V; s.ground = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
     }
     const prevY = p[1];
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
-    if (s.ground && !s.web) {
+    s.wallT = Math.max(0, s.wallT - dt);
+    if (s.wall && s.t - s.lastDrag > 0.8) s.pitch += (0.3 - s.pitch) * Math.min(1, dt * 3);
+    if (s.wall && !s.web) {
+        const n = s.wall, tx = -n[1], tz = n[0];
+        const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
+        if (push < -0.3) { s.wall = null; s.wallT = 0.2; v[0] = n[0] * 3; v[2] = n[1] * 3; v[1] = 0; }
+        else {
+            const up = push > 0.3 ? push * 9 : 0;
+            v[0] = tx * lat * 11 - n[0] * 2; v[2] = tz * lat * 11 - n[1] * 2; v[1] += (up - v[1]) * Math.min(1, dt * 12);
+            s.runPhase += (Math.abs(up) + Math.abs(lat) * 11) * dt * 0.6;
+        }
+    } else if (s.ground && !s.web) {
         const a = Math.min(1, dt * 10); v[0] += (wx * 11 - v[0]) * a; v[2] += (wz * 11 - v[2]) * a; v[1] = 0;
     } else {
         v[1] -= G * dt;
@@ -221,6 +242,13 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         }
     }
     collide(s, prevY);
+    if (hitN && !s.web && !s.ground && s.wallT <= 0 && !stunned) {
+        const push = -(wx * hitN[0] + wz * hitN[1]);
+        if (s.wall || push > 0.5) { if (!s.wall) { s.vaulted = 0; } s.wall = hitN; s.wallB = hitB; }
+    } else if (hitN && !s.web && s.ground && p[1] > 1.2) { /* standing on a roof, touching wall: no attach */ s.wall = null; }
+    else if (hitN && !s.web && s.wallT <= 0 && !stunned && p[1] <= 1.05 && -(wx * hitN[0] + wz * hitN[1]) > 0.5) { s.wall = hitN; s.wallB = hitB; v[1] = 0.1; p[1] = 1.06; }
+    else if (!hitN) s.wall = null;
+    if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
     if (p[1] <= 1.0005) { // street level: walkable
         if (!s.ground) { s.ground = true; }
@@ -234,11 +262,11 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
     const sp = len(v); if (sp > s.maxSpeed) s.maxSpeed = sp;
     const hs = Math.hypot(v[0], v[2]);
-    if (hs > 1.5) { let da = Math.atan2(v[0], v[2]) - s.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); s.ang += da * Math.min(1, dt * 12); }
+    if (s.wall) { s.ang = Math.atan2(-s.wall[0], -s.wall[1]); } else if (hs > 1.5) { let da = Math.atan2(v[0], v[2]) - s.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); s.ang += da * Math.min(1, dt * 12); }
     if (s.ground) s.runPhase += hs * dt * 0.9;
     s.land = Math.max(0, s.land - dt * 3);
     stepCombat(s, dt, ev);
-    if (s.t - s.lastDrag > 1.2 && hs > 8 && !s.ground) {
+    if (s.t - s.lastDrag > 1.2 && hs > 8 && !s.ground && !s.wall) {
         let da = Math.atan2(v[0], v[2]) - s.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); s.yaw += da * Math.min(1, dt * 1.6);
     }
     for (let i = 0; i < s.orbs.length; i++) {
@@ -248,6 +276,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
 }
 export const buildings = blds;
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
+const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1 && x < e.roof.x1 - 1 && z > e.roof.z0 + 1 && z < e.roof.z1 - 1;
 function stepCombat(s: Sim, dt: number, ev: Events) {
     const p = s.pos, v = s.vel;
     if (s.hp <= 0) { s.hp = 100; p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false; ev.fall(); }
@@ -278,11 +307,11 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
         const e = s.enemies[i];
         if (e.down > 0) { e.down -= dt; if (e.down <= 0) s.enemies[i] = spawnEnemy(s); continue; }
         e.hit = Math.max(0, e.hit - dt);
-        const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && !insideB(e.x + kx, e.z + kz)) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
+        const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
         const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
         if (d < 26 && dy < 5 && e.hit <= 0) {
             e.ang = Math.atan2(dx, dz);
-            if (d > 2.0 && e.atk <= 0) { const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (!insideB(nx, e.z)) e.x = nx; if (!insideB(e.x, nz)) e.z = nz; }
+            if (d > 2.0 && e.atk <= 0) { const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : !insideB(nx, e.z)) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : !insideB(e.x, nz)) e.z = nz; }
             if (d <= 2.4 && e.atk <= 0) e.atk = 0.7; // telegraph
         }
         if (e.atk > 0) {

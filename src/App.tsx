@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, motion } from 'framer-motion';
 import gsap from 'gsap';
 import { Scene } from './Scene';
-import { createSim, resetSim, input, type Events } from './sim';
+import { createSim, buildings, resetSim, input, type Events } from './sim';
 
 const isGl2 = () => !!(window as any).__gl2;
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
@@ -65,7 +65,7 @@ export function App() {
         const blur = () => { try { for (const k of Object.keys((input as any).keys || {})) (input as any).keys[k] = false; } catch (e) { /* ignore */ } input.swing = false; input.mx = 0; input.my = 0; try { for (const k of Object.keys(input as any)) if (typeof (input as any)[k] === 'boolean') (input as any)[k] = false; } catch (e) { /* ignore */ } };
         window.addEventListener('blur', blur);
         window.addEventListener('keydown', down); window.addEventListener('keyup', up);
-        (window as any).__game = { sim, input, perf, fx, start: () => start() };
+        (window as any).__game = { sim, input, perf, fx, buildings, start: () => start() };
         return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', blur); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
     }, []); // eslint-disable-line
 

@@ -39,3 +39,11 @@ Evidence (local SwiftShader, 390x780): test/combat.mjs PASS (street grounded, 3 
 ## v0.10
 Hero rebuilt as a tapered V-torso, gold shoulders/gloves/boots, angled lenses, scarf tails (scale 1.35). Fixes: death check now runs before HP regen (QA: could resurrect hp 0 without respawn); street ground flag flickered every step (floor test used < instead of <=), fixed; swinging from street level now zips the hero up toward the anchor (before, the rope was slack and the hero just stood). Menu text now warns that big falls hurt and stun.
 Evidence (local SwiftShader): test/motion.mjs PASS (run 11 m/s, stop <1, jump apex 2.4 m, lands, jump then swing attached, 40 m/s, release, lands) test/combat.mjs PASS incl. respawn at last roof, with longer polling. assert, audio, marker PASS. Note jump apex is 2.4 m (snappy). Real device: UNTESTED.
+
+## Required scope (user mandate, 5:31)
+UPDATE 5:37: wall crawl/run, wall jump, wall vault, higher jump (apex 4.6 m) implemented and logic-tested (test/wall.mjs PASS). Wall camera framing and pose NOT visually verified. Swimming NOT implemented.
+
+### Original note
+Wall crawling, wall walking/running, higher jump, running, swimming (ocean, split view, underwater).
+Tests required before any claim: wall attach/detach, wall jump, water entry/exit, transitions ground<->wall<->swing.
+Current jump apex 2.4 m (to raise). Run PASS. Wall and swim: none.
