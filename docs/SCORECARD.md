@@ -18,3 +18,6 @@ Warm sunset palette, per-district colors, water tanks/AC/antennas, more setbacks
 
 ## v0.5
 Facade shader: smaller windows, floor bands, pilasters, glass tint. Warmer lighting. Spawn fixed: removed the tall wall in front of the start roof (start camera faced a blank neon wall). Pickup test and page errors: see report. Perf capped 40. Soak/resize/device: untested.
+
+## v0.5.1
+Blur/hidden now also clears keyboard key state. Known limitation: below ~20 fps physics dt is clamped (50 ms), so the game runs in slow motion and the round timer follows sim time, not wall time. QA (independent, software GL): orientation 390x780->900x1600 PASS, ~2.5 min wall soak heap stable (24-27 MB -> 10-12 MB after GC), full 5 min soak NOT done. Blur handling is code-level only, not browser-tested.
