@@ -38,7 +38,7 @@ const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Positi
 const SKY_FS = `varying vec3 vDir;uniform vec3 uHor;
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
- vec3 top=vec3(0.06,0.05,0.24);vec3 mid=vec3(0.36,0.17,0.45);
+ vec3 top=vec3(0.12,0.3,0.5);vec3 mid=vec3(0.72,0.36,0.42);
  vec3 c=mix(uHor,mid,smoothstep(0.0,0.25,t));c=mix(c,top,smoothstep(0.2,0.9,t));
  vec3 sun=normalize(vec3(-0.55,0.22,0.8));float g=max(dot(normalize(vDir),sun),0.0);
  c+=vec3(1.0,0.55,0.3)*(pow(g,24.0)*0.6+pow(g,220.0)*1.2);
@@ -90,7 +90,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const dt = Math.min(0.05, rawDt);
         sim.t += dt;
         // adaptive resolution (device-friendly)
-        ema.current += (dt * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += dt;
+        const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
+        { const want = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2) * curScale.current; if (Math.abs(gl.getPixelRatio() - want) > 0.01) gl.setPixelRatio(want); }
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
             if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current < 18 && ns < 1) ns += 0.05;
@@ -107,14 +108,21 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const cy = Math.cos(sim.pitch), sy = Math.sin(sim.pitch);
         let dist = sim.web ? 15 : 11;
         const fxd = Math.sin(sim.yaw) * cy, fzd = Math.cos(sim.yaw) * cy;
-        for (; dist > 5; dist -= 1) {
+        for (; dist > 6; dist -= 1) {
             const ex = p[0] - fxd * dist, ey = p[1] + 1.5 + sy * dist, ez = p[2] - fzd * dist;
             let hit = false;
-            for (const b of buildings) if (ex > b.x0 - 1 && ex < b.x1 + 1 && ez > b.z0 - 1 && ez < b.z1 + 1 && ey < b.h + 1) { hit = true; break; }
+            for (const b of buildings) if (ex > b.x0 - 3 && ex < b.x1 + 3 && ez > b.z0 - 3 && ez < b.z1 + 3 && ey < b.h + 3) { hit = true; break; }
             if (!hit) break;
         }
         const tx = p[0] - fxd * dist, ty = Math.max(2, p[1] + 1.5 + sy * dist), tz = p[2] - fzd * dist;
         if (sim.mode === 'menu' || sim.mode === 'over') { cam.current.set(tx, ty, tz); } else cam.current.lerp(new THREE.Vector3(tx, ty, tz), 1 - Math.pow(0.001, dt));
+        { // push smoothed camera out of buildings (post-lerp)
+            const q = cam.current;
+            for (const b of buildings) if (q.x > b.x0 - 2 && q.x < b.x1 + 2 && q.z > b.z0 - 2 && q.z < b.z1 + 2 && q.y < b.h + 2) {
+                const dx0 = q.x - (b.x0 - 2), dx1 = b.x1 + 2 - q.x, dz0 = q.z - (b.z0 - 2), dz1 = b.z1 + 2 - q.z, dy = b.h + 2 - q.y, m = Math.min(dx0, dx1, dz0, dz1, dy);
+                if (m === dy) q.y = b.h + 2; else if (m === dx0) q.x = b.x0 - 2; else if (m === dx1) q.x = b.x1 + 2; else if (m === dz0) q.z = b.z0 - 2; else q.z = b.z1 + 2;
+            }
+        }
         camera.position.copy(cam.current);
         look.current.set(p[0], p[1] + 1.5, p[2]);
         camera.lookAt(look.current);

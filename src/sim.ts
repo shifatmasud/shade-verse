@@ -3,7 +3,7 @@ export type V3 = [number, number, number];
 export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number }
 
 export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
-export const FOG: V3 = [0.5, 0.36, 0.56];
+export const FOG: V3 = [0.86, 0.52, 0.5];
 const G = 27;
 
 let seedv = 1337;
@@ -42,9 +42,10 @@ function buildWorld() {
         else if (Math.abs(i - mi) <= 1 && Math.abs(j - mi) <= 1 && j >= mi) h = Math.max(h, 62 + rnd() * 20);
         blds.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h });
         const tint = rnd();
-        const col: V3 = tint < 0.33 ? [0.42, 0.4, 0.58] : tint < 0.66 ? [0.5, 0.42, 0.52] : [0.36, 0.42, 0.55];
+        const pal: V3[] = [[0.78, 0.5, 0.45], [0.62, 0.5, 0.6], [0.85, 0.68, 0.52], [0.45, 0.5, 0.68], [0.7, 0.4, 0.4]];
+        const col: V3 = pal[Math.floor(((i * 7 + j * 3) % 5 + tint * 1.5) % 5)];
         // stepped tower: base + slimmer top section for silhouette variety
-        if (h > 60 && rnd() < 0.6) {
+        if (h > 40 && rnd() < 0.75) {
             const hb = h * 0.72;
             box(cx, hb / 2, cz, w / 2, hb / 2, d / 2, col, rnd());
             box(cx, hb + (h - hb) / 2, cz, w / 2 - 3, (h - hb) / 2, d / 2 - 3, col, rnd());
@@ -59,6 +60,10 @@ function buildWorld() {
         }
         if (rnd() < 0.4) { const nc = neon[Math.floor(rnd() * 4)]; box(cx, h + 0.15, cz, w / 2 + 0.2, 0.15, 0.2, nc, 2.0); }
         box(cx + w * 0.3, h + 3.2, cz + d * 0.3, 0.25, 0.25, 0.25, [1, 0.15, 0.1], 2.0);
+        // water tank on legs + AC units + antenna mast (rooftop variety)
+        if (rnd() < 0.5) { const tx = cx + (rnd() - 0.5) * (w - 8), tz2 = cz + (rnd() - 0.5) * (d - 8); box(tx, h + 2, tz2, 0.3, 2, 0.3, [0.3, 0.25, 0.25], 0.5); box(tx, h + 5, tz2, 2.1, 2.2, 2.1, [0.72, 0.45, 0.38], 0.5); box(tx, h + 7.4, tz2, 1.6, 0.3, 1.6, [0.4, 0.3, 0.3], 0.5); }
+        for (let k = 0; k < 3; k++) if (rnd() < 0.6) box(cx + (rnd() - 0.5) * (w - 6), h + 0.8, cz + (rnd() - 0.5) * (d - 6), 1.2 + rnd(), 0.8, 1 + rnd(), [0.82, 0.84, 0.88], 0.5);
+        if (rnd() < 0.5) { const ax = cx + (rnd() - 0.5) * w * 0.6; box(ax, h + 6, cz, 0.12, 6, 0.12, [0.3, 0.3, 0.35], 0.5); box(ax, h + 9, cz, 1.4, 0.1, 0.1, [0.3, 0.3, 0.35], 0.5); }
         const roofCol: V3 = [0.25, 0.25, 0.32];
         box(cx - w * 0.2, h + 0.7, cz + d * 0.15, 2.2, 0.7, 2.2, roofCol, 0.5);
         if (rnd() < 0.5) { box(cx + w * 0.25, h + 1.5, cz - d * 0.2, 0.4, 1.5, 0.4, [0.7, 0.2, 0.25], 0.5); }
@@ -67,7 +72,7 @@ function buildWorld() {
     const g = HALF + 200, base = data.length / 10;
     for (const p of [[-g, g], [g, g], [g, -g], [-g, -g]]) data.push(p[0], 0, p[1], 0, 1, 0, 0.16, 0.15, 0.2, 0.5);
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    return { blds, data: new Float32Array(data), idx: new Uint16Array(idx) };
+    return { blds, data: new Float32Array(data), idx: new Uint32Array(idx) };
 }
 export const world = buildWorld();
 const blds = world.blds;

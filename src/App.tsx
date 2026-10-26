@@ -55,9 +55,11 @@ export function App() {
         const up = (e: KeyboardEvent) => { input.keys[e.key.toLowerCase()] = false; };
         const vis = () => { try { const c = actx.current; if (c) { if (document.hidden) c.suspend(); else c.resume(); } } catch (e) { /* ignore */ } if (document.hidden) { input.swing = false; input.mx = 0; input.my = 0; } };
         document.addEventListener('visibilitychange', vis);
+        const blur = () => { input.swing = false; input.mx = 0; input.my = 0; try { for (const k of Object.keys(input as any)) if (typeof (input as any)[k] === 'boolean') (input as any)[k] = false; } catch (e) { /* ignore */ } };
+        window.addEventListener('blur', blur);
         window.addEventListener('keydown', down); window.addEventListener('keyup', up);
         (window as any).__game = { sim, input, perf, fx, start: () => start() };
-        return () => { document.removeEventListener('visibilitychange', vis); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+        return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', blur); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
     }, []); // eslint-disable-line
 
     function start() {

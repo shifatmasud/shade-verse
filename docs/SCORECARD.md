@@ -12,3 +12,6 @@ Wind audio scaled by speed with mute, vibration on orb/attach/fall (where suppor
 ## v0.3 (changes + evidence)
 Orbs now spawn 30-120 m from the player at swingable heights (18 live), pickup radius 5.5 m. Neon signs, roof beacons, hero details, rim light, on-screen fps/render-scale/WebGL readout (for real-device reports), tab-hidden audio suspend + input reset.
 Evidence (headless Chrome, software GL, 390x780): deterministic pickup test: teleport to orb => score 0->1, time +3 s (PASS). Bot run 75 s: 43 swings, 2 orbs collected, 0 page errors (bot is crude). Soak >5 min, real device FPS, deployed page behind login: UNTESTED.
+
+## v0.4
+Warm sunset palette, per-district colors, water tanks/AC/antennas, more setbacks. Metrics use raw dt; camera pushed out of AABBs after lerp; single pixel-ratio owner; blur clears input. Pickup test PASS again (0->1). Soak/resize/orientation, device FPS: UNTESTED. Perf stays capped at 40.
