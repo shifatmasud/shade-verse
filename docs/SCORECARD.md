@@ -24,3 +24,6 @@ Blur/hidden now also clears keyboard key state. Known limitation: below ~20 fps 
 
 ## v0.6
 Free roam: no timer or game over (FLIGHT counter counts up), falls cost nothing, orbs +1 score. Hero: shoulder pads and chest harness. Start blocks 40-55 m for a mid-height swing corridor. Keys-clear on blur fixed in v0.5.1 (code-level only).
+
+## v0.7
+Rooftop beacons (route objective, +5 score, cyan light pillar, distance HUD). Fixed QA regressions: best score now persists on any new high (was only on game over), orb toast shows +N, fall toast no longer mentions a time penalty. Stale '+3s' pickup claims in earlier entries are obsolete: pickup adds score only since v0.6. Harness test/assert.mjs asserts orb 0->1, beacon +5, best persisted, mode stays play, no page errors: PASS (software GL).

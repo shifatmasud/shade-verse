@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import gsap from 'gsap';
-import { world, buildings, FOG, stepSim, resetSim, input, type Sim, type Events } from './sim';
+import { world, buildings, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
 
 const CITY_VS = `attribute vec3 aCol;attribute float aSeed;
 varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
@@ -84,6 +84,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const gold = useMemo(() => new THREE.MeshLambertMaterial({ color: '#f2c038' }), []);
     const dark = useMemo(() => new THREE.MeshLambertMaterial({ color: '#171a2c' }), []);
     const red = useMemo(() => new THREE.MeshLambertMaterial({ color: '#d9344f', side: THREE.DoubleSide }), []);
+    const beaconRef = useRef<THREE.Mesh>(null!);
     const eye = useMemo(() => new THREE.MeshBasicMaterial({ color: '#7ffcff' }), []);
     const visor = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0b0c18' }), []);
 
@@ -100,6 +101,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         if (sim.mode === 'play') {
             for (let i = 0; i < 2; i++) stepSim(sim, dt / 2, ev);
+            stepBeacon(sim, ev);
             sim.time += dt;
         } else sim.yaw += dt * 0.15;
         const p = sim.pos, v = sim.vel;
@@ -151,6 +153,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             w.quaternion.setFromUnitVectors(Y, new THREE.Vector3(dx / l, dy / l, dz / l));
             w.scale.set(1, l, 1);
         }
+        { const bm = beaconRef.current; bm.position.set(sim.beacon[0], sim.beacon[1] + 30, sim.beacon[2]); bm.scale.set(1 + 0.08 * Math.sin(sim.t * 3), 1, 1 + 0.08 * Math.sin(sim.t * 3)); }
         // orbs
         const t = sim.t;
         let nb = -1, nd = 1e9;
@@ -171,6 +174,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     });
 
     return <>
+        <mesh ref={beaconRef} frustumCulled={false}><cylinderGeometry args={[2.2, 2.2, 60, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.35} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
         <color attach="background" args={[FOG[0], FOG[1], FOG[2]]} />
         <hemisphereLight args={['#b9a8ff', '#3a2748', 1.15]} />
         <directionalLight position={[-30, 60, 20]} intensity={1.8} color="#ffc89a" />

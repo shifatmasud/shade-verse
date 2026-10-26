@@ -1,0 +1,14 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const p = await b.newPage(); await p.setViewport({ width:390, height:780, hasTouch:true, isMobile:true });
+const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+await p.goto('http://localhost:4173/',{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
+await p.evaluate(()=>{try{localStorage.removeItem('webswinger3d-best')}catch(e){}});
+await p.evaluate(()=>window.__game.start()); await new Promise(r=>setTimeout(r,500));
+const r=await p.evaluate(async()=>{const s=window.__game.sim; const o=s.orbs[0]; const out={};
+ s.pos=[o[0],o[1],o[2]-3]; s.vel=[0,0,0]; await new Promise(r=>setTimeout(r,400)); out.orb=s.score;
+ const bc=s.beacon; s.pos=[bc[0],bc[1],bc[2]-2]; s.vel=[0,0,0]; await new Promise(r=>setTimeout(r,400)); out.afterBeacon=s.score; out.beaconN=s.beaconN;
+ await new Promise(r=>setTimeout(r,400)); out.best=s.best; out.stored=localStorage.getItem('webswinger3d-best'); out.mode=s.mode; return out;});
+console.log(JSON.stringify(r),'errors',JSON.stringify(errs));
+const ok = r.orb===1 && r.beaconN===1 && r.afterBeacon===6 && r.best===6 && r.mode==='play' && errs.length===0;
+console.log(ok?'ASSERT PASS':'ASSERT FAIL'); await b.close(); process.exit(ok?0:1);

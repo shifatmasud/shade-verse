@@ -13,7 +13,7 @@ export function App() {
     const fx = useRef({ fov: 0, shake: 0 }).current;
     const perf = useRef({ scale: coarse ? 0.7 : 1, fps: 60, speed: 0 }).current;
     const actx = useRef<AudioContext | null>(null);
-    const [hud, setHud] = useState({ score: 0, time: 75, mode: sim.mode, best: sim.best });
+    const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0 });
     const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
     const toastId = useRef(0);
     const [muted, setMuted] = useState(false);
@@ -21,13 +21,14 @@ export function App() {
     const mutedRef = useRef(false);
     const wind = useRef<{ g: GainNode; f: BiquadFilterNode } | null>(null);
     const buzz = (ms: number) => { try { if (!mutedRef.current) (navigator as any).vibrate?.(ms); } catch (e) { /* ignore */ } };
+    const lastScore = useRef(0);
     const showToast = (text: string, ms = 1600) => { const id = ++toastId.current; setToast({ id, text }); setTimeout(() => setToast((t) => (t && t.id === id ? null : t)), ms); };
     const beep = (f: number, d = 0.12, type: OscillatorType = 'sine', v = 0.07) => {
         try { const a = actx.current; if (!a || mutedRef.current) return; const o = a.createOscillator(), g = a.createGain(); o.type = type; o.frequency.value = f; g.gain.value = v; g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + d); o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + d); } catch (e) { /* ignore */ }
     };
     const ev: Events = useMemo(() => ({
-        orb: () => { buzz(25); showToast('+3s', 700); beep(780 + Math.min(sim.score, 20) * 25, 0.15, 'sine', 0.09); gsap.fromTo(fx, { fov: 10 }, { fov: 0, duration: 0.5, ease: 'power2.out' }); },
-        fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Splat! -4s. Back to the last rooftop.', 2000); beep(120, 0.3, 'sawtooth', 0.08); },
+        orb: () => { buzz(25); showToast('+' + (sim.score - lastScore.current), 700); lastScore.current = sim.score; beep(780 + Math.min(sim.score, 20) * 25, 0.15, 'sine', 0.09); gsap.fromTo(fx, { fov: 10 }, { fov: 0, duration: 0.5, ease: 'power2.out' }); },
+        fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Splat! Back to the last rooftop.', 2000); beep(120, 0.3, 'sawtooth', 0.08); },
         attach: () => { buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
         release: () => { beep(300, 0.08, 'triangle'); },
         jump: () => { beep(380, 0.1, 'square', 0.04); },
@@ -39,9 +40,9 @@ export function App() {
             setDbg(Math.round(perf.fps) + ' fps · res ' + perf.scale.toFixed(2) + (isGl2() ? ' · WebGL2' : ' · WebGL1'));
             document.documentElement.style.setProperty('--spd', String(Math.min(1, Math.max(0, (perf.speed - 18) / 40))));
             setHud((h) => {
-                const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best };
-                if (sim.mode === 'over' && sim.score > sim.best) { sim.best = sim.score; n.best = sim.best; try { localStorage.setItem('webswinger3d-best', String(sim.best)); } catch (e) { /* ignore */ } }
-                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best ? h : n;
+                const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
+                if (sim.score > sim.best) { sim.best = sim.score; n.best = sim.best; try { localStorage.setItem('webswinger3d-best', String(sim.best)); } catch (e) { /* ignore */ } }
+                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.bd === n.bd ? h : n;
             });
         }, 100);
         const down = (e: KeyboardEvent) => {
@@ -66,7 +67,7 @@ export function App() {
         try { const AC = (window as any).AudioContext || (window as any).webkitAudioContext; if (!actx.current && AC) actx.current = new AC(); } catch (e) { /* ignore */ }
         if (actx.current && !wind.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); wind.current = { g, f }; } catch (e) { /* ignore */ } }
         gsap.fromTo(fx, { fov: 22 }, { fov: 0, duration: 1.4, ease: 'power3.out' });
-        resetSim(sim); sim.mode = 'play'; showToast('Hold SWING to fire a web, release to let go', 3500);
+        resetSim(sim); lastScore.current = 0; sim.mode = 'play'; showToast('Hold SWING to fire a web, release to let go', 3500);
     }
 
     // controls
@@ -100,6 +101,7 @@ export function App() {
         <div className="hud">
             <div className="chip"><span className="lab">ORBS</span><b>{hud.score}</b></div>
             <div className="chip"><span className="lab">FLIGHT</span><b>{hud.time}s</b></div>
+            <div className="chip"><span className="lab">BEACON {hud.bn}</span><b>{hud.bd}m</b></div>
         </div>
         <div className="dbg">{dbg}</div>
         <div className="vig" />

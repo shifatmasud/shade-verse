@@ -81,7 +81,7 @@ export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
     yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
-    orbs: V3[]; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number;
+    orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number;
 }
 export interface Input { mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean }
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void }
@@ -91,7 +91,7 @@ export const input: Input = { mx: 0, my: 0, swing: false, keys: {}, jumpQ: false
 export function createSim(): Sim {
     let best = 0;
     try { best = parseInt(localStorage.getItem('webswinger3d-best') || '0', 10) || 0; } catch (e) { /* ignore */ }
-    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, orbs: [], t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0 };
+    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0 };
     resetSim(s);
     return s;
 }
@@ -111,11 +111,18 @@ function newOrb(s: Sim): V3 {
     }
     return [s.pos[0] + 40, 50, s.pos[2]];
 }
+function newBeacon(s: Sim): V3 {
+    // beacon sits on the roof of a building 70-170 m away
+    const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return d > 70 && d < 170; });
+    const b = cand.length ? cand[Math.floor(Math.random() * cand.length)] : blds[Math.floor(Math.random() * blds.length)];
+    return [(b.x0 + b.x1) / 2, b.h + 1.5, (b.z0 + b.z1) / 2];
+}
 export function resetSim(s: Sim) {
     const b = blds.reduce((best, c) => Math.hypot(c.x0, c.z0) < Math.hypot(best.x0, best.z0) ? c : best, blds[0]);
     s.pos = [(b.x0 + b.x1) / 2 + 4, b.h + 1, (b.z0 + b.z1) / 2 - 4]; s.vel = [0, 0, 0]; s.web = false; s.ground = true; s.safe = [...s.pos] as V3;
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
+    s.beaconN = 0; s.beacon = newBeacon(s);
 }
 
 function findAnchor(s: Sim): V3 {
@@ -211,3 +218,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
 }
 export const buildings = blds;
+export function stepBeacon(s: Sim, ev: Events) {
+    const p = s.pos, b = s.beacon;
+    if (Math.hypot(b[0] - p[0], b[1] - p[1], b[2] - p[2]) < 8) { s.beaconN++; s.score += 5; s.beacon = newBeacon(s); ev.orb(); }
+}
