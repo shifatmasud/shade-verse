@@ -15,3 +15,6 @@ Evidence (headless Chrome, software GL, 390x780): deterministic pickup test: tel
 
 ## v0.4
 Warm sunset palette, per-district colors, water tanks/AC/antennas, more setbacks. Metrics use raw dt; camera pushed out of AABBs after lerp; single pixel-ratio owner; blur clears input. Pickup test PASS again (0->1). Soak/resize/orientation, device FPS: UNTESTED. Perf stays capped at 40.
+
+## v0.5
+Facade shader: smaller windows, floor bands, pilasters, glass tint. Warmer lighting. Spawn fixed: removed the tall wall in front of the start roof (start camera faced a blank neon wall). Pickup test and page errors: see report. Perf capped 40. Soak/resize/device: untested.

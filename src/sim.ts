@@ -39,7 +39,7 @@ function buildWorld() {
         if (rnd() < 0.12) h = 18 + rnd() * 10;
         if (rnd() < 0.08) h += 40;
         if (i === mi && j === mi) h = 30;
-        else if (Math.abs(i - mi) <= 1 && Math.abs(j - mi) <= 1 && j >= mi) h = Math.max(h, 62 + rnd() * 20);
+        else if (Math.abs(i - mi) <= 1 && Math.abs(j - mi) <= 1) h = Math.min(h, 24 + rnd() * 16);
         blds.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h });
         const tint = rnd();
         const pal: V3[] = [[0.78, 0.5, 0.45], [0.62, 0.5, 0.6], [0.85, 0.68, 0.52], [0.45, 0.5, 0.68], [0.7, 0.4, 0.4]];

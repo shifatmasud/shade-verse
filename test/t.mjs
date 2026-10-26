@@ -9,12 +9,13 @@ await new Promise(r=>setTimeout(r,2500));
 await p.screenshot({ path: out.replace('.png','-menu.png') });
 await p.evaluate(()=>window.__game.start());
 await new Promise(r=>setTimeout(r,800));
+setTimeout(()=>p.screenshot({path:out.replace('.png','-early.png')}).catch(()=>{}),1500);
 const res = await p.evaluate(async()=>{ const g=window.__game, s=g.sim; g.input.keys['w']=true; const log=[]; let t0=performance.now();
  for(let i=0;i<300;i++){ await new Promise(r=>setTimeout(r,100)); if(s.mode!=='play')break;
   if(!s.web && !s.ground && s.vel[1]<2 && s.pos[1]>25) { g.input.swingQ=true; g.input.swing=true; }
   else if(s.web && (s.webT>1.4 && s.vel[1]>3)) { g.input.swing=false; }
   g.input.keys['w']=true; if(s.ground && i%6==0) g.input.jumpQ=true; if(s.web) {g.input.keys['w']=false;}
-  if(i%40==0) log.push([s.pos.map(Math.round).join(','),s.web?'W':'-',s.score,Math.round(g.perf.fps),g.perf.scale.toFixed(2)]); }
+  if(i==12) window.__mid=1; if(i%40==0) log.push([s.pos.map(Math.round).join(','),s.web?'W':'-',s.score,Math.round(g.perf.fps),g.perf.scale.toFixed(2)]); }
  return {log, score:s.score, swings:s.swings, max:Math.round(s.maxSpeed), time:Math.round(s.time), gl2:window.__gl2}; });
 console.log(JSON.stringify(res)); console.log('errors', JSON.stringify(errs.slice(0,5)));
 await p.screenshot({ path: out });
