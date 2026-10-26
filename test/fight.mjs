@@ -1,0 +1,18 @@
+import puppeteer from 'puppeteer-core';
+const [,, w=390, h=780, out='/tmp/shot.png', mode='phone'] = process.argv;
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
+const p = await b.newPage();
+await p.setViewport({ width:+w, height:+h, deviceScaleFactor:1, hasTouch: mode==='phone', isMobile: mode==='phone' });
+const errs=[]; p.on('pageerror',e=>errs.push(String(e))); p.on('console',m=>{ if(m.type()==='error') errs.push(m.text()); });
+await p.goto('http://localhost:4173/', { waitUntil:'load' });
+await new Promise(r=>setTimeout(r,2500));
+await p.screenshot({ path: out.replace('.png','-menu.png') });
+await p.evaluate(()=>window.__game.start());
+await new Promise(r=>setTimeout(r,800));
+await p.evaluate(()=>{const g=window.__game,s=g.sim; s.pos=[20,1,-150]; s.vel=[0,0,0]; s.ang=0; s.yaw=0; s.enemies.forEach((o,i)=>{o.x=-300;o.z=-300;}); const e=s.enemies[0]; e.x=20.8; e.z=-146.5; e.y=1; e.ang=Math.PI; e.hit=0; e.atk=0.5; const f=s.enemies[1]; f.x=18; f.z=-143; f.y=1; f.ang=3; const h=s.enemies[2]; h.x=24; h.z=-141; h.y=1; h.ang=3.3;});
+await new Promise(r=>setTimeout(r,700));
+await p.evaluate(()=>{window.__game.input.attackQ=true;});
+await new Promise(r=>setTimeout(r,120));
+await p.screenshot({ path: out });
+console.log('done', JSON.stringify(errs.slice(0,3)));
+await b.close();

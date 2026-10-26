@@ -85,6 +85,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const dark = useMemo(() => new THREE.MeshLambertMaterial({ color: '#171a2c' }), []);
     const red = useMemo(() => new THREE.MeshLambertMaterial({ color: '#d9344f', side: THREE.DoubleSide }), []);
     const bv = useMemo(() => new THREE.Vector3(), []);
+    const bv2 = useMemo(() => new THREE.Vector3(), []);
+    const enBody = useRef<THREE.InstancedMesh>(null!);
+    const enHead = useRef<THREE.InstancedMesh>(null!);
+    const ecol = useMemo(() => new THREE.Color(), []);
     const beaconRef = useRef<THREE.Mesh>(null!);
     const eye = useMemo(() => new THREE.MeshBasicMaterial({ color: '#7ffcff' }), []);
     const visor = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0b0c18' }), []);
@@ -142,7 +146,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const sw = sim.ground ? Math.sin(sim.runPhase * 3) * 0.9 * Math.min(1, hs / 6) : 0.25;
         legR.current.rotation.x = sw; legL.current.rotation.x = -sw;
         armL.current.rotation.x = -sw * 0.8;
-        armR.current.rotation.x = sim.web ? -2.7 : sw * 0.8;
+        armR.current.rotation.x = sim.web ? -2.7 : sim.atkT > 0 ? -1.5 - Math.sin((0.32 - sim.atkT) * 10) * 0.6 : sw * 0.8;
+        h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
         cape.current.rotation.x = 0.25 + Math.min(1.0, speed / 38) + Math.sin(sim.t * 14) * 0.05 * Math.min(1, speed / 20);
         // web
         const w = web.current;
@@ -158,15 +163,34 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         { // edge-aware beacon marker (DOM, no React state)
             const el = document.getElementById('bmark');
             if (el) {
-                bv.set(sim.beacon[0], sim.beacon[1] + 6, sim.beacon[2]).project(camera);
-                let x = bv.x, y = bv.y; const behind = bv.z > 1;
-                if (behind) { x = -x; y = -y; }
+                bv.set(sim.beacon[0], sim.beacon[1] + 6, sim.beacon[2]);
+                camera.updateMatrixWorld();
+                bv2.copy(bv).applyMatrix4(camera.matrixWorldInverse);
+                const behind = bv2.z > -0.1; // camera looks down -z in view space
+                let x: number, y: number;
+                if (behind) { const l = Math.hypot(bv2.x, bv2.y); if (l < 0.01) { x = 0; y = -1; } else { x = bv2.x / l; y = bv2.y / l; } }
+                else { bv.project(camera); x = bv.x; y = bv.y; }
                 const m = Math.max(Math.abs(x) / 0.82, Math.abs(y) / 0.8, 1);
                 const onScreen = !behind && m <= 1;
                 x = x / (onScreen ? 1 : m); y = y / (onScreen ? 1 : m);
                 el.style.transform = 'translate(' + (((x + 1) / 2) * window.innerWidth - 20).toFixed(0) + 'px,' + (((1 - y) / 2) * window.innerHeight - 20).toFixed(0) + 'px) rotate(' + (onScreen ? 180 : Math.atan2(-y, x) * 57.3 + 90).toFixed(0) + 'deg)';
                 el.style.opacity = sim.mode === 'play' ? '1' : '0';
             }
+        }
+        { // enemies (instanced)
+            const n = sim.enemies.length;
+            for (let i = 0; i < n; i++) {
+                const e = sim.enemies[i];
+                const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0;
+                tmp.position.set(e.x, e.y - 0.2 - fall * 0.6, e.z); tmp.rotation.set(fall * -1.4, e.ang, 0); tmp.scale.set(1, 1, 1); tmp.updateMatrix();
+                enBody.current.setMatrixAt(i, tmp.matrix);
+                tmp.position.set(e.x + Math.sin(e.ang) * fall * 1.2, e.y + 1.0 - fall * 1.2, e.z + Math.cos(e.ang) * fall * 1.2); tmp.rotation.set(0, e.ang, 0); tmp.updateMatrix(); enHead.current.setMatrixAt(i, tmp.matrix);
+                if (e.hit > 0) ecol.setRGB(1, 1, 1); else if (e.atk > 0) ecol.setRGB(1, 0.35 + Math.sin(sim.t * 30) * 0.2, 0.2); else ecol.setRGB(0.55, 0.28, 0.3);
+                enBody.current.setColorAt(i, ecol);
+            }
+            enBody.current.count = n; enHead.current.count = n;
+            enBody.current.instanceMatrix.needsUpdate = true; enHead.current.instanceMatrix.needsUpdate = true;
+            if (enBody.current.instanceColor) enBody.current.instanceColor.needsUpdate = true;
         }
         // orbs
         const t = sim.t;
@@ -216,6 +240,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         </group>
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.05, 0.05, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>
+        <instancedMesh ref={enBody} args={[undefined, undefined, 16]} frustumCulled={false}><boxGeometry args={[0.9, 1.7, 0.6]} /><meshLambertMaterial color="#ffffff" /></instancedMesh>
+        <instancedMesh ref={enHead} args={[undefined, undefined, 16]} frustumCulled={false}><sphereGeometry args={[0.32, 8, 6]} /><meshLambertMaterial color="#d8a98a" /></instancedMesh>
         <instancedMesh ref={cores} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" /></instancedMesh>
         <instancedMesh ref={glows} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
     </>;

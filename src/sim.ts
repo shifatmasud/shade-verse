@@ -77,21 +77,23 @@ function buildWorld() {
 export const world = buildWorld();
 const blds = world.blds;
 
+export interface Enemy { x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number }
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
     yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
+    hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number;
 }
-export interface Input { mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean }
-export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void }
+export interface Input { attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean }
+export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void }
 
-export const input: Input = { mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false };
+export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false };
 
 export function createSim(): Sim {
     let best = 0;
     try { best = parseInt(localStorage.getItem('webswinger3d-best') || '0', 10) || 0; } catch (e) { /* ignore */ }
-    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0 };
+    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0 };
     resetSim(s);
     return s;
 }
@@ -117,12 +119,25 @@ function newBeacon(s: Sim): V3 {
     const b = cand.length ? cand[Math.floor(Math.random() * cand.length)] : blds[Math.floor(Math.random() * blds.length)];
     return [(b.x0 + b.x1) / 2, b.h + 1.5, (b.z0 + b.z1) / 2];
 }
+function spawnEnemy(s: Sim): Enemy {
+    for (let k = 0; k < 60; k++) {
+        const x = (Math.floor(Math.random() * (N - 1)) - (N - 2) / 2) * CELL + (Math.random() < 0.5 ? -CELL / 2 + 0 : CELL / 2 - 0), z = (Math.random() - 0.5) * 2 * (HALF - 40);
+        const sx = Math.round((x - CELL / 2) / CELL) * CELL + CELL / 2;
+        if (Math.hypot(sx - s.pos[0], z - s.pos[2]) < 18) continue;
+        let inside = false;
+        for (const b of blds) if (sx > b.x0 - 1 && sx < b.x1 + 1 && z > b.z0 - 1 && z < b.z1 + 1) { inside = true; break; }
+        if (!inside) return { x: sx, y: 1, z, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 };
+    }
+    return { x: 20, y: 1, z: 20, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 };
+}
 export function resetSim(s: Sim) {
     const b = blds.reduce((best, c) => Math.hypot(c.x0, c.z0) < Math.hypot(best.x0, best.z0) ? c : best, blds[0]);
     s.pos = [(b.x0 + b.x1) / 2 + 4, b.h + 1, (b.z0 + b.z1) / 2 - 4]; s.vel = [0, 0, 0]; s.web = false; s.ground = true; s.safe = [...s.pos] as V3;
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
+    s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
+    s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
 }
 
 function findAnchor(s: Sim): V3 {
@@ -166,7 +181,8 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (k['arrowup']) s.pitch = Math.max(0.05, s.pitch - dt); if (k['arrowdown']) s.pitch = Math.min(1.0, s.pitch + dt);
     const swingHeld = input.swing || k['shift'] || k['f'];
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx;
-    const wx = fx * my + rx * mx, wz = fz * my + rz * mx;
+    const stunned = s.landHard > 0;
+    const wx = stunned ? 0 : fx * my + rx * mx, wz = stunned ? 0 : fz * my + rz * mx;
 
     if (input.swingQ && !s.web) {
         s.anchor = findAnchor(s); s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); s.swings++;
@@ -180,6 +196,8 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
     }
     const prevY = p[1];
+    const wasGround = s.ground, landVy = v[1];
+    if (s.landHard > 0) s.landHard -= dt;
     if (s.ground) {
         const a = Math.min(1, dt * 10); v[0] += (wx * 11 - v[0]) * a; v[2] += (wz * 11 - v[2]) * a; v[1] = 0;
     } else {
@@ -201,14 +219,22 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
     collide(s, prevY);
     if (s.ground && s.web) s.web = false;
-    if (p[1] - 1 < 0.2) {
-        ev.fall();
-        p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false;
+    if (p[1] < 1.0) { // street level: walkable
+        if (!s.ground) { s.ground = true; }
+        p[1] = 1.0; if (v[1] < 0) v[1] = 0;
+    }
+    if (s.ground && !wasGround && landVy < -7) {
+        const imp = -landVy; s.land = Math.min(1, imp / 30); const hard = imp > 26;
+        s.landHard = hard ? 0.45 : 0;
+        if (hard) { v[0] *= 0.35; v[2] *= 0.35; s.hp = Math.max(1, s.hp - (imp - 26) * 2); }
+        ev.land(hard);
     }
     const sp = len(v); if (sp > s.maxSpeed) s.maxSpeed = sp;
     const hs = Math.hypot(v[0], v[2]);
     if (hs > 1.5) { let da = Math.atan2(v[0], v[2]) - s.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); s.ang += da * Math.min(1, dt * 12); }
     if (s.ground) s.runPhase += hs * dt * 0.9;
+    s.land = Math.max(0, s.land - dt * 3);
+    stepCombat(s, dt, ev);
     if (s.t - s.lastDrag > 1.2 && hs > 8 && !s.ground) {
         let da = Math.atan2(v[0], v[2]) - s.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); s.yaw += da * Math.min(1, dt * 1.6);
     }
@@ -218,6 +244,54 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
 }
 export const buildings = blds;
+const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
+function stepCombat(s: Sim, dt: number, ev: Events) {
+    const p = s.pos, v = s.vel;
+    s.atkT = Math.max(0, s.atkT - dt); s.dodgeT = Math.max(0, s.dodgeT - dt); s.hurtT = Math.max(0, s.hurtT - dt); s.comboT = Math.max(0, s.comboT - dt);
+    if (s.comboT === 0) s.combo = 0;
+    if (s.t - s.lastHit > 5 && s.hp < 100) s.hp = Math.min(100, s.hp + 6 * dt);
+    const fa = s.ang, fx = Math.sin(fa), fz = Math.cos(fa);
+    if (input.dodgeQ) {
+        input.dodgeQ = false;
+        if (s.dodgeT <= 0 && !s.web) { s.dodgeT = 0.38; const mx = input.mx + ((input.keys['d'] ? 1 : 0) - (input.keys['a'] ? 1 : 0)), my = input.my + ((input.keys['w'] ? 1 : 0) - (input.keys['s'] ? 1 : 0)); const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw); let dx = yx * my - yz * mx, dz = yz * my + yx * mx; const dl = Math.hypot(dx, dz); if (dl < 0.1) { dx = -fx; dz = -fz; } else { dx /= dl; dz /= dl; } v[0] = dx * 18; v[2] = dz * 18; }
+    }
+    if (input.attackQ) {
+        input.attackQ = false;
+        if (s.atkT <= 0) {
+            s.atkT = 0.32; let hitAny = false;
+            for (const e of s.enemies) {
+                if (e.down > 0) continue;
+                const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
+                if (d < 3.6 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) {
+                    e.hp -= 1; e.hit = 0.25; e.kb = [dx / (d || 1) * 9, dz / (d || 1) * 9]; hitAny = true; s.combo++; s.comboT = 1.2;
+                    if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); }
+                }
+            }
+            if (hitAny) ev.hit();
+        }
+    }
+    for (let i = 0; i < s.enemies.length; i++) {
+        const e = s.enemies[i];
+        if (e.down > 0) { e.down -= dt; if (e.down <= 0) s.enemies[i] = spawnEnemy(s); continue; }
+        e.hit = Math.max(0, e.hit - dt);
+        const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && !insideB(e.x + kx, e.z + kz)) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
+        const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
+        if (d < 26 && dy < 5 && e.hit <= 0) {
+            e.ang = Math.atan2(dx, dz);
+            if (d > 2.0 && e.atk <= 0) { const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (!insideB(nx, e.z)) e.x = nx; if (!insideB(e.x, nz)) e.z = nz; }
+            if (d <= 2.4 && e.atk <= 0) e.atk = 0.7; // telegraph
+        }
+        if (e.atk > 0) {
+            e.atk -= dt;
+            if (e.atk <= 0) {
+                const dd = Math.hypot(p[0] - e.x, p[2] - e.z);
+                if (dd < 2.9 && Math.abs(p[1] - e.y) < 3 && s.dodgeT <= 0) { s.hp -= 12; s.hurtT = 0.3; s.lastHit = s.t; ev.hurt(); }
+                e.atk = -1.2;
+            }
+        } else if (e.atk < 0) e.atk = Math.min(0, e.atk + dt);
+    }
+    if (s.hp <= 0) { s.hp = 100; p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false; ev.fall(); }
+}
 export function stepBeacon(s: Sim, ev: Events) {
     const p = s.pos, b = s.beacon;
     if (Math.hypot(b[0] - p[0], b[1] - p[1], b[2] - p[2]) < 8) { s.beaconN++; s.score += 5; s.beacon = newBeacon(s); ev.orb(); }

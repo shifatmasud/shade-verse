@@ -13,7 +13,7 @@ export function App() {
     const fx = useRef({ fov: 0, shake: 0 }).current;
     const perf = useRef({ scale: coarse ? 0.7 : 1, fps: 60, speed: 0 }).current;
     const actx = useRef<AudioContext | null>(null);
-    const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0 });
+    const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0 });
     const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
     const toastId = useRef(0);
     const [muted, setMuted] = useState(false);
@@ -28,9 +28,13 @@ export function App() {
     };
     const ev: Events = useMemo(() => ({
         orb: () => { buzz(25); showToast('+' + (sim.score - lastScore.current), 700); lastScore.current = sim.score; beep(780 + Math.min(sim.score, 20) * 25, 0.15, 'sine', 0.09); gsap.fromTo(fx, { fov: 10 }, { fov: 0, duration: 0.5, ease: 'power2.out' }); },
-        fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Splat! Back to the last rooftop.', 2000); beep(120, 0.3, 'sawtooth', 0.08); },
+        fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Knocked out. Back to your last rooftop.', 2000); beep(120, 0.3, 'sawtooth', 0.08); },
         attach: () => { buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
         release: () => { beep(300, 0.08, 'triangle'); },
+        hit: () => { buzz(30); beep(160, 0.09, 'square', 0.08); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
+        hurt: () => { buzz(70); beep(90, 0.18, 'sawtooth', 0.09); showToast('Ouch', 600); },
+        ko: () => { buzz(50); beep(240, 0.18, 'triangle', 0.09); showToast('KO +2', 700); },
+        land: (hard: boolean) => { buzz(hard ? 80 : 15); beep(hard ? 70 : 140, hard ? 0.25 : 0.08, 'sine', hard ? 0.12 : 0.05); if (hard) showToast('Hard landing', 700); },
         jump: () => { beep(380, 0.1, 'square', 0.04); },
     }), []); // eslint-disable-line
 
@@ -40,15 +44,17 @@ export function App() {
             setDbg(Math.round(perf.fps) + ' fps · res ' + perf.scale.toFixed(2) + (isGl2() ? ' · WebGL2' : ' · WebGL1'));
             document.documentElement.style.setProperty('--spd', String(Math.min(1, Math.max(0, (perf.speed - 18) / 40))));
             setHud((h) => {
-                const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
+                const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, hp: Math.round(sim.hp), ko: sim.kos, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
                 if (sim.score > sim.best) { sim.best = sim.score; n.best = sim.best; try { localStorage.setItem('webswinger3d-best', String(sim.best)); } catch (e) { /* ignore */ } }
-                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.bd === n.bd ? h : n;
+                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.hp === n.hp && h.ko === n.ko && h.bd === n.bd ? h : n;
             });
         }, 100);
         const down = (e: KeyboardEvent) => {
             const k = e.key.toLowerCase();
             if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
             if (k === ' ' && !input.keys[' ']) input.jumpQ = true;
+            if ((k === 'j' || k === 'e') && !input.keys[k]) input.attackQ = true;
+            if ((k === 'c' || k === 'q') && !input.keys[k]) input.dodgeQ = true;
             if ((k === 'shift' || k === 'f') && !input.keys[k]) input.swingQ = true;
             if (k === 'enter' && sim.mode !== 'play') start();
             input.keys[k] = true;
@@ -101,6 +107,7 @@ export function App() {
         <div className="hud">
             <div className="chip"><span className="lab">ORBS</span><b>{hud.score}</b></div>
             <div className="chip"><span className="lab">FLIGHT</span><b>{hud.time}s</b></div>
+            <div className="chip"><span className="lab">HP · KO {hud.ko}</span><b style={{ color: hud.hp < 35 ? '#FF453A' : '#E0E0E0' }}>{hud.hp}</b></div>
             <div className="chip"><span className="lab">BEACON {hud.bn}</span><b>{hud.bd}m</b></div>
         </div>
         <div className="dbg">{dbg}</div>
@@ -117,13 +124,15 @@ export function App() {
                 onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); input.swing = true; input.swingQ = true; setSwingOn(true); }}
                 onPointerUp={() => { input.swing = false; setSwingOn(false); }} onPointerCancel={() => { input.swing = false; setSwingOn(false); }}>SWING</button>
             <button className="act jump" onPointerDown={() => { input.jumpQ = true; }}>JUMP</button>
+            <button className="act punch" onPointerDown={() => { input.attackQ = true; }}>PUNCH</button>
+            <button className="act dodge" onPointerDown={() => { input.dodgeQ = true; }}>DODGE</button>
         </>}
 
         <AnimatePresence>
             {hud.mode !== 'play' && <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }}>
                 <motion.div className="otitle" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>{hud.mode === 'over' ? "Web Swinger" : 'Web Swinger'}</motion.div>
                 <div className="otext">{hud.mode === 'over' ? `You grabbed ${hud.score} orbs. Best: ${hud.best}.` : 'Swing between rooftops as Nova and grab the glowing orbs. Free roam: no timer, no game over. Collect orbs and explore the city.'}</div>
-                <div className="keys">Phone: left stick runs, drag the view to look, hold SWING in the air, tap JUMP.<br />Keyboard: WASD run, Space jump, hold Shift or F to swing, arrow keys look.</div>
+                <div className="keys">Phone: left stick runs, drag the view to look, hold SWING in the air, tap JUMP, PUNCH near enemies, DODGE their swings.<br />Keyboard: WASD run, Space jump, J or E punch, C or Q dodge, hold Shift or F to swing, arrow keys look.</div>
                 <motion.button className="go" whileTap={{ scale: 0.95 }} onClick={start}>{hud.mode === 'over' ? 'Play again' : 'Play'}</motion.button>
             </motion.div>}
         </AnimatePresence>

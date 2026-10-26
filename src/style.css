@@ -24,3 +24,8 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 .dbg{position:absolute;left:calc(10px + env(safe-area-inset-left));top:calc(70px + env(safe-area-inset-top));font:11px/1.2 ui-monospace,monospace;opacity:.6;pointer-events:none;text-shadow:0 1px 3px #000}
 
 .bmark{position:absolute;left:0;top:0;width:40px;height:40px;display:grid;place-items:center;font-size:28px;color:#5ff2ff;text-shadow:0 0 10px #5ff2ff,0 0 3px #000;pointer-events:none;opacity:0;will-change:transform}
+
+.act.punch{right:calc(20px + env(safe-area-inset-right));bottom:calc(176px + env(safe-area-inset-bottom));width:72px;height:72px;font-size:12px;background:rgba(220,70,70,.5)}
+.act.dodge{right:calc(104px + env(safe-area-inset-right));bottom:calc(180px + env(safe-area-inset-bottom));width:62px;height:62px;font-size:11px;background:rgba(90,120,230,.45)}
+
+.hud{gap:5px!important;max-width:calc(100vw - 70px)}.chip{padding:4px 8px!important;min-width:44px!important}.chip b{font-size:18px!important}.chip .lab{font-size:9px!important;letter-spacing:.06em!important}
