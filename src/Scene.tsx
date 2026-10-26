@@ -80,7 +80,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
     const web = useRef<THREE.Mesh>(null!), arrow = useRef<THREE.Mesh>(null!), cores = useRef<THREE.InstancedMesh>(null!), glows = useRef<THREE.InstancedMesh>(null!);
     const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(perf.scale);
-    const suit = useMemo(() => new THREE.MeshLambertMaterial({ color: '#12a0b4' }), []);
+    const suit = useMemo(() => new THREE.MeshLambertMaterial({ color: '#2447b8' }), []);
+    const stripe = useMemo(() => new THREE.MeshBasicMaterial({ color: '#5ff2ff' }), []);
     const gold = useMemo(() => new THREE.MeshLambertMaterial({ color: '#f2c038' }), []);
     const dark = useMemo(() => new THREE.MeshLambertMaterial({ color: '#171a2c' }), []);
     const red = useMemo(() => new THREE.MeshLambertMaterial({ color: '#d9344f', side: THREE.DoubleSide }), []);
@@ -139,7 +140,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         // hero
         const h = hero.current;
         h.position.set(p[0], p[1] - 1.0, p[2]);
-        h.rotation.set(0, sim.ang, 0); h.scale.setScalar(1.15);
+        h.rotation.set(0, sim.ang, 0); h.scale.setScalar(1.35);
         const lean = sim.web ? 0.5 : sim.ground ? 0.12 : 0.3;
         h.children[0].rotation.x = lean;
         const hs = Math.hypot(v[0], v[2]);
@@ -221,21 +222,32 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <City />
         <group ref={hero}>
             <group>
-                <mesh position={[0, 1.4, 0]} material={suit}><capsuleGeometry args={[0.32, 0.55, 4, 10]} /></mesh>
-                <mesh position={[0, 1.55, 0.3]} material={gold}><boxGeometry args={[0.28, 0.28, 0.06]} /></mesh>
-                <mesh position={[0, 2.15, 0]} material={gold}><sphereGeometry args={[0.28, 14, 10]} /></mesh>
-                <mesh position={[0, 1.2, 0]} material={gold}><boxGeometry args={[0.7, 0.1, 0.4]} /></mesh>
-                <mesh position={[-0.42, 1.78, 0]} material={gold}><sphereGeometry args={[0.17, 8, 6]} /></mesh>
-                <mesh position={[0.42, 1.78, 0]} material={gold}><sphereGeometry args={[0.17, 8, 6]} /></mesh>
-                <mesh position={[0, 1.74, 0]} material={red}><boxGeometry args={[0.7, 0.2, 0.42]} /></mesh>
-                <mesh position={[-0.09, 2.2, 0.27]} material={eye}><boxGeometry args={[0.12, 0.05, 0.03]} /></mesh>
-                <mesh position={[0.09, 2.2, 0.27]} material={eye}><boxGeometry args={[0.12, 0.05, 0.03]} /></mesh>
-                <mesh position={[0, 2.17, 0.2]} material={visor}><boxGeometry args={[0.36, 0.14, 0.1]} /></mesh>
-                <mesh ref={cape} position={[0, 1.9, -0.3]} material={red}><planeGeometry args={[0.8, 1.2]} /></mesh>
-                <group ref={legR} position={[0.17, 0.95, 0]}><mesh position={[0, -0.45, 0]} material={dark}><capsuleGeometry args={[0.13, 0.55, 3, 8]} /></mesh></group>
-                <group ref={legL} position={[-0.17, 0.95, 0]}><mesh position={[0, -0.45, 0]} material={dark}><capsuleGeometry args={[0.13, 0.55, 3, 8]} /></mesh></group>
-                <group ref={armR} position={[0.45, 1.8, 0]}><mesh position={[0, -0.4, 0]} material={suit}><capsuleGeometry args={[0.1, 0.55, 3, 8]} /></mesh></group>
-                <group ref={armL} position={[-0.45, 1.8, 0]}><mesh position={[0, -0.4, 0]} material={suit}><capsuleGeometry args={[0.1, 0.55, 3, 8]} /></mesh></group>
+                {/* tapered torso (V shape), hips, belt, chest emblem */}
+                <mesh position={[0, 1.42, 0]} material={suit}><cylinderGeometry args={[0.4, 0.24, 0.85, 8]} /></mesh>
+                <mesh position={[0, 1.0, 0]} material={dark}><cylinderGeometry args={[0.25, 0.28, 0.3, 8]} /></mesh>
+                <mesh position={[0, 1.18, 0]} material={gold}><cylinderGeometry args={[0.27, 0.27, 0.07, 8]} /></mesh>
+                <mesh position={[0, 1.55, 0.3]} material={gold}><cylinderGeometry args={[0.14, 0.14, 0.05, 6]} /></mesh>
+                <mesh position={[-0.3, 1.42, 0.1]} material={stripe}><boxGeometry args={[0.04, 0.7, 0.2]} /></mesh>
+                <mesh position={[0.3, 1.42, 0.1]} material={stripe}><boxGeometry args={[0.04, 0.7, 0.2]} /></mesh>
+                <mesh position={[0, 1.5, -0.28]} material={dark}><boxGeometry args={[0.42, 0.5, 0.18]} /></mesh>
+                <mesh position={[0, 1.5, -0.38]} material={stripe}><boxGeometry args={[0.2, 0.08, 0.02]} /></mesh>
+                {/* shoulders, neck, head with angled lenses */}
+                <mesh position={[-0.47, 1.78, 0]} material={gold}><sphereGeometry args={[0.17, 8, 6]} /></mesh>
+                <mesh position={[0.47, 1.78, 0]} material={gold}><sphereGeometry args={[0.17, 8, 6]} /></mesh>
+                <mesh position={[0, 1.93, 0]} material={dark}><cylinderGeometry args={[0.12, 0.15, 0.14, 6]} /></mesh>
+                <mesh position={[0, 2.15, 0]} material={visor}><sphereGeometry args={[0.27, 14, 10]} /></mesh>
+                <mesh position={[-0.11, 2.17, 0.2]} rotation={[0, 0, -0.35]} material={eye}><boxGeometry args={[0.15, 0.06, 0.04]} /></mesh>
+                <mesh position={[0.11, 2.17, 0.2]} rotation={[0, 0, 0.35]} material={eye}><boxGeometry args={[0.15, 0.06, 0.04]} /></mesh>
+                <mesh position={[0, 2.3, -0.02]} material={gold}><boxGeometry args={[0.06, 0.1, 0.5]} /></mesh>
+                {/* trailing scarf tails */}
+                <mesh ref={cape} position={[0, 1.9, -0.28]} material={red}><planeGeometry args={[0.32, 1.5]} /></mesh>
+                <mesh position={[0.18, 1.88, -0.26]} rotation={[0.1, 0, 0.1]} material={red}><planeGeometry args={[0.22, 1.1]} /></mesh>
+                {/* legs: thigh, knee pad, boot */}
+                <group ref={legR} position={[0.18, 0.98, 0]}><mesh position={[0, -0.3, 0]} material={dark}><capsuleGeometry args={[0.14, 0.4, 3, 8]} /></mesh><mesh position={[0, -0.6, 0.1]} material={gold}><sphereGeometry args={[0.1, 6, 5]} /></mesh><mesh position={[0, -0.8, 0.03]} material={suit}><capsuleGeometry args={[0.11, 0.3, 3, 8]} /></mesh><mesh position={[0, -1.0, 0.1]} material={gold}><boxGeometry args={[0.2, 0.14, 0.34]} /></mesh></group>
+                <group ref={legL} position={[-0.18, 0.98, 0]}><mesh position={[0, -0.3, 0]} material={dark}><capsuleGeometry args={[0.14, 0.4, 3, 8]} /></mesh><mesh position={[0, -0.6, 0.1]} material={gold}><sphereGeometry args={[0.1, 6, 5]} /></mesh><mesh position={[0, -0.8, 0.03]} material={suit}><capsuleGeometry args={[0.11, 0.3, 3, 8]} /></mesh><mesh position={[0, -1.0, 0.1]} material={gold}><boxGeometry args={[0.2, 0.14, 0.34]} /></mesh></group>
+                {/* arms with gloves */}
+                <group ref={armR} position={[0.5, 1.78, 0]}><mesh position={[0, -0.28, 0]} material={suit}><capsuleGeometry args={[0.1, 0.35, 3, 8]} /></mesh><mesh position={[0, -0.62, 0]} material={dark}><capsuleGeometry args={[0.085, 0.25, 3, 8]} /></mesh><mesh position={[0, -0.82, 0]} material={gold}><sphereGeometry args={[0.11, 8, 6]} /></mesh></group>
+                <group ref={armL} position={[-0.5, 1.78, 0]}><mesh position={[0, -0.28, 0]} material={suit}><capsuleGeometry args={[0.1, 0.35, 3, 8]} /></mesh><mesh position={[0, -0.62, 0]} material={dark}><capsuleGeometry args={[0.085, 0.25, 3, 8]} /></mesh><mesh position={[0, -0.82, 0]} material={gold}><sphereGeometry args={[0.11, 8, 6]} /></mesh></group>
             </group>
         </group>
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.05, 0.05, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>

@@ -198,7 +198,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     const prevY = p[1];
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
-    if (s.ground) {
+    if (s.ground && !s.web) {
         const a = Math.min(1, dt * 10); v[0] += (wx * 11 - v[0]) * a; v[2] += (wz * 11 - v[2]) * a; v[1] = 0;
     } else {
         v[1] -= G * dt;
@@ -210,6 +210,9 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (s.web) {
         s.webT += dt; s.rope = Math.max(10, s.rope - 1.5 * dt);
         const a = s.anchor, d = sub(p, a), l = len(d);
+        if (a[1] - p[1] > 25 && l < s.rope - 0.5 && s.webT < 1.6) { // low start: reel the hero up toward the anchor (zip)
+            const kk = 34 * dt; v[0] -= d[0] / l * kk; v[1] -= d[1] / l * kk; v[2] -= d[2] / l * kk; s.rope = Math.max(12, Math.min(s.rope, l + 3));
+        }
         if (l > s.rope) {
             const n: V3 = [d[0] / l, d[1] / l, d[2] / l];
             p[0] = a[0] + n[0] * s.rope; p[1] = a[1] + n[1] * s.rope; p[2] = a[2] + n[2] * s.rope;
@@ -218,8 +221,8 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         }
     }
     collide(s, prevY);
-    if (s.ground && s.web) s.web = false;
-    if (p[1] < 1.0) { // street level: walkable
+    if (s.ground && s.web && p[1] > 1.2) s.web = false;
+    if (p[1] <= 1.0005) { // street level: walkable
         if (!s.ground) { s.ground = true; }
         p[1] = 1.0; if (v[1] < 0) v[1] = 0;
     }
@@ -247,9 +250,10 @@ export const buildings = blds;
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
 function stepCombat(s: Sim, dt: number, ev: Events) {
     const p = s.pos, v = s.vel;
+    if (s.hp <= 0) { s.hp = 100; p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false; ev.fall(); }
     s.atkT = Math.max(0, s.atkT - dt); s.dodgeT = Math.max(0, s.dodgeT - dt); s.hurtT = Math.max(0, s.hurtT - dt); s.comboT = Math.max(0, s.comboT - dt);
     if (s.comboT === 0) s.combo = 0;
-    if (s.t - s.lastHit > 5 && s.hp < 100) s.hp = Math.min(100, s.hp + 6 * dt);
+    if (s.hp > 0 && s.t - s.lastHit > 5 && s.hp < 100) s.hp = Math.min(100, s.hp + 6 * dt);
     const fa = s.ang, fx = Math.sin(fa), fz = Math.cos(fa);
     if (input.dodgeQ) {
         input.dodgeQ = false;
@@ -290,7 +294,6 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
             }
         } else if (e.atk < 0) e.atk = Math.min(0, e.atk + dt);
     }
-    if (s.hp <= 0) { s.hp = 100; p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false; ev.fall(); }
 }
 export function stepBeacon(s: Sim, ev: Events) {
     const p = s.pos, b = s.beacon;

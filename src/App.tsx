@@ -131,7 +131,7 @@ export function App() {
         <AnimatePresence>
             {hud.mode !== 'play' && <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }}>
                 <motion.div className="otitle" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>{hud.mode === 'over' ? "Web Swinger" : 'Web Swinger'}</motion.div>
-                <div className="otext">{hud.mode === 'over' ? `You grabbed ${hud.score} orbs. Best: ${hud.best}.` : 'Swing between rooftops as Nova and grab the glowing orbs. Free roam: no timer, no game over. Collect orbs and explore the city.'}</div>
+                <div className="otext">{hud.mode === 'over' ? `You grabbed ${hud.score} orbs. Best: ${hud.best}.` : 'Swing between rooftops as Nova and grab the glowing orbs. Free roam: no timer, no game over. Collect orbs, reach beacons, punch the street thugs. Heads up: landing from a big fall hurts and stuns you briefly. Land on a roof with a swing release, or dodge the fall.'}</div>
                 <div className="keys">Phone: left stick runs, drag the view to look, hold SWING in the air, tap JUMP, PUNCH near enemies, DODGE their swings.<br />Keyboard: WASD run, Space jump, J or E punch, C or Q dodge, hold Shift or F to swing, arrow keys look.</div>
                 <motion.button className="go" whileTap={{ scale: 0.95 }} onClick={start}>{hud.mode === 'over' ? 'Play again' : 'Play'}</motion.button>
             </motion.div>}
