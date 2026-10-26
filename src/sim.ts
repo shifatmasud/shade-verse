@@ -39,7 +39,7 @@ function buildWorld() {
         if (rnd() < 0.12) h = 18 + rnd() * 10;
         if (rnd() < 0.08) h += 40;
         if (i === mi && j === mi) h = 30;
-        else if (Math.abs(i - mi) <= 1 && Math.abs(j - mi) <= 1) h = Math.min(h, 24 + rnd() * 16);
+        else if (Math.abs(i - mi) <= 1 && Math.abs(j - mi) <= 1) h = 40 + rnd() * 15;
         blds.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h });
         const tint = rnd();
         const pal: V3[] = [[0.78, 0.5, 0.45], [0.62, 0.5, 0.6], [0.85, 0.68, 0.52], [0.45, 0.5, 0.68], [0.7, 0.4, 0.4]];
@@ -114,7 +114,7 @@ function newOrb(s: Sim): V3 {
 export function resetSim(s: Sim) {
     const b = blds.reduce((best, c) => Math.hypot(c.x0, c.z0) < Math.hypot(best.x0, best.z0) ? c : best, blds[0]);
     s.pos = [(b.x0 + b.x1) / 2 + 4, b.h + 1, (b.z0 + b.z1) / 2 - 4]; s.vel = [0, 0, 0]; s.web = false; s.ground = true; s.safe = [...s.pos] as V3;
-    s.score = 0; s.time = 75; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
+    s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
 }
 
@@ -195,7 +195,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     collide(s, prevY);
     if (s.ground && s.web) s.web = false;
     if (p[1] - 1 < 0.2) {
-        s.time = Math.max(0, s.time - 4); ev.fall();
+        ev.fall();
         p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false;
     }
     const sp = len(v); if (sp > s.maxSpeed) s.maxSpeed = sp;
@@ -207,7 +207,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
     for (let i = 0; i < s.orbs.length; i++) {
         const o = s.orbs[i];
-        if (Math.hypot(o[0] - p[0], o[1] - p[1], o[2] - p[2]) < 5.5) { s.score++; s.time = Math.min(99, s.time + 3); s.orbs[i] = newOrb(s); ev.orb(); }
+        if (Math.hypot(o[0] - p[0], o[1] - p[1], o[2] - p[2]) < 5.5) { s.score++; s.orbs[i] = newOrb(s); ev.orb(); }
     }
 }
 export const buildings = blds;

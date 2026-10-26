@@ -99,7 +99,7 @@ export function App() {
 
         <div className="hud">
             <div className="chip"><span className="lab">ORBS</span><b>{hud.score}</b></div>
-            <div className="chip"><span className="lab">TIME</span><b style={{ color: hud.time < 10 ? '#ff6b6b' : '#fff' }}>{hud.time}s</b></div>
+            <div className="chip"><span className="lab">FLIGHT</span><b>{hud.time}s</b></div>
         </div>
         <div className="dbg">{dbg}</div>
         <div className="vig" />
@@ -118,8 +118,8 @@ export function App() {
 
         <AnimatePresence>
             {hud.mode !== 'play' && <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }}>
-                <motion.div className="otitle" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>{hud.mode === 'over' ? "Time's up" : 'Web Swinger'}</motion.div>
-                <div className="otext">{hud.mode === 'over' ? `You grabbed ${hud.score} orbs. Best: ${hud.best}.` : 'Swing between rooftops as Nova and grab the glowing orbs. Each orb adds 3 seconds. Falling to the street costs 4.'}</div>
+                <motion.div className="otitle" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>{hud.mode === 'over' ? "Web Swinger" : 'Web Swinger'}</motion.div>
+                <div className="otext">{hud.mode === 'over' ? `You grabbed ${hud.score} orbs. Best: ${hud.best}.` : 'Swing between rooftops as Nova and grab the glowing orbs. Free roam: no timer, no game over. Collect orbs and explore the city.'}</div>
                 <div className="keys">Phone: left stick runs, drag the view to look, hold SWING in the air, tap JUMP.<br />Keyboard: WASD run, Space jump, hold Shift or F to swing, arrow keys look.</div>
                 <motion.button className="go" whileTap={{ scale: 0.95 }} onClick={start}>{hud.mode === 'over' ? 'Play again' : 'Play'}</motion.button>
             </motion.div>}

@@ -100,8 +100,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         if (sim.mode === 'play') {
             for (let i = 0; i < 2; i++) stepSim(sim, dt / 2, ev);
-            sim.time -= dt;
-            if (sim.time <= 0) { sim.time = 0; sim.mode = 'over'; ev.release(); }
+            sim.time += dt;
         } else sim.yaw += dt * 0.15;
         const p = sim.pos, v = sim.vel;
         const speed = Math.hypot(v[0], v[1], v[2]); perf.speed = speed;
@@ -184,6 +183,9 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 <mesh position={[0, 1.55, 0.3]} material={gold}><boxGeometry args={[0.28, 0.28, 0.06]} /></mesh>
                 <mesh position={[0, 2.15, 0]} material={gold}><sphereGeometry args={[0.28, 14, 10]} /></mesh>
                 <mesh position={[0, 1.2, 0]} material={gold}><boxGeometry args={[0.7, 0.1, 0.4]} /></mesh>
+                <mesh position={[-0.42, 1.78, 0]} material={gold}><sphereGeometry args={[0.17, 8, 6]} /></mesh>
+                <mesh position={[0.42, 1.78, 0]} material={gold}><sphereGeometry args={[0.17, 8, 6]} /></mesh>
+                <mesh position={[0, 1.74, 0]} material={red}><boxGeometry args={[0.7, 0.2, 0.42]} /></mesh>
                 <mesh position={[-0.09, 2.2, 0.27]} material={eye}><boxGeometry args={[0.12, 0.05, 0.03]} /></mesh>
                 <mesh position={[0.09, 2.2, 0.27]} material={eye}><boxGeometry args={[0.12, 0.05, 0.03]} /></mesh>
                 <mesh position={[0, 2.17, 0.2]} material={visor}><boxGeometry args={[0.36, 0.14, 0.1]} /></mesh>
