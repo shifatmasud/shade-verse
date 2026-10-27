@@ -1,0 +1,14 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const p = await b.newPage(); await p.setViewport({ width:844, height:390, hasTouch:true, isMobile:true, deviceScaleFactor:1 });
+await p.goto('http://localhost:4173/',{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
+await p.evaluate(()=>window.__game.start()); await new Promise(r=>setTimeout(r,500));
+const info=await p.evaluate(async()=>{const g=window.__game,s=g.sim,B=g.buildings,w=(ms)=>new Promise(r=>setTimeout(r,ms));
+ const c=B.find((c)=>B.some(o=>o!==c&&o.h<c.h-5&&c.x0>=o.x0-0.5&&c.x1<=o.x1+0.5&&c.z0>=o.z0-0.5&&c.z1<=o.z1+0.5&&o.h>62));
+ const o=B.find(o=>o!==c&&o.h<c.h-5&&c.x0>=o.x0-0.5&&c.x1<=o.x1+0.5&&c.z0>=o.z0-0.5&&c.z1<=o.z1+0.5&&o.h>62);
+ s.enemies.forEach(e=>{e.x=-300;e.z=-300;e.roof=undefined;});
+ const cx=(c.x0+c.x1)/2,cz=(c.z0+c.z1)/2;
+ s.pos=[cx+(window.__side||0),o.h+1,cz+9]; s.vel=[0,0,0]; s.yaw=Math.PI; s.ang=Math.PI; await w(900);
+ return {roof:o.h,crownTop:c.h,pos:s.pos.map(v=>+v.toFixed(2))};});
+console.log(JSON.stringify(info)); await new Promise(r=>setTimeout(r,600));
+await p.screenshot({path:process.argv[2]}); await b.close();

@@ -67,8 +67,8 @@ function buildWorld() {
             const ch = 8 + rnd() * 4, hx = 3, hz = 3, ccx = cx - w * 0.34, ccz = cz - d * 0.34;
             box(ccx, h + ch / 2, ccz, hx, ch / 2, hz, col, rnd());
             box(ccx, h + ch + 0.3, ccz, hx + 0.4, 0.3, hz + 0.4, [0.3, 0.28, 0.4], 0.5);
-            if (rnd() < 0.6) box(ccx, h + ch + 12, ccz, 0.3, 12, 0.3, [0.35, 0.35, 0.42], 0.5);
-            blds.push({ x0: ccx - hx, x1: ccx + hx, z0: ccz - hz, z1: ccz + hz, h: h + ch });
+            if (rnd() < 0.6) box(ccx - hx + 0.3, h + ch + 12, ccz - hz + 0.3, 0.2, 12, 0.2, [0.35, 0.35, 0.42], 0.5);
+            blds.push({ x0: ccx - hx - 0.4, x1: ccx + hx + 0.4, z0: ccz - hz - 0.4, z1: ccz + hz + 0.4, h: h + ch + 0.6 }); // collision covers the ledge lip
         }
         for (let ly = 14; ly < h - 2; ly += 14) box(cx, ly, cz, w / 2 + 0.35, 0.3, d / 2 + 0.35, [0.3, 0.27, 0.36], 0.5);
         box(cx + w * 0.3, h + 3.2, cz + d * 0.3, 0.25, 0.25, 0.25, [1, 0.15, 0.1], 2.0);
