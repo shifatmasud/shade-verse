@@ -609,7 +609,7 @@ const waterMat = new THREE.ShaderMaterial({
       g = mix(g, wg(vW.xz, uTime), smoothstep(15.0, 70.0, length(cameraPosition.xz - vW.xz)));
       vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
       vec3 v = normalize(cameraPosition - vW);
-      bool below = cameraPosition.y < vW.y;
+      bool below = !gl_FrontFacing;
       if (below) n = -n;
       // exact unpolarised Fresnel for n_air = 1.0, n_water = 1.333 (replaces the Schlick approximation); total internal reflection gives fr = 1
       float ci = clamp(dot(n, v), 0.0, 1.0), ni = below ? 1.333 : 1.0, nt = below ? 1.0 : 1.333, s2 = (ni / nt) * (ni / nt) * (1.0 - ci * ci);
@@ -704,7 +704,11 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const red = useMemo(() => new THREE.MeshLambertMaterial({ color: '#d9344f', side: THREE.DoubleSide }), []);
     const bv = useMemo(() => new THREE.Vector3(), []);
     const bv2 = useMemo(() => new THREE.Vector3(), []);
-    const waterRef = useRef<THREE.Mesh>(null!), ringRef = useRef<THREE.Mesh>(null!); const splashRef = useRef<THREE.Group>(null!), splashSt = useRef({ prev: false, t0: -9 });
+    const waterRef = useRef<THREE.Mesh>(null!), ringRef = useRef<THREE.Mesh>(null!);
+    const wakeRef = useRef<THREE.Mesh>(null!);
+    const wakeGeo = useMemo(() => { const g = new THREE.BufferGeometry(), pa = new Float32Array(2 * 25 * 2 * 3), uv = new Float32Array(2 * 25 * 2 * 2), ix: number[] = []; for (let side = 0; side < 2; side++) for (let j = 0; j <= 24; j++) { const n = side * 50 + j * 2; uv[n*2] = uv[(n+1)*2] = j/24; uv[n*2+1] = 0; uv[(n+1)*2+1] = 1; if (j < 24) ix.push(n,n+1,n+2,n+1,n+3,n+2); } g.setAttribute('position', new THREE.BufferAttribute(pa, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(ix); return g; }, []);
+    const wakeMat = useMemo(() => new THREE.ShaderMaterial({transparent:true, depthWrite:false, side:THREE.DoubleSide, uniforms:{uA:{value:0}}, vertexShader:'varying vec2 vU; void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'varying vec2 vU; uniform float uA; void main(){float soft=sin(vU.y*3.14159);float trail=pow(1.0-vU.x,1.5)*smoothstep(0.0,0.12,vU.x); gl_FragColor=vec4(0.82,0.96,1.0,soft*trail*uA);}' }), []);
+ const splashRef = useRef<THREE.Group>(null!), splashSt = useRef({ prev: false, t0: -9 });
     const rig = useMemo(() => {
         const r = buildRig();
         const redM = new THREE.MeshLambertMaterial({ color: '#d4162e', side: THREE.DoubleSide });
@@ -795,6 +799,13 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
         const sw2 = sim.swim;
         { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > -3) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
+        { // original two-arm wake: velocity-aligned, wave-following strips, faint and narrower than boat reference
+            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), on = sim.swim && !sim.dive && p[1]>-2.1 && sp>0.6;
+            if(m){m.visible=on;if(on){const dx=v[0]/sp,dz=v[2]/sp,pa=wakeGeo.attributes.position as THREE.BufferAttribute, len=2.5+Math.min(5,sp)*0.6;
+                for(let side=0;side<2;side++)for(let j=0;j<=24;j++){const t=j/24,sgn=side?1:-1,back=0.8+t*len,spread=0.55+t*1.7,width=0.06+t*0.16;
+                    for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=p[0]-dx*back-dz*off,z=p[2]-dz*back+dx*off;pa.setXYZ(side*50+j*2+k,x,WATER_Y+waveH(x,z,sim.t)+0.055,z);}}
+                pa.needsUpdate=true;wakeMat.uniforms.uA.value=Math.min(0.58,sp*0.10);}}
+        }
         { const rg = ringRef.current as unknown as THREE.Group; if (rg) { const on = sim.swim && p[1] > -2.6; rg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
         if (sw2) { { const kw = Math.max(0, Math.min(1, (p[1] + 3) / 2.3)), wv = waveH(p[0], p[2], sim.t) * kw, sa2 = sim as any; sa2.swW = (sa2.swW === undefined ? wv : sa2.swW + (wv - sa2.swW) * Math.min(1, dt * 10)); h.position.y = p[1] - 1.7 + sa2.swW; } h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
         const sa0 = sim as any; sa0.gB = (sa0.gB || 0) + ((sim.glideOn ? 1 : 0) - (sa0.gB || 0)) * Math.min(1, dt * 3.5);   // glide pose blend (slow in, quick out)
@@ -983,6 +994,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={webB} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>
+        <mesh ref={wakeRef} geometry={wakeGeo} material={wakeMat} visible={false} frustumCulled={false} />
         <group ref={splashRef} visible={false}>{[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => <mesh key={i} frustumCulled={false}><coneGeometry args={[0.13, 1, 5]} /><meshBasicMaterial color="#f4fdff" transparent opacity={0.9} depthWrite={false} /></mesh>)}</group>
         <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}><ringGeometry args={[1.0, 1.09, 48]} /><meshBasicMaterial color="#eefbff" transparent opacity={0.4} depthWrite={false} /></mesh>)}</group>
         <mesh position={[0, WATER_Y, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]} ref={waterRef} material={waterMat} frustumCulled={false}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500, 160, 80]} /></mesh>
