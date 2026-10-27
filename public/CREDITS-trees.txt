@@ -2,3 +2,5 @@ leaves.png/bark.jpg: derived from Poly Haven CC0 textures (island_tree_01 leaves
 pine.png/pinebark.jpg: derived from Poly Haven CC0 pine_tree_01 (twig, bark) https://polyhaven.com/a/pine_tree_01
 Shrub112 leaf atlas: Shrub01 by Rico Cilliers, Poly Haven, CC0. Diffuse+alpha combined and downsampled512px; own card arrangement, not downloaded model. https://polyhaven.com/a/shrub_01 https://polyhaven.com/license
 Shrub134 cleanup: same Shrub01 scan; four leaf-only alpha silhouettes isolated from packed bark/stem atlas fragments, tighter card UV bounds. Source pixels/CC0 unchanged, card and instance counts unchanged.
+
+spray145.png: original narrow multi-leaf spray composition derived from the existing CC0 island_tree_01 leaf atlas, with locally drawn twig lines. UV rectangles and card footprint remain unchanged from the original single-leaf implementation. Composed for this project; no new third-party assets.

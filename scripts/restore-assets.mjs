@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 const assets = {
+  "spray145.png": "bcec47379c672eb1179e831ea8953425e1af94ae63523e7b7335679b06c0a0ff",
   "shrub134.png": "27dcd1c2ec4f6b8421149b5e1664c5bb96a5f25cf8a1a4f318fea9a0ddfed3b2",
   "shrub112.png": "bcad85920d554d648d0a17e6e92c89c698e5f43c3976a9d30a7b22677bb833b7",
   "leaves.png": "ace13a4f9aac67a6816695c68ac3c10f76ee4ec8bdbbe3933584fe773612e46e",
