@@ -8,6 +8,7 @@ import clipJump from './clips/jump.json';
 import clipWall from './clips/climbing_wall.json';
 import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
+import clipRun from './clips/run.json';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { world, buildings, WATER_Z, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
 
@@ -111,7 +112,7 @@ function buildRig() {
 
 // Mixamo-derived clips, retargeted offline (tools/fbx2clip.mjs) onto the generated rig
 type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
-const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any };
+const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any, run: clipRun as any };
 const _wd = new THREE.Vector3(), _wp = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
 function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: number) {
@@ -319,7 +320,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         armR.current.rotation.x = sw2 ? -2.6 - Math.sin(sim.runPhase * 2.4) * 1.2 : wl ? -2.5 + Math.sin(sim.runPhase * 2.2) * 0.35 : sim.web ? -2.7 : sim.atkT > 0 ? -1.5 - Math.sin((0.32 - sim.atkT) * 10) * 0.6 : sw * 0.8;
         { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.current.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
         {   // clip layer: pick a Mixamo-derived clip for the state, crossfade by weight
-            const ck = sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 ? 'punch' : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : '';
+            const ck = sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 ? 'punch' : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
             const cs = clipSt.current;
             if (ck !== cs.key) { cs.key = ck || cs.key; }
             cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
@@ -329,10 +330,11 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 else if (ck === 'swim') cs.t += dt * (0.6 + Math.min(1.2, speed / 8));
                 else if (ck === 'punch') cs.t = ((0.32 - sim.atkT) / 0.32) * 0.7 * (c.n / c.fps);
                 else if (ck === 'jump') cs.t = (c.n / c.fps) * 0.5;
+                else if (ck === 'run') cs.t += dt * Math.max(0.5, Math.min(2, hs / 5.5));
                 else cs.t += dt;
             }
-            if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9;
-            if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle', rig.bones, cs.w);
+            if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
+            if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
         }
         h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
         cape.current.rotation.x = 0.25 + Math.min(1.0, speed / 38) + Math.sin(sim.t * 14) * 0.05 * Math.min(1, speed / 20);
