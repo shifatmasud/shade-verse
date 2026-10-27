@@ -69,6 +69,13 @@ function buildWorld() {
             box(ccx, h + ch + 0.3, ccz, hx + 0.4, 0.3, hz + 0.4, [0.3, 0.28, 0.4], 0.5);
             blds.push({ x0: ccx - hx - 0.4, x1: ccx + hx + 0.4, z0: ccz - hz - 0.4, z1: ccz + hz + 0.4, h: h + ch + 0.6, host: blds.length - 1 }); // collision covers the ledge lip
         }
+        // street trees planted against the facade (trunk half inside the wall so it is not a walkable obstacle; canopy overhead)
+        for (let k = 0; k < 2; k++) if (rnd() < 0.7) {
+            const onZ = rnd() < 0.5, along = (rnd() - 0.5) * (onZ ? w - 8 : d - 8), tx = onZ ? cx + along : cx + w / 2 + 0.2, tz = onZ ? cz - d / 2 - 0.2 : cz + along;
+            const th = 4.4 + rnd() * 1.4, gc: V3 = [0.22 + rnd() * 0.12, 0.42 + rnd() * 0.18, 0.2 + rnd() * 0.08];
+            box(tx, th / 2, tz, 0.3, th / 2, 0.3, [0.34, 0.24, 0.18], 0.5);
+            box(tx, th + 1.2, tz, 2.0, 1.2, 2.0, gc, 0.5); box(tx + (onZ ? 0 : 0.8), th + 3.0, tz + (onZ ? -0.8 : 0), 1.5, 1.0, 1.5, [gc[0] * 1.15, gc[1] * 1.12, gc[2]], 0.5);
+        }
         for (let ly = 14; ly < h - 2; ly += 14) box(cx, ly, cz, w / 2 + 0.35, 0.3, d / 2 + 0.35, [0.3, 0.27, 0.36], 0.5);
         box(cx + w * 0.3, h + 3.2, cz + d * 0.3, 0.25, 0.25, 0.25, [1, 0.15, 0.1], 2.0);
         // water tank on legs + AC units + antenna mast (rooftop variety)
