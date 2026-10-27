@@ -1,3 +1,4 @@
+import { PINE_URL, LEAVES_URL } from './texdata'
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -239,7 +240,7 @@ function Underwater({ sim }: { sim: Sim }) {
 function Forest({ sim }: { sim: Sim }) {
     const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
-    const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; }; return [mk('/leaves.png'), mk('/bark.jpg', true), mk('/pine.png'), mk('/pinebark.jpg', true)]; }, []);
+    const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; }; return [mk(LEAVES_URL), mk('/bark.jpg', true), mk(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
         const con = kind === 'pine' || kind === 'spruce';
         const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1) : treeGeo(kind as any, seed, kind === 'broad' ? 420 : 340, 1.35);
