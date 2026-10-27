@@ -457,6 +457,54 @@ function WindLines({ sim }: { sim: Sim }) {
     });
     return <mesh ref={ref} geometry={geo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} side={THREE.DoubleSide} uniforms={un} vertexShader={`attribute float aFade;varying float vFade;void main(){vFade=aFade;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`} fragmentShader={`varying float vFade;uniform float uDay;void main(){gl_FragColor=vec4(mix(vec3(.42,.57,.73),vec3(.86,.93,.96),uDay),vFade);}`} /></mesh>;
 }
+// Civilian robots use exactly Shadow's source mesh, separate material/geometry copies.
+function civilianGeo(feminine:boolean) {
+    const d:any=heroData, p:number[]=[], c:number[]=[];
+    const palette=feminine?[[.17,.25,.29],[.50,.28,.31],[.12,.16,.20]]:[[.22,.27,.24],[.43,.47,.37],[.12,.15,.17]];
+    for(let t=0;t<d.idx.length;t+=3){const ids=d.idx.slice(t,t+3);
+        // Remove only the loose hero cape from this civilian copy, never touch heroData.
+        if(ids.every((i:number)=>d.pos[i*3+2]<-.115&&d.pos[i*3+1]>1.15&&d.pos[i*3+1]<1.7))continue;
+        // The coat fully covers these torso triangles; preserve exposed limbs, head and feet.
+        if(ids.every((i:number)=>d.pos[i*3+1]>1.02&&d.pos[i*3+1]<1.57&&Math.abs(d.pos[i*3])<.20&&Math.abs(d.pos[i*3+2])<.21))continue;
+        for(const i of ids){let x=d.pos[i*3],y=d.pos[i*3+1],z=d.pos[i*3+2];
+            if(feminine){const waist=Math.exp(-Math.pow((y-1.15)/.2,2));x*=.90-.10*waist;y*=.96;}
+            p.push(x,y,z);const k=y>1.55?0:y>1.0?1:2;const col=palette[k];c.push(...col);
+        }
+    }
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(c,3));g.computeVertexNormals();
+    const extras:THREE.BufferGeometry[]=[g];const add=(q:THREE.BufferGeometry,col:number[],x:number,y:number,z:number)=>{q.translate(x,y,z);const a=q.index?q.toNonIndexed():q;const cs=[];for(let i=0;i<a.attributes.position.count;i++)cs.push(...col);a.setAttribute('color',new THREE.Float32BufferAttribute(cs,3));a.deleteAttribute('uv');extras.push(a);};
+    const coat=feminine?[.48,.29,.31]:[.30,.38,.34];const cy=feminine?1.24:1.31;
+    const profile=[new THREE.Vector2(.29,0),new THREE.Vector2(.30,.12),new THREE.Vector2(feminine?.235:.25,.40),new THREE.Vector2(feminine?.23:.27,.68)];
+    const jacket=new THREE.LatheGeometry(profile,12);jacket.scale(1,1,.86);add(jacket,coat,0,cy-.34,0);
+    // Coat panels and oversized utility pockets, separate from the hero's own suit.
+    add(new THREE.BoxGeometry(.105,.14,.035),[.16,.20,.19],-.21,1.15,.235);add(new THREE.BoxGeometry(.105,.14,.035),[.16,.20,.19],.21,1.15,.235);
+    add(new THREE.BoxGeometry(.025,.57,.025),[.62,.65,.59],0,cy,.255);
+    for(const side of [-1,1]){add(new THREE.BoxGeometry(.09,.048,.03),[.08,.16,.18],side*.052,feminine?1.69:1.76,.295);add(new THREE.BoxGeometry(.067,.03,.032),[.22,.48,.48],side*.052,feminine?1.69:1.76,.313);}
+    for(const side of [-1,1]){const sleeve=new THREE.CylinderGeometry(.085,.075,.43,10);sleeve.rotateZ(side*.15);add(sleeve,coat,side*.295,feminine?1.40:1.46,0);const cuff=new THREE.CylinderGeometry(.077,.062,.33,9);cuff.rotateZ(side*.16);add(cuff,coat,side*.355,feminine?1.095:1.14,.01);}
+    return mergeGeometries(extras,false)!;
+}
+function Civilians({sim}:{sim:Sim}){
+    const refs=useRef<THREE.InstancedMesh[]>([]), eyes=useRef<THREE.InstancedMesh>(null!);
+    const geos=useMemo(()=>[civilianGeo(false),civilianGeo(true)],[]);
+    const eyeGeo=useMemo(()=>{const g=new THREE.BoxGeometry(.28,.065,.06);g.translate(0,1.84,.135);return g;},[]);
+    const time=useRef({value:0});
+    const mat=useMemo(()=>{const m=new THREE.MeshLambertMaterial({vertexColors:true});m.onBeforeCompile=sh=>{sh.uniforms.uCivilTime=time.current;sh.vertexShader='uniform float uCivilTime;\n'+sh.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+    float side=sign(position.x), phase=uCivilTime*3.2+instanceMatrix[3].z*.3;
+    if(position.y<.98){float a=sin(phase)*side*.32;float yy=position.y-.98;transformed.y=.98+yy*cos(a)-position.z*sin(a);transformed.z=yy*sin(a)+position.z*cos(a);}
+    if(abs(position.x)>.28 && position.y>1.0 && position.y<1.65)transformed.z+=sin(phase)*side*(1.65-position.y)*.25;
+    transformed.y+=abs(sin(phase))*.015;`);};return m;},[]);
+    const o=useMemo(()=>new THREE.Object3D(),[]);
+    useFrame(()=>{time.current.value=sim.t;const cnt=[0,0];for(let i=0;i<4;i++){const lane=Math.floor(i/2),R=.65,L=140,arc=Math.PI*R,total=2*L+2*arc,phase=(sim.t*.8+(i%2)*(L+arc))%total;
+        let z=25,x=lane?263:97,rot=0;
+        if(phase<L){z+=phase;x-=R;}
+        else if(phase<L+arc){const a=(phase-L)/R;z+=L+R*Math.sin(a);x-=R*Math.cos(a);rot=a;}
+        else if(phase<2*L+arc){z+=2*L+arc-phase;x+=R;rot=Math.PI;}
+        else{const a=(phase-2*L-arc)/R;z-=R*Math.sin(a);x+=R*Math.cos(a);rot=Math.PI+a;}
+        if(Math.hypot(x-sim.pos[0],z-sim.pos[2])>50)continue;
+        o.position.set(x,0,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.08);o.updateMatrix();refs.current[i%2].setMatrixAt(cnt[i%2]++,o.matrix);
+    }for(let i=0;i<2;i++){refs.current[i].count=cnt[i];refs.current[i].instanceMatrix.needsUpdate=true;}});
+    return <group>{geos.map((g,i)=><instancedMesh key={i} ref={m=>{if(m)refs.current[i]=m}} args={[g,mat,2]} frustumCulled={false}/>)}</group>;
+}
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
     const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(4 * 2 * 2 * 3), 3)); return g; }, []);
@@ -1077,7 +1125,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <Sky />
         <City />
         <FlyingCars />
-        <Forest sim={sim} /><Meadow sim={sim} /><WindLines sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} />
+        <Forest sim={sim} /><Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} />
         <group ref={hero}>
             <group>
                 <primitive object={rig.root} />
