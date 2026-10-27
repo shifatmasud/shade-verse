@@ -339,7 +339,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         h.position.set(p[0], p[1] - 1.0, p[2]);
         h.rotation.set(0, sim.ang, 0); h.scale.setScalar(1.5);
         const wl = !!sim.wall;
-        if (wl) { h.position.x += Math.sin(sim.ang) * 0.78; h.position.z += Math.cos(sim.ang) * 0.78; }
+        if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
         const sw2 = sim.swim;
         if (sw2) { h.position.y = p[1] - 0.78; h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
         const lean = sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.18 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3;
@@ -372,6 +372,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         if (!sim.swim && sim.ground && !wl && clipSt.current.key === 'run') h.position.y -= 0.2 * clipSt.current.w;
         h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
+        { const gp = (window as any).__game; if (gp && gp.probe) { h.updateMatrixWorld(true); const m = rig.root.children[0] as THREE.SkinnedMesh; m.skeleton.update(); const pa = m.geometry.attributes.position, hv = new THREE.Vector3(); let mx = -1e9, mn = 1e9, mz = -1e9, nz = 1e9; for (let i = 0; i < pa.count; i++) { if (pa.getY(i) < 1.62) continue; m.getVertexPosition(i, hv); hv.applyMatrix4(m.matrixWorld); mx = Math.max(mx, hv.x); mn = Math.min(mn, hv.x); mz = Math.max(mz, hv.z); nz = Math.min(nz, hv.z); } gp.headBox = [mn, mx, nz, mz]; } }
         cape.current.rotation.x = 0.25 + Math.min(1.0, speed / 38) + Math.sin(sim.t * 14) * 0.05 * Math.min(1, speed / 20);
         // web
         const w = web.current;
