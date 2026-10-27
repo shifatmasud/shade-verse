@@ -339,10 +339,16 @@ function Forest({ sim }: { sim: Sim }) {
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
     const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)
         const mk = (w: number, h: number, sw: number, sh: number, yaw: number, lift: number) => { const g = new THREE.PlaneGeometry(w, h, sw, sh); g.rotateX(-Math.PI / 2); g.rotateY(yaw); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) pa.setY(i, parkH(cx + pa.getX(i), cz + pa.getZ(i)) + lift); g.computeVertexNormals(); return g; };
-        return { floor: mk(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 80, 80, 0, 0), path: mk(8, 190, 2, 90, Math.atan(0.6), 0.04) };
+        const fl = mk(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 80, 80, 0, 0);
+        { // flat 3-tone meadow fills (light / mid / dark patches, hue drifts yellow on the light ones), as in the toon-grassland refs; vertex colours, no extra cost
+            const pa = fl.attributes.position, ca = new Float32Array(pa.count * 3), c0 = new THREE.Color('#4a8636'), cl = new THREE.Color('#639a3a'), cd = new THREE.Color('#3a7430'), tc = new THREE.Color();
+            for (let i = 0; i < pa.count; i++) { const x = cx + pa.getX(i), z = cz + pa.getZ(i), n = Math.sin(x * 0.045 + 1) * Math.cos(z * 0.06) + 0.5 * Math.sin(x * 0.11 + z * 0.07 + 2), t = Math.max(-1, Math.min(1, n * 1.5)), q = Math.round(t * 4) / 4; if (q >= 0) tc.copy(c0).lerp(cl, q); else tc.copy(c0).lerp(cd, -q); ca[i * 3] = tc.r; ca[i * 3 + 1] = tc.g; ca[i * 3 + 2] = tc.b; }
+            fl.setAttribute('color', new THREE.BufferAttribute(ca, 3));
+        }
+        return { floor: fl, path: mk(8, 190, 2, 90, Math.atan(0.6), 0.04) };
     }, []);
     return <group>
-        <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#4a8636" /></mesh>
+        <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>
         <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>
         {geos.map((g, v) => <group key={v}>
             <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.con ? pbarkTex : barkTex} emissive="#4a3a2c" side={THREE.DoubleSide} /></instancedMesh>
@@ -360,7 +366,7 @@ const floorGrass = (sh: any) => {
     sh.fragmentShader = 'varying vec2 vFx;\nfloat fh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat fn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(fh(i), fh(i + vec2(1.0, 0.0)), f.x), mix(fh(i + vec2(0.0, 1.0)), fh(i + vec2(1.0, 1.0)), f.x), f.y); }\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n float m1 = sin(vFx.x * 0.21) * sin(vFx.y * 0.17), m2 = sin(vFx.x * 1.1 + vFx.y * 0.8) * sin(vFx.y * 1.3 - vFx.x * 0.4); diffuseColor.rgb *= 0.88 + 0.07 * m1 + 0.04 * m2; ');
 };
 // meadow: long grass tufts + subtle flowers + fireflies. Reference study: instanced blade-cluster grass with wind sway in the vertex shader (common real-time approach, e.g. GDC "Ghost of Tsushima" grass talk, three.js instanced grass guides); blade shapes, colours and placement are mine
-const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2; const a: number[] = []; for (let i = 0; i < 26000; i++) { const x = PARK.x0 + 3 + rnd() * (PARK.x1 - PARK.x0 - 6), z = PARK.z0 + 3 + rnd() * (PARK.z1 - PARK.z0 - 6); if (Math.abs((x - cx) - (z - cz) * 0.6) < 6.5 || Math.hypot(x - cx, z - cz) < 14) continue; a.push(x, z, rnd(), rnd()); } return a; })();
+const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2; const a: number[] = []; for (let i = 0; i < 26000; i++) { const x = PARK.x0 + 3 + rnd() * (PARK.x1 - PARK.x0 - 6), z = PARK.z0 + 3 + rnd() * (PARK.z1 - PARK.z0 - 6); if (Math.abs((x - cx) - (z - cz) * 0.6) < 6.5 || Math.hypot(x - cx, z - cz) < 4) continue; a.push(x, z, rnd(), rnd()); } return a; })();
 function tuftGeo() {
     const pos: number[] = [], col: number[] = []; let r = 5; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
     for (let b = 0; b < 7; b++) {
@@ -376,6 +382,7 @@ function tuftGeo() {
 const FL_COL = ['#8a5cf0', '#4f7cff', '#e03a4a', '#ff7fb8'];
 function Meadow({ sim }: { sim: Sim }) {
     const gr = useRef<THREE.InstancedMesh>(null!), fl = useRef<THREE.InstancedMesh>(null!), ff = useRef<THREE.Points>(null!), last = useRef([1e9, 1e9]), uni = useRef({ uTime: { value: 0 } }), fu = useRef({ uTime: { value: 0 } });
+    useFrame(() => { const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
     const geo = useMemo(tuftGeo, []);
     const flGeo = useMemo(() => { const g = new THREE.CircleGeometry(0.17, 7); g.rotateX(-Math.PI / 2.4); g.translate(0, 0.62, 0); const st = new THREE.PlaneGeometry(0.02, 0.62); st.translate(0, 0.31, 0); return mergeGeometries([g, st], false)!; }, []);
     const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5 + parkH(p[i * 3], p[i * 3 + 2]); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
@@ -383,7 +390,7 @@ function Meadow({ sim }: { sim: Sim }) {
         const o = new THREE.Object3D(), col = new THREE.Color(); let gi = 0, fi = 0;
         for (let i = 0; i < GR_POOL.length && gi < 6500; i += 4) {
             const x = GR_POOL[i], z = GR_POOL[i + 1]; if (Math.hypot(x - hx, z - hz) > 70) continue;
-            o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl); o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.5 + 0.12 * cl, 0.34 + GR_POOL[i + 2] * 0.14 + 0.1 * cl));
+            o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl) * (1 + 0.08 * Math.max(0, -parkH(x, z)));   o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.5 + 0.12 * cl, 0.34 + GR_POOL[i + 2] * 0.14 + 0.1 * cl));
             if (GR_POOL[i + 2] < 0.12 && fi < 420) { o.position.set(x + 0.2, 0.05 + parkH(x + 0.2, z), z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
         }
         gr.current.count = gi; fl.current.count = fi; [gr.current, fl.current].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); });
