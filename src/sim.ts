@@ -280,7 +280,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (s.swim) { s.wall = null; s.ground = false; if (input.dodgeQ) { input.dodgeQ = false; s.dive = !s.dive; } }
     if (s.wall && s.t - s.lastDrag > 0.8) s.pitch += (0.3 - s.pitch) * Math.min(1, dt * 3);
     if (s.swim) {
-        const sp = s.dive ? 5 : 6.5, a = Math.min(1, dt * 4);
+        const sp = s.dive ? 7 : 9.5, a = Math.min(1, dt * 4);
         const cur = s.dive ? Math.sin(s.t * 0.3) * 0.9 : 0;   // underwater current: gentle sideways drift while diving (same phase as the bubble drift)
         v[0] += (wx * sp + cur - v[0]) * a; v[2] += (wz * sp - v[2]) * a;
         const target = s.dive ? -5 : WATER_Y + 0.25;
@@ -292,9 +292,9 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
         if (push < -0.3) { s.wall = null; s.wallT = 0.2; v[0] = n[0] * 3; v[2] = n[1] * 3; v[1] = 0; }
         else {
-            const up = push > 0.3 ? push * 9 : 0;
-            v[0] = tx * lat * 11 - n[0] * 2; v[2] = tz * lat * 11 - n[1] * 2; v[1] += (up - v[1]) * Math.min(1, dt * 12);
-            s.runPhase += (Math.abs(up) + Math.abs(lat) * 11) * dt * 0.6;
+            const up = push > 0.3 ? push * 16 : 0;
+            v[0] = tx * lat * 18 - n[0] * 2; v[2] = tz * lat * 18 - n[1] * 2; v[1] += (up - v[1]) * Math.min(1, dt * 12);
+            s.runPhase += (Math.abs(up) + Math.abs(lat) * 18) * dt * 0.52;
         }
     } else if (s.ground && !s.web) {
         const a = Math.min(1, dt * 10); v[0] += (wx * 15 - v[0]) * a; v[2] += (wz * 15 - v[2]) * a; v[1] = 0;
@@ -322,9 +322,10 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         }
     }
     if (s.glideOn) { const hs = Math.hypot(v[0], v[2]); if (hs < 14) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * 10 * dt; v[2] += fz2 * 10 * dt; } }
+
     collide(s, prevY);
     if (s.webDepartB !== undefined) { const b = blds[s.webDepartB]; if (!s.web || !b || p[0] < b.x0 - 1.2 || p[0] > b.x1 + 1.2 || p[2] < b.z0 - 1.2 || p[2] > b.z1 + 1.2 || p[1] - 1 > b.h + 0.2) s.webDepartB = undefined; }
-    // Hero side-wall contact ends web travel and enters the existing crawl mode.
+    // Hero side-wall contact ends web travel and enters wall-running mode.
     // A distant anchor attaching is not contact; roofs remain normal landings.
     if (hitN && !s.ground && !s.swim && s.wallT <= 0 && !stunned && hitB !== s.webDepartB && (s.web || s.grappleFlight)) {
         const wasWeb = s.web; s.web = false; s.spring = 0; s.grappleFlight = false;
@@ -339,6 +340,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     } else if (hitN && !s.web && s.ground && p[1] > 1.2) { /* standing on a roof, touching wall: no attach */ s.wall = null; }
     else if (hitN && !s.web && s.wallT <= 0 && !stunned && p[1] <= 1.05 && -(wx * hitN[0] + wz * hitN[1]) > 0.5) { s.wall = hitN; s.wallB = hitB; v[1] = 0.1; p[1] = 1.06; }
     else if (!hitN) s.wall = null;
+
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
     if (s.swim && p[1] < SEABED + 1) { p[1] = SEABED + 1; if (v[1] < 0) v[1] = 0; }
