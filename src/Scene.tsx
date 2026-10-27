@@ -14,17 +14,21 @@ import clipRun from './clips/run.json';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { world, buildings, WATER_Z, CELL, PARK, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
 
+// time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
+const TOD = { sun: new THREE.Vector3(-0.55, 0.22, 0.8).normalize(), sunU: null as any, day: { value: 1 }, warm: { value: 1 }, noon: { value: 0 }, fog: new THREE.Color(FOG[0], FOG[1], FOG[2]), sky: new THREE.Color('#c4dcef') };
+TOD.sunU = { value: TOD.sun };
+
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 const CITY_VS = `attribute vec3 aCol;attribute float aSeed;
 varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
 void main(){vPos=position;vNor=normal;vCol=aCol;vSeed=aSeed;gl_Position=projectionMatrix*viewMatrix*vec4(position,1.0);}`;
 const CITY_FS = `varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
-uniform vec3 uFog;uniform float uTime;
+uniform vec3 uFog;uniform float uTime;uniform vec3 uSunV;uniform float uDay;uniform float uNoon;
 void main(){
  vec3 n=normalize(vNor);
- vec3 L=normalize(vec3(-0.45,0.75,0.35));
+ vec3 L=normalize(mix(-uSunV,uSunV,step(0.0,uSunV.y))*vec3(1.0,1.0,1.0)+vec3(0.0,0.35,0.0));
  float d=max(dot(n,L),0.0);
- vec3 lit=vec3(0.62,0.6,0.64)+vec3(1.0,0.84,0.62)*d*0.8;
+ vec3 lit=mix(vec3(0.2,0.24,0.42)+vec3(0.5,0.6,0.95)*d*0.3,vec3(0.62,0.6,0.64)+vec3(1.0,0.84,0.62)*d*0.8*(1.0-0.45*uNoon),uDay);
  vec3 col=vCol*lit;
  if(abs(n.y)<0.5&&vPos.y>0.01&&vSeed<1.5){
   float u=abs(n.x)>0.5?vPos.z:vPos.x;float v=vPos.y;
@@ -32,9 +36,9 @@ void main(){
   vec2 fwd=fwidth(c);float fa=clamp(max(fwd.x,fwd.y)*1.5,0.0,0.5);
   float w=smoothstep(0.22-fa,0.22+fa+0.001,f.x)*(1.0-smoothstep(0.78-fa,0.78+fa+0.001,f.x))*smoothstep(0.26-fa,0.26+fa+0.001,f.y)*(1.0-smoothstep(0.74-fa,0.74+fa+0.001,f.y))*step(4.0,v);
   vec2 hh=fract((id+floor(vSeed*2048.0+0.5)/2048.0*41.0)*vec2(0.1031,0.1030));hh+=dot(hh,hh.yx+33.33);float h=fract((hh.x+hh.y)*hh.x);
-  float on=step(0.62,h);
+  float on=step(mix(0.3,0.62,uDay),h);
   float onA=mix(on,0.5,smoothstep(0.25,0.5,max(fwd.x,fwd.y)));
-  vec3 wc=mix(vec3(0.27,0.38,0.52)*(0.6+0.8*f.y),vec3(0.95,0.74,0.46)*(0.55+0.45*h),onA);
+  vec3 wc=mix(vec3(0.27,0.38,0.52)*(0.6+0.8*f.y),vec3(0.95,0.74,0.46)*(0.55+0.45*h)*(1.0+0.9*(1.0-uDay)),onA);
   col*=0.82+0.18*step(0.12,f.y);col*=1.0-0.22*step(f.y,0.08)-0.12*step(f.x,0.06);
   col=mix(col,wc+vec3(0.12,0.1,0.2)*(1.0-onA)*d,w);
  }
@@ -49,15 +53,15 @@ void main(){
  gl_FragColor=vec4(mix(col,uFog,clamp(fog,0.0,1.0)),1.0);
 }`;
 const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
-const SKY_FS = `varying vec3 vDir;uniform vec3 uHor;uniform float uT;
+const SKY_FS = `varying vec3 vDir;uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
- vec3 top=vec3(0.24,0.5,0.86);vec3 mid=vec3(0.96,0.72,0.68);
+ vec3 top=mix(vec3(0.16,0.42,0.9),vec3(0.24,0.5,0.86),uWarm);vec3 mid=mix(vec3(0.6,0.8,0.96),vec3(0.96,0.72,0.68),uWarm);
  vec3 c=mix(uHor,mid,smoothstep(0.0,0.25,t));c=mix(c,top,smoothstep(0.2,0.9,t));
- vec3 sun=normalize(vec3(-0.55,0.22,0.8));float g=max(dot(normalize(vDir),sun),0.0);
- c+=vec3(1.0,0.78,0.5)*(pow(g,24.0)*0.45+pow(g,220.0)*0.9);
+ vec3 sun=uSunV;float g=max(dot(normalize(vDir),sun),0.0);
+ c+=mix(vec3(1.0,0.95,0.85),vec3(1.0,0.78,0.5),uWarm)*(pow(g,24.0)*0.45+pow(g,220.0)*0.9);
  c=mix(c,vec3(1.0,0.93,0.75)*1.6,smoothstep(0.9975,0.9992,g));
- c+=vec3(1.0,0.7,0.45)*0.28*exp(-abs(vDir.y)*9.0)*(0.4+0.6*max(dot(normalize(vec3(vDir.x,0.0,vDir.z)),normalize(vec3(sun.x,0.0,sun.z))),0.0));
+ c+=vec3(1.0,0.7,0.45)*0.28*uWarm*exp(-abs(vDir.y)*9.0)*(0.4+0.6*max(dot(normalize(vec3(vDir.x,0.0,vDir.z)),normalize(vec3(sun.x,0.0,sun.z))),0.0));
  {float ci=sin(vDir.x/(vDir.y+0.25)*3.0+uT*0.01)*0.5+0.5;c=mix(c,vec3(1.0,0.75,0.7),smoothstep(0.55,0.8,t)*smoothstep(0.7,1.0,ci)*0.18);}
  {vec2 st=floor(vDir.xz/(abs(vDir.y)+0.2)*90.0);float r=fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5);
  c+=vec3(1.0)*step(0.9965,r)*smoothstep(0.55,0.9,t)*0.5;}
@@ -74,8 +78,36 @@ void main(){
   cc+=vec3(1.0,0.6,0.35)*pow(g,8.0)*0.4*(1.0-f);
   c=mix(c,cc,cov*0.85);
  }
+ {vec3 dn=normalize(vDir);vec3 nc=mix(vec3(0.07,0.08,0.19),vec3(0.012,0.02,0.07),smoothstep(0.0,0.6,dn.y));
+  vec2 sq=floor(dn.xz/(abs(dn.y)+0.2)*140.0);float rr=fract(sin(dot(sq,vec2(12.9898,78.233)))*43758.5);nc+=vec3(0.9,0.95,1.0)*step(0.992,rr)*smoothstep(0.05,0.4,dn.y)*0.8;
+  float mg=max(dot(dn,-sun),0.0);nc+=vec3(0.75,0.85,1.0)*(pow(mg,60.0)*0.25)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.2;
+  c=mix(nc,c,uDay);}
  gl_FragColor=vec4(c,1.0);
 }`;
+
+const DN_DUR = 300, DN_PH0 = Math.asin(0.22 / 0.95);
+const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _cn = new THREE.Color(0.035, 0.055, 0.13), _cnoon = new THREE.Color(0.76, 0.84, 0.93), _cwarm = new THREE.Color(FOG[0], FOG[1], FOG[2]);
+const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function DayNight() {
+    const { scene } = useThree();
+    const ls = useRef<{ h: THREE.HemisphereLight; a: THREE.DirectionalLight; b: THREE.DirectionalLight } | null>(null);
+    useFrame((st) => {
+        if (!ls.current) { const h = scene.getObjectByName('hemi'), a = scene.getObjectByName('sun1'), b = scene.getObjectByName('sun2'); if (!h || !a || !b) return; ls.current = { h: h as THREE.HemisphereLight, a: a as THREE.DirectionalLight, b: b as THREE.DirectionalLight }; }
+        let ph = DN_PH0 + (st.clock.elapsedTime / DN_DUR) * Math.PI * 2; if (DBG && (window as any).__todPh !== undefined) ph = (window as any).__todPh;
+        TOD.sun.set(-0.5, Math.sin(ph) * 0.95, Math.cos(ph) * 0.85 + 0.3).normalize();
+        const sy = TOD.sun.y, day = sstep(-0.12, 0.3, sy), warm = 1 - sstep(0.25, 0.7, sy);
+        if (DBG) (window as any).__tod = { sy, day, warm, fog: TOD.fog.toArray() }; TOD.day.value = day; TOD.warm.value = warm; TOD.noon.value = sstep(0.3, 0.95, sy);
+        _c1.copy(_cnoon).lerp(_cwarm, warm).lerp(_cn, 1 - day); TOD.fog.copy(_c1); TOD.sky.copy(_c1).lerp(_c2.set('#c4dcef'), 0.3 * day);
+        (scene.background as THREE.Color).copy(_c1);
+        const { h, a, b } = ls.current;
+        h.color.set('#d4e4ff').lerp(_c2.set('#3a4c8c'), 1 - day); h.intensity = 0.5 + 0.75 * day;
+        const up = sy > 0;
+        a.position.set(TOD.sun.x * 70 * (up ? 1 : -1), Math.abs(TOD.sun.y) * 70 + 8, TOD.sun.z * 70 * (up ? 1 : -1));
+        a.color.set('#fff6ea').lerp(_c2.set('#ffd2a0'), warm).lerp(_c2.set('#ff9a5a'), sstep(0.0, 0.2, 0.2 - sy) * day * 0.7).lerp(_c2.set('#8fb0ff'), 1 - day); a.intensity = 0.5 + 1.3 * day * (1 - 0.4 * TOD.noon.value);
+        b.intensity = 0.25 + 0.55 * day;
+    });
+    return null;
+}
 
 function City() {
     const geo = useMemo(() => {
@@ -88,13 +120,13 @@ function City() {
         g.setIndex(new THREE.BufferAttribute(world.idx, 1));
         return g;
     }, []);
-    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: CITY_VS, fragmentShader: CITY_FS, uniforms: { uFog: { value: new THREE.Color(FOG[0], FOG[1], FOG[2]) }, uTime: { value: 0 } } }), []);
+    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: CITY_VS, fragmentShader: CITY_FS, uniforms: { uFog: { value: TOD.fog }, uTime: { value: 0 }, uSunV: TOD.sunU, uDay: TOD.day, uNoon: TOD.noon } }), []);
     return <mesh geometry={geo} material={mat} frustumCulled={false} />;
 }
 
 function Sky() {
     const ref = useRef<THREE.Mesh>(null!);
-    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: new THREE.Color(FOG[0], FOG[1], FOG[2]) }, uT: { value: 0 } } }), []);
+    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: { value: 0 }, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm } }), []);
     useFrame((st) => { mat.uniforms.uT.value = st.clock.elapsedTime; });
     useFrame(({ camera }) => { ref.current.position.copy(camera.position); });
     return <mesh ref={ref} material={mat} renderOrder={-10} frustumCulled={false}><sphereGeometry args={[400, 24, 12]} /></mesh>;
@@ -427,6 +459,8 @@ function buildRig() {
     const root = new THREE.Group(); root.add(mesh); mesh.add(bones[0]);
     root.updateMatrixWorld(true);
     mesh.bind(new THREE.Skeleton(bones));
+    // cel-style ink outline: inverted hull sharing the geometry and skeleton, pushed out along the skinned normal (ref: Wind Waker character edge ink)
+    { const om = new THREE.MeshBasicMaterial({ color: '#0a0d1a', side: THREE.BackSide }); om.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', 'transformed += normalize(objectNormal) * 0.014;\n#include <project_vertex>'); }; const ol = new THREE.SkinnedMesh(g, om); ol.frustumCulled = false; ol.bind(mesh.skeleton, mesh.bindMatrix); root.add(ol); }
     // candidate extreme vertices (chosen per dominant bone in many bone-local directions), kept with their full skin blend so wall contact uses real skinned positions
     const hull: { p: THREE.Vector3; bi: number[]; bw: number[]; foot?: boolean }[] = [];
     {
@@ -504,7 +538,7 @@ function waveH(x: number, z: number, t: number) {
 }
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uSun: { value: new THREE.Vector3(-0.55, 0.22, 0.8).normalize() }, uSky: { value: new THREE.Color('#c4dcef') }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
+    uniforms: { uTime: { value: 0 }, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: WAVES + `uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow; varying vec3 vW;
     void main(){
@@ -700,6 +734,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const sa0 = sim as any; sa0.gB = (sa0.gB || 0) + ((sim.glideOn ? 1 : 0) - (sa0.gB || 0)) * Math.min(1, dt * 3.5);   // glide pose blend (slow in, quick out)
         const lean = (sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.18 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - sa0.gB * 0.8) + sa0.gB * 1.12;
         h.children[0].rotation.x = lean;
+        { const c0 = h.children[0], sb = sim as any; c0.rotation.order = 'ZXY'; const yr = sb.bYaw === undefined ? 0 : ((sim.yaw - sb.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3); sb.bYaw = sim.yaw; sb.bR = (sb.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * sa0.gB - (sb.bR || 0)) * Math.min(1, dt * 4); c0.rotation.z = sb.bR; }   // glide banking: roll into the turn, eased
         if (sa0.gB > 0.01) { const lc = 0.9 * sa0.gB; h.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; h.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; h.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
         const hs = Math.hypot(v[0], v[2]);
         const sw = sim.ground ? Math.sin(sim.runPhase * 3) * 0.9 * Math.min(1, hs / 6) : 0.25;
@@ -865,9 +900,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     return <>
         <mesh ref={beaconRef} frustumCulled={false}><cylinderGeometry args={[4, 4, 90, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
         <color attach="background" args={[FOG[0], FOG[1], FOG[2]]} />
-        <hemisphereLight args={['#d4e4ff', '#8a9a6a', 1.25]} />
-        <directionalLight position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
-        <directionalLight position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
+        <hemisphereLight name="hemi" args={['#d4e4ff', '#8a9a6a', 1.25]} />
+        <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
+        <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
+        <DayNight />
         <Sky />
         <City />
         <FlyingCars />
