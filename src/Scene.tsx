@@ -275,7 +275,7 @@ const kelpMat = new THREE.ShaderMaterial({
 const rayMat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'varying vec2 vU; uniform float uTime; void main(){ float edge = smoothstep(0.0, 0.5, vU.x) * smoothstep(1.0, 0.5, vU.x); float a = edge * pow(vU.y, 1.6) * (0.55 + 0.45 * sin(uTime * 0.8 + vU.y * 3.0 + vU.x * 5.0)); gl_FragColor = vec4(vec3(0.6, 0.95, 1.0) * a * 0.5, a * 0.5); }',
+    fragmentShader: 'varying vec2 vU; uniform float uTime; void main(){ float width = mix(0.16,0.32,1.0-vU.y); float edge = 1.0-smoothstep(width*0.25,width,abs(vU.x-0.5)); float endFade = smoothstep(0.0,0.20,vU.y)*(1.0-smoothstep(0.82,1.0,vU.y)); float a = edge * endFade * pow(vU.y, 1.2) * (0.55 + 0.45 * sin(uTime * 0.8 + vU.y * 3.0 + vU.x * 5.0)); gl_FragColor = vec4(vec3(0.6, 0.95, 1.0) * a * 0.5, a * 0.5); }',
 });
 // Round bubble glints, same point count and size as before; no texture fetch.
 const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.09,sizeAttenuation:true,transparent:true,opacity:0.7,depthWrite:false});
