@@ -61,6 +61,13 @@ function buildWorld() {
             else { box(cx + w / 2 + 0.3, py, cz + (rnd() - 0.5) * (d - 12), 0.3, 2.5 + rnd() * 2, 5 + rnd() * 3, nc, 2.0); }
         }
         if (rnd() < 0.4) { const nc = neon[Math.floor(rnd() * 4)]; box(cx, h + 0.15, cz, w / 2 + 0.2, 0.15, 0.2, nc, 2.0); }
+        // skyline variety: crown tiers and spires on tall towers, window-band trim ledges
+        if (h > 62) {
+            const rr = rnd();
+            if (rr < 0.5) { box(cx, h + 4, cz, w / 2 - 6, 4, d / 2 - 6, col, rnd()); box(cx, h + 8.5, cz, w / 2 - 9, 0.5, d / 2 - 9, [0.3, 0.28, 0.4], 0.5); box(cx, h + 20, cz, 0.35, 12, 0.35, [0.35, 0.35, 0.42], 0.5); }
+            else if (rr < 0.8) { box(cx, h + 3, cz, w / 2 - 4, 3, d / 2 - 4, col, rnd()); box(cx, h + 9, cz, w / 2 - 8, 3, d / 2 - 8, col, rnd()); box(cx, h + 15, cz, w / 2 - 11, 3, d / 2 - 11, col, rnd()); }
+        }
+        for (let ly = 14; ly < h - 2; ly += 14) box(cx, ly, cz, w / 2 + 0.35, 0.3, d / 2 + 0.35, [0.3, 0.27, 0.36], 0.5);
         box(cx + w * 0.3, h + 3.2, cz + d * 0.3, 0.25, 0.25, 0.25, [1, 0.15, 0.1], 2.0);
         // water tank on legs + AC units + antenna mast (rooftop variety)
         if (rnd() < 0.5) { const tx = cx + (rnd() - 0.5) * (w - 8), tz2 = cz + (rnd() - 0.5) * (d - 8); box(tx, h + 2, tz2, 0.3, 2, 0.3, [0.3, 0.25, 0.25], 0.5); box(tx, h + 5, tz2, 2.1, 2.2, 2.1, [0.72, 0.45, 0.38], 0.5); box(tx, h + 7.4, tz2, 1.6, 0.3, 1.6, [0.4, 0.3, 0.3], 0.5); }

@@ -29,9 +29,9 @@ void main(){
   vec2 fwd=fwidth(c);float fa=clamp(max(fwd.x,fwd.y)*1.5,0.0,0.5);
   float w=smoothstep(0.22-fa,0.22+fa+0.001,f.x)*(1.0-smoothstep(0.78-fa,0.78+fa+0.001,f.x))*smoothstep(0.26-fa,0.26+fa+0.001,f.y)*(1.0-smoothstep(0.74-fa,0.74+fa+0.001,f.y))*step(4.0,v);
   vec2 hh=fract((id+floor(vSeed*2048.0+0.5)/2048.0*41.0)*vec2(0.1031,0.1030));hh+=dot(hh,hh.yx+33.33);float h=fract((hh.x+hh.y)*hh.x);
-  float on=step(0.52,h);
+  float on=step(0.62,h);
   float onA=mix(on,0.5,smoothstep(0.25,0.5,max(fwd.x,fwd.y)));
-  vec3 wc=mix(vec3(0.16,0.22,0.32)*(0.6+0.8*f.y),vec3(1.0,0.8,0.42)*(0.75+0.5*h),onA);
+  vec3 wc=mix(vec3(0.16,0.22,0.32)*(0.6+0.8*f.y),vec3(0.95,0.74,0.46)*(0.55+0.45*h),onA);
   col*=0.82+0.18*step(0.12,f.y);col*=1.0-0.22*step(f.y,0.08)-0.12*step(f.x,0.06);
   col=mix(col,wc+vec3(0.12,0.1,0.2)*(1.0-onA)*d,w);
  }
@@ -323,9 +323,9 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         h.position.set(p[0], p[1] - 1.0, p[2]);
         h.rotation.set(0, sim.ang, 0); h.scale.setScalar(1.5);
         const wl = !!sim.wall;
-        if (wl) { h.position.x += Math.sin(sim.ang) * 0.4; h.position.z += Math.cos(sim.ang) * 0.4; }
+        if (wl) { h.position.x += Math.sin(sim.ang) * 0.68; h.position.z += Math.cos(sim.ang) * 0.68; }
         const sw2 = sim.swim;
-        if (sw2) { h.position.y = p[1] - 0.35; h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
+        if (sw2) { h.position.y = p[1] - 0.78; h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
         const lean = sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.18 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3;
         h.children[0].rotation.x = lean;
         const hs = Math.hypot(v[0], v[2]);
@@ -351,9 +351,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 else cs.t += dt;
             }
             if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
-            if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * 0.9 * cs.w; } else rig.b.hips.position.y = rig.hipsY;
+            if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
             if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
         }
+        if (!sim.swim && sim.ground && !wl && clipSt.current.key === 'run') h.position.y -= 0.2 * clipSt.current.w;
         h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
         cape.current.rotation.x = 0.25 + Math.min(1.0, speed / 38) + Math.sin(sim.t * 14) * 0.05 * Math.min(1, speed / 20);
         // web
