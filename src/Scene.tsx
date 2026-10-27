@@ -99,6 +99,7 @@ function DayNight() {
         if (DBG) (window as any).__tod = { sy, day, warm, fog: TOD.fog.toArray() }; TOD.day.value = day; TOD.warm.value = warm; TOD.noon.value = sstep(0.3, 0.95, sy);
         _c1.copy(_cnoon).lerp(_cwarm, warm).lerp(_cn, 1 - day); TOD.fog.copy(_c1); TOD.sky.copy(_c1).lerp(_c2.set('#c4dcef'), 0.3 * day);
         (scene.background as THREE.Color).copy(_c1);
+        { const wu = waterMat.uniforms, k = 0.16 + 0.84 * day; wu.uDeep.value.set('#0a6f92').multiplyScalar(k); wu.uShallow.value.set('#2fa8c4').multiplyScalar(k); }   // water body colour follows the light level (sky reflection already follows TOD.sky)
         const { h, a, b } = ls.current;
         h.color.set('#d4e4ff').lerp(_c2.set('#3a4c8c'), 1 - day); h.intensity = 0.5 + 0.75 * day;
         const up = sy > 0;
@@ -538,9 +539,9 @@ function waveH(x: number, z: number, t: number) {
 }
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
+    uniforms: { uTime: { value: 0 }, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
-    fragmentShader: WAVES + `uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow; varying vec3 vW;
+    fragmentShader: WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow; varying vec3 vW;
     void main(){
       vec2 g = wg(vW.xz, uTime) + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
@@ -579,6 +580,7 @@ const waterMat = new THREE.ShaderMaterial({
       }
       float haze = 1.0 - exp(-length(cameraPosition - vW) * 0.006);
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
+      if (!below) col *= mix(0.3, 1.0, uDay);
       gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)));
     }`,
 });
@@ -667,7 +669,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         { const want = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2) * curScale.current; if (Math.abs(gl.getPixelRatio() - want) > 0.01) gl.setPixelRatio(want); }
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
-            if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current < 18 && ns < 1) ns += 0.05;
+            if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current > 16 && ns > 1) ns = Math.max(1, ns - 0.05); else if (ema.current < 12.5 && ns >= 1 && ns < 1.34 && coarse) ns += 0.05; else if (ema.current < 18 && ns < 1) ns += 0.05;   // high tier: only on touch devices running well under budget (<12.5 ms), reversible by the same >24 ms downshift
             if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2) * ns); }
         }
         if (sim.mode === 'play') {
