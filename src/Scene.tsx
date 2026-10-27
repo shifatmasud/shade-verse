@@ -108,7 +108,7 @@ function buildRig() {
     const root = new THREE.Group(); root.add(mesh); mesh.add(bones[0]);
     root.updateMatrixWorld(true);
     mesh.bind(new THREE.Skeleton(bones));
-    return { root, b: byName, bones };
+    return { root, b: byName, bones, hipsY: byName.hips.position.y };
 }
 
 
@@ -337,6 +337,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 else cs.t += dt;
             }
             if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
+            if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * 0.9 * cs.w; } else rig.b.hips.position.y = rig.hipsY;
             if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
         }
         h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
