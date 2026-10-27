@@ -338,10 +338,11 @@ function Forest({ sim }: { sim: Sim }) {
             a.push({ x, z, s: 0.62 + rnd() * 0.14, c: rnd(), v: [0, 3, 4][Math.floor(i / 3) % 3] });
         }
         return a; }, []);
-    const bushTex = useMemo(()=>{const t=new THREE.TextureLoader().load('/shrub112.png');t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;},[]);
+    const bushTex = useMemo(()=>{const t=new THREE.TextureLoader().load('/shrub134.png');t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;},[]);
     const bushGeo = useMemo(()=>{
         const gs:THREE.BufferGeometry[]=[];let r=73;const rnd=()=>(r=r*16807%2147483647)/2147483647;
-        const boxes=[[226,0,354,192],[44,212,176,378],[362,246,493,414],[355,67,471,177]];
+        // Isolate scanned leaf silhouettes, excluding packed stem/bark atlas triangles.
+        const boxes=[[224,0,357,184],[102,205,248,396],[360,195,482,372],[371,59,459,181]];
         for(let i=0;i<48;i++) {const bx=boxes[i%boxes.length],w=(bx[2]-bx[0])/512,h=(bx[3]-bx[1])/512;const len=0.5+rnd()*0.5;
             const g=new THREE.PlaneGeometry(len*w/h,len);g.translate(0,len/2,0);const uv=g.attributes.uv;for(let k=0;k<4;k++)uv.setXY(k,bx[0]/512+uv.getX(k)*w,1-bx[3]/512+uv.getY(k)*h);
             const a=i*2.39996,rad=0.1+0.6*Math.sqrt(rnd());g.rotateZ((rnd()-0.5)*1.3);g.rotateY(a);g.translate(Math.cos(a)*rad,0.02+rnd()*0.65,Math.sin(a)*rad);gs.push(g);
