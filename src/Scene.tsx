@@ -859,7 +859,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             const c1 = rig.b.cape1, c2 = rig.b.cape2, c3 = rig.b.cape3;
             if (c1) {
                 const sp = Math.min(1, speed / 30), gl = sim.glideOn ? 1 : 0, ph = sim.t * (gl ? 9 : 6);
-                const tx = gl ? 0.55 : sp * 0.35, fl = gl ? 0.12 : 0.04 * sp;
+                const tx = gl ? 0.0   /* glide: cape lies back along the body (was 0.55, which stood the cape up behind the neck) */ : sp * 0.35, fl = gl ? 0.12 : 0.04 * sp;
                 const lerp = Math.min(1, dt * 8), cs2: number[] = (sim as any).cpS || ((sim as any).cpS = [0, 0, 0, 0, 0]);   // state kept outside the bones (bones are reset every frame)
                 cs2[0] += (tx + Math.sin(ph) * fl - cs2[0]) * lerp;
                 cs2[1] += (tx * 0.9 + Math.sin(ph - 0.9) * fl * 1.3 - cs2[1]) * lerp;
