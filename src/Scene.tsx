@@ -646,9 +646,9 @@ const waterMat = new THREE.ShaderMaterial({
       col += vec3(1.0, 0.85, 0.7) * (pow(max(dot(r, uSun), 0.0), 220.0) * 1.6 + pow(max(dot(r, uSun), 0.0), 40.0) * 0.35);
       col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, wh(vW.xz, uTime)) * 0.25 * (1.0 - fr);
       float crest = smoothstep(0.62, 0.9, wh(vW.xz, uTime) + sin(vW.x * 0.7) * sin(vW.z * 0.6) * 0.08);
-      col = mix(col, vec3(1.0), crest * 0.55);
+      col = mix(col, vec3(1.0), crest * 0.08);
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
-      col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.85);
+      col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
       float aOut = mix(0.82, 1.0, max(fr, 0.0));
       vec3 uWaterDisplay=mix(uUWF,linearToOutputTexel(vec4(uUWF,1.0)).rgb,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y)));
       if (below) {
@@ -667,7 +667,11 @@ const waterMat = new THREE.ShaderMaterial({
       if (below) col = mix(col, uWaterDisplay, 1.0 - exp(-length(cameraPosition - vW) * 0.045 * 1.6));
       if (below) col += uWaterDisplay * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5);   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
-      if (!below) col *= mix(0.3, 1.0, uDay);
+      if (!below) {
+        col *= mix(0.3, 1.0, uDay);
+        // Stylised cool night-sky lobe, not scene reflections or a physical moon model.
+        col += vec3(0.18, 0.26, 0.38) * (1.0-uDay) * pow(max(dot(r, normalize(vec3(-0.3, 0.6, -0.5))), 0.0), 12.0);
+      }
       // A near-waterline camera can sit inside a displaced crest while viewing its top face.
       // Fade only that nearby top-face sheet so the swimmer remains readable through the split.
       // This is a local transparency approximation, not scene-colour refraction.
@@ -680,7 +684,7 @@ const waterMat = new THREE.ShaderMaterial({
       if(below){float join=smoothstep(-230.0,-224.0,vW.z)*(1.0-smoothstep(0.20,0.65,abs(v.y)));
         vec3 junction=uWaterDisplay*(1.0+0.9*pow(1.0-clamp(abs(v.y),0.0,1.0),2.5));
         col=mix(col,junction,join);aOut=mix(aOut,1.0,join);}
-      gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)) * nearClear);
+      gl_FragColor = vec4(col, below ? aOut : nearClear);
     }`,
 });
 
