@@ -144,7 +144,7 @@ vec2 wg(vec2 p, float t){
 }`;
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uSun: { value: new THREE.Vector3(0.45, 0.55, 0.7).normalize() }, uSky: { value: new THREE.Color('#e9908a') }, uDeep: { value: new THREE.Color('#06496b') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
+    uniforms: { uTime: { value: 0 }, uSun: { value: new THREE.Vector3(-0.55, 0.22, 0.8).normalize() }, uSky: { value: new THREE.Color('#e9908a') }, uDeep: { value: new THREE.Color('#06496b') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: WAVES + `uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow; varying vec3 vW;
     void main(){
