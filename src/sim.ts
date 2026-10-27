@@ -63,9 +63,12 @@ function buildWorld() {
         if (rnd() < 0.4) { const nc = neon[Math.floor(rnd() * 4)]; box(cx, h + 0.15, cz, w / 2 + 0.2, 0.15, 0.2, nc, 2.0); }
         // skyline variety: crown tiers and spires on tall towers, window-band trim ledges
         if (h > 62) {
-            const rr = rnd();
-            if (rr < 0.5) { box(cx, h + 4, cz, w / 2 - 6, 4, d / 2 - 6, col, rnd()); box(cx, h + 8.5, cz, w / 2 - 9, 0.5, d / 2 - 9, [0.3, 0.28, 0.4], 0.5); box(cx, h + 20, cz, 0.35, 12, 0.35, [0.35, 0.35, 0.42], 0.5); }
-            else if (rr < 0.8) { box(cx, h + 3, cz, w / 2 - 4, 3, d / 2 - 4, col, rnd()); box(cx, h + 9, cz, w / 2 - 8, 3, d / 2 - 8, col, rnd()); box(cx, h + 15, cz, w / 2 - 11, 3, d / 2 - 11, col, rnd()); }
+            // crown block in a roof corner, away from the landing/beacon centre; also a real collision box so it is solid and landable
+            const ch = 8 + rnd() * 4, hx = 3, hz = 3, ccx = cx - w * 0.34, ccz = cz - d * 0.34;
+            box(ccx, h + ch / 2, ccz, hx, ch / 2, hz, col, rnd());
+            box(ccx, h + ch + 0.3, ccz, hx + 0.4, 0.3, hz + 0.4, [0.3, 0.28, 0.4], 0.5);
+            if (rnd() < 0.6) box(ccx, h + ch + 12, ccz, 0.3, 12, 0.3, [0.35, 0.35, 0.42], 0.5);
+            blds.push({ x0: ccx - hx, x1: ccx + hx, z0: ccz - hz, z1: ccz + hz, h: h + ch });
         }
         for (let ly = 14; ly < h - 2; ly += 14) box(cx, ly, cz, w / 2 + 0.35, 0.3, d / 2 + 0.35, [0.3, 0.27, 0.36], 0.5);
         box(cx + w * 0.3, h + 3.2, cz + d * 0.3, 0.25, 0.25, 0.25, [1, 0.15, 0.1], 2.0);
@@ -125,13 +128,13 @@ function newOrb(s: Sim): V3 {
 }
 function newBeacon(s: Sim): V3 {
     // beacon sits on the roof of a building 70-170 m away
-    const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return d > 70 && d < 170; });
+    const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return b.x1 - b.x0 > 10 && d > 70 && d < 170; });
     const b = cand.length ? cand[Math.floor(Math.random() * cand.length)] : blds[Math.floor(Math.random() * blds.length)];
     return [(b.x0 + b.x1) / 2, b.h + 1.5, (b.z0 + b.z1) / 2];
 }
 function spawnEnemy(s: Sim): Enemy {
     if (Math.random() < 0.4) {
-        const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return d > 30 && d < 150 && b.h < 60; });
+        const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return b.x1 - b.x0 > 10 && d > 30 && d < 150 && b.h < 60; });
         if (cand.length) { const b = cand[Math.floor(Math.random() * cand.length)]; return { roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 }, x: (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * 6, y: b.h + 1, z: (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * 6, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 }; }
     }
     for (let k = 0; k < 60; k++) {
