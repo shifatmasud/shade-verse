@@ -12,7 +12,7 @@ import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { world, buildings, WATER_Z, CELL, PARK, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
 
 // time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
 const TOD = { sun: new THREE.Vector3(-0.55, 0.22, 0.8).normalize(), sunU: null as any, day: { value: 1 }, warm: { value: 1 }, noon: { value: 0 }, fog: new THREE.Color(FOG[0], FOG[1], FOG[2]), sky: new THREE.Color('#c4dcef') };
@@ -43,6 +43,7 @@ void main(){
   col=mix(col,wc+vec3(0.12,0.1,0.2)*(1.0-onA)*d,w);
  }
  if(vSeed>1.5){col=vCol*1.25;}
+ if(vPos.y<0.01&&vPos.x>100.0&&vPos.x<260.0&&vPos.z>20.0&&vPos.z<180.0)discard;   // valley: the park floor mesh replaces the street slab here
  if(vPos.y<0.01){
   col=vec3(0.26,0.27,0.31);
   float fx=abs(mod(vPos.x,40.0)-20.0);float fz=abs(mod(vPos.z,40.0)-20.0);
@@ -326,19 +327,23 @@ function Forest({ sim }: { sim: Sim }) {
     const NT = TREE_TYPES.length;
     const place = (hx: number, hz: number) => {
         const o = new THREE.Object3D(), col = new THREE.Color(); const ct = Array(NT).fill(0), ch = Array(NT).fill(0), cl = Array(NT).fill(0);
-        pts.forEach((p) => { const d = Math.hypot(p.x - hx, p.z - hz); if (d > 230) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05, p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.12 + q * 0.2 + w * 0.05, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.62 + ((p.c * 3.1) % 1) * 0.38); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const M = d < 45 ? lf.current[v] : lo.current[v], k = d < 45 ? ch : cl; M.setMatrixAt(k[v], o.matrix); M.setColorAt(k[v]++, col); });
+        pts.forEach((p) => { const d = Math.hypot(p.x - hx, p.z - hz); if (d > 230) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.12 + q * 0.2 + w * 0.05, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.62 + ((p.c * 3.1) % 1) * 0.38); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const M = d < 45 ? lf.current[v] : lo.current[v], k = d < 45 ? ch : cl; M.setMatrixAt(k[v], o.matrix); M.setColorAt(k[v]++, col); });
         for (let v = 0; v < NT; v++) { tr.current[v].count = ct[v]; lf.current[v].count = ch[v]; lo.current[v].count = cl[v]; [tr.current[v], lf.current[v], lo.current[v]].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }); }
     };
     useFrame(() => { const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 6) { last.current = [hx, hz]; place(hx, hz); } });
     useEffect(() => {
         const o = new THREE.Object3D(), col = new THREE.Color(); place(1e5, 1e5); last.current = [1e9, 1e9];
-        for (let i = 0; i < 70; i++) { const p = pts[i % pts.length], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + 3 + (i % 5), 0.6 * k, p.z + 2); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.17 + ((p.c * 5.7) % 1) * 0.25, 0.4 + ((p.c * 2.3) % 1) * 0.3, 0.22 + ((p.c * 9.1) % 1) * 0.28)); }
+        for (let i = 0; i < 70; i++) { const p = pts[i % pts.length], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + 3 + (i % 5), 0.6 * k + parkH(p.x + 3 + (i % 5), p.z + 2), p.z + 2); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.17 + ((p.c * 5.7) % 1) * 0.25, 0.4 + ((p.c * 2.3) % 1) * 0.3, 0.22 + ((p.c * 9.1) % 1) * 0.28)); }
         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
     }, [pts]);
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
+    const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)
+        const mk = (w: number, h: number, sw: number, sh: number, yaw: number, lift: number) => { const g = new THREE.PlaneGeometry(w, h, sw, sh); g.rotateX(-Math.PI / 2); g.rotateY(yaw); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) pa.setY(i, parkH(cx + pa.getX(i), cz + pa.getZ(i)) + lift); g.computeVertexNormals(); return g; };
+        return { floor: mk(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 80, 80, 0, 0), path: mk(8, 190, 2, 90, Math.atan(0.6), 0.04) };
+    }, []);
     return <group>
-        <mesh ref={grass} position={[cx, 0.05, cz]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[PARK.x1 - PARK.x0, PARK.z1 - PARK.z0]} /><meshLambertMaterial color="#4a8636" /></mesh>
-        <group position={[cx, 0.09, cz]} rotation={[0, Math.atan(0.6), 0]}><mesh rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[8, 190]} /><meshLambertMaterial color="#b89865" /></mesh></group>
+        <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#4a8636" /></mesh>
+        <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>
         {geos.map((g, v) => <group key={v}>
             <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.con ? pbarkTex : barkTex} emissive="#4a3a2c" side={THREE.DoubleSide} /></instancedMesh>
             <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#2b4a22" alphaTest={0.5} side={THREE.DoubleSide} /></instancedMesh>
@@ -373,13 +378,13 @@ function Meadow({ sim }: { sim: Sim }) {
     const gr = useRef<THREE.InstancedMesh>(null!), fl = useRef<THREE.InstancedMesh>(null!), ff = useRef<THREE.Points>(null!), last = useRef([1e9, 1e9]), uni = useRef({ uTime: { value: 0 } }), fu = useRef({ uTime: { value: 0 } });
     const geo = useMemo(tuftGeo, []);
     const flGeo = useMemo(() => { const g = new THREE.CircleGeometry(0.17, 7); g.rotateX(-Math.PI / 2.4); g.translate(0, 0.62, 0); const st = new THREE.PlaneGeometry(0.02, 0.62); st.translate(0, 0.31, 0); return mergeGeometries([g, st], false)!; }, []);
-    const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5; p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
+    const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5 + parkH(p[i * 3], p[i * 3 + 2]); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
     const place = (hx: number, hz: number) => {
         const o = new THREE.Object3D(), col = new THREE.Color(); let gi = 0, fi = 0;
         for (let i = 0; i < GR_POOL.length && gi < 6500; i += 4) {
             const x = GR_POOL[i], z = GR_POOL[i + 1]; if (Math.hypot(x - hx, z - hz) > 70) continue;
-            o.position.set(x, 0.05, z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl); o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.5 + 0.12 * cl, 0.34 + GR_POOL[i + 2] * 0.14 + 0.1 * cl));
-            if (GR_POOL[i + 2] < 0.12 && fi < 420) { o.position.set(x + 0.2, 0.05, z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
+            o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl); o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.5 + 0.12 * cl, 0.34 + GR_POOL[i + 2] * 0.14 + 0.1 * cl));
+            if (GR_POOL[i + 2] < 0.12 && fi < 420) { o.position.set(x + 0.2, 0.05 + parkH(x + 0.2, z), z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
         }
         gr.current.count = gi; fl.current.count = fi; [gr.current, fl.current].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); });
     };
@@ -732,7 +737,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (!hit) break;
         }
         const wsh = sim.wall ? 3.6 : 0, wnx = sim.wall ? -sim.wall[1] : 0, wnz = sim.wall ? sim.wall[0] : 0; // wall: 3/4 view from beside the hero
-        const tx = p[0] - fxd * dist + wnx * wsh, ty = sim.swim ? (sim.dive ? Math.min(WATER_Y - 1.5, p[1] + 1.2 + sy * dist) : WATER_Y + 0.7) : Math.max(2, p[1] + 1.5 + sy * dist), tz = p[2] - fzd * dist + wnz * wsh;
+        const tx = p[0] - fxd * dist + wnx * wsh, ty = sim.swim ? (sim.dive ? Math.min(WATER_Y - 1.5, p[1] + 1.2 + sy * dist) : WATER_Y + 0.7) : Math.max(2 + Math.min(0, parkH(p[0], p[2])), p[1] + 1.5 + sy * dist), tz = p[2] - fzd * dist + wnz * wsh;
         if (sim.mode === 'menu' || sim.mode === 'over') { cam.current.set(tx, ty, tz); } else cam.current.lerp(new THREE.Vector3(tx, ty, tz), 1 - Math.pow(0.001, dt));
         { // push smoothed camera out of buildings (post-lerp)
             const q = cam.current;
@@ -827,7 +832,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 const fresh = gm.key !== ck2;
                 if (fresh) { gm.key = ck2; gm.v = 1e9; }
                 if (!gBd && mn < gm.v) gm.v = mn;
-                const wg = gm.v > 1e8 ? groundCorr.current : Math.max(-0.4, Math.min(0.4, 0.02 - gm.v));
+                const wg = gm.v > 1e8 ? groundCorr.current : Math.max(-0.4, Math.min(0.4, 0.02 + parkH(sim.pos[0], sim.pos[2]) - gm.v));
                 if (fresh && !gBd) groundCorr.current = wg; else groundCorr.current += (wg - groundCorr.current) * Math.min(1, dt * 8);
             }
             if (DBG && (window as any).__dbgGround) (window as any).__gc = { mn, corr: groundCorr.current };
@@ -838,7 +843,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             h.updateMatrixWorld(true);
             let mn2 = 1e9;
             for (const e of rig.hull) { if (!e.foot) continue; tp0.set(0, 0, 0); for (let k = 0; k < 4; k++) { if (e.bw[k] <= 0) continue; _wv2.copy(e.p).applyMatrix4(rig.skel.boneInverses[e.bi[k]]).applyMatrix4(rig.skel.bones[e.bi[k]].matrixWorld); tp0.addScaledVector(_wv2, e.bw[k]); } if (tp0.y < mn2) mn2 = tp0.y; }
-            if (mn2 < 0.0) h.position.y += 0.02 - mn2;
+            { const gr = parkH(sim.pos[0], sim.pos[2]); if (mn2 < gr) h.position.y += gr + 0.02 - mn2; }
             if (DBG && (window as any).__dbgGround) (window as any).__gc2 = mn2 < 0.0 ? 0.02 : mn2;
         }
         if (sim.wall && sim.wallB >= 0) lastWall.current = { n: [sim.wall[0], sim.wall[1]], b: sim.wallB };

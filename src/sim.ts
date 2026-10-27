@@ -7,6 +7,8 @@ export const FOG: V3 = [0.84, 0.77, 0.74];
 const G = 27;
 export const JUMP_V = 16;
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
+// valley: the park floor sinks into a gentle rolling bowl; zero at the park edge so it meets street level, about -5 m in the middle
+export function parkH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 
 let seedv = 1337;
@@ -133,6 +135,7 @@ function newBeacon(s: Sim): V3 {
     const b = cand.length ? cand[Math.floor(Math.random() * cand.length)] : blds[Math.floor(Math.random() * blds.length)];
     return [(b.x0 + b.x1) / 2, b.h + 1.5, (b.z0 + b.z1) / 2];
 }
+function inPk(x: number, z: number) { return x > PARK.x0 && x < PARK.x1 && z > PARK.z0 && z < PARK.z1; }   // street enemies stay out of the sunken park
 function spawnEnemy(s: Sim): Enemy { const e = spawnEnemy0(s); e.kind = [1, 2, 3][Math.floor(Math.random() * 3)]; return e; }
 function spawnEnemy0(s: Sim): Enemy {
     if (Math.random() < 0.4) {
@@ -142,6 +145,7 @@ function spawnEnemy0(s: Sim): Enemy {
     for (let k = 0; k < 60; k++) {
         const x = (Math.floor(Math.random() * (N - 1)) - (N - 2) / 2) * CELL + (Math.random() < 0.5 ? -CELL / 2 + 0 : CELL / 2 - 0), z = (Math.random() - 0.5) * 2 * (HALF - 40);
         if (z < WATER_Z + 8) continue;
+        if (x > PARK.x0 - 4 && x < PARK.x1 + 4 && z > PARK.z0 - 4 && z < PARK.z1 + 4) continue;   // the park is a sunken bowl: no street-level spawns there
         const sx = Math.round((x - CELL / 2) / CELL) * CELL + CELL / 2;
         if (Math.hypot(sx - s.pos[0], z - s.pos[2]) < 18) continue;
         let inside = false;
@@ -296,9 +300,10 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
     if (s.swim && p[1] < SEABED + 1) { p[1] = SEABED + 1; if (v[1] < 0) v[1] = 0; }
-    if (p[1] <= 1.0005 && p[2] >= WATER_Z && !s.swim) { // street level: walkable
+    const gy = 1.0 + parkH(p[0], p[2]);
+    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level (or valley floor): walkable, snaps down gentle slopes
         if (!s.ground) { s.ground = true; }
-        p[1] = 1.0; if (v[1] < 0) v[1] = 0;
+        p[1] = gy; if (v[1] < 0) v[1] = 0;
     }
     if (s.ground && !wasGround && landVy < -7) {
         const imp = -landVy; s.land = Math.min(1, imp / 30); const hard = imp > 26;
@@ -353,7 +358,7 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
     { const sa = s as any; sa.snareCd = Math.max(0, (sa.snareCd || 0) - dt);
       if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, 4); if (L.length) { sa.snareList = L; sa.snareT = 1.0; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
       if (sa.snareT > 0) { const before = sa.snareT; sa.snareT -= dt; const L = sa.snareList as Enemy[];
-        if (sa.snareT > 0.45) { for (const e of L) { if (e.down > 0) continue; e.hit = 0.3; e.atk = 0; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > 2.4) { const st = Math.min(d - 2.4, 28 * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } } }
+        if (sa.snareT > 0.45) { for (const e of L) { if (e.down > 0) continue; e.hit = 0.3; e.atk = 0; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > 2.4) { const st = Math.min(d - 2.4, 28 * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } } }
         if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.6; e.kb = [dx / (d || 1) * 14, dz / (d || 1) * 14]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); } } } if (any) ev.hit(); }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
@@ -377,11 +382,11 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
         const e = s.enemies[i];
         if (e.down > 0) { e.down -= dt; if (e.down <= 0) s.enemies[i] = spawnEnemy(s); continue; }
         e.hit = Math.max(0, e.hit - dt);
-        const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
+        const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
         const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
         if (d < 26 && dy < 5 && e.hit <= 0) {
             e.ang = Math.atan2(dx, dz);
-            if (d > 2.0 && e.atk <= 0) { const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : !insideB(nx, e.z)) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : !insideB(e.x, nz)) e.z = nz; }
+            if (d > 2.0 && e.atk <= 0) { const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : !insideB(nx, e.z) && !inPk(nx, e.z)) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : !insideB(e.x, nz) && !inPk(e.x, nz)) e.z = nz; }
             if (d <= 2.4 && e.atk <= 0) e.atk = 0.7; // telegraph
         }
         if (e.atk > 0) {
