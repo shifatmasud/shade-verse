@@ -109,16 +109,20 @@ export interface Sim {
     hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number; atkPend: number; shotE: Enemy | null; anchorReal: boolean; spring: number; shotT: number; shotTgt: V3; glideOn: boolean; airT: number;
     grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
+    plasma: Plasma[]; blasts: Blast[]; aimE: Enemy | null;
 }
+// plasma web shot: a visible bolt (plasma core wrapped in web strands) with gentle homing; blasts drive the shockwave VFX
+export interface Plasma { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; tgt: Enemy | null }
+export interface Blast { x: number; y: number; z: number; t: number; r: number }
 export interface Input { jumpHeld?: boolean; jumpReleased?: boolean; jumpCancelled?: boolean; attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean }
-export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void }
+export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void; blast?: (x: number, y: number, z: number) => void }
 
 export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
 
 export function createSim(): Sim {
     let best = 0;
     try { best = parseInt(localStorage.getItem('webswinger3d-best') || '0', 10) || 0; } catch (e) { /* ignore */ }
-    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, atkPend: 0, shotE: null, anchorReal: false, spring: 0, shotT: 0, shotTgt: [0, 0, 0], glideOn: false, airT: 0, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0, swim: false, dive: false, wall: null, wallB: -1, wallT: 0, vaulted: 0 };
+    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, atkPend: 0, shotE: null, anchorReal: false, spring: 0, shotT: 0, shotTgt: [0, 0, 0], glideOn: false, airT: 0, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0, swim: false, dive: false, wall: null, wallB: -1, wallT: 0, vaulted: 0, plasma: [], blasts: [], aimE: null };
     resetSim(s);
     return s;
 }
@@ -172,6 +176,7 @@ export function resetSim(s: Sim) {
     s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false; (s as any).flightTapCancel = false;
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
+    s.plasma = []; s.blasts = []; s.aimE = null; s.shotE = null;
     s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
 }
 
@@ -193,13 +198,59 @@ function findAnchor(s: Sim, strict = false): V3 {
     return best || [p[0] + fx * 24, p[1] + 26, p[2] + fz * 24];
 }
 
+
+// PLASMA WEB SHOT targeting: nearest live enemy near the aim direction with clear line of sight.
+// Aim assist: a wide cone around the camera heading picks the target; the reticle (Scene) shows it before firing.
+export function pickPlasmaTarget(s: Sim): Enemy | null {
+    const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+    let best: Enemy | null = null, bs = 1e9;
+    for (const e of s.enemies) {
+        if (e.down > 0) continue;
+        const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs(e.y - p[1]);
+        if (d < 2 || d > 42 || dy > 18) continue;
+        const dot = (dx * fx + dz * fz) / d;
+        if (dot < 0.35) continue;   // assist cone (~70 deg): not through buildings, not behind the hero
+        if (!losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) continue;
+        const sc = d * (0.4 + (1 - dot) * 8);   // strongly prefer what the camera points at, then nearer
+        if (sc < bs) { bs = sc; best = e; }
+    }
+    return best;
+}
+const PLASMA_SPEED = 55, PLASMA_CAP = 3, BLAST_CAP = 4, BLAST_R = 8;
+function spawnPlasma(s: Sim, tgt: Enemy) {
+    if (s.plasma.length >= PLASMA_CAP) s.plasma.shift();   // cap concurrent bolts (low-end budget)
+    const p = s.pos, ty = tgt.y + BODY_OFF[tgt.kind ?? 0];
+    const ox = p[0] + Math.sin(s.yaw) * 0.6, oy = p[1] + 1.4, oz = p[2] + Math.cos(s.yaw) * 0.6;   // from the raised hands
+    const d = norm([tgt.x - ox, ty - oy, tgt.z - oz]);
+    s.plasma.push({ x: ox, y: oy, z: oz, vx: d[0] * PLASMA_SPEED, vy: d[1] * PLASMA_SPEED, vz: d[2] * PLASMA_SPEED, t: 0, tgt });
+}
+function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
+    s.blasts.push({ x, y, z, t: 0, r: BLAST_R });
+    if (s.blasts.length > BLAST_CAP) s.blasts.shift();   // cap overlapping effects so repeated shots stay readable
+    let any = false;
+    for (const e of s.enemies) {
+        if (e.down > 0) continue;
+        const dx = e.x - x, dz = e.z - z, dy = (e.y + BODY_OFF[e.kind ?? 0]) - y, dh = Math.hypot(dx, dz);
+        const d = Math.hypot(dh, dy);
+        if (d > BLAST_R) continue;
+        const k = 1 - d / BLAST_R;
+        e.hp -= d < 2.5 ? 3 : 2;   // direct hit hits hardest
+        e.hit = 0.5;
+        const kk = 10 + 26 * k;   // radial knockback, strongest at the centre
+        e.kb = [dx / (dh || 1) * kk, dz / (dh || 1) * kk];
+        any = true; s.combo++; s.comboT = 1.2;
+        if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); }
+    }
+    if (any) ev.hit();
+    if (ev.blast) ev.blast(x, y, z);
+}
 // read-only HUD context: which actions would actually do something right now (same ranges the actions use)
 export function actionCtx(s: Sim) {
     const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let melee = false, shot = false, snare = false;
     for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs(e.y - p[1]);
         if (d < 3.6 && dy < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) melee = true;   // exactly the melee hit condition
-        if (d > 3.6 && d < 32 && dy < 14 && (dx * fx + dz * fz) / (d || 1) > 0.6) shot = true;
         if (d < 24 && dy < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) snare = true; }
+    shot = !!pickPlasmaTarget(s);   // web shot lights when the plasma auto-target has a lock
     const grab = !s.swim && !s.wall && s.spring <= 0 && findAnchor(s, true) !== null;
     return { grab, melee, shot, snare: snare && !((s as any).snareCd > 0) };
 }
@@ -388,6 +439,7 @@ const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 -
 const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1 && x < e.roof.x1 - 1 && z > e.roof.z0 + 1 && z < e.roof.z1 - 1;
 function stepCombat(s: Sim, dt: number, ev: Events) {
     const p = s.pos, v = s.vel;
+    s.aimE = pickPlasmaTarget(s);   // contextual lock indicator: what a web shot would hit right now
     if (s.hp <= 0) { s.hp = 100; p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false; ev.fall(); }
     s.atkT = Math.max(0, s.atkT - dt); s.dodgeT = Math.max(0, s.dodgeT - dt); s.hurtT = Math.max(0, s.hurtT - dt); s.comboT = Math.max(0, s.comboT - dt);
     if (s.comboT === 0) s.combo = 0;
@@ -403,10 +455,8 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
             s.atkT = 0.32; s.atkPend = 0.11; s.shotE = null;   // melee damage lands when the fist arrives (~0.11 s, measured from the clip with tools/fistcheck.mjs)
             let melee = false; if (!fShot) { (s as any).kickAlt = !(s as any).kickAlt; (s as any).kick = !!(s as any).kickAlt; }
             if (!fShot) for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 3.6 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) { melee = true; break; } }
-            if (!melee && !fMelee) { // PROTOTYPE web shot (both hands): pick the nearest enemy ahead now; strands start at input and damage lands when they arrive
-                let bd = 1e9;
-                for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d > 3.6 && d < 32 && Math.abs(e.y - p[1]) < 14 && (dx * fx + dz * fz) / (d || 1) > 0.6 && d < bd) { bd = d; s.shotE = e; } }
-                if (s.shotE) { s.shotT = 0.3; s.shotTgt = [s.shotE.x, s.shotE.y + [1.2, -0.3, 0.67, 1.2][s.shotE.kind ?? 0], s.shotE.z]; }
+            if (!melee && !fMelee) { // plasma web shot (both hands): auto-target locked with line of sight; the bolt flies and detonates on impact
+                if (s.aimE) { s.shotT = 0.3; s.shotTgt = [s.aimE.x, s.aimE.y + BODY_OFF[s.aimE.kind ?? 0], s.aimE.z]; spawnPlasma(s, s.aimE); s.shotE = null; }
             }
         }
     }   // damage lands when the fist arrives (~0.12 s), not at input
@@ -430,7 +480,6 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
                     if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); }
                 }
             }
-            if (!hitAny && s.shotE) { const be = s.shotE; s.shotE = null; if (be.down <= 0) { be.hp -= 1; be.hit = 0.45; hitAny = true; s.combo++; s.comboT = 1.2; if (be.hp <= 0) { be.down = 3; s.kos++; s.score += 2; ev.ko(); } } }
             if (hitAny) ev.hit();
         }
     }
@@ -454,6 +503,22 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
             }
         } else if (e.atk < 0) e.atk = Math.min(0, e.atk + dt);
     }
+    // plasma bolts: gentle homing toward the locked enemy, detonate on enemy/building/ground or timeout
+    for (let i = s.plasma.length - 1; i >= 0; i--) {
+        const b = s.plasma[i]; b.t += dt;
+        if (b.tgt && b.tgt.down <= 0) {
+            const ty = b.tgt.y + BODY_OFF[b.tgt.kind ?? 0], d = norm([b.tgt.x - b.x, ty - b.y, b.tgt.z - b.z]);
+            const sp = Math.hypot(b.vx, b.vy, b.vz), turn = Math.min(1, dt * 7);   // limited turn: tracks without wild curves
+            b.vx += (d[0] * sp - b.vx) * turn; b.vy += (d[1] * sp - b.vy) * turn; b.vz += (d[2] * sp - b.vz) * turn;
+        }
+        const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt, nz = b.z + b.vz * dt;
+        let boom = b.t > 1.4;
+        if (!boom) for (const e of s.enemies) { if (e.down > 0) continue; if (Math.hypot(e.x - nx, e.z - nz) < 1.6 && Math.abs((e.y + BODY_OFF[e.kind ?? 0]) - ny) < 2.4) { boom = true; break; } }
+        if (!boom) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { boom = true; break; } }
+        if (!boom) { const gy = nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.85) boom = true; }
+        if (boom) { detonate(s, nx, ny, nz, ev); s.plasma.splice(i, 1); } else { b.x = nx; b.y = ny; b.z = nz; }
+    }
+    for (let i = s.blasts.length - 1; i >= 0; i--) { s.blasts[i].t += dt; if (s.blasts[i].t > 0.85) s.blasts.splice(i, 1); }
 }
 export function stepBeacon(s: Sim, ev: Events) {
     const p = s.pos, b = s.beacon;

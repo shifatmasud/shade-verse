@@ -811,6 +811,89 @@ function buildEnemyGeo(kind: number): THREE.BufferGeometry {
 }
 
 
+
+// Plasma web shot: bright core wrapped in spinning web-strand rings, a huge impact shockwave
+// (flash bubble + expanding ring + radial debris), and a small lock reticle over the auto-target.
+// Everything is pooled (3 bolts, 4 blasts, 12 sparks each): zero per-frame allocation, additive only, no lights.
+const _pz = new THREE.Vector3(0, 0, 1), _pv = new THREE.Vector3();
+function PlasmaFx({ sim }: { sim: Sim }) {
+    const { camera } = useThree();
+    const proj = useRef<THREE.Group[]>([]);
+    const blasts = useRef<{ g: THREE.Group; flash: THREE.Mesh; ring: THREE.Mesh; sparks: THREE.InstancedMesh; dir: Float32Array }[]>([]);
+    const ret = useRef<THREE.Group>(null!);
+    const o = useMemo(() => new THREE.Object3D(), []);
+    useFrame(() => {
+        for (let i = 0; i < 3; i++) {
+            const g = proj.current[i]; if (!g) continue;
+            const b = sim.plasma[i];
+            g.visible = !!b;
+            if (b) {
+                g.position.set(b.x, b.y, b.z);
+                _pv.set(b.vx, b.vy, b.vz).normalize();
+                g.quaternion.setFromUnitVectors(_pz, _pv);
+                (g.children[2] as THREE.Mesh).rotation.z = sim.t * 22;    // strand rings spin around the flight axis
+                (g.children[3] as THREE.Mesh).rotation.z = -sim.t * 17;
+                (g.children[4] as THREE.Mesh).rotation.z = sim.t * 27;
+                const pu = 1 + Math.sin(sim.t * 31) * 0.12; g.children[0].scale.setScalar(pu);
+            }
+        }
+        for (let i = 0; i < 4; i++) {
+            const grp = blasts.current[i]; if (!grp) continue;
+            const bl = sim.blasts[i], on = !!bl && bl.t < 0.85;
+            grp.g.visible = !!on;
+            if (on && bl) {
+                const k = bl.t / 0.85;
+                grp.g.position.set(bl.x, bl.y, bl.z);
+                const fk = Math.min(1, bl.t / 0.2);
+                grp.flash.scale.setScalar(0.5 + fk * bl.r * 0.55);
+                (grp.flash.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.95 * (1 - bl.t / 0.28));
+                grp.ring.quaternion.copy(camera.quaternion);
+                grp.ring.scale.setScalar(0.6 + k * bl.r * 1.5);
+                (grp.ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - k) * (1 - k);
+                for (let j = 0; j < 12; j++) {
+                    const d = grp.dir, sp = (0.25 + k * bl.r * (0.75 + d[j * 4 + 3] * 0.5));
+                    o.position.set(d[j * 4] * sp, d[j * 4 + 1] * sp + k * k * -3.5, d[j * 4 + 2] * sp);
+                    o.scale.setScalar(Math.max(0.04, (1 - k) * 0.5));
+                    o.rotation.set(sim.t * 9 + j, j * 1.7, 0); o.updateMatrix();
+                    grp.sparks.setMatrixAt(j, o.matrix);
+                }
+                grp.sparks.instanceMatrix.needsUpdate = true;
+            }
+        }
+        const e = sim.aimE;
+        ret.current.visible = !!e && sim.mode === 'play';
+        if (e) {
+            ret.current.position.set(e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0] + 1.05, e.z);
+            ret.current.quaternion.copy(camera.quaternion);
+            const s2 = 1 + Math.sin(sim.t * 6) * 0.09; ret.current.scale.setScalar(s2);
+            ret.current.children[0].rotation.z = sim.t * 2.4;
+        }
+    });
+    return <>
+        {[0, 1, 2].map((i) => <group key={'p' + i} ref={(g) => { if (g) proj.current[i] = g; }} visible={false} frustumCulled={false}>
+            <mesh frustumCulled={false}><sphereGeometry args={[0.3, 10, 8]} /><meshBasicMaterial color="#e8fdff" toneMapped={false} /></mesh>
+            <mesh frustumCulled={false}><sphereGeometry args={[0.78, 10, 8]} /><meshBasicMaterial color="#5fd8ff" transparent opacity={0.38} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
+            {[0.42, 0.58, 0.5].map((r, j) => <mesh key={j} frustumCulled={false} position={[0, 0, (j - 1) * 0.55]}><torusGeometry args={[r, 0.035, 5, 14]} /><meshBasicMaterial color="#f4f8ff" transparent opacity={0.9} depthWrite={false} /></mesh>)}
+        </group>)}
+        {[0, 1, 2, 3].map((i) => <group key={'b' + i} ref={(g) => {
+            if (g && !blasts.current[i]) {
+                const flash = g.children[0] as THREE.Mesh, ring = g.children[1] as THREE.Mesh, sparks = g.children[2] as THREE.InstancedMesh;
+                const dir = new Float32Array(12 * 4);
+                for (let j = 0; j < 12; j++) { const a = (j / 12) * Math.PI * 2 + (j % 3) * 0.4, y = 0.15 + ((j * 7) % 5) * 0.16, l = Math.hypot(Math.cos(a), y, Math.sin(a)); dir[j * 4] = Math.cos(a) / l; dir[j * 4 + 1] = y / l; dir[j * 4 + 2] = Math.sin(a) / l; dir[j * 4 + 3] = ((j * 13) % 10) / 10; }
+                blasts.current[i] = { g, flash, ring, sparks, dir };
+            }
+        }} visible={false}>
+            <mesh frustumCulled={false}><sphereGeometry args={[1, 14, 10]} /><meshBasicMaterial color="#cfeeff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
+            <mesh frustumCulled={false}><ringGeometry args={[0.82, 1, 40]} /><meshBasicMaterial color="#bfe9ff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+            <instancedMesh args={[undefined, undefined, 12]} frustumCulled={false}><coneGeometry args={[0.16, 0.6, 4]} /><meshBasicMaterial color="#ffd9a8" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></instancedMesh>
+        </group>)}
+        <group ref={ret} visible={false} frustumCulled={false}>
+            <mesh frustumCulled={false}><ringGeometry args={[0.5, 0.58, 4, 1]} /><meshBasicMaterial color="#8fe9ff" transparent opacity={0.85} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+            <mesh frustumCulled={false}><circleGeometry args={[0.07, 8]} /><meshBasicMaterial color="#dffbff" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+        </group>
+    </>;
+}
+
 export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
@@ -1069,13 +1152,13 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         // web
         { // two web lines, each from an actual animated hand (world position), shot out to the anchor over ~0.14 s
             const wl2 = web.current, wr2 = webB.current, side = sim.swings % 2; // swing: alternate hands (odd = right); spring-shot jump and web-shot attack: both hands together
-            const mode = sim.shotT > 0 ? 2 : sim.spring > 0 ? 1 : sim.web ? 0 : -1;
+            const mode = sim.spring > 0 ? 1 : sim.web ? 0 : -1;   // shot: the plasma bolt is the visual now (was mode 2 hand-to-target cylinders)
             const both = mode > 0;
             wl2.visible = mode >= 0 && (both || side === 0); wr2.visible = mode >= 0 && (both || side === 1);
             if (mode >= 0) {
                 rig.root.updateWorldMatrix(true, true);
-                const tgt = mode === 2 ? sim.shotTgt : sim.anchor;
-                const grow = mode === 2 ? Math.min(1, Math.max(0.05, (0.3 - sim.shotT) / 0.1)) : mode === 1 ? Math.max(0.05, sim.spring / 0.4) : Math.min(1, Math.max(0.05, sim.webT / 0.14));
+                const tgt = sim.anchor;
+                const grow = mode === 1 ? Math.max(0.05, sim.spring / 0.4) : Math.min(1, Math.max(0.05, sim.webT / 0.14));
                 const ws = [wl2, wr2], hb = [rig.b.handL, rig.b.handR], fb = [rig.b.farmL, rig.b.farmR];
                 for (let i = both ? 0 : side; i <= (both ? 1 : side); i++) {
                     hb[i].getWorldPosition(_hp); fb[i].getWorldPosition(_fp); _hp.addScaledVector(_wd2.copy(_hp).sub(_fp).normalize(), 0.08);
@@ -1147,7 +1230,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <Sky />
         <City /><TenementBlock />
         <FlyingCars />
-        <Forest sim={sim} /><Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} />
+        <Forest sim={sim} /><Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} />
         <group ref={hero}>
             <group>
                 <primitive object={rig.root} />

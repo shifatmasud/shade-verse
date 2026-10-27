@@ -70,6 +70,7 @@ export function App() {
         attach: () => { impact('#8fe9ff', 1.8, 0); buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
         release: () => { beep(300, 0.08, 'triangle'); },
         hit: () => { impact('#ffffff', 2.6, 8); buzz(30); beep(160, 0.09, 'square', 0.08); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
+        blast: () => { impact('#aee6ff', 4.2, 14); buzz(60); beep(70, 0.3, 'sawtooth', 0.14); beep(140, 0.18, 'square', 0.07); gsap.fromTo(fx, { fov: 9 }, { fov: 0, duration: 0.45, ease: 'power3.out' }); gsap.fromTo(fx, { shake: 0.9 }, { shake: 0, duration: 0.3 }); },
         hurt: () => { impact('#ff3a3a', 3.4, 14); buzz(70); beep(90, 0.18, 'sawtooth', 0.09); showToast('Ouch', 600); },
         ko: () => { impact('#ffd24a', 5, 20); buzz(50); beep(240, 0.18, 'triangle', 0.09); showToast('KO +2', 700); },
         land: (hard: boolean) => { buzz(hard ? 80 : 15); beep(hard ? 70 : 140, hard ? 0.25 : 0.08, 'sine', hard ? 0.12 : 0.05); if (hard) showToast('Hard landing', 700); },
