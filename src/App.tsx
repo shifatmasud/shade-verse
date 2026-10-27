@@ -31,6 +31,27 @@ const IStick = () => <Svg s={26}><circle cx="12" cy="12" r="3" /><path d="M12 3v
 const Pips = ({ n, max = 10 }: { n: number; max?: number }) => <span className="pips">{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? 'on' : ''} />)}</span>;
 
 export function App() {
+    // Anchor to the visible viewport when Android browser chrome or rotation leaves a taller layout viewport.
+    useEffect(() => {
+        const vv = window.visualViewport, root = document.documentElement;
+        let frame = 0, settle = 0;
+        const sync = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+                root.style.setProperty('--view-height', `${vv?.height || window.innerHeight}px`);
+                root.style.setProperty('--view-top', `${vv?.offsetTop || 0}px`);
+            });
+        };
+        const rotate = () => { sync(); clearTimeout(settle); settle = window.setTimeout(sync, 250); };
+        sync(); window.addEventListener('resize', sync); window.addEventListener('orientationchange', rotate);
+        vv?.addEventListener('resize', sync); vv?.addEventListener('scroll', sync);
+        return () => {
+            cancelAnimationFrame(frame); clearTimeout(settle);
+            window.removeEventListener('resize', sync); window.removeEventListener('orientationchange', rotate);
+            vv?.removeEventListener('resize', sync); vv?.removeEventListener('scroll', sync);
+            root.style.removeProperty('--view-height'); root.style.removeProperty('--view-top');
+        };
+    }, []);
     const sim = useMemo(() => createSim(), []);
     const fx = useRef({ fov: 0, shake: 0 }).current;
     const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
@@ -131,7 +152,7 @@ export function App() {
     const drag = useRef({ id: -1, x: 0, y: 0 });
     const [swingOn, setSwingOn] = useState(false);
 
-    return <div className="stage" onContextMenu={(e) => e.preventDefault()}>
+    return <div className={hud.mode === 'play' ? 'stage' : 'stage menu'} onContextMenu={(e) => e.preventDefault()}>
         <div id="uw" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, opacity: 0, transition: 'opacity .15s', background: 'linear-gradient(180deg, rgba(110,215,235,.24), rgba(30,140,175,.30) 45%, rgba(8,70,105,.5))' }} />
         <Canvas
             dpr={[1, coarse ? 1.5 : 2]}
