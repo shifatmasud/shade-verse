@@ -286,7 +286,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             for (const b of buildings) if (ex > b.x0 - 3 && ex < b.x1 + 3 && ez > b.z0 - 3 && ez < b.z1 + 3 && ey < b.h + 3) { hit = true; break; }
             if (!hit) break;
         }
-        const tx = p[0] - fxd * dist, ty = sim.swim ? (sim.dive ? Math.min(WATER_Y - 1.5, p[1] + 1.2 + sy * dist) : WATER_Y + 0.7) : Math.max(2, p[1] + 1.5 + sy * dist), tz = p[2] - fzd * dist;
+        const wsh = sim.wall ? 3.6 : 0, wnx = sim.wall ? -sim.wall[1] : 0, wnz = sim.wall ? sim.wall[0] : 0; // wall: 3/4 view from beside the hero
+        const tx = p[0] - fxd * dist + wnx * wsh, ty = sim.swim ? (sim.dive ? Math.min(WATER_Y - 1.5, p[1] + 1.2 + sy * dist) : WATER_Y + 0.7) : Math.max(2, p[1] + 1.5 + sy * dist), tz = p[2] - fzd * dist + wnz * wsh;
         if (sim.mode === 'menu' || sim.mode === 'over') { cam.current.set(tx, ty, tz); } else cam.current.lerp(new THREE.Vector3(tx, ty, tz), 1 - Math.pow(0.001, dt));
         { // push smoothed camera out of buildings (post-lerp)
             const q = cam.current;
