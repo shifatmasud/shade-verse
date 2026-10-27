@@ -824,6 +824,11 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const ov = DBG ? (window as any).__camOv : null; if (ov) { camera.position.set(ov[0], ov[1], ov[2]); look.current.set(ov[3], ov[4], ov[5]); }
         camera.lookAt(look.current);
         const cp = camera as THREE.PerspectiveCamera;
+        // Near-clip-aware waterline: retain the nearby underside instead of cutting a hole through it.
+        // Restore the ordinary land frustum away from the bay surface to preserve depth precision.
+        const nearWater = camera.position.z < WATER_Z + 2 && Math.abs(camera.position.y - WATER_Y) < 1.5;
+        const nearTarget = nearWater ? 0.05 : 0.5;
+        if (cp.near !== nearTarget) { cp.near = nearTarget; cp.updateProjectionMatrix(); }
         const targetFov = 62 + Math.min(14, speed * 0.25) + fx.fov;
         if (Math.abs(cp.fov - targetFov) > 0.05) { cp.fov += (targetFov - cp.fov) * Math.min(1, dt * 6); cp.updateProjectionMatrix(); }
         {   // water: animate, and split view (waterline across the screen when the camera is at the surface)
