@@ -342,7 +342,7 @@ function Forest({ sim }: { sim: Sim }) {
         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
     }, [pts]);
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
-    useFrame(() => { const gm2 = grass.current && (grass.current.material as THREE.MeshLambertMaterial); if (gm2) { const nn2 = 1 - TOD.day.value; gm2.color.setRGB(1 - 0.25 * nn2, 1 - 0.1 * nn2, 1 + 0.2 * nn2); gm2.emissive.setRGB(0.001 * nn2, 0.006 * nn2, 0.013 * nn2); } });   // night: cool the ground tone to match the cool tufts
+    useFrame(() => { const gm2 = grass.current && (grass.current.material as THREE.MeshLambertMaterial); if (gm2) { const nn2 = 1 - TOD.day.value; gm2.color.setRGB(1 - 0.35 * nn2, 1 - 0.12 * nn2, 1 + 0.35 * nn2); gm2.emissive.setRGB(0.0, 0.002 * nn2, 0.006 * nn2); } });   // night: cool the ground tone to match the cool tufts
     const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)
         const mk = (w: number, h: number, sw: number, sh: number, yaw: number, lift: number) => { const g = new THREE.PlaneGeometry(w, h, sw, sh); g.rotateX(-Math.PI / 2); g.rotateY(yaw); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) pa.setY(i, parkH(cx + pa.getX(i), cz + pa.getZ(i)) + lift); g.computeVertexNormals(); return g; };
         const fl = mk(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 80, 80, 0, 0);
@@ -794,7 +794,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const wl = !!sim.wall;
         if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
         const sw2 = sim.swim;
-        { const rg = ringRef.current; if (rg) { const on = sim.swim && p[1] > -2.6; rg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); const ph = (sim.t * 0.9) % 1; rg.scale.setScalar(1 + ph * 0.9); (rg.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - ph); } } }   // waterline cue: expanding foam ring where the body cuts the surface
+        { const rg = ringRef.current as unknown as THREE.Group; if (rg) { const on = sim.swim && p[1] > -2.6; rg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
         if (sw2) { { const kw = Math.max(0, Math.min(1, (p[1] + 3) / 2.3)), wv = waveH(p[0], p[2], sim.t) * kw, sa2 = sim as any; sa2.swW = (sa2.swW === undefined ? wv : sa2.swW + (wv - sa2.swW) * Math.min(1, dt * 10)); h.position.y = p[1] - 1.7 + sa2.swW; } h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
         const sa0 = sim as any; sa0.gB = (sa0.gB || 0) + ((sim.glideOn ? 1 : 0) - (sa0.gB || 0)) * Math.min(1, dt * 3.5);   // glide pose blend (slow in, quick out)
         const lean = (sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.18 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - sa0.gB * 0.8) + sa0.gB * 1.12;
@@ -982,7 +982,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={webB} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>
-        <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} visible={false} frustumCulled={false}><ringGeometry args={[1.0, 1.25, 28]} /><meshBasicMaterial color="#eefbff" transparent opacity={0.4} depthWrite={false} /></mesh>
+        <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}><ringGeometry args={[1.0, 1.09, 48]} /><meshBasicMaterial color="#eefbff" transparent opacity={0.4} depthWrite={false} /></mesh>)}</group>
         <mesh position={[0, WATER_Y, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]} ref={waterRef} material={waterMat} frustumCulled={false}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500, 160, 80]} /></mesh>
         <mesh position={[0, SEABED, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500]} /><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
