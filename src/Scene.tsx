@@ -339,7 +339,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         h.position.set(p[0], p[1] - 1.0, p[2]);
         h.rotation.set(0, sim.ang, 0); h.scale.setScalar(1.5);
         const wl = !!sim.wall;
-        if (wl) { h.position.x += Math.sin(sim.ang) * 0.68; h.position.z += Math.cos(sim.ang) * 0.68; }
+        if (wl) { h.position.x += Math.sin(sim.ang) * 0.78; h.position.z += Math.cos(sim.ang) * 0.78; }
         const sw2 = sim.swim;
         if (sw2) { h.position.y = p[1] - 0.78; h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
         const lean = sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.18 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3;
