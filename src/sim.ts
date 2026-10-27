@@ -272,6 +272,8 @@ function collide(s: Sim, prevY: number) {
     if (p[2] > lim) { p[2] = lim; v[2] = Math.min(v[2], 0); } if (p[2] < -lim) { p[2] = -lim; v[2] = Math.max(v[2], 0); }
 }
 
+export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 22, glideAcc: 14 };   // traversal tuning knobs
+const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 22, FLY_GLIDE_ACC = 14;   // traversal tuning (was 34 / 14 / 14 / 10): user asked for faster flight
 export function stepSim(s: Sim, dt: number, ev: Events) {
     const p = s.pos, v = s.vel, k = input.keys;
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
@@ -365,7 +367,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         else if (s.glideOn && v[1] <= 0) v[1] += (-4.2 - v[1]) * (1 - Math.exp(-6 * dt));
         else v[1] -= G * dt;
         const air = s.web ? 12 : 7; v[0] += wx * air * dt; v[2] += wz * air * dt;
-        if (s.web) { const hs0 = Math.hypot(v[0], v[2]); const px = hs0 > 2 ? v[0] / hs0 : fx, pz = hs0 > 2 ? v[2] / hs0 : fz; const boost = hs0 < 34 ? 14 : 0; v[0] += px * boost * dt; v[2] += pz * boost * dt; }
+        if (s.web) { const hs0 = Math.hypot(v[0], v[2]); const px = hs0 > 2 ? v[0] / hs0 : fx, pz = hs0 > 2 ? v[2] / hs0 : fz; const boost = hs0 < FLY_SWING_CAP ? FLY_SWING_BOOST : 0; v[0] += px * boost * dt; v[2] += pz * boost * dt; }
         if (!s.web) { const dr = Math.pow(0.992, dt * 60); v[0] *= dr; v[2] *= dr; }
     }
     p[0] += v[0] * dt; p[1] += v[1] * dt; p[2] += v[2] * dt;
@@ -382,7 +384,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
             if (vn > 0) { v[0] -= n[0] * vn; v[1] -= n[1] * vn; v[2] -= n[2] * vn; }
         }
     }
-    if (s.glideOn) { const hs = Math.hypot(v[0], v[2]); if (hs < 14) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * 10 * dt; v[2] += fz2 * 10 * dt; } }
+    if (s.glideOn) { const hs = Math.hypot(v[0], v[2]); if (hs < FLY_GLIDE_CAP) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * FLY_GLIDE_ACC * dt; v[2] += fz2 * FLY_GLIDE_ACC * dt; } }
 
     collide(s, prevY);
     if (s.webDepartB !== undefined) { const b = blds[s.webDepartB]; if (!s.web || !b || p[0] < b.x0 - 1.2 || p[0] > b.x1 + 1.2 || p[2] < b.z0 - 1.2 || p[2] > b.z1 + 1.2 || p[1] - 1 > b.h + 0.2) s.webDepartB = undefined; }
