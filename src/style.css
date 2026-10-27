@@ -68,12 +68,11 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 
 .ico.jump svg{transition:transform .18s ease}.ico.jump.inv svg{transform:rotate(180deg)}
 
-/* Functional viewport recovery only. Keep the locked menu design and expose overflow on unusually short windows. */
-.stage{top:var(--view-top,0px);bottom:auto;height:100vh;height:var(--view-height,100dvh)}
+/* Landscape target: explicit dynamic viewport; menu never centers in a stale oversized box. */
+.stage{inset:0;bottom:auto;height:100vh;height:100dvh}
 .bar{height:7%}
-.overlay{justify-content:flex-start;overflow-y:auto;touch-action:pan-y}
+.overlay{justify-content:flex-start;overflow-y:auto;touch-action:pan-y;padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:16px}
 .overlay>*{flex-shrink:0}
-.overlay .otitle{margin-top:auto}
-.overlay .go{margin-bottom:auto}
-
+.overlay .otitle{margin-top:0}
+.overlay .go{margin-bottom:0}
 .stage.menu{touch-action:pan-y}

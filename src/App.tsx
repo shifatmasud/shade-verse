@@ -31,27 +31,6 @@ const IStick = () => <Svg s={26}><circle cx="12" cy="12" r="3" /><path d="M12 3v
 const Pips = ({ n, max = 10 }: { n: number; max?: number }) => <span className="pips">{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? 'on' : ''} />)}</span>;
 
 export function App() {
-    // Anchor to the visible viewport when Android browser chrome or rotation leaves a taller layout viewport.
-    useEffect(() => {
-        const vv = window.visualViewport, root = document.documentElement;
-        let frame = 0, settle = 0;
-        const sync = () => {
-            cancelAnimationFrame(frame);
-            frame = requestAnimationFrame(() => {
-                root.style.setProperty('--view-height', `${vv?.height || window.innerHeight}px`);
-                root.style.setProperty('--view-top', `${vv?.offsetTop || 0}px`);
-            });
-        };
-        const rotate = () => { sync(); clearTimeout(settle); settle = window.setTimeout(sync, 250); };
-        sync(); window.addEventListener('resize', sync); window.addEventListener('orientationchange', rotate);
-        vv?.addEventListener('resize', sync); vv?.addEventListener('scroll', sync);
-        return () => {
-            cancelAnimationFrame(frame); clearTimeout(settle);
-            window.removeEventListener('resize', sync); window.removeEventListener('orientationchange', rotate);
-            vv?.removeEventListener('resize', sync); vv?.removeEventListener('scroll', sync);
-            root.style.removeProperty('--view-height'); root.style.removeProperty('--view-top');
-        };
-    }, []);
     const sim = useMemo(() => createSim(), []);
     const fx = useRef({ fov: 0, shake: 0 }).current;
     const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
@@ -131,6 +110,10 @@ export function App() {
     }, []); // eslint-disable-line
 
     function start() {
+        // Fullscreen needs the Play gesture; rejection or unsupported browsers must not block play.
+        if (coarse && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+            try { const f = document.documentElement.requestFullscreen({ navigationUI: 'hide' }); f?.catch(() => {}); } catch (e) { /* browser keeps its bar */ }
+        }
         try { const AC = (window as any).AudioContext || (window as any).webkitAudioContext; if (!actx.current && AC) actx.current = new AC(); try { const rp = actx.current && actx.current.state === 'suspended' ? actx.current.resume() : null; if (rp && rp.catch) rp.catch(() => { /* ignore */ }); } catch (e) { /* ignore */ } if (DBG) (window as any).__audio = { ctx: () => actx.current, wind: () => wind.current, muted: () => mutedRef.current }; } catch (e) { /* ignore */ }
         if (actx.current && !wind.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); wind.current = { g, f }; } catch (e) { /* ignore */ } }
         if (actx.current && !water.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = l * 0.97 + (Math.random() * 2 - 1) * 0.3; d[i] = l; } const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); water.current = { g, f, buf }; if (DBG) (window as any).__audio.water = () => water.current; } catch (e) { /* ignore */ } }
