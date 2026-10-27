@@ -25,6 +25,7 @@ const FACES: [V3, V3, V3, V3, V3][] = [
 
 function buildWorld() {
     const blds: Bld[] = [];
+    const streetBlds: Bld[] = [];
     const data: number[] = [];
     const idx: number[] = [];
     const box = (cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, col: V3, seed: number, skipBottom = true) => {
@@ -39,6 +40,7 @@ function buildWorld() {
     for (let i = 0; i < N; i++) for (let j = 2; j < N; j++) {
         const cx = (i - mi) * CELL, cz = (j - mi) * CELL;
         if (cx > PARK.x0 && cx < PARK.x1 && cz > PARK.z0 && cz < PARK.z1) continue; // forest park block
+        const blockStart=[data.length,idx.length,blds.length];
         const dc = Math.hypot(cx, cz) / HALF;
         const w = 20 + rnd() * 8, d = 20 + rnd() * 8;
         let h = 28 + rnd() * 50 + (1 - dc) * 40 * rnd();
@@ -83,11 +85,18 @@ function buildWorld() {
         box(cx - w * 0.2, h + 0.7, cz + d * 0.15, 2.2, 0.7, 2.2, roofCol, 0.5);
         if (rnd() < 0.5) { box(cx + w * 0.25, h + 1.5, cz - d * 0.2, 0.4, 1.5, 0.4, [0.7, 0.2, 0.25], 0.5); }
         if (rnd() < 0.3) box(cx + w * 0.1, h + 0.25, cz - d * 0.1, w * 0.3, 0.25, d * 0.12, [0.9, 0.55, 0.3], 0.5); // roof glow strip
+        // One six-home Polyfork block replaces an existing outer-city tower, preserving RNG for every other block.
+        streetBlds.push(...blds.slice(blockStart[2]).filter(b=>b.host===undefined));
+        if(cx===-240 && cz===80){data.length=blockStart[0];idx.length=blockStart[1];blds.length=blockStart[2];for(let k=0;k<6;k++){const x=-249+(k%3)*9,z=72+Math.floor(k/3)*17;const host=blds.length;blds.push({x0:x-4,x1:x+4,z0:z-4,z1:z+4,h:18});
+            for(const q of [[-4,-3.7,-4,4], [3.7,4,-4,4], [-3.7,3.7,-4,-3.7],[-3.7,3.7,3.65,4]]) blds.push({x0:x+q[0],x1:x+q[1],z0:z+q[2],z1:z+q[3],h:19,host});
+            // Measured rooftop hatch bound, conservative enclosing height for small rooftop fittings.
+            const rot=k>=3?-1:1;blds.push({x0:x+(rot>0?-2.08:.52),x1:x+(rot>0?-.52:2.08),z0:z+(rot>0?-1.57:.37),z1:z+(rot>0?-.37:1.57),h:18.8,host});
+            blds.push({x0:x+(rot>0?2.16:-2.44),x1:x+(rot>0?2.44:-2.16),z0:z+(rot>0?-2.04:1.76),z1:z+(rot>0?-1.76:2.04),h:18.62,host});}}
     }
     const g = HALF + 200, base = data.length / 10;
     for (const p of [[-g, g], [g, g], [g, WATER_Z], [-g, WATER_Z]]) data.push(p[0], 0, p[1], 0, 1, 0, 0.16, 0.15, 0.2, 0.5);
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    return { blds, data: new Float32Array(data), idx: new Uint32Array(idx) };
+    return { blds, streetBlds, data: new Float32Array(data), idx: new Uint32Array(idx) };
 }
 export const world = buildWorld();
 const blds = world.blds;

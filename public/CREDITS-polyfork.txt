@@ -1,0 +1,5 @@
+Brick Tenement by Polyfork. Used and modified inside Shadow: The Soul of Darkness.
+Asset: https://polyfork.dev/asset/brick-tenement-5257e9
+Source model: https://polyfork.dev/cdn/brick-tenement-5257e9.glb
+Licence: https://polyfork.dev/licensing (checked October 27, 2026)
+Free low-poly model. Personal/commercial game use and modification permitted, no attribution required. The game may ship the model inside it. Standalone asset redistribution is not permitted. No purchase made.

@@ -1,3 +1,4 @@
+import tenementData from './polyfork-tenement.json';
 import { PINE_URL, LEAVES_URL } from './texdata'
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -166,6 +167,16 @@ function City() {
     }, []);
     const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: CITY_VS, fragmentShader: CITY_FS, uniforms: { uFog: { value: TOD.fog }, uTime: { value: 0 }, uSunV: TOD.sunU, uDay: TOD.day, uNoon: TOD.noon } }), []);
     return <mesh geometry={geo} material={mat} frustumCulled={false} />;
+}
+
+// Polyfork free game-embedding licence checked October 27, 2026; local peripheral-block prototype.
+function TenementBlock(){
+ const geo=useMemo(()=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(tenementData.p,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(tenementData.n,3));g.setAttribute('color',new THREE.Float32BufferAttribute(tenementData.c,3));return g;},[]);
+ const mat=useMemo(()=>new THREE.ShaderMaterial({uniforms:{uBlockDay:TOD.day,uBlockFog:{value:TOD.fog}},vertexShader:`attribute vec3 color;varying vec3 vC;varying vec3 vN;varying float vD;void main(){vC=color;vN=mat3(modelMatrix)*mat3(instanceMatrix)*normal;vec4 wp=modelMatrix*instanceMatrix*vec4(position,1.0);vec4 mv=viewMatrix*wp;vD=length(mv.xyz);gl_Position=projectionMatrix*mv;}`,fragmentShader:`uniform float uBlockDay;uniform vec3 uBlockFog;varying vec3 vC;varying vec3 vN;varying float vD;void main(){float light=.40+.60*max(0.,dot(normalize(vN),normalize(vec3(-.5,1.,.3))));vec3 c=vC*light*(.22+.9*uBlockDay);float glass=1.-step(.012,distance(vC,vec3(.25415,.39157,.47932)));c+=vec3(1.,.584,.275)*.6*(1.-uBlockDay)*glass;float fog=1.-exp(-vD*vD*.000006);gl_FragColor=vec4(mix(c,uBlockFog,fog),1.);
+#include <tonemapping_fragment>
+#include <colorspace_fragment>}`}),[]);
+ const ref=useRef<THREE.InstancedMesh>(null!);useEffect(()=>{const o=new THREE.Object3D();for(let i=0;i<6;i++){o.position.set(-249+(i%3)*9,0,72+Math.floor(i/3)*17);o.rotation.set(0,Math.floor(i/3)?Math.PI:0,0);o.updateMatrix();ref.current.setMatrixAt(i,o.matrix);}ref.current.instanceMatrix.needsUpdate=true;ref.current.computeBoundingSphere();},[]);
+ return <instancedMesh ref={ref} args={[geo,mat,6]}/>;
 }
 
 function Sky() {
@@ -339,7 +350,7 @@ function Forest({ sim }: { sim: Sim }) {
     }), []);
     const pts = useMemo(() => { let r = 7; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const a: { x: number; z: number; s: number; c: number; v: number }[] = []; for (let i = 0; i < 600 && a.length < 130; i++) { const px = PARK.x0 + 6 + rnd() * (PARK.x1 - PARK.x0 - 12), pz = PARK.z0 + 6 + rnd() * (PARK.z1 - PARK.z0 - 12), cxm = (PARK.x0 + PARK.x1) / 2, czm = (PARK.z0 + PARK.z1) / 2; if (Math.hypot(px - cxm, pz - czm) < 54 || Math.abs((px - cxm) - (pz - czm) * 0.6) < 6) continue; if (rnd() < 0.2) continue; a.push({ x: px, z: pz, s: 0.8 + rnd() * 0.5, c: rnd(), v: TREE_PATTERN[a.length % TREE_PATTERN.length] }); }
         // Small street-side clusters use the same families and LOD, clear of buildings and intersections.
-        const street = buildings.filter(b=>b.host===undefined).map((b,i)=>({b,i,k:Math.sin((b.x0*13.37+b.z0*7.17))*43758.5453%1})).sort((a,b)=>a.k-b.k);
+        const street = world.streetBlds.map((b,i)=>({b,i,k:Math.sin((b.x0*13.37+b.z0*7.17))*43758.5453%1})).sort((a,b)=>a.k-b.k);
         for (let i = 0; i < street.length && a.length < 190; i++) {
             const b = street[i].b;
             const x = b.x1 + 2.5, z = (b.z0 + b.z1) / 2 + (Math.floor(i / 3) % 2 ? 4 : -4);
@@ -1123,7 +1134,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <DayNight />
         <FxaaPass enabled={coarse} />
         <Sky />
-        <City />
+        <City /><TenementBlock />
         <FlyingCars />
         <Forest sim={sim} /><Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} />
         <group ref={hero}>
