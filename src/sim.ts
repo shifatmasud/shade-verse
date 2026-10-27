@@ -193,6 +193,16 @@ function findAnchor(s: Sim, strict = false): V3 {
     return best || [p[0] + fx * 24, p[1] + 26, p[2] + fz * 24];
 }
 
+// read-only HUD context: which actions would actually do something right now (same ranges the actions use)
+export function actionCtx(s: Sim) {
+    const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let melee = false, shot = false, snare = false;
+    for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs(e.y - p[1]);
+        if (d < 3.6 && dy < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) melee = true;   // exactly the melee hit condition
+        if (d > 3.6 && d < 32 && dy < 14 && (dx * fx + dz * fz) / (d || 1) > 0.6) shot = true;
+        if (d < 24 && dy < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) snare = true; }
+    const grab = !s.swim && !s.wall && s.spring <= 0 && findAnchor(s, true) !== null;
+    return { grab, melee, shot, snare: snare && !((s as any).snareCd > 0) };
+}
 let hitN: [number, number] | null = null, hitB = -1;
 function collide(s: Sim, prevY: number) {
     const p = s.pos, v = s.vel; s.ground = false; hitN = null; hitB = -1;

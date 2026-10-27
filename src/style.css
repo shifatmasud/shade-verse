@@ -76,3 +76,17 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 .overlay .otitle{margin-top:0}
 .overlay .go{margin-bottom:0}
 .stage.menu{touch-action:pan-y}
+
+/* 213 minimal UI: only what earns its place; each press is a big visible kick */
+.ico{overflow:visible}.ico svg{will-change:transform}
+.ico{transition:transform .22s cubic-bezier(.3,1.6,.5,1),opacity .18s}
+.ico.off{transform:scale(0);opacity:0;pointer-events:none}
+.ripple{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;border:3px solid currentColor;pointer-events:none;box-shadow:0 0 14px currentColor}
+.flash{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 35%,var(--fx,#fff) 140%);mix-blend-mode:screen}
+.hud .hpchip{opacity:0;transform:translateY(-12px);transition:opacity .25s,transform .25s}.hud .hpchip.show{opacity:1;transform:none}
+
+.impact{position:absolute;left:50%;top:50%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:5px solid currentColor;box-shadow:0 0 30px currentColor,inset 0 0 20px currentColor;opacity:0;pointer-events:none}
+.ico.swing.linked{color:#8fe9ff;filter:drop-shadow(0 0 12px #8fe9ff) drop-shadow(0 0 3px #000);transform:scale(1.15)}
+.ico.swing.linked::after{content:'';position:absolute;inset:4px;border-radius:50%;border:2px dashed #8fe9ff;animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hud .chip.orbs{pointer-events:auto}.mutedmark{display:flex;opacity:.9}

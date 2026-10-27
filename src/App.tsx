@@ -3,11 +3,24 @@ import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, motion } from 'framer-motion';
 import gsap from 'gsap';
 import { Scene } from './Scene';
-import { createSim, buildings, resetSim, input, type Events } from './sim';
+import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks exist only in instrumented builds (VITE_DBG=1), never in the release build
 let GL2 = false;   // functional WebGL2 capability flag lives in module state, not on window
 const isGl2 = () => GL2;
+// every button press: big icon kick, expanding ring, and a stage flash tinted per action (transform/opacity only, no extra render passes)
+const impact = (tint: string, size: number, shk: number) => {
+    const o = document.querySelector('.impact') as HTMLElement | null, f = document.querySelector('.flash') as HTMLElement | null, c = document.querySelector('.stage canvas') as HTMLElement | null;
+    if (o) { o.style.color = tint; gsap.fromTo(o, { scale: 0.2, opacity: 1 }, { scale: size, opacity: 0, duration: 0.45, ease: 'power3.out' }); }
+    if (f) { f.style.setProperty('--fx', tint); gsap.fromTo(f, { opacity: shk ? 0.9 : 0.5 }, { opacity: 0, duration: 0.35 }); }
+    if (c && shk) gsap.fromTo(c, { x: shk, y: -shk * 0.6 }, { x: 0, y: 0, duration: 0.3, ease: 'elastic.out(1.2,0.3)' });
+};
+const burst = (e: React.PointerEvent, tint: string, spin = 0) => {
+    const el = e.currentTarget as HTMLElement; const r = document.createElement('i'); r.className = 'ripple'; r.style.color = tint; el.appendChild(r);
+    gsap.fromTo(r, { scale: 0.5, opacity: 0.95 }, { scale: 2.6, opacity: 0, duration: 0.5, ease: 'power2.out', onComplete: () => r.remove() });
+    gsap.fromTo(el.querySelector('svg:not(.ring)'), { scale: 1.7, rotate: spin }, { scale: 1, rotate: 0, duration: 0.42, ease: 'back.out(3)' });
+    const f = document.querySelector('.flash') as HTMLElement | null; if (f) { f.style.setProperty('--fx', tint); gsap.fromTo(f, { opacity: 0.55 }, { opacity: 0, duration: 0.3, ease: 'power2.out' }); }
+};
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
 
@@ -36,7 +49,7 @@ export function App() {
     const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
     const perf = useRef({ scale: coarse ? 0.7 : 1, fps: 60, speed: 0 }).current;
     const actx = useRef<AudioContext | null>(null);
-    const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0, sc: 0 });
+    const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0, sc: 0, gr: false, me: false, sh: false, sn: false, wb: false });
     const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
     const toastId = useRef(0);
     const [muted, setMuted] = useState(false);
@@ -54,11 +67,11 @@ export function App() {
     const ev: Events = useMemo(() => ({
         orb: () => { buzz(25); showToast('+' + (sim.score - lastScore.current), 700); lastScore.current = sim.score; beep(780 + Math.min(sim.score, 20) * 25, 0.15, 'sine', 0.09); gsap.fromTo(fx, { fov: 10 }, { fov: 0, duration: 0.5, ease: 'power2.out' }); },
         fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Knocked out. Back to your last rooftop.', 2000); beep(120, 0.3, 'sawtooth', 0.08); },
-        attach: () => { buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
+        attach: () => { impact('#8fe9ff', 1.8, 0); buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
         release: () => { beep(300, 0.08, 'triangle'); },
-        hit: () => { buzz(30); beep(160, 0.09, 'square', 0.08); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
-        hurt: () => { buzz(70); beep(90, 0.18, 'sawtooth', 0.09); showToast('Ouch', 600); },
-        ko: () => { buzz(50); beep(240, 0.18, 'triangle', 0.09); showToast('KO +2', 700); },
+        hit: () => { impact('#ffffff', 2.6, 8); buzz(30); beep(160, 0.09, 'square', 0.08); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
+        hurt: () => { impact('#ff3a3a', 3.4, 14); buzz(70); beep(90, 0.18, 'sawtooth', 0.09); showToast('Ouch', 600); },
+        ko: () => { impact('#ffd24a', 5, 20); buzz(50); beep(240, 0.18, 'triangle', 0.09); showToast('KO +2', 700); },
         land: (hard: boolean) => { buzz(hard ? 80 : 15); beep(hard ? 70 : 140, hard ? 0.25 : 0.08, 'sine', hard ? 0.12 : 0.05); if (hard) showToast('Hard landing', 700); },
         jump: () => { beep(380, 0.1, 'square', 0.04); },
     }), []); // eslint-disable-line
@@ -84,9 +97,9 @@ export function App() {
             setDbg(Math.round(perf.fps) + ' fps · res ' + perf.scale.toFixed(2) + (isGl2() ? ' · WebGL2' : ' · WebGL1'));
             document.documentElement.style.setProperty('--spd', String(Math.min(1, Math.max(0, (perf.speed - 18) / 40))));
             setHud((h) => {
-                const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, hp: Math.round(sim.hp), ko: sim.kos, sc: Math.round(Math.min(1, ((sim as any).snareCd || 0) / 9) * 20) / 20, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
+                const ctx = actionCtx(sim); const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, hp: Math.round(sim.hp), ko: sim.kos, gr: ctx.grab, me: ctx.melee, sh: ctx.shot, sn: ctx.snare, wb: sim.web, sc: Math.round(Math.min(1, ((sim as any).snareCd || 0) / 9) * 20) / 20, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
                 if (sim.score > sim.best) { sim.best = sim.score; n.best = sim.best; try { localStorage.setItem('webswinger3d-best', String(sim.best)); } catch (e) { /* ignore */ } }
-                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.hp === n.hp && h.ko === n.ko && h.sc === n.sc && h.bd === n.bd ? h : n;
+                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.hp === n.hp && h.ko === n.ko && h.gr === n.gr && h.me === n.me && h.sh === n.sh && h.sn === n.sn && h.wb === n.wb && h.sc === n.sc && h.bd === n.bd ? h : n;
             });
         }, 100);
         const down = (e: KeyboardEvent) => {
@@ -155,28 +168,28 @@ export function App() {
         ><Scene sim={sim} ev={ev} coarse={coarse} fx={fx} perf={perf} /></Canvas>
 
         <div className="hud">
-            <div className="chip" aria-label="orbs"><IOrb /><Pips n={hud.score > 0 ? ((hud.score - 1) % 10) + 1 : 0} /><span className="tiers">{Array.from({ length: Math.min(6, Math.floor(Math.max(0, hud.score - 1) / 10)) }, (_, i) => <i key={i} />)}</span></div>
-            <div className={'chip' + (hud.hp < 35 ? ' low' : '')} aria-label="health"><IHeart /><span className="hpbar"><i style={{ width: Math.max(0, Math.min(100, hud.hp)) + '%' }} /></span></div>
-            <div className="chip" aria-label="beacon"><IBeacon /><span className="hpbar"><i style={{ width: Math.max(4, Math.min(100, 100 - hud.bd / 3)) + '%' }} /></span></div>
+            <div className="chip orbs" aria-label="orbs (tap to mute or unmute)" onPointerDown={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }}><IOrb /><Pips n={hud.score > 0 ? ((hud.score - 1) % 10) + 1 : 0} /><span className="tiers">{Array.from({ length: Math.min(6, Math.floor(Math.max(0, hud.score - 1) / 10)) }, (_, i) => <i key={i} />)}</span>{muted && <span className="mutedmark"><ISpeaker off /></span>}</div>
+            <div className={'chip hpchip' + (hud.hp < 100 ? ' show' : '') + (hud.hp < 35 ? ' low' : '')} aria-label="health"><IHeart /><span className="hpbar"><i style={{ width: Math.max(0, Math.min(100, hud.hp)) + '%' }} /></span></div>
         </div>
         {DEBUG && <div className="dbg">{dbg}</div>}
         {/* navigator arrow removed (user 10:01) */}
         <div className="vig" />
+        <div className="flash" /><i className="impact" />
         <div className="speedlines" />
-        <button className="mute" aria-label={muted ? 'Unmute' : 'Mute'} onClick={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }}><ISpeaker off={muted} /></button>
+        {hud.mode !== 'play' && <button className="mute" aria-label={muted ? 'Unmute' : 'Mute'} onClick={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }}><ISpeaker off={muted} /></button>}
         <AnimatePresence>{hud.mode !== 'play' && <><motion.div className="bar top" initial={{ y: -60 }} animate={{ y: 0 }} exit={{ y: -60 }} /><motion.div className="bar bot" initial={{ y: 60 }} animate={{ y: 0 }} exit={{ y: 60 }} /></>}</AnimatePresence>
 
         {hud.mode === 'play' && <>
             <div className="padzone" onPointerDown={padStart} onPointerMove={(e) => { if (e.pointerId === stickId.current) padMove(e); }} onPointerUp={stickEnd} onPointerCancel={stickEnd} />
             <div className="dpad" ref={padRef}><svg width="120" height="120" viewBox="0 0 120 120" {...IC} strokeWidth={2}><path d="M60 8l9 11H51zM60 112l-9-11h18zM8 60l11-9v18zM112 60l-11 9V51z" fill="currentColor" stroke="none" opacity=".85" /><circle cx="60" cy="60" r="38" opacity=".35" /></svg><div className="knob" ref={knobRef} /></div>
-            <button className={'ico swing' + (swingOn ? ' on' : '')} aria-label="web swing"
-                onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); input.swing = true; input.swingQ = true; setSwingOn(true); }}
+            <button className={'ico swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web swing"
+                onPointerDown={(e) => { burst(e, '#8fe9ff', -25); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.swing = true; input.swingQ = true; setSwingOn(true); }}
                 onPointerUp={() => { input.swing = false; setSwingOn(false); }} onPointerCancel={() => { input.swing = false; setSwingOn(false); }}><ISwing /></button>
-            <button className="ico grab" aria-label="web grab" onPointerDown={() => { input.grabQ = true; }}><IGrab /></button>
-            <button className="ico shot" aria-label="web shot" onPointerDown={() => { input.shotQ = true; input.attackQ = true; }}><IShot /></button>
-            <button className={'ico special' + (hud.sc > 0 ? ' cd' : '')} aria-label="shadow snare" onPointerDown={() => { input.specialQ = true; }}><ISnare /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
-            <button className="ico melee" aria-label="melee" onPointerDown={() => { input.meleeQ = true; input.attackQ = true; }}><IFist /></button>
-            <button className="ico jump" aria-label="jump" onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
+            <button className={'ico grab' + (hud.gr ? '' : ' off')} aria-label="web grab" onPointerDown={(e) => { burst(e, '#ffffff', 20); input.grabQ = true; }}><IGrab /></button>
+            <button className={'ico shot' + (hud.sh ? '' : ' off')} aria-label="web shot" onPointerDown={(e) => { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; }}><IShot /></button>
+            <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn ? '' : ' off')} aria-label="shadow snare" onPointerDown={(e) => { burst(e, '#c9a7ff', 180); input.specialQ = true; }}><ISnare /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
+            <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); input.meleeQ = true; input.attackQ = true; }}><IFist /></button>
+            <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
         </>}
 
         <AnimatePresence>
