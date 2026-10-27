@@ -20,6 +20,8 @@ export function App() {
     const [dbg, setDbg] = useState('');
     const mutedRef = useRef(false);
     const wind = useRef<{ g: GainNode; f: BiquadFilterNode } | null>(null);
+    const water = useRef<{ g: GainNode; f: BiquadFilterNode; buf: AudioBuffer } | null>(null);
+    const wprev = useRef({ swim: false, dive: false });
     const buzz = (ms: number) => { try { if (!mutedRef.current) (navigator as any).vibrate?.(ms); } catch (e) { /* ignore */ } };
     const lastScore = useRef(0);
     const showToast = (text: string, ms = 1600) => { const id = ++toastId.current; setToast({ id, text }); setTimeout(() => setToast((t) => (t && t.id === id ? null : t)), ms); };
@@ -41,6 +43,20 @@ export function App() {
     useEffect(() => {
         const id = setInterval(() => {
             if (wind.current && actx.current) { const k = sim.mode === 'play' && !mutedRef.current ? Math.min(1, perf.speed / 45) : 0; wind.current.g.gain.setTargetAtTime(k * 0.22, actx.current.currentTime, 0.15); wind.current.f.frequency.setTargetAtTime(300 + k * 1800, actx.current.currentTime, 0.15); }
+            if (water.current && actx.current) {
+                const a = actx.current, w = water.current, on = sim.mode === 'play' && sim.swim && !mutedRef.current;
+                const under = sim.dive; // underwater: muffled, deeper; surface: bright laps
+                w.g.gain.setTargetAtTime(on ? (under ? 0.2 : 0.11) : 0, a.currentTime, 0.12);
+                w.f.frequency.setTargetAtTime(under ? 260 : 900, a.currentTime, 0.1);
+                if (wind.current && sim.swim) wind.current.g.gain.setTargetAtTime(under ? 0.005 : 0.03, a.currentTime, 0.1);
+                const pv = wprev.current;
+                if (!mutedRef.current && sim.mode === 'play' && ((sim.swim && !pv.swim) || (sim.dive !== pv.dive) || (!sim.swim && pv.swim))) {
+                    // splash: short noise burst, low-passed sweep down
+                    try { const src = a.createBufferSource(); src.buffer = w.buf; const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(3200, a.currentTime); f.frequency.exponentialRampToValueAtTime(300, a.currentTime + 0.5); const g = a.createGain(); g.gain.setValueAtTime(0.0001, a.currentTime); g.gain.exponentialRampToValueAtTime(0.35, a.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.55); src.connect(f); f.connect(g); g.connect(a.destination); src.start(); src.stop(a.currentTime + 0.6); } catch (e) { /* ignore */ }
+                    buzz(25);
+                }
+                pv.swim = sim.swim; pv.dive = sim.dive;
+            }
             setDbg(Math.round(perf.fps) + ' fps · res ' + perf.scale.toFixed(2) + (isGl2() ? ' · WebGL2' : ' · WebGL1'));
             document.documentElement.style.setProperty('--spd', String(Math.min(1, Math.max(0, (perf.speed - 18) / 40))));
             setHud((h) => {
@@ -72,6 +88,7 @@ export function App() {
     function start() {
         try { const AC = (window as any).AudioContext || (window as any).webkitAudioContext; if (!actx.current && AC) actx.current = new AC(); (window as any).__audio = { ctx: () => actx.current, wind: () => wind.current, muted: () => mutedRef.current }; } catch (e) { /* ignore */ }
         if (actx.current && !wind.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); wind.current = { g, f }; } catch (e) { /* ignore */ } }
+        if (actx.current && !water.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = l * 0.97 + (Math.random() * 2 - 1) * 0.3; d[i] = l; } const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); water.current = { g, f, buf }; (window as any).__audio.water = () => water.current; } catch (e) { /* ignore */ } }
         gsap.fromTo(fx, { fov: 22 }, { fov: 0, duration: 1.4, ease: 'power3.out' });
         resetSim(sim); lastScore.current = 0; sim.mode = 'play'; showToast('Hold SWING to fire a web, release to let go', 3500);
     }

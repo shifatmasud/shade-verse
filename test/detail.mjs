@@ -1,0 +1,15 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const p = await b.newPage(); await p.setViewport({ width:390, height:780, deviceScaleFactor:2, hasTouch:true, isMobile:true });
+const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+await p.goto('http://localhost:4173/',{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
+await p.evaluate(()=>window.__game.start()); await new Promise(r=>setTimeout(r,600));
+const o=process.argv[2];
+await p.evaluate(async()=>{const g=window.__game,s=g.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms));
+ s.enemies.forEach(o=>{o.x=-300;o.z=-300;o.roof=undefined;});
+ s.pos=[20,1,-150]; s.vel=[0,0,0]; s.yaw=Math.PI; s.ang=0; s.pitch=0.12; window.__hq=true; window.__camDist=4.2; await w(2500);});
+await p.screenshot({path:o+'-front.png'});
+await p.evaluate(async()=>{const s=window.__game.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms)); s.yaw=Math.PI*0.75; await w(1500);});
+await p.screenshot({path:o+'-34.png'});
+await p.evaluate(()=>{window.__camDist=undefined; window.__hq=false; });
+console.log('errors',JSON.stringify(errs)); await b.close();

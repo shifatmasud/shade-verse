@@ -1,0 +1,18 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage(); await p.setViewport({ width:390, height:780, hasTouch:true, isMobile:true });
+const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+await p.goto('http://localhost:4173/',{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
+await p.evaluate(()=>window.__game.start()); await new Promise(r=>setTimeout(r,800));
+const R=await p.evaluate(async()=>{const g=window.__game,s=g.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms)); const A=window.__audio; const out={};
+ out.ctx=A.ctx().state; out.hasWater=!!A.water&&!!A.water();
+ const gv=()=>+A.water().g.gain.value.toFixed(3); const wv=()=>+A.wind().g.gain.value.toFixed(3);
+ s.enemies.forEach(o=>{o.x=-300;o.z=-300;o.roof=undefined;});
+ s.pos=[20,1,-150]; s.vel=[0,0,0]; await w(800); out.landGain=gv();
+ s.pos=[20,1,-212]; s.yaw=Math.PI; s.ang=Math.PI; g.input.keys['w']=true; for(let i=0;i<60&&!s.swim;i++) await w(100); g.input.keys['w']=false; await w(1200); out.swimGain=gv(); out.swim=s.swim;
+ g.input.dodgeQ=true; await w(1500); out.diveGain=gv(); out.dive=s.dive; out.windUnder=wv();
+ g.input.jumpQ=true; await w(1500); g.input.keys['w']=false;
+ s.yaw=0; g.input.keys['w']=true; for(let i=0;i<80&&!s.ground;i++) await w(100); g.input.keys['w']=false; await w(1200); out.afterGain=gv(); out.ground=s.ground;
+ return out;});
+console.log(JSON.stringify(R),'errors',JSON.stringify(errs));
+const ok=R.ctx==='running'&&R.hasWater&&R.landGain<0.01&&R.swimGain>0.05&&R.diveGain>R.swimGain&&R.afterGain<0.02&&errs.length===0; console.log(ok?'WATER AUDIO PASS':'WATER AUDIO FAIL'); await b.close(); process.exit(ok?0:1);
