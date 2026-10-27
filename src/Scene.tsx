@@ -769,6 +769,16 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 if (m === dy) q.y = b.h + 2; else if (m === dx0) q.x = b.x0 - 2; else if (m === dx1) q.x = b.x1 + 2; else if (m === dz0) q.z = b.z0 - 2; else q.z = b.z1 + 2;
             }
         }
+        { // Keep the smoothed chase arm outside the solid quay and above inland ground.
+            // If the sightline enters the shore wall below its top, shorten on the water side.
+            const q = cam.current, edge = WATER_Z - 0.9, ly = sim.swim ? p[1] + 0.7 : p[1] + 1.5;
+            if (p[2] < edge && q.z > edge) {
+                const f = (edge - p[2]) / (q.z - p[2]);
+                const iy = ly + (q.y - ly) * f;
+                if (iy < 0.7) { q.x = p[0] + (q.x - p[0]) * f; q.y = iy; q.z = edge; }
+            }
+            if (q.z >= WATER_Z) q.y = Math.max(q.y, 1.3 + Math.min(0, parkH(q.x, q.z)));
+        }
         camera.position.copy(cam.current); if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
         look.current.set(p[0], sim.swim ? p[1] + 0.7 : p[1] + 1.5, p[2]);
         const ov = DBG ? (window as any).__camOv : null; if (ov) { camera.position.set(ov[0], ov[1], ov[2]); look.current.set(ov[3], ov[4], ov[5]); }
