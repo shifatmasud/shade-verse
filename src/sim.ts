@@ -160,7 +160,7 @@ export function resetSim(s: Sim) {
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
-    s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false;
+    s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false; (s as any).flightTapCancel = false;
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
@@ -237,19 +237,20 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         if (s.swim) { s.dive = !s.dive; }   // jump on the surface dives (user message 10:18, WhatsApp); underwater it surfaces. Shore exit: swim into the shore (below).
         else
         if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
-        else if (s.ground) { v[1] = JUMP_V; s.ground = false; ev.jump(); }
+        else if (s.ground) { v[1] = JUMP_V; s.ground = false; (s as any).flightPress = 0; (s as any).flightTapCancel = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
-        else if (s.glideOn) { (s as any).flightPress = 0; }
+        else if (!s.grappleFlight && s.spring <= 0) { (s as any).flightPress = 0; (s as any).flightTapCancel = true; }
         else if (!s.ground) { (s as any).glideBlocked = true; s.glideOn = false; ev.jump(); }   // mid-air JUMP cancels automatic glide for the rest of this flight
     }
     const gl = s as any;
     if (input.jumpCancelled) { input.jumpCancelled = false; gl.flightPress = undefined; }
     if (gl.flightPress !== undefined) {
-        if (!s.glideOn || s.web || s.swim || s.wall || s.ground) gl.flightPress = undefined;
+        if (s.web || s.swim || s.wall || s.ground || s.grappleFlight || s.spring > 0) gl.flightPress = undefined;
         else {
             if (input.jumpHeld || k[' ']) gl.flightPress += dt;
+            if (gl.flightPress >= 0.18) gl.glideBlocked = false;
             if (input.jumpReleased) {
-                if (gl.flightPress < 0.18) { gl.glideBlocked = true; s.glideOn = false; ev.jump(); }
+                if (gl.flightPress < 0.18 && gl.flightTapCancel) { gl.glideBlocked = true; s.glideOn = false; ev.jump(); }
                 gl.flightPress = undefined;
             }
         }
@@ -262,7 +263,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     // Auto-glide during free flight after the launch beat. Mid-air JUMP cancels until the next flight.
     if (s.ground || s.web || s.wall || s.swim || s.spring > 0) (s as any).glideBlocked = false;
     s.glideOn = !s.ground && !s.web && !s.wall && !s.swim && !s.grappleFlight && s.spring <= 0 &&
-        s.airT > 0.35 && !(s as any).glideBlocked;
+        (s.airT > 0.35 || gl.flightBoost) && !(s as any).glideBlocked;
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
     s.wallT = Math.max(0, s.wallT - dt);
