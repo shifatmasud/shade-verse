@@ -351,7 +351,7 @@ function Forest({ sim }: { sim: Sim }) {
         const mk = (w: number, h: number, sw: number, sh: number, yaw: number, lift: number) => { const g = new THREE.PlaneGeometry(w, h, sw, sh); g.rotateX(-Math.PI / 2); g.rotateY(yaw); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) pa.setY(i, parkH(cx + pa.getX(i), cz + pa.getZ(i)) + lift); g.computeVertexNormals(); return g; };
         const fl = mk(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 80, 80, 0, 0);
         { // flat 3-tone meadow fills (light / mid / dark patches, hue drifts yellow on the light ones), as in the toon-grassland refs; vertex colours, no extra cost
-            const pa = fl.attributes.position, ca = new Float32Array(pa.count * 3), c0 = new THREE.Color('#4a8636'), cl = new THREE.Color('#639a3a'), cd = new THREE.Color('#3a7430'), tc = new THREE.Color();
+            const pa = fl.attributes.position, ca = new Float32Array(pa.count * 3), c0 = new THREE.Color('#63805b'), cl = new THREE.Color('#7c9469'), cd = new THREE.Color('#506b4b'), tc = new THREE.Color();
             for (let i = 0; i < pa.count; i++) { const x = cx + pa.getX(i), z = cz + pa.getZ(i), n = Math.sin(x * 0.045 + 1) * Math.cos(z * 0.06) + 0.5 * Math.sin(x * 0.11 + z * 0.07 + 2), t = Math.max(-1, Math.min(1, n * 1.1)) * 0.7, q = Math.round(t * 8) / 8; if (q >= 0) tc.copy(c0).lerp(cl, q); else tc.copy(c0).lerp(cd, -q); ca[i * 3] = tc.r; ca[i * 3 + 1] = tc.g; ca[i * 3 + 2] = tc.b; }
             fl.setAttribute('color', new THREE.BufferAttribute(ca, 3));
         }
@@ -386,7 +386,7 @@ function tuftGeo() {
         // two-segment blade: base quad to mid, then a tip
         const mid = [ox + dx * lean * 0.25, h * 0.55, oz + dz * lean * 0.25], tip = [ox + dx * lean, h, oz + dz * lean];
         const v = [[ox - px * w, 0, oz - pz * w], [ox + px * w, 0, oz + pz * w], [mid[0] - px * w * 0.6, mid[1], mid[2] - pz * w * 0.6], [mid[0] + px * w * 0.6, mid[1], mid[2] + pz * w * 0.6], tip];
-        for (const t of [[0, 1, 2], [1, 3, 2], [2, 3, 4]]) t.forEach((i) => { pos.push(...v[i]); const k = v[i][1] / h; col.push(0.3 + 0.45 * k, 0.5 + 0.4 * k, 0.22 + 0.12 * k); });
+        for (const t of [[0, 1, 2], [1, 3, 2], [2, 3, 4]]) t.forEach((i) => { pos.push(...v[i]); const k = v[i][1] / h; col.push(0.34 + 0.36 * k, 0.47 + 0.31 * k, 0.29 + 0.19 * k); });
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
 }
@@ -401,7 +401,7 @@ function Meadow({ sim }: { sim: Sim }) {
         const o = new THREE.Object3D(), col = new THREE.Color(); let gi = 0, fi = 0;
         for (let i = 0; i < GR_POOL.length && gi < 6500; i += 4) {
             const x = GR_POOL[i], z = GR_POOL[i + 1]; if (Math.hypot(x - hx, z - hz) > 70) continue;
-            o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl) * (1 + 0.04 * Math.max(0, -parkH(x, z)));   o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.5 + 0.12 * cl, 0.34 + GR_POOL[i + 2] * 0.14 + 0.1 * cl));
+            o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl) * (1 + 0.04 * Math.max(0, -parkH(x, z)));   o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.30 + 0.06 * cl, 0.34 + GR_POOL[i + 2] * 0.10 + 0.065 * cl));
             if (GR_POOL[i + 2] < 0.12 && fi < 420) { o.position.set(x + 0.2, 0.05 + parkH(x + 0.2, z), z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
         }
         gr.current.count = gi; fl.current.count = fi; [gr.current, fl.current].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); });
@@ -409,7 +409,7 @@ function Meadow({ sim }: { sim: Sim }) {
     useFrame((st) => { uni.current.uTime.value = fu.current.uTime.value = st.clock.elapsedTime; const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 8) { last.current = [hx, hz]; place(hx, hz); } });
     const onGrass = (sh: any) => { sh.uniforms.uTime = uni.current.uTime; sh.uniforms.uHero = uni.current.uHero; sh.uniforms.uCam = uni.current.uCam; sh.vertexShader = 'uniform float uTime; uniform vec3 uHero; uniform vec3 uCam;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n float hh = position.y; transformed.y *= mix(0.4, 1.0, smoothstep(0.9, 3.8, length(instanceMatrix[3].xz - uHero.xz))) * mix(0.3, 1.0, smoothstep(1.5, 5.5, length(instanceMatrix[3].xz - uCam.xz))); float wv = sin(uTime * 0.9 + instanceMatrix[3].x * 0.07 + instanceMatrix[3].z * 0.045) * 0.5 + 0.5; transformed.x += (sin(uTime * 1.5 + instanceMatrix[3].x * 0.35 + instanceMatrix[3].z * 0.22) * 0.1 + wv * 0.38) * hh * hh; transformed.y -= wv * 0.12 * hh * hh; transformed.z += cos(uTime * 1.2 + instanceMatrix[3].z * 0.3) * 0.1 * hh * hh; vHt = clamp(position.y / 0.9, 0.0, 1.0);').replace('void main() {', 'varying float vHt;\nvoid main() {');
         // grass optics (ref: BotW grassland, blades dark at the root and sun-lit translucent yellow-green at the tips): base occlusion, bright backlit tips, soft sheen
-        sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.30, 0.42, 0.06), uDayG) * vHt * vHt * 0.32;\n#include <opaque_fragment>'); };   // night: tips glow cool blue-grey, not yellow (ref: moonlit meadow)
+        sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.25, 0.32, 0.17), uDayG) * vHt * vHt * 0.32;\n#include <opaque_fragment>'); };   // night: tips glow cool blue-grey, not yellow (ref: moonlit meadow)
     return <group>
         <instancedMesh ref={gr} args={[geo, undefined, 6500]} frustumCulled={true}><meshLambertMaterial vertexColors emissive="#1c3410" side={THREE.DoubleSide} onBeforeCompile={onGrass} /></instancedMesh>
         <instancedMesh ref={fl} args={[flGeo, undefined, 420]}><meshLambertMaterial emissive="#555555" side={THREE.DoubleSide} /></instancedMesh>
