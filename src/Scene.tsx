@@ -261,9 +261,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const speed = Math.hypot(v[0], v[1], v[2]); perf.speed = speed;
         // camera
         const cy = Math.cos(sim.pitch), sy = Math.sin(sim.pitch);
-        let dist = sim.web ? 15 : sim.wall ? 7.5 : 11;
+        const dbgD = (window as any).__camDist as number | undefined; if ((window as any).__hq) { curScale.current = 1; perf.scale = 1; }
+        let dist = dbgD ?? (sim.web ? 15 : sim.wall ? 7.5 : 11);
         const fxd = Math.sin(sim.yaw) * cy, fzd = Math.cos(sim.yaw) * cy;
-        for (; dist > (sim.wall ? 5 : 6); dist -= 1) {
+        for (; !dbgD && dist > (sim.wall ? 5 : 6); dist -= 1) {
             const ex = p[0] - fxd * dist, ey = p[1] + 1.5 + sy * dist, ez = p[2] - fzd * dist;
             let hit = false;
             for (const b of buildings) if (ex > b.x0 - 3 && ex < b.x1 + 3 && ez > b.z0 - 3 && ez < b.z1 + 3 && ey < b.h + 3) { hit = true; break; }

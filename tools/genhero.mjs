@@ -145,13 +145,24 @@ const colorOf = (p, n) => {
     if (z > 0.08 && y > 1.38 && y < 1.62 && Math.abs(ax - (1.62 - y) * 0.9) < 0.018) return PIPE;
     // side piping: torso sides, arms outer, legs outer
     if (y > 1.08 && y < 1.55 && ax > 0.2 && ax < 0.27 && Math.abs(z) < 0.1) return PIPE;
-    if (ax > 0.3 && n[0] * Math.sign(x) > 0.7) return PIPE;
-    if (ax < 0.3 && y < 1.0 && y > 0.3 && n[0] * Math.sign(x) > 0.75) return PIPE;
+    if (ax > 0.3 && y > 1.0 && Math.abs(z) < 0.014 && n[0] * Math.sign(x) > 0.5) return PIPE; // clean thin stripe down the outer arm
+    if (ax < 0.3 && y < 1.0 && y > 0.3 && Math.abs(z) < 0.014 && n[0] * Math.sign(x) > 0.5) return PIPE;
     // darker lower body suit
     if (y < 1.0) return [0.08, 0.17, 0.58];
     return SUIT;
 };
 const pos = [], nor = [], col = [];
 verts.forEach((v, i) => { pos.push(+v[0].toFixed(4), +v[1].toFixed(4), +v[2].toFixed(4)); nor.push(+nrm[i][0].toFixed(3), +nrm[i][1].toFixed(3), +nrm[i][2].toFixed(3)); col.push(...colorOf(v, nrm[i])); });
+// color smoothing: average over mesh neighbours so region borders are soft instead of jagged
+{
+    const nv = verts.length, nb = Array.from({ length: nv }, () => new Set());
+    for (let i = 0; i < tris.length; i += 3) { const a = tris[i], b = tris[i + 1], c = tris[i + 2]; nb[a].add(b); nb[a].add(c); nb[b].add(a); nb[b].add(c); nb[c].add(a); nb[c].add(b); }
+    let cur = []; for (let i = 0; i < nv; i++) cur.push([col[i * 3], col[i * 3 + 1], col[i * 3 + 2]]);
+    for (let it = 0; it < 1; it++) {
+        const nx = cur.map((c, i) => { const ns = [...nb[i]]; if (!ns.length) return c; const m = [0, 0, 0]; for (const j of ns) for (let k = 0; k < 3; k++) m[k] += cur[j][k]; return c.map((v, k) => v * 0.55 + (m[k] / ns.length) * 0.45); });
+        cur = nx;
+    }
+    col.length = 0; cur.forEach((c) => col.push(...c));
+}
 fs.writeFileSync(out, JSON.stringify({ pos, nor, col: col.map((c) => +c.toFixed(3)), si: skinI, sw: skinW.map((w) => +w.toFixed(3)), idx: tris, bones: B.map((b) => ({ n: b[0], p: b[1], h: b[2] })) }));
 console.log('verts', verts.length, 'tris', tris.length / 3, 'flipped', flipped, 'bones', B.length, 'bytes', fs.statSync(out).size);
