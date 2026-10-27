@@ -904,18 +904,18 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 const fresh = gm.key !== ck2;
                 if (fresh) { gm.key = ck2; gm.v = 1e9; }
                 if (!gBd && mn < gm.v) gm.v = mn;
-                const wg = gm.v > 1e8 ? groundCorr.current : Math.max(-0.4, Math.min(0.4, 0.02 + parkH(sim.pos[0], sim.pos[2]) - gm.v));
+                const wg = gm.v > 1e8 ? groundCorr.current : Math.max(-0.4, Math.min(0.4, 0.02 + (sim.pos[1] - 1.0) - gm.v));
                 if (fresh && !gBd) groundCorr.current = wg; else groundCorr.current += (wg - groundCorr.current) * Math.min(1, dt * 8);
             }
             if (DBG && (window as any).__dbgGround) (window as any).__gc = { mn, corr: groundCorr.current };
         } else { groundMin.current.key = ''; groundCorr.current += (0 - groundCorr.current) * Math.min(1, dt * 10); }
         h.position.y += groundCorr.current;
         h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
-        if (!sim.swim && sim.ground && !wl) {   // landing crouch must never bury the feet: raise only, never pull down
+        if (!sim.swim && sim.ground && !wl) {   // Guard the skinned contact hull (including hands/feet) against the actual street, valley or rooftop support. Raise only.
             h.updateMatrixWorld(true);
             let mn2 = 1e9;
-            for (const e of rig.hull) { if (!e.foot) continue; tp0.set(0, 0, 0); for (let k = 0; k < 4; k++) { if (e.bw[k] <= 0) continue; _wv2.copy(e.p).applyMatrix4(rig.skel.boneInverses[e.bi[k]]).applyMatrix4(rig.skel.bones[e.bi[k]].matrixWorld); tp0.addScaledVector(_wv2, e.bw[k]); } if (tp0.y < mn2) mn2 = tp0.y; }
-            { const gr = parkH(sim.pos[0], sim.pos[2]); if (mn2 < gr) h.position.y += gr + 0.02 - mn2; }
+            for (const e of rig.hull) { tp0.set(0, 0, 0); for (let k = 0; k < 4; k++) { if (e.bw[k] <= 0) continue; _wv2.copy(e.p).applyMatrix4(rig.skel.boneInverses[e.bi[k]]).applyMatrix4(rig.skel.bones[e.bi[k]].matrixWorld); tp0.addScaledVector(_wv2, e.bw[k]); } if (tp0.y < mn2) mn2 = tp0.y; }
+            { const gr = sim.pos[1] - 1.0; if (mn2 < gr + 0.02) h.position.y += gr + 0.02 - mn2; }
             if (DBG && (window as any).__dbgGround) (window as any).__gc2 = mn2 < 0.0 ? 0.02 : mn2;
         }
         if (sim.wall && sim.wallB >= 0) lastWall.current = { n: [sim.wall[0], sim.wall[1]], b: sim.wallB };

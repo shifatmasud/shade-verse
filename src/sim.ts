@@ -160,7 +160,7 @@ export function resetSim(s: Sim) {
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
-    s.grappleFlight = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
+    s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
 }
 
@@ -237,14 +237,15 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
         else if (s.ground) { v[1] = JUMP_V; s.ground = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
-        else if (!s.ground) { (s as any).glideLatch = !(s as any).glideLatch; ev.jump(); }   // mid-air JUMP tap toggles the cape glide (tap again or land/web/wall/water to end it)
+        else if (!s.ground) { (s as any).glideBlocked = true; s.glideOn = false; ev.jump(); }   // mid-air JUMP cancels automatic glide for the rest of this flight
     }
     const prevY = p[1];
     s.spring = Math.max(0, s.spring - dt); s.shotT = Math.max(0, s.shotT - dt);
     s.airT = (!s.ground && !s.swim && !s.wall && !s.web) ? s.airT + dt : 0;
-    // PROTOTYPE glide: hold JUMP while falling in the air (not on a web, wall or in water)
-    if (s.ground || s.web || s.wall || s.swim || s.spring > 0 || input.swingQ) (s as any).glideLatch = false;
-    s.glideOn = !!(input.glide || k[' '] || (s as any).glideLatch) && s.airT > 0.35 && v[1] < 0 && s.spring <= 0;
+    // Auto-glide during free flight after the launch beat. Mid-air JUMP cancels until the next flight.
+    if (s.ground || s.web || s.wall || s.swim || s.spring > 0) (s as any).glideBlocked = false;
+    s.glideOn = !s.ground && !s.web && !s.wall && !s.swim && !s.grappleFlight && s.spring <= 0 &&
+        s.airT > 0.35 && !(s as any).glideBlocked;
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
     s.wallT = Math.max(0, s.wallT - dt);
@@ -269,7 +270,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
             s.runPhase += (Math.abs(up) + Math.abs(lat) * 11) * dt * 0.6;
         }
     } else if (s.ground && !s.web) {
-        const a = Math.min(1, dt * 10); v[0] += (wx * 11 - v[0]) * a; v[2] += (wz * 11 - v[2]) * a; v[1] = 0;
+        const a = Math.min(1, dt * 10); v[0] += (wx * 15 - v[0]) * a; v[2] += (wz * 15 - v[2]) * a; v[1] = 0;
     } else {
         v[1] -= G * dt;
         const air = s.web ? 12 : 7; v[0] += wx * air * dt; v[2] += wz * air * dt;
