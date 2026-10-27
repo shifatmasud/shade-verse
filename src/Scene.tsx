@@ -823,7 +823,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             wakeStrength.current += (target-wakeStrength.current)*Math.min(1,dt*(target>0?6:3));
             const trail = wakeTrail.current;
             if(!surface || trail.length && Math.hypot(p[0]-trail[0].x,p[2]-trail[0].z)>12) trail.length=0;
-            if(surface && (!trail.length || sim.t-trail[0].t>0.07)){trail.unshift({x:p[0],z:p[2],t:sim.t});if(trail.length>28)trail.pop();}
+            if(surface && (!trail.length || sim.t-trail[0].t>0.07)){
+                // A hard reversal must start a new ribbon rather than join opposing arms across a cusp.
+                if(trail.length>3){const a=trail[0],b=trail[3],ox=a.x-b.x,oz=a.z-b.z,ol=Math.hypot(ox,oz);if(ol>0.15&&sp>1.0&&(v[0]*ox+v[2]*oz)/(sp*ol)<0.20){trail.length=0;wakeStrength.current*=0.35;}}
+                trail.unshift({x:p[0],z:p[2],t:sim.t});if(trail.length>28)trail.pop();}
             if(m){m.visible=surface && wakeStrength.current>0.015 && trail.length>2;if(m.visible){const pa=wakeGeo.attributes.position as THREE.BufferAttribute;
                 for(let side=0;side<2;side++)for(let j=0;j<=24;j++){const t=j/24,sgn=side?1:-1,fi=t*(trail.length-1),ii=Math.floor(fi),ff=fi-ii,a=trail[ii],b=trail[Math.min(ii+1,trail.length-1)],prev=trail[Math.max(0,ii-1)],next=trail[Math.min(trail.length-1,ii+1)];
                     let dx=prev.x-next.x,dz=prev.z-next.z;const ln=Math.hypot(dx,dz);if(ln>0.02){dx/=ln;dz/=ln;}else{dx=Math.sin(sim.ang);dz=Math.cos(sim.ang);}
