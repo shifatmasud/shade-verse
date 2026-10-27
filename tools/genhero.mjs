@@ -21,12 +21,20 @@ mir((s) => {
     rc([s * 0.14, 0.56, 0.02], [s * 0.13, 0.12, -0.01], 0.068, 0.045); sp([s * 0.14, 0.45, -0.035], 0.062);
     rc([s * 0.13, 0.075, -0.01], [s * 0.13, 0.06, 0.17], 0.056, 0.05);
 });
+// fingers: hard-union among themselves (so they stay separate), then blended into the hand
+const FG = (c, d, rr) => P.push({ t: 'fg', c, d, rr });
+mir((s) => {
+    const hx = s * 0.452, hy = 0.9, hz = 0.06;
+    [[-0.026, 0.0, 0.082], [-0.009, 0.0, 0.098], [0.009, 0.0, 0.094], [0.026, 0.0, 0.078]].forEach(([ox, oz, len], i) => FG([hx + s * ox, hy - 0.02, hz + 0.006 + oz], [0, -len, 0.012 * (i === 3 ? 0.4 : 0.8)], 0.0135 - i * 0.0004));
+    FG([hx - s * 0.04, hy + 0.01, hz + 0.02], [-s * 0.01, -0.05, 0.035], 0.0155); // thumb
+});
 const K = 0.045;
 const smin = (a, b) => { const h = Math.max(K - Math.abs(a - b), 0) / K; return Math.min(a, b) - h * h * K * 0.25; };
 function sdf(x, y, z) {
-    let d = 1e9;
+    let d = 1e9, df = 1e9;
     for (const q of P) {
         let v;
+        if (q.t === 'fg') { const ba = q.d, pa = [x - q.c[0], y - q.c[1], z - q.c[2]]; const h = Math.max(0, Math.min(1, dot(pa, ba) / dot(ba, ba))); const w = Math.hypot(pa[0] - ba[0] * h, pa[1] - ba[1] * h, pa[2] - ba[2] * h) - q.rr * (1 - 0.35 * h); df = Math.min(df, w); continue; }
         if (q.t === 'el') {
             const px = (x - q.c[0]) / q.r[0], py = (y - q.c[1]) / q.r[1], pz = (z - q.c[2]) / q.r[2];
             const k0 = Math.hypot(px, py, pz); v = (k0 - 1) * Math.min(q.r[0], q.r[1], q.r[2]);
@@ -39,9 +47,10 @@ function sdf(x, y, z) {
         }
         d = smin(d, v);
     }
+    d = smin(d, df);
     return d;
 }
-const R = 0.026, X0 = -0.62, Y0 = -0.03, Z0 = -0.3, NX = Math.ceil(1.24 / R), NY = Math.ceil(2.25 / R), NZ = Math.ceil(0.68 / R);
+const R = 0.016, X0 = -0.62, Y0 = -0.03, Z0 = -0.3, NX = Math.ceil(1.24 / R), NY = Math.ceil(2.25 / R), NZ = Math.ceil(0.68 / R);
 const idx3 = (i, j, k) => (i * (NY + 1) + j) * (NZ + 1) + k;
 const val = new Float32Array((NX + 1) * (NY + 1) * (NZ + 1));
 for (let i = 0; i <= NX; i++) for (let j = 0; j <= NY; j++) for (let k = 0; k <= NZ; k++) val[idx3(i, j, k)] = sdf(X0 + i * R, Y0 + j * R, Z0 + k * R);
@@ -120,11 +129,11 @@ const colorOf = (p, n) => {
         if (z > 0.07 && y > 1.84 && y < 2.08 && ax < 0.108) {
             const u = ax - 0.058, v = y - 1.985, c = Math.cos(0.45), s = Math.sin(0.45);
             const ur = u * c + v * s, vr = -u * s + v * c;
-            if (Math.abs(ur) < 0.042 && Math.abs(vr) < 0.017) return EYE;
-            if (Math.abs(ur) < 0.052 && Math.abs(vr) < 0.026) return [0.04, 0.05, 0.14]; // lens rim
-            return MASK;
+            if (Math.abs(ur) < 0.05 && Math.abs(vr) < 0.021) return EYE;
+            if (Math.abs(ur) < 0.06 && Math.abs(vr) < 0.03) return [0.02, 0.03, 0.1]; // lens rim
+            return y > 1.93 ? [0.08, 0.15, 0.55] : [0.1, 0.2, 0.66];
         }
-        if (y < 1.88 && z > 0.02) return MASK;
+        if (y < 1.88 && z > 0.02) return [0.09, 0.17, 0.6];
         return DARK;
     }
     if (y > 1.66) return DARK; // neck
@@ -150,8 +159,8 @@ const colorOf = (p, n) => {
     if (ax < 0.3 && y < 1.0 && y > 0.3 && Math.abs(z) < 0.014 && n[0] * Math.sign(x) > 0.5) return PIPE;
     // darker lower body suit
     const web = (b) => { const a = Math.atan2(x, z) * 0.16 * 6.2832 / 6.2832; const l1 = Math.abs(((y * 9) % 1 + 1) % 1 - 0.5), l2 = Math.abs(((Math.atan2(x, z) * 9 / 3.1416) % 1 + 1) % 1 - 0.5); const e = Math.min(l1, l2); return e < 0.07 ? [b[0] * 0.62, b[1] * 0.66, b[2] * 0.8] : b; };
-    if (y < 1.0) return web([0.08, 0.17, 0.58]);
-    return web(SUIT);
+    if (y < 1.0) return [0.08, 0.17, 0.58]; // fine weave is done in the fragment shader
+    return SUIT;
 };
 const pos = [], nor = [], col = [];
 verts.forEach((v, i) => { pos.push(+v[0].toFixed(4), +v[1].toFixed(4), +v[2].toFixed(4)); nor.push(+nrm[i][0].toFixed(3), +nrm[i][1].toFixed(3), +nrm[i][2].toFixed(3)); col.push(...colorOf(v, nrm[i])); });
