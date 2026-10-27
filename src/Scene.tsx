@@ -277,6 +277,10 @@ const rayMat = new THREE.ShaderMaterial({
     vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'varying vec2 vU; uniform float uTime; void main(){ float edge = smoothstep(0.0, 0.5, vU.x) * smoothstep(1.0, 0.5, vU.x); float a = edge * pow(vU.y, 1.6) * (0.55 + 0.45 * sin(uTime * 0.8 + vU.y * 3.0 + vU.x * 5.0)); gl_FragColor = vec4(vec3(0.6, 0.95, 1.0) * a * 0.5, a * 0.5); }',
 });
+// Round bubble glints, same point count and size as before; no texture fetch.
+const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.09,sizeAttenuation:true,transparent:true,opacity:0.7,depthWrite:false});
+bubbleMat.onBeforeCompile = (shader) => { shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', 'diffuseColor.a*=(1.0-smoothstep(0.32,0.5,br))*(0.32+0.68*smoothstep(0.22,0.40,br));\n#include <opaque_fragment>'); };
+bubbleMat.customProgramCacheKey = () => 'round-bubble-v1';
 const jellyMat = new THREE.MeshBasicMaterial({ color: '#c9a4ff', transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 function Underwater({ sim }: { sim: Sim }) {
     const kelp = useRef<THREE.InstancedMesh>(null!), jel = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!);
@@ -308,7 +312,7 @@ function Underwater({ sim }: { sim: Sim }) {
     return <group>
         <instancedMesh ref={kelp} args={[kGeo, kelpMat, 1400]} frustumCulled={false} />
         <instancedMesh ref={jel} args={[jGeo, jellyMat, 12]} renderOrder={-1} frustumCulled={false} />
-        <points ref={bub} geometry={bGeo} frustumCulled={false}><pointsMaterial color="#dff8ff" size={0.09} sizeAttenuation transparent opacity={0.7} depthWrite={false} /></points>
+        <points ref={bub} geometry={bGeo} frustumCulled={false}><primitive object={bubbleMat} attach="material" /></points>
         <group ref={rays}>{Array.from({ length: 8 }, (_, i) => <mesh key={i} position={[(i - 3.5) * 3.2, -6, ((i * 7) % 5) * 2 - 4]} rotation={[0, i * 0.4, 0.22]} material={rayMat}><planeGeometry args={[2.4 + (i % 3), 12]} /></mesh>)}</group>
     </group>;
 }
