@@ -99,7 +99,7 @@ export interface Sim {
     yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
     hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number; atkPend: number; shotE: Enemy | null; anchorReal: boolean; spring: number; shotT: number; shotTgt: V3; glideOn: boolean; airT: number;
-    swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
+    grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
 }
 export interface Input { attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean }
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void }
@@ -160,7 +160,7 @@ export function resetSim(s: Sim) {
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
-    s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
+    s.grappleFlight = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
 }
 
@@ -213,6 +213,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     const wx = stunned ? 0 : fx * my + rx * mx, wz = stunned ? 0 : fz * my + rz * mx;
 
     if (input.swingQ && !s.web) {
+        s.grappleFlight = false; s.webDepartB = s.wall ? s.wallB : undefined;
         { const sa = findAnchor(s, true); s.anchorReal = !!sa; s.anchor = sa || findAnchor(s); } s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); s.swings++;
         const d = norm(sub(s.anchor, p)); v[0] += d[0] * 6; v[1] += d[1] * 4; v[2] += d[2] * 6; s.ground = false; s.wall = null; ev.attach();
     }
@@ -225,12 +226,12 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (springAnchor) {
         // PROTOTYPE spring-shot jump (both hands): JUMP while the web is out, or JUMP while holding SWING in the air, springs toward the anchor
         input.jumpQ = false;
-        s.anchor = springAnchor;
+        s.anchor = springAnchor; s.grappleFlight = true;
         const d = norm(sub(s.anchor, p)); s.web = false; s.spring = 0.4; s.ground = false;
         v[0] = v[0] * 0.3 + d[0] * 24; v[1] = Math.max(v[1], 0) * 0.3 + d[1] * 24 + 7; v[2] = v[2] * 0.3 + d[2] * 24; ev.jump(); ev.attach();
     }
     if (input.jumpQ) {
-        input.jumpQ = false;
+        input.jumpQ = false; s.grappleFlight = false;
         if (s.swim) { s.dive = !s.dive; }   // jump on the surface dives (user message 10:18, WhatsApp); underwater it surfaces. Shore exit: swim into the shore (below).
         else
         if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
@@ -291,6 +292,16 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
     if (s.glideOn) { if (v[1] < -4.2) v[1] += (-4.2 - v[1]) * Math.min(1, dt * 6); const hs = Math.hypot(v[0], v[2]); if (hs < 14) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * 10 * dt; v[2] += fz2 * 10 * dt; } }
     collide(s, prevY);
+    if (s.webDepartB !== undefined) { const b = blds[s.webDepartB]; if (!s.web || !b || p[0] < b.x0 - 1.2 || p[0] > b.x1 + 1.2 || p[2] < b.z0 - 1.2 || p[2] > b.z1 + 1.2 || p[1] - 1 > b.h + 0.2) s.webDepartB = undefined; }
+    // Hero side-wall contact ends web travel and enters the existing crawl mode.
+    // A distant anchor attaching is not contact; roofs remain normal landings.
+    if (hitN && !s.ground && !s.swim && s.wallT <= 0 && !stunned && hitB !== s.webDepartB && (s.web || s.grappleFlight)) {
+        const wasWeb = s.web; s.web = false; s.spring = 0; s.grappleFlight = false;
+        s.glideOn = false; (s as any).glideLatch = false; s.airT = 0;
+        s.wall = hitN; s.wallB = hitB; s.vaulted = 0;
+        v[0] = -hitN[0] * 2; v[1] = 0; v[2] = -hitN[1] * 2;
+        if (wasWeb) ev.release();
+    }
     if (hitN && !s.web && !s.ground && s.wallT <= 0 && !stunned) {
         const push = -(wx * hitN[0] + wz * hitN[1]);
         if (s.wall || push > 0.5) { if (!s.wall) { s.vaulted = 0; } s.wall = hitN; s.wallB = hitB; }
@@ -305,6 +316,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         if (!s.ground) { s.ground = true; }
         p[1] = gy; if (v[1] < 0) v[1] = 0;
     }
+    if (s.ground || s.swim || s.wall || s.glideOn) s.grappleFlight = false;
     if (s.ground && !wasGround && landVy < -7) {
         const imp = -landVy; s.land = Math.min(1, imp / 30); const hard = imp > 26;
         s.landHard = hard ? 0.45 : 0;
