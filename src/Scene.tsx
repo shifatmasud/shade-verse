@@ -210,13 +210,13 @@ function treeGeo(kind: 'broad' | 'umbrella' | 'poplar', seed: number, leafN: num
     ctr.push(new THREE.Vector3(0, cy + R * 0.3 * shape.sy, 0));
     for (let i = 0; i < leafN; i++) {
         const c = ctr[Math.floor(rnd() * ctr.length)]; const bx = LEAF_BOX[Math.floor(rnd() * 8)];
-        const u = new THREE.Vector3(rnd() - 0.5, (rnd() - 0.5) * 0.8, rnd() - 0.5).normalize().multiplyScalar(R * 0.62 * Math.cbrt(rnd())); u.x *= shape.sx; u.y *= shape.sy; u.z *= shape.sz;
+        const u = new THREE.Vector3(rnd() - 0.5, (rnd() - 0.5) * 0.8, rnd() - 0.5).normalize().multiplyScalar(R * 0.48 * Math.cbrt(rnd())); u.x *= shape.sx; u.y *= shape.sy; u.z *= shape.sz;
         const w = (bx[2] - bx[0]) / 1024, h = (bx[3] - bx[1]) / 1024, sc = 4.0 * scaleMul * shape.ls * (0.7 + rnd() * 0.6);
         const g = new THREE.PlaneGeometry(w * sc, h * sc); g.translate(0, h * sc / 2, 0);
         const uv = g.attributes.uv; for (let k = 0; k < 4; k++) uv.setXY(k, bx[0] / 1024 + uv.getX(k) * w, 1 - bx[3] / 1024 + uv.getY(k) * h);
         const e = new THREE.Euler((rnd() - 0.5) * 2.2 + 0.5, rnd() * 6.28, (rnd() - 0.5) * 1.2);
         g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(e)); g.translate(c.x + u.x, c.y + u.y, c.z + u.z);
-        const col = new Float32Array(12), shade = 0.8 + 0.3 * ((u.y / R + 0.6)); for (let k = 0; k < 4; k++) { col[k * 3] = shade; col[k * 3 + 1] = shade; col[k * 3 + 2] = shade * 0.95; } g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        const col = new Float32Array(12), shade = 0.8 + 0.3 * ((u.y / R + 0.6)); for (let k = 0; k < 4; k++) { col[k * 3] = shade; col[k * 3 + 1] = shade; col[k * 3 + 2] = shade * (0.90 + 0.08 * Math.sin(i * 1.7)); } g.setAttribute('color', new THREE.BufferAttribute(col, 3));
         leafP.push(g);
     }
     return { trunk: mergeGeometries(trunkP, false)!, leaves: mergeGeometries(leafP, false)! };
@@ -320,29 +320,43 @@ function Underwater({ sim }: { sim: Sim }) {
 function Forest({ sim }: { sim: Sim }) {
     const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
-    const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; }; const ink = (u: string) => {   // leaf card with a thin dark ink rim: original alpha dilated by r px, rim painted dark (cel silhouette ink, ref: Kyle Agnew toon grassland); drawn once at load, no runtime cost
-            const cv = document.createElement('canvas'); cv.width = cv.height = 512; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-            const im = new Image(); im.onload = () => { const c = cv.getContext('2d')!, tc = document.createElement('canvas'); tc.width = tc.height = 512; const x = tc.getContext('2d')!; x.drawImage(im, 0, 0, 512, 512); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#0b1a0e'; x.fillRect(0, 0, 512, 512);
-                for (let k = 0; k < 12; k++) { const an = k / 12 * 6.2832; c.drawImage(tc, Math.cos(an) * INK_R, Math.sin(an) * INK_R); } c.drawImage(im, 0, 0, 512, 512); t.needsUpdate = true; }; im.src = u; return t; };
-        return [ink(LEAVES_URL), mk('/bark.jpg', true), ink(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
+    const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; };
+        return [mk(LEAVES_URL), mk('/bark.jpg', true), mk(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
         const con = kind === 'pine' || kind === 'spruce';
-        const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1) : treeGeo(kind as any, seed, kind === 'broad' ? 420 : 340, 1.35);
-        const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, 110, 2.1).leaves;
+        const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1.12) : treeGeo(kind as any, seed, kind === 'broad' ? 420 : 340, 1.45);
+        const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, 110, 2.2).leaves;
         return { trunk: hi.trunk, leaves: hi.leaves, lo: lw, con };
     }), []);
     const pts = useMemo(() => { let r = 7; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const a: { x: number; z: number; s: number; c: number; v: number }[] = []; for (let i = 0; i < 600 && a.length < 130; i++) { const px = PARK.x0 + 6 + rnd() * (PARK.x1 - PARK.x0 - 12), pz = PARK.z0 + 6 + rnd() * (PARK.z1 - PARK.z0 - 12), cxm = (PARK.x0 + PARK.x1) / 2, czm = (PARK.z0 + PARK.z1) / 2; if (Math.hypot(px - cxm, pz - czm) < 54 || Math.abs((px - cxm) - (pz - czm) * 0.6) < 6) continue; if (rnd() < 0.2) continue; a.push({ x: px, z: pz, s: 0.8 + rnd() * 0.5, c: rnd(), v: TREE_PATTERN[a.length % TREE_PATTERN.length] }); }
+        // Small street-side clusters use the same families and LOD, clear of buildings and intersections.
+        const street = buildings.filter(b=>b.host===undefined).map((b,i)=>({b,i,k:Math.sin((b.x0*13.37+b.z0*7.17))*43758.5453%1})).sort((a,b)=>a.k-b.k);
+        for (let i = 0; i < street.length && a.length < 190; i++) {
+            const b = street[i].b;
+            const x = b.x1 + 2.5, z = (b.z0 + b.z1) / 2 + (Math.floor(i / 3) % 2 ? 4 : -4);
+            if (z < WATER_Z + 8 || x > HALF - 4 || buildings.some(q => x > q.x0 - 1.3 && x < q.x1 + 1.3 && z > q.z0 - 1.3 && z < q.z1 + 1.3)) continue;
+            a.push({ x, z, s: 0.62 + rnd() * 0.14, c: rnd(), v: [0, 3, 4][Math.floor(i / 3) % 3] });
+        }
         return a; }, []);
+    const bushTex = useMemo(()=>{const t=new THREE.TextureLoader().load('/shrub112.png');t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;},[]);
+    const bushGeo = useMemo(()=>{
+        const gs:THREE.BufferGeometry[]=[];let r=73;const rnd=()=>(r=r*16807%2147483647)/2147483647;
+        const boxes=[[226,0,354,192],[44,212,176,378],[362,246,493,414],[355,67,471,177]];
+        for(let i=0;i<48;i++) {const bx=boxes[i%boxes.length],w=(bx[2]-bx[0])/512,h=(bx[3]-bx[1])/512;const len=0.5+rnd()*0.5;
+            const g=new THREE.PlaneGeometry(len*w/h,len);g.translate(0,len/2,0);const uv=g.attributes.uv;for(let k=0;k<4;k++)uv.setXY(k,bx[0]/512+uv.getX(k)*w,1-bx[3]/512+uv.getY(k)*h);
+            const a=i*2.39996,rad=0.1+0.6*Math.sqrt(rnd());g.rotateZ((rnd()-0.5)*1.3);g.rotateY(a);g.translate(Math.cos(a)*rad,0.02+rnd()*0.65,Math.sin(a)*rad);gs.push(g);
+        }return mergeGeometries(gs,false)!;
+    },[]);
     const NT = TREE_TYPES.length;
     const place = (hx: number, hz: number) => {
         const o = new THREE.Object3D(), col = new THREE.Color(); const ct = Array(NT).fill(0), ch = Array(NT).fill(0), cl = Array(NT).fill(0);
-        pts.forEach((p) => { const d = Math.hypot(p.x - hx, p.z - hz); if (d > 230) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.12 + q * 0.2 + w * 0.05, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.62 + ((p.c * 3.1) % 1) * 0.38); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const M = d < 45 ? lf.current[v] : lo.current[v], k = d < 45 ? ch : cl; M.setMatrixAt(k[v], o.matrix); M.setColorAt(k[v]++, col); });
+        pts.forEach((p) => { const d = Math.hypot(p.x - hx, p.z - hz); if (d > (p.x > PARK.x0 && p.x < PARK.x1 && p.z > PARK.z0 && p.z < PARK.z1 ? 230 : 140) || ct[p.v] >= 70) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const M = d < 45 ? lf.current[v] : lo.current[v], k = d < 45 ? ch : cl; M.setMatrixAt(k[v], o.matrix); M.setColorAt(k[v]++, col); });
         for (let v = 0; v < NT; v++) { tr.current[v].count = ct[v]; lf.current[v].count = ch[v]; lo.current[v].count = cl[v]; [tr.current[v], lf.current[v], lo.current[v]].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }); }
     };
-    useFrame(() => { const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 6) { last.current = [hx, hz]; place(hx, hz); } });
+    useFrame(() => { if(bush.current) (bush.current.material as THREE.MeshLambertMaterial).emissive.set('#263c1c').multiplyScalar(0.12+0.88*TOD.day.value); for (let v = 0; v < NT; v++) { const a = lf.current[v], b = lo.current[v]; if(a) (a.material as THREE.MeshLambertMaterial).emissive.set('#426439').multiplyScalar(0.12 + 0.88 * TOD.day.value); if(b) (b.material as THREE.MeshLambertMaterial).emissive.set('#426439').multiplyScalar(0.12 + 0.88 * TOD.day.value); } const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 6) { last.current = [hx, hz]; place(hx, hz); } });
     useEffect(() => {
         const o = new THREE.Object3D(), col = new THREE.Color(); place(1e5, 1e5); last.current = [1e9, 1e9];
-        for (let i = 0; i < 70; i++) { const p = pts[i % pts.length], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + 3 + (i % 5), 0.6 * k + parkH(p.x + 3 + (i % 5), p.z + 2), p.z + 2); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.17 + ((p.c * 5.7) % 1) * 0.25, 0.4 + ((p.c * 2.3) % 1) * 0.3, 0.22 + ((p.c * 9.1) % 1) * 0.28)); }
+        for (let i = 0; i < 70; i++) { const p = pts[i < 45 ? i % pts.length : Math.min(pts.length - 1, 130 + i - 45)], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + (i < 45 ? 3 + (i % 5) : 0), 0.02 + parkH(p.x + (i < 45 ? 3 + (i % 5) : 0), p.z + (i < 45 ? 2 : 0)), p.z + (i < 45 ? 2 : 0)); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.22 + ((p.c * 5.7) % 1) * 0.08, 0.18 + ((p.c * 2.3) % 1) * 0.12, 0.55 + ((p.c * 9.1) % 1) * 0.20)); }
         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
     }, [pts]);
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
@@ -362,10 +376,10 @@ function Forest({ sim }: { sim: Sim }) {
         <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>
         {geos.map((g, v) => <group key={v}>
             <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.con ? pbarkTex : barkTex} emissive="#4a3a2c" side={THREE.DoubleSide} /></instancedMesh>
-            <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#2b4a22" alphaTest={0.5} side={THREE.DoubleSide} /></instancedMesh>
-            <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#2b4a22" alphaTest={0.5} side={THREE.DoubleSide} /></instancedMesh>
+            <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} /></instancedMesh>
+            <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} /></instancedMesh>
         </group>)}
-        <instancedMesh ref={bush} args={[undefined, undefined, 70]} frustumCulled={false}><icosahedronGeometry args={[1.2, 1]} /><meshLambertMaterial color="#ffffff" /></instancedMesh>
+        <instancedMesh ref={bush} args={[undefined, undefined, 70]} frustumCulled={false}><primitive object={bushGeo} attach="geometry" /><meshLambertMaterial map={bushTex} color="#dce1cd" emissive="#182510" alphaTest={0.5} side={THREE.DoubleSide} /></instancedMesh>
     </group>;
 }
 
@@ -381,7 +395,7 @@ const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147
 function tuftGeo() {
     const pos: number[] = [], col: number[] = []; let r = 5; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
     for (let b = 0; b < 7; b++) {
-        const a = rnd() * 6.28, ox = (rnd() - 0.5) * 0.35, oz = (rnd() - 0.5) * 0.35, h = 0.8 + rnd() * 0.7, w = 0.05 + rnd() * 0.03, lean = (0.15 + rnd() * 0.45) * h;
+        const a = rnd() * 6.28, ox = (rnd() - 0.5) * 0.35, oz = (rnd() - 0.5) * 0.35, h = 0.8 + rnd() * 0.7, w = 0.07 + rnd() * 0.04, lean = (0.15 + rnd() * 0.45) * h;
         const dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx;
         // two-segment blade: base quad to mid, then a tip
         const mid = [ox + dx * lean * 0.25, h * 0.55, oz + dz * lean * 0.25], tip = [ox + dx * lean, h, oz + dz * lean];

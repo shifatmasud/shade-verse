@@ -1,0 +1,3 @@
+leaves.png/bark.jpg: derived from Poly Haven CC0 textures (island_tree_01 leaves, jacaranda_tree trunk) https://polyhaven.com
+pine.png/pinebark.jpg: derived from Poly Haven CC0 pine_tree_01 (twig, bark) https://polyhaven.com/a/pine_tree_01
+Shrub112 leaf atlas: Shrub01 by Rico Cilliers, Poly Haven, CC0. Diffuse+alpha combined and downsampled512px; own card arrangement, not downloaded model. https://polyhaven.com/a/shrub_01 https://polyhaven.com/license
