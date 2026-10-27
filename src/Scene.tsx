@@ -142,6 +142,9 @@ vec2 wg(vec2 p, float t){
   g += cos(dot(p, vec2(0.23, 0.19)) + t * 2.4) * 0.05 * vec2(0.23, 0.19);
   return g;
 }`;
+function waveH(x: number, z: number, t: number) {
+    return Math.sin(x * 0.021 + z * 0.013 + t * 0.55) * 0.55 + Math.sin(-x * 0.033 + z * 0.027 + t * 0.8) * 0.3 + Math.sin(x * 0.11 - z * 0.07 + t * 1.6) * 0.1 + Math.sin(x * 0.23 + z * 0.19 + t * 2.4) * 0.05;
+}
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uSun: { value: new THREE.Vector3(-0.55, 0.22, 0.8).normalize() }, uSky: { value: new THREE.Color('#e9908a') }, uDeep: { value: new THREE.Color('#06496b') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
@@ -290,7 +293,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 if (inBay && dy < 1.2 && dy > -2.2) {
                     // project the waterline a little ahead of the camera to find where the surface cuts the screen
                     camera.getWorldDirection(_wd); const hx = _wd.x, hz = _wd.z, hl = Math.hypot(hx, hz) || 1;
-                    _wp.set(camera.position.x + hx / hl * 6, WATER_Y, camera.position.z + hz / hl * 6).project(camera);
+                    const ax = camera.position.x + hx / hl * 11, az = camera.position.z + hz / hl * 11; _wp.set(ax, WATER_Y + waveH(ax, az, sim.t), az).project(camera);
                     const yPct = Math.max(0, Math.min(100, (1 - (_wp.y * 0.5 + 0.5)) * 100));
                     uw.style.clipPath = `inset(${yPct}% 0 0 0)`; uw.style.opacity = '1'; uw.dataset.split = '1';
                 } else { uw.style.clipPath = 'none'; uw.style.opacity = under ? '1' : '0'; uw.dataset.split = '0'; }
@@ -314,7 +317,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         if (sw2) { const cs = Math.sin(sim.runPhase * 2.4); legR.current.rotation.x = cs * 0.5; legL.current.rotation.x = -cs * 0.5; armL.current.rotation.x = -2.6 + cs * 1.2; }
         if (wl) { const cw = Math.sin(sim.runPhase * 2.2); legR.current.rotation.x = -0.9 + cw * 0.5; legL.current.rotation.x = -0.9 - cw * 0.5; armL.current.rotation.x = -2.5 - cw * 0.35; }
         armR.current.rotation.x = sw2 ? -2.6 - Math.sin(sim.runPhase * 2.4) * 1.2 : wl ? -2.5 + Math.sin(sim.runPhase * 2.2) * 0.35 : sim.web ? -2.7 : sim.atkT > 0 ? -1.5 - Math.sin((0.32 - sim.atkT) * 10) * 0.6 : sw * 0.8;
-        { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
+        { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.current.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
         {   // clip layer: pick a Mixamo-derived clip for the state, crossfade by weight
             const ck = sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 ? 'punch' : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : '';
             const cs = clipSt.current;
