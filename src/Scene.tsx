@@ -118,6 +118,21 @@ function buildRig() {
         if (b.p >= 0) bones[b.p].add(bone);
     });
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1a2a66'), emissiveIntensity: 0.55 });
+    // procedural suit weave in the fragment shader (object-space lattice, screen-AA'd), so fine detail doesn't depend on vertex density
+    mat.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vObj;').replace('#include <color_fragment>', `#include <color_fragment>
+        if (vColor.r < 0.2 && vColor.b > 0.4) {
+            float ang = atan(vObj.x, vObj.z) * 4.2;
+            vec2 q = vec2(ang, vObj.y * 16.0);
+            vec2 w = fwidth(q) * 1.5;
+            float lx = smoothstep(0.455 - w.x, 0.455, abs(fract(q.x) - 0.5));
+            float ly = smoothstep(0.455 - w.y, 0.455, abs(fract(q.y) - 0.5));
+            float line = max(lx, ly);
+            diffuseColor.rgb *= 1.0 - 0.38 * line * clamp(1.0 - 2.0 * (w.x + w.y), 0.0, 1.0);
+            diffuseColor.rgb *= 1.0 + 0.08 * sin(vObj.y * 90.0 + vObj.x * 40.0);
+        }`);
+    };
     const mesh = new THREE.SkinnedMesh(g, mat); mesh.frustumCulled = false;
     const root = new THREE.Group(); root.add(mesh); mesh.add(bones[0]);
     root.updateMatrixWorld(true);

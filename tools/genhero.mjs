@@ -121,6 +121,7 @@ const colorOf = (p, n) => {
             const u = ax - 0.058, v = y - 1.985, c = Math.cos(0.45), s = Math.sin(0.45);
             const ur = u * c + v * s, vr = -u * s + v * c;
             if (Math.abs(ur) < 0.042 && Math.abs(vr) < 0.017) return EYE;
+            if (Math.abs(ur) < 0.052 && Math.abs(vr) < 0.026) return [0.04, 0.05, 0.14]; // lens rim
             return MASK;
         }
         if (y < 1.88 && z > 0.02) return MASK;
@@ -148,8 +149,9 @@ const colorOf = (p, n) => {
     if (ax > 0.3 && y > 1.0 && Math.abs(z) < 0.014 && n[0] * Math.sign(x) > 0.5) return PIPE; // clean thin stripe down the outer arm
     if (ax < 0.3 && y < 1.0 && y > 0.3 && Math.abs(z) < 0.014 && n[0] * Math.sign(x) > 0.5) return PIPE;
     // darker lower body suit
-    if (y < 1.0) return [0.08, 0.17, 0.58];
-    return SUIT;
+    const web = (b) => { const a = Math.atan2(x, z) * 0.16 * 6.2832 / 6.2832; const l1 = Math.abs(((y * 9) % 1 + 1) % 1 - 0.5), l2 = Math.abs(((Math.atan2(x, z) * 9 / 3.1416) % 1 + 1) % 1 - 0.5); const e = Math.min(l1, l2); return e < 0.07 ? [b[0] * 0.62, b[1] * 0.66, b[2] * 0.8] : b; };
+    if (y < 1.0) return web([0.08, 0.17, 0.58]);
+    return web(SUIT);
 };
 const pos = [], nor = [], col = [];
 verts.forEach((v, i) => { pos.push(+v[0].toFixed(4), +v[1].toFixed(4), +v[2].toFixed(4)); nor.push(+nrm[i][0].toFixed(3), +nrm[i][1].toFixed(3), +nrm[i][2].toFixed(3)); col.push(...colorOf(v, nrm[i])); });
