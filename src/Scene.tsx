@@ -100,7 +100,7 @@ function DayNight() {
         if (DBG) (window as any).__tod = { sy, day, warm, fog: TOD.fog.toArray() }; TOD.day.value = day; TOD.warm.value = warm; TOD.noon.value = sstep(0.3, 0.95, sy);
         _c1.copy(_cnoon).lerp(_cwarm, warm).lerp(_cn, 1 - day); TOD.fog.copy(_c1); TOD.sky.copy(_c1).lerp(_c2.set('#c4dcef'), 0.3 * day);
         if (!UW.on) (scene.background as THREE.Color).copy(_c1);
-        UWF.value.set('#176e8c').multiplyScalar(0.1 + 0.9 * day);
+        UWF.value.set('#176e8c').multiplyScalar(0.2 + 0.8 * day);
         { const wu = waterMat.uniforms, k = 0.16 + 0.84 * day; wu.uDeep.value.set('#0a6f92').multiplyScalar(k); wu.uShallow.value.set('#2fa8c4').multiplyScalar(k); }   // water body colour follows the light level (sky reflection already follows TOD.sky)
         const { h, a, b } = ls.current;
         h.color.set('#d4e4ff').lerp(_c2.set('#3a4c8c'), 1 - day); h.intensity = 0.5 + 0.75 * day;
@@ -640,6 +640,7 @@ const waterMat = new THREE.ShaderMaterial({
       }
       float haze = 1.0 - exp(-length(cameraPosition - vW) * 0.006);
       if (below) col = mix(col, uUWF, 1.0 - exp(-length(cameraPosition - vW) * 0.045 * 1.6));
+      if (below) col += uUWF * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5);   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
       if (!below) col *= mix(0.3, 1.0, uDay);
       gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)));
