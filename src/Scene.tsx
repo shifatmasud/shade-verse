@@ -883,8 +883,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             for (const b of buildings) if (ex > b.x0 - 3 && ex < b.x1 + 3 && ez > b.z0 - 3 && ez < b.z1 + 3 && ey < b.h + 3) { hit = true; break; }
             if (!hit) break;
         }
-        const wsh = sim.wall ? 3.6 : 0, wnx = sim.wall ? -sim.wall[1] : 0, wnz = sim.wall ? sim.wall[0] : 0; // wall: 3/4 view from beside the hero
-        const tx = p[0] - fxd * dist + wnx * wsh, ty = sim.swim ? (sim.dive ? Math.min(WATER_Y - 1.5, p[1] + 1.2 + sy * dist) : WATER_Y + 0.7) : Math.max(2 + Math.min(0, parkH(p[0], p[2])), p[1] + 1.5 + sy * dist), tz = p[2] - fzd * dist + wnz * wsh;
+        const wsh = 0, wnx = sim.wall ? -sim.wall[1] : 0, wnz = sim.wall ? sim.wall[0] : 0; // Manual orbit has no forced wall-side offset
+        const tx = p[0] - fxd * dist + wnx * wsh, ty = p[1] + (sim.swim ? 0.7 : 1.5) + sy * dist, tz = p[2] - fzd * dist + wnz * wsh;
         if (sim.mode === 'menu' || sim.mode === 'over') { cam.current.set(tx, ty, tz); } else cam.current.lerp(new THREE.Vector3(tx, ty, tz), 1 - Math.pow(0.001, dt));
         { // push smoothed camera out of buildings (post-lerp)
             const q = cam.current;
@@ -902,7 +902,18 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 const iy = ly + (q.y - ly) * f;
                 if (iy < 0.7) { q.x = p[0] + (q.x - p[0]) * f; q.y = iy; q.z = edge; }
             }
-            if (q.z >= WATER_Z) q.y = Math.max(q.y, 1.3 + Math.min(0, parkH(q.x, q.z)));
+
+        }
+        { // Orbit obstruction shortens the arm; it does not change the selected angles.
+            const q=cam.current,ax=p[0],ay=p[1]+(sim.swim?.7:1.5),az=p[2];
+            const dx=q.x-ax,dy=q.y-ay,dz=q.z-az;let safe=1;
+            // Segment-vs-building slabs catch walls even when the endpoint is outside.
+            for(const b of buildings){let lo=0,hi=safe;const origin=[ax,ay,az],delta=[dx,dy,dz],mn=[b.x0-.35,-1000,b.z0-.35],mx=[b.x1+.35,b.h+.35,b.z1+.35];let hit=true;
+                for(let k=0;k<3;k++){if(Math.abs(delta[k])<1e-7){if(origin[k]<mn[k]||origin[k]>mx[k]){hit=false;break;}}else{let a=(mn[k]-origin[k])/delta[k],c=(mx[k]-origin[k])/delta[k];if(a>c){const t=a;a=c;c=t;}lo=Math.max(lo,a);hi=Math.min(hi,c);if(lo>hi){hit=false;break;}}}
+                if(hit&&lo>0)safe=Math.max(0,lo-.025);
+            }
+            for(let i=1;i<=32;i++){const f=safe*i/32,x=ax+dx*f,y=ay+dy*f,z=az+dz*f;const floor=z<WATER_Z?SEABED:Math.min(0,parkH(x,z));if(y<floor+.35){safe=safe*(i-1)/32;break;}}
+            if(safe<1)q.set(ax+dx*safe,ay+dy*safe,az+dz*safe);
         }
         camera.position.copy(cam.current); if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
         look.current.set(p[0], sim.swim ? p[1] + 0.7 : p[1] + 1.5, p[2]);

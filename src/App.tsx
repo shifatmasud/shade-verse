@@ -143,13 +143,15 @@ export function App() {
             gl={{ antialias: !coarse, powerPreference: 'high-performance', alpha: false, stencil: false }}
             camera={{ fov: 62, near: 0.5, far: 700, position: [0, 40, -10] }}
             onCreated={({ gl }) => { gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2) * perf.scale); GL2 = gl.capabilities.isWebGL2; }}
-            onPointerDown={(e) => { drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; }}
+            onPointerDown={(e) => { if (drag.current.id !== -1) return; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; sim.camHeld = true; sim.lastDrag = sim.t; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
             onPointerMove={(e) => {
                 if (e.pointerId !== drag.current.id) return;
-                sim.yaw -= (e.clientX - drag.current.x) * 0.006; sim.pitch = Math.max(0.05, Math.min(1.0, sim.pitch + (e.clientY - drag.current.y) * 0.004));
+                sim.yaw -= (e.clientX - drag.current.x) * 0.006; sim.pitch = Math.max(-1.15, Math.min(1.35, sim.pitch + (e.clientY - drag.current.y) * 0.004));
                 drag.current.x = e.clientX; drag.current.y = e.clientY; sim.lastDrag = sim.t;
             }}
-            onPointerUp={() => { drag.current.id = -1; }}
+            onPointerUp={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
+            onPointerCancel={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
+            onLostPointerCapture={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
         ><Scene sim={sim} ev={ev} coarse={coarse} fx={fx} perf={perf} /></Canvas>
 
         <div className="hud">

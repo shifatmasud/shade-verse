@@ -105,7 +105,7 @@ export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
-    yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
+    camHeld?: boolean; yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
     hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number; atkPend: number; shotE: Enemy | null; anchorReal: boolean; spring: number; shotT: number; shotTgt: V3; glideOn: boolean; airT: number;
     grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
@@ -166,7 +166,7 @@ function spawnEnemy0(s: Sim): Enemy {
 export function resetSim(s: Sim) {
     const b = blds.reduce((best, c) => Math.hypot(c.x0, c.z0) < Math.hypot(best.x0, best.z0) ? c : best, blds[0]);
     s.pos = [(b.x0 + b.x1) / 2 + 4, b.h + 1, (b.z0 + b.z1) / 2 - 4]; s.vel = [0, 0, 0]; s.web = false; s.ground = true; s.safe = [...s.pos] as V3;
-    s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
+    s.camHeld = false; s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
     s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false; (s as any).flightTapCancel = false;
@@ -217,7 +217,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
     const turn = (k['arrowleft'] ? 1 : 0) - (k['arrowright'] ? 1 : 0);
     if (turn) { s.yaw += turn * 2.0 * dt; s.lastDrag = s.t; }
-    if (k['arrowup']) s.pitch = Math.max(0.05, s.pitch - dt); if (k['arrowdown']) s.pitch = Math.min(1.0, s.pitch + dt);
+    if (k['arrowup'] || k['arrowdown']) { s.pitch = Math.max(-1.15, Math.min(1.35, s.pitch + ((k['arrowdown'] ? 1 : 0) - (k['arrowup'] ? 1 : 0)) * dt)); s.lastDrag = s.t; }
     const swingHeld = input.swing || k['shift'] || k['f'];
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx;
     const stunned = s.landHard > 0;
@@ -278,7 +278,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     s.wallT = Math.max(0, s.wallT - dt);
     if (!s.web) { const zone = p[2] < WATER_Z; (s as any).leapT = Math.max(0, ((s as any).leapT || 0) - dt); if (zone && p[1] < WATER_Y + 0.9 && !((s as any).leapT > 0)) s.swim = true; else if (!zone || p[1] > WATER_Y + 1.4) { s.swim = false; s.dive = false; } } else { s.swim = false; s.dive = false; }
     if (s.swim) { s.wall = null; s.ground = false; if (input.dodgeQ) { input.dodgeQ = false; s.dive = !s.dive; } }
-    if (s.wall && s.t - s.lastDrag > 0.8) s.pitch += (0.3 - s.pitch) * Math.min(1, dt * 3);
+    // Manual pitch is retained on walls; no forced leveling.
     if (s.swim) {
         const sp = s.dive ? 7 : 9.5, a = Math.min(1, dt * 4);
         const cur = s.dive ? Math.sin(s.t * 0.3) * 0.9 : 0;   // underwater current: gentle sideways drift while diving (same phase as the bubble drift)
@@ -362,8 +362,9 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (s.ground) s.runPhase += hs * dt * 0.9;
     s.land = Math.max(0, s.land - dt * 3);
     stepCombat(s, dt, ev);
-    if (s.t - s.lastDrag > 1.2 && hs > 8 && !s.ground && !s.wall) {
-        let da = Math.atan2(v[0], v[2]) - s.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); s.yaw += da * Math.min(1, dt * 1.6);
+    // Gentle heading assist only during forward movement, never during manual look or at rest.
+    if (!s.camHeld && s.t - s.lastDrag > 2.5 && hs > 2.5 && my > 0.2 && Math.abs(mx) < 0.15 && !s.wall) {
+        let da = Math.atan2(v[0], v[2]) - s.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); s.yaw += Math.max(-0.6 * dt, Math.min(0.6 * dt, da * (1 - Math.exp(-0.7 * dt))));
     }
     for (let i = 0; i < s.orbs.length; i++) {
         const o = s.orbs[i];
