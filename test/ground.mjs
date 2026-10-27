@@ -1,0 +1,11 @@
+import puppeteer from 'puppeteer-core';
+const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome-stable',headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage();await p.setViewport({width:390,height:780,hasTouch:true,isMobile:true});const errs=[];p.on('pageerror',e=>errs.push(String(e)));
+await p.goto('http://localhost:4173/',{waitUntil:'load'});await new Promise(r=>setTimeout(r,1500));
+await p.evaluate(()=>{window.__dbgGround=1;window.__game.start()});await new Promise(r=>setTimeout(r,600));
+const R=await p.evaluate(async()=>{const g=window.__game,s=g.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms));s.enemies.forEach(o=>{o.x=-300;o.z=-300;o.roof=undefined;});
+s.pos=[20,1,-150];s.vel=[0,0,0];await w(1500);const o={};
+const samp=async(n)=>{const a=[];for(let i=0;i<n;i++){await w(60);const q=window.__gc;if(q)a.push([+(q.mn+q.corr).toFixed(3),+q.corr.toFixed(3)]);}return a};
+o.idle=await samp(30);g.input.keys['w']=true;await w(800);o.run=await samp(80);o.ground=s.ground;g.input.keys['w']=false;return o});
+const st=a=>({foot:[Math.min(...a.map(x=>x[0])),Math.max(...a.map(x=>x[0]))],corr:[Math.min(...a.map(x=>x[1])),Math.max(...a.map(x=>x[1]))],maxStep:Math.max(...a.slice(1).map((x,i)=>Math.abs(x[1]-a[i][1]))),n:a.length});
+console.log('idle',JSON.stringify(st(R.idle)),'run',JSON.stringify(st(R.run)),R.ground,'errs',errs);await b.close();
