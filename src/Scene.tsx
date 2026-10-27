@@ -307,7 +307,7 @@ function Underwater({ sim }: { sim: Sim }) {
     });
     return <group>
         <instancedMesh ref={kelp} args={[kGeo, kelpMat, 1400]} frustumCulled={false} />
-        <instancedMesh ref={jel} args={[jGeo, jellyMat, 12]} frustumCulled={false} />
+        <instancedMesh ref={jel} args={[jGeo, jellyMat, 12]} renderOrder={-1} frustumCulled={false} />
         <points ref={bub} geometry={bGeo} frustumCulled={false}><pointsMaterial color="#dff8ff" size={0.09} sizeAttenuation transparent opacity={0.7} depthWrite={false} /></points>
         <group ref={rays}>{Array.from({ length: 8 }, (_, i) => <mesh key={i} position={[(i - 3.5) * 3.2, -6, ((i * 7) % 5) * 2 - 4]} rotation={[0, i * 0.4, 0.22]} material={rayMat}><planeGeometry args={[2.4 + (i % 3), 12]} /></mesh>)}</group>
     </group>;
