@@ -636,8 +636,10 @@ const waterMat = new THREE.ShaderMaterial({
         bool tir = dot(tg, tg) < 0.0001;
         vec3 sr = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tr.y)), sg = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tg.y)), sb = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tb.y));
         vec3 win = vec3(sr.r, sg.g, sb.b);
-        col = tir ? under : mix(win, under, clamp(fr, 0.0, 1.0));
-        aOut = tir ? 0.96 : 0.45;
+        // A narrow rough-surface critical-angle transition avoids a binary colour/alpha rim.
+        float critical = smoothstep(0.84, 1.04, s2);
+        col = mix(mix(win, under, clamp(fr, 0.0, 1.0)), under, critical);
+        aOut = mix(0.45, 0.96, max(fr, critical));
       }
       float haze = 1.0 - exp(-length(cameraPosition - vW) * 0.006);
       if (below) col = mix(col, uUWF, 1.0 - exp(-length(cameraPosition - vW) * 0.045 * 1.6));
