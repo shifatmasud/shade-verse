@@ -11,3 +11,9 @@
 
 ## Art direction benchmark (private research, frames NOT stored in repo)
 - Marvel's Spider-Man 2 (Insomniac) gameplay, public YouTube video uPANIcGM--Y (PS5 4K swinging/combat), viewed as 5 browser screenshots on 06:41. Informs: sky with volumetric clouds and haze, varied skyline heights and spires, trees/park, water reflections, wide third-person swing camera, minimal UI. Inspiration only; no assets, code or design copied.
+
+## SM2 benchmark provenance (private, benchmark only, no assets copied)
+- https://www.youtube.com/watch?v=uPANIcGM--Y : sequential frames at t=38.5, 39.0, 39.5, 40.0, 40.5 s (swing); stills at t=60 (park), 120 (fight), 180 (street), 240 (water), 300 (wall), 360 s (walk). Frames kept outside the repo.
+
+## Hero model v2 (Gemini 4 Argon)
+- tools/genhero_g4a.mjs was written by Gemini 4 Argon (Gemini web, user's Pro account, no per-use charge seen) from a brief for an original masked hero with our 17-bone skeleton. It writes src/hero.json (17k verts). Previous hero kept as tools/genhero.mjs.
