@@ -578,6 +578,9 @@ const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
       vec3 sand = mix(vec3(0.46, 0.62, 0.58), vec3(0.58, 0.70, 0.62), h(floor(${xy ? 'vW.xy' : 'vW.xz'} * 3.0)) * 0.6);
       vec3 col = sand * 0.7 + vec3(0.75, 0.95, 0.9) * c * 0.55;
       float d = length(vW - cameraPosition); vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.5); col = col * Tb; float fg = 1.0 - exp(-d * 0.045 * 1.6); ${xy ? 'fg = fg * 0.8;' : ''} col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
+      ${xy ? `// Match grazing rays at the wall/surface junction without changing the deeper sand wall.
+      vec3 ray=normalize(cameraPosition-vW);vec3 junction=fogUsed*(1.0+0.9*pow(1.0-clamp(abs(ray.y),0.0,1.0),2.5));
+      col=mix(col,junction,smoothstep(-5.0,-0.6,vW.y));` : ''}
       gl_FragColor = vec4(col, 1.0); }`,
 });
 const seabedMat = mkSea(false), wallMat = mkSea(true);
@@ -658,6 +661,11 @@ const waterMat = new THREE.ShaderMaterial({
       float nearClear = mix(1.0, smoothstep(1.0, 16.0, length(cameraPosition - vW)), waterline);
       float splitBlend = (1.0 - smoothstep(0.8, 1.4, -1.0 - cameraPosition.y)) * (1.0 - smoothstep(0.4, 4.0, length(cameraPosition - vW)));
       if (below) { col = mix(col, linearToOutputTexel(vec4(uUWF, 1.0)).rgb, splitBlend); aOut = mix(aOut, 1.0, splitBlend); }
+      // Shore junction: share the wall's ray scattering only at grazing angles near the solid shore.
+      // Opaque coverage here prevents the hidden city underside from leaking through the join.
+      if(below){float join=smoothstep(-230.0,-224.0,vW.z)*(1.0-smoothstep(0.20,0.65,abs(v.y)));
+        vec3 junction=uWaterDisplay*(1.0+0.9*pow(1.0-clamp(abs(v.y),0.0,1.0),2.5));
+        col=mix(col,junction,join);aOut=mix(aOut,1.0,join);}
       gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)) * nearClear);
     }`,
 });
@@ -720,7 +728,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const bv2 = useMemo(() => new THREE.Vector3(), []);
     const waterRef = useRef<THREE.Mesh>(null!), ringRef = useRef<THREE.Mesh>(null!);
     const wakeRef = useRef<THREE.Mesh>(null!); const ringFlow = useRef(0);
-    const wakeTrail = useRef<{x:number,z:number,t:number}[]>([]); const wakeStrength = useRef(0);
+    const wakeTrail = useRef<{x:number,z:number,t:number}[]>([]); const wakeStrength = useRef(0); const wakeBorn = useRef(0);
     const wakeGeo = useMemo(() => { const g = new THREE.BufferGeometry(), pa = new Float32Array(2 * 25 * 2 * 3), uv = new Float32Array(2 * 25 * 2 * 2), ix: number[] = []; for (let side = 0; side < 2; side++) for (let j = 0; j <= 24; j++) { const n = side * 50 + j * 2; uv[n*2] = uv[(n+1)*2] = j/24; uv[n*2+1] = 0; uv[(n+1)*2+1] = 1; if (j < 24) ix.push(n,n+1,n+2,n+1,n+3,n+2); } g.setAttribute('position', new THREE.BufferAttribute(pa, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(ix); return g; }, []);
     const wakeMat = useMemo(() => new THREE.ShaderMaterial({transparent:true, depthWrite:false, side:THREE.DoubleSide, uniforms:{uA:{value:0}}, vertexShader:'varying vec2 vU; void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'varying vec2 vU; uniform float uA; void main(){float soft=sin(vU.y*3.14159);float trail=pow(1.0-vU.x,1.5)*smoothstep(0.0,0.12,vU.x); gl_FragColor=vec4(0.82,0.96,1.0,soft*trail*uA);}' }), []);
  const splashRef = useRef<THREE.Group>(null!), splashSt = useRef({ prev: false, t0: -9 });
@@ -833,13 +841,13 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if(surface && (!trail.length || sim.t-trail[0].t>0.07)){
                 // A hard reversal must start a new ribbon rather than join opposing arms across a cusp.
                 if(trail.length>3){const a=trail[0],b=trail[3],ox=a.x-b.x,oz=a.z-b.z,ol=Math.hypot(ox,oz);if(ol>0.15&&sp>1.0&&(v[0]*ox+v[2]*oz)/(sp*ol)<0.20){trail.length=0;wakeStrength.current*=0.35;}}
-                trail.unshift({x:p[0],z:p[2],t:sim.t});if(trail.length>28)trail.pop();}
+                if(!trail.length)wakeBorn.current=sim.t;trail.unshift({x:p[0],z:p[2],t:sim.t});if(trail.length>28)trail.pop();}
             if(m){m.visible=surface && wakeStrength.current>0.015 && trail.length>2;if(m.visible){const pa=wakeGeo.attributes.position as THREE.BufferAttribute;
                 for(let side=0;side<2;side++)for(let j=0;j<=24;j++){const t=j/24,sgn=side?1:-1,fi=t*(trail.length-1),ii=Math.floor(fi),ff=fi-ii,a=trail[ii],b=trail[Math.min(ii+1,trail.length-1)],prev=trail[Math.max(0,ii-1)],next=trail[Math.min(trail.length-1,ii+1)];
                     let dx=prev.x-next.x,dz=prev.z-next.z;const ln=Math.hypot(dx,dz);if(ln>0.02){dx/=ln;dz/=ln;}else{dx=Math.sin(sim.ang);dz=Math.cos(sim.ang);}
                     const cx=a.x+(b.x-a.x)*ff-dx*0.8,cz=a.z+(b.z-a.z)*ff-dz*0.8,spread=0.55+t*1.7,width=0.06+t*0.16;
                     for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,WATER_Y+waveH(x,z,sim.t)+0.055,z);}}
-                pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current;}}
+                pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current*THREE.MathUtils.smoothstep(sim.t-wakeBorn.current,0.1,0.65);}}
         }
         { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (rg) { const on = sim.swim && p[1] > -2.6; rg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
         if (sw2) { { const kw = Math.max(0, Math.min(1, (p[1] + 3) / 2.3)), wv = waveH(p[0], p[2], sim.t) * kw, sa2 = sim as any; sa2.swW = (sa2.swW === undefined ? wv : sa2.swW + (wv - sa2.swW) * Math.min(1, dt * 10)); h.position.y = p[1] - 1.7 + sa2.swW; } h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
