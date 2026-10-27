@@ -646,7 +646,12 @@ const waterMat = new THREE.ShaderMaterial({
       if (below) col += uUWF * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5);   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
       if (!below) col *= mix(0.3, 1.0, uDay);
-      gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)));
+      // A near-waterline camera can sit inside a displaced crest while viewing its top face.
+      // Fade only that nearby top-face sheet so the swimmer remains readable through the split.
+      // This is a local transparency approximation, not scene-colour refraction.
+      float waterline = 1.0 - smoothstep(0.35, 1.4, abs(cameraPosition.y - wh(cameraPosition.xz, uTime)));
+      float nearClear = mix(1.0, smoothstep(1.0, 16.0, length(cameraPosition - vW)), waterline);
+      gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)) * nearClear);
     }`,
 });
 
