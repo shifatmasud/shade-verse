@@ -101,6 +101,7 @@ export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: 
 
 
 
+const _wv = new THREE.Vector3();
 function buildRig() {
     const d: any = heroData;
     const g = new THREE.BufferGeometry();
@@ -137,7 +138,20 @@ function buildRig() {
     const root = new THREE.Group(); root.add(mesh); mesh.add(bones[0]);
     root.updateMatrixWorld(true);
     mesh.bind(new THREE.Skeleton(bones));
-    return { root, b: byName, bones, hipsY: byName.hips.position.y };
+    // per-bone extreme points (bind pose, bone-local) for cheap wall-contact queries
+    const hull: { bone: THREE.Bone; pts: THREE.Vector3[] }[] = bones.map((bone) => ({ bone, pts: [] }));
+    {
+        const inv = mesh.skeleton.boneInverses, pa = g.attributes.position, si = d.si, sw = d.sw, v = new THREE.Vector3();
+        const dirs: THREE.Vector3[] = []; for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) if (x || y || z) dirs.push(new THREE.Vector3(x, y, z).normalize());
+        const best = bones.map(() => dirs.map(() => ({ s: -1e9, p: new THREE.Vector3() })));
+        for (let i = 0; i < pa.count; i++) {
+            let bi = si[i * 4], bw = sw[i * 4]; for (let j = 1; j < 4; j++) if (sw[i * 4 + j] > bw) { bw = sw[i * 4 + j]; bi = si[i * 4 + j]; }
+            v.set(pa.getX(i), pa.getY(i), pa.getZ(i)).applyMatrix4(inv[bi]);
+            dirs.forEach((dr, k2) => { const sc = v.dot(dr); if (sc > best[bi][k2].s) { best[bi][k2].s = sc; best[bi][k2].p.copy(v); } });
+        }
+        best.forEach((arr, bi) => arr.forEach((e) => { if (e.s > -1e8) hull[bi].pts.push(e.p); }));
+    }
+    return { root, b: byName, bones, hull, hipsY: byName.hips.position.y };
 }
 
 
@@ -264,6 +278,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         return r;
     }, []);
     const clipSt = useRef({ key: '', t: 0, w: 0 });
+    const wallCorr = useRef(0);
     const enemyGeo = useMemo(() => buildEnemyGeo(), []);
     const enBody = useRef<THREE.InstancedMesh>(null!);
     const enHead = useRef<THREE.InstancedMesh>(null!);
@@ -372,7 +387,17 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         if (!sim.swim && sim.ground && !wl && clipSt.current.key === 'run') h.position.y -= 0.2 * clipSt.current.w;
         h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
-        { const gp = (window as any).__game; if (gp && gp.probe) { h.updateMatrixWorld(true); const m = rig.root.children[0] as THREE.SkinnedMesh; m.skeleton.update(); const pa = m.geometry.attributes.position, hv = new THREE.Vector3(); let mx = -1e9, mn = 1e9, mz = -1e9, nz = 1e9; for (let i = 0; i < pa.count; i++) { if (pa.getY(i) < 1.62) continue; m.getVertexPosition(i, hv); hv.applyMatrix4(m.matrixWorld); mx = Math.max(mx, hv.x); mn = Math.min(mn, hv.x); mz = Math.max(mz, hv.z); nz = Math.min(nz, hv.z); } gp.headBox = [mn, mx, nz, mz]; } }
+        if (wl && sim.wallB >= 0) {   // keep the whole skinned body (head, hands, feet) at the facade: shift along the wall normal by the deepest extreme point
+            const bd = buildings[sim.wallB], n = sim.wall!, fx = -n[0], fz = -n[1];
+            const pl = fx !== 0 ? (n[0] < 0 ? bd.x0 : bd.x1) : (n[1] < 0 ? bd.z0 : bd.z1), tp = _wv;
+            h.updateMatrixWorld(true);
+            let md = -1e9;
+            for (const e of rig.hull) for (const q of e.pts) { tp.copy(q).applyMatrix4(e.bone.matrixWorld); const dd = fx !== 0 ? (tp.x - pl) * fx : (tp.z - pl) * fz; if (dd > md) md = dd; }
+            const want = Math.max(-0.5, Math.min(0.5, -(md + 0.02)));
+            wallCorr.current += (want - wallCorr.current) * Math.min(1, dt * 14);
+        } else wallCorr.current += (0 - wallCorr.current) * Math.min(1, dt * 10);
+        if (Math.abs(wallCorr.current) > 1e-4 && sim.wall) { const n = sim.wall; h.position.x -= n[0] * wallCorr.current; h.position.z -= n[1] * wallCorr.current; }
+        { const gp = (window as any).__game; if (gp && gp.probe) { h.updateMatrixWorld(true); const m = rig.root.children[0] as THREE.SkinnedMesh; m.skeleton.update(); const pa = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex, swt = m.geometry.attributes.skinWeight, hv = new THREE.Vector3(); const grp = (n: string) => /^head|^neck/.test(n) ? 'head' : /^hand/.test(n) ? 'hands' : /^foot/.test(n) ? 'feet' : 'body'; const parts: Record<string, number[]> = {}; for (let i = 0; i < pa.count; i++) { let bi = si.getX(i), bw = swt.getX(i); for (let k = 1; k < 4; k++) { const w2 = swt.getComponent(i, k); if (w2 > bw) { bw = w2; bi = si.getComponent(i, k); } } const gname = grp(m.skeleton.bones[bi].name); const P = parts[gname] || (parts[gname] = [1e9, -1e9, 1e9, -1e9]); m.getVertexPosition(i, hv); hv.applyMatrix4(m.matrixWorld); P[0] = Math.min(P[0], hv.x); P[1] = Math.max(P[1], hv.x); P[2] = Math.min(P[2], hv.z); P[3] = Math.max(P[3], hv.z); } gp.parts = parts; } }
         cape.current.rotation.x = 0.25 + Math.min(1.0, speed / 38) + Math.sin(sim.t * 14) * 0.05 * Math.min(1, speed / 20);
         // web
         const w = web.current;
