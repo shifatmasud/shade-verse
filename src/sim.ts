@@ -6,6 +6,7 @@ export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
 export const FOG: V3 = [0.86, 0.52, 0.5];
 const G = 27;
 export const JUMP_V = 16;
+export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 
 let seedv = 1337;
 const rnd = () => { seedv = (seedv * 1664525 + 1013904223) % 4294967296; return seedv / 4294967296; };
@@ -32,7 +33,7 @@ function buildWorld() {
         }
     };
     const mi = (N - 1) / 2;
-    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) for (let j = 2; j < N; j++) {
         const cx = (i - mi) * CELL, cz = (j - mi) * CELL;
         const dc = Math.hypot(cx, cz) / HALF;
         const w = 20 + rnd() * 8, d = 20 + rnd() * 8;
@@ -71,7 +72,7 @@ function buildWorld() {
         if (rnd() < 0.3) box(cx + w * 0.1, h + 0.25, cz - d * 0.1, w * 0.3, 0.25, d * 0.12, [0.9, 0.55, 0.3], 0.5); // roof glow strip
     }
     const g = HALF + 200, base = data.length / 10;
-    for (const p of [[-g, g], [g, g], [g, -g], [-g, -g]]) data.push(p[0], 0, p[1], 0, 1, 0, 0.16, 0.15, 0.2, 0.5);
+    for (const p of [[-g, g], [g, g], [g, WATER_Z], [-g, WATER_Z]]) data.push(p[0], 0, p[1], 0, 1, 0, 0.16, 0.15, 0.2, 0.5);
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     return { blds, data: new Float32Array(data), idx: new Uint32Array(idx) };
 }
@@ -85,7 +86,7 @@ export interface Sim {
     yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
     hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number;
-    wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
+    swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
 }
 export interface Input { attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean }
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void }
@@ -95,7 +96,7 @@ export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing
 export function createSim(): Sim {
     let best = 0;
     try { best = parseInt(localStorage.getItem('webswinger3d-best') || '0', 10) || 0; } catch (e) { /* ignore */ }
-    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0, wall: null, wallB: -1, wallT: 0, vaulted: 0 };
+    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0, swim: false, dive: false, wall: null, wallB: -1, wallT: 0, vaulted: 0 };
     resetSim(s);
     return s;
 }
@@ -128,6 +129,7 @@ function spawnEnemy(s: Sim): Enemy {
     }
     for (let k = 0; k < 60; k++) {
         const x = (Math.floor(Math.random() * (N - 1)) - (N - 2) / 2) * CELL + (Math.random() < 0.5 ? -CELL / 2 + 0 : CELL / 2 - 0), z = (Math.random() - 0.5) * 2 * (HALF - 40);
+        if (z < WATER_Z + 8) continue;
         const sx = Math.round((x - CELL / 2) / CELL) * CELL + CELL / 2;
         if (Math.hypot(sx - s.pos[0], z - s.pos[2]) < 18) continue;
         let inside = false;
@@ -142,7 +144,7 @@ export function resetSim(s: Sim) {
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
-    s.wall = null; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
+    s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
 }
 
@@ -201,6 +203,8 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (!swingHeld && s.web) { s.web = false; v[1] += 3; ev.release(); }
     if (input.jumpQ) {
         input.jumpQ = false;
+        if (s.swim) { if (s.dive) s.dive = false; else if (p[2] > WATER_Z - 3) { p[1] = 1; p[2] = WATER_Z + 1.3; v[0] = v[1] = v[2] = 0; s.swim = false; s.ground = true; ev.jump(); } else { v[1] = 9; s.swim = false; ev.jump(); } }
+        else
         if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
         else if (s.ground) { v[1] = JUMP_V; s.ground = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
@@ -209,8 +213,17 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
     s.wallT = Math.max(0, s.wallT - dt);
+    if (!s.web) { const zone = p[2] < WATER_Z; if (zone && p[1] < WATER_Y + 0.9) s.swim = true; else if (!zone || p[1] > WATER_Y + 1.4) { s.swim = false; s.dive = false; } } else { s.swim = false; s.dive = false; }
+    if (s.swim) { s.wall = null; s.ground = false; if (input.dodgeQ) { input.dodgeQ = false; s.dive = !s.dive; } }
     if (s.wall && s.t - s.lastDrag > 0.8) s.pitch += (0.3 - s.pitch) * Math.min(1, dt * 3);
-    if (s.wall && !s.web) {
+    if (s.swim) {
+        const sp = s.dive ? 5 : 6.5, a = Math.min(1, dt * 4);
+        v[0] += (wx * sp - v[0]) * a; v[2] += (wz * sp - v[2]) * a;
+        const target = s.dive ? -5 : WATER_Y + 0.25;
+        v[1] += ((target - p[1]) * 3 - v[1]) * Math.min(1, dt * 5);
+        s.runPhase += Math.hypot(v[0], v[2]) * dt * 0.8;
+        if (p[2] > WATER_Z - 1.2 && wz > 0.3 && p[1] > WATER_Y - 2.5) { p[1] = 1; p[2] = WATER_Z + 1.3; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; }
+    } else if (s.wall && !s.web) {
         const n = s.wall, tx = -n[1], tz = n[0];
         const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
         if (push < -0.3) { s.wall = null; s.wallT = 0.2; v[0] = n[0] * 3; v[2] = n[1] * 3; v[1] = 0; }
@@ -250,7 +263,8 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     else if (!hitN) s.wall = null;
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
-    if (p[1] <= 1.0005) { // street level: walkable
+    if (s.swim && p[1] < SEABED + 1) { p[1] = SEABED + 1; if (v[1] < 0) v[1] = 0; }
+    if (p[1] <= 1.0005 && p[2] >= WATER_Z && !s.swim) { // street level: walkable
         if (!s.ground) { s.ground = true; }
         p[1] = 1.0; if (v[1] < 0) v[1] = 0;
     }

@@ -1,0 +1,30 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const p = await b.newPage(); await p.setViewport({ width:390, height:780, hasTouch:true, isMobile:true });
+const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+await p.goto('http://localhost:4173/',{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
+await p.evaluate(()=>window.__game.start()); await new Promise(r=>setTimeout(r,600));
+const shot=process.argv[2];
+const R=await p.evaluate(async()=>{const g=window.__game,s=g.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms)); const out={};
+ s.enemies.forEach(o=>{o.x=-300;o.z=-300;o.roof=undefined;});
+ s.pos=[20,1,-212]; s.vel=[0,0,0]; s.yaw=Math.PI; s.ang=Math.PI; s.wall=null; await w(300);
+ out.startGround=s.ground; g.input.keys['w']=true; for(let i=0;i<60&&!s.swim;i++) await w(100); g.input.keys['w']=false;
+ out.entered=s.swim; await w(800); out.surfY=+s.pos[1].toFixed(2); out.zIn=s.pos[2]<-222;
+ g.input.keys['w']=true; await w(800); g.input.keys['w']=false; out.swimSpeedMoved=+(Math.abs(s.pos[2]+222)).toFixed(1);
+ g.input.dodgeQ=true; await w(1800); out.dove=s.dive&&s.pos[1]<-3; out.diveY=+s.pos[1].toFixed(2);
+ window.__shotReady=true; await w(200);
+ return out;});
+if(shot){ await p.screenshot({path:shot.replace('.png','-under.png')}); }
+const R2=await p.evaluate(async()=>{const g=window.__game,s=g.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms)); const out={};
+ g.input.jumpQ=true; await w(1800); out.surfaced=!s.dive&&s.pos[1]>-1.5; out.stillSwim=s.swim;
+ if(window.__shot) {}
+ await w(300);
+ return out;});
+if(shot) await p.screenshot({path:shot});
+const R3=await p.evaluate(async()=>{const g=window.__game,s=g.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms)); const out={};
+ s.yaw=0; g.input.keys['w']=true; for(let i=0;i<80&&!s.ground;i++) await w(100); g.input.keys['w']=false; await w(300);
+ out.exited=!s.swim&&s.ground; out.exitY=+s.pos[1].toFixed(2); out.exitZ=+s.pos[2].toFixed(1);
+ return out;});
+const all={...R,...R2,...R3}; console.log(JSON.stringify(all),'errors',JSON.stringify(errs));
+const ok=all.entered&&all.zIn&&all.surfY<0&&all.swimSpeedMoved>2&&all.dove&&all.surfaced&&all.exited&&errs.length===0;
+console.log(ok?'WATER PASS':'WATER FAIL'); await b.close(); process.exit(ok?0:1);

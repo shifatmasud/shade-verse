@@ -90,6 +90,7 @@ export function App() {
     const [swingOn, setSwingOn] = useState(false);
 
     return <div className="stage" onContextMenu={(e) => e.preventDefault()}>
+        <div id="uw" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, opacity: 0, transition: 'opacity .15s', background: 'radial-gradient(circle at 50% 40%, rgba(40,150,180,.35), rgba(8,50,80,.72))' }} />
         <Canvas
             dpr={[1, coarse ? 1.5 : 2]}
             gl={{ antialias: !coarse, powerPreference: 'high-performance', alpha: false, stencil: false }}

@@ -1,0 +1,10 @@
+# Component references (inspected sources, informs only, nothing copied)
+
+| Component | Source inspected | What it informed |
+|---|---|---|
+| Water | https://shaderbattle.com/guides/how-to-make-an-ocean-shader (fetched 06:08) | Sum-of-sines height field with several travelling waves, Fresnel sky/water mix (Schlick), sun glitter highlight, crest foam, distance haze. Implemented as an original cheap shader (4 waves, no raymarch) for weak GPUs. |
+| Water (split view) | Own design: project the waterline ahead of the camera, tint only below it | Half-submerged camera while swimming at the surface. |
+| Character animation | Mixamo clips (Adobe, free with Adobe ID; Adobe Mixamo FAQ https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html) | Idle, Jump, Climbing Up Wall, Punching, Swimming, retargeted offline by bone direction to the original 17-bone rig. FBX are not shipped or redistributed. |
+| Wall crawl | Spiderbench (view only, https://github.com/xikhar/spiderbench) | Idea of surface attach plus wall camera only. No code or assets used. |
+| Character anatomy | Own SDF generator (tools/genhero.mjs) | Original masked humanoid. Spider-Man is inspiration only. |
+| Video ref (youtu.be/pyKONWsQ1ek) | NOT viewed (tools could not read it) | Nothing. |
