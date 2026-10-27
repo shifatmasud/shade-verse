@@ -117,7 +117,7 @@ function buildRig() {
         bone.position.set(b.h[0] - par[0], b.h[1] - par[1], b.h[2] - par[2]);
         if (b.p >= 0) bones[b.p].add(bone);
     });
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1a2a66'), emissiveIntensity: 0.55 });
     const mesh = new THREE.SkinnedMesh(g, mat); mesh.frustumCulled = false;
     const root = new THREE.Group(); root.add(mesh); mesh.add(bones[0]);
     root.updateMatrixWorld(true);
@@ -278,7 +278,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         // camera
         const cy = Math.cos(sim.pitch), sy = Math.sin(sim.pitch);
         const dbgD = (window as any).__camDist as number | undefined; if ((window as any).__hq) { curScale.current = 1; perf.scale = 1; }
-        let dist = dbgD ?? (sim.web ? 15 : sim.wall ? 7.5 : 11);
+        let dist = dbgD ?? (sim.web ? 11.5 : sim.wall ? 7 : 8.5);
         const fxd = Math.sin(sim.yaw) * cy, fzd = Math.cos(sim.yaw) * cy;
         for (; !dbgD && dist > (sim.wall ? 5 : 6); dist -= 1) {
             const ex = p[0] - fxd * dist, ey = p[1] + 1.5 + sy * dist, ez = p[2] - fzd * dist;
@@ -321,7 +321,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const h = hero.current;
         for (const bn of rig.bones) bn.rotation.set(0, 0, 0);
         h.position.set(p[0], p[1] - 1.0, p[2]);
-        h.rotation.set(0, sim.ang, 0); h.scale.setScalar(1.2);
+        h.rotation.set(0, sim.ang, 0); h.scale.setScalar(1.5);
         const wl = !!sim.wall;
         if (wl) { h.position.x += Math.sin(sim.ang) * 0.4; h.position.z += Math.cos(sim.ang) * 0.4; }
         const sw2 = sim.swim;
