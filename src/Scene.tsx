@@ -13,6 +13,7 @@ import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
 import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
 
 // time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
@@ -468,53 +469,32 @@ function WindLines({ sim }: { sim: Sim }) {
     });
     return <mesh ref={ref} geometry={geo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} side={THREE.DoubleSide} uniforms={un} vertexShader={`attribute float aFade;varying float vFade;void main(){vFade=aFade;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`} fragmentShader={`varying float vFade;uniform float uDay;void main(){gl_FragColor=vec4(mix(vec3(.42,.57,.73),vec3(.86,.93,.96),uDay),vFade);}`} /></mesh>;
 }
-// Civilian robots use exactly Shadow's source mesh, separate material/geometry copies.
-function civilianGeo(feminine:boolean) {
-    const d:any=heroData, p:number[]=[], c:number[]=[];
-    const palette=feminine?[[.17,.25,.29],[.50,.28,.31],[.12,.16,.20]]:[[.22,.27,.24],[.43,.47,.37],[.12,.15,.17]];
-    for(let t=0;t<d.idx.length;t+=3){const ids=d.idx.slice(t,t+3);
-        // Remove only the loose hero cape from this civilian copy, never touch heroData.
-        if(ids.every((i:number)=>d.pos[i*3+2]<-.115&&d.pos[i*3+1]>1.15&&d.pos[i*3+1]<1.7))continue;
-        // The coat fully covers these torso triangles; preserve exposed limbs, head and feet.
-        if(ids.every((i:number)=>d.pos[i*3+1]>1.02&&d.pos[i*3+1]<1.57&&Math.abs(d.pos[i*3])<.20&&Math.abs(d.pos[i*3+2])<.21))continue;
-        for(const i of ids){let x=d.pos[i*3],y=d.pos[i*3+1],z=d.pos[i*3+2];
-            if(feminine){const waist=Math.exp(-Math.pow((y-1.15)/.2,2));x*=.90-.10*waist;y*=.96;}
-            p.push(x,y,z);const k=y>1.55?0:y>1.0?1:2;const col=palette[k];c.push(...col);
-        }
-    }
-    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(c,3));g.computeVertexNormals();
-    const extras:THREE.BufferGeometry[]=[g];const add=(q:THREE.BufferGeometry,col:number[],x:number,y:number,z:number)=>{q.translate(x,y,z);const a=q.index?q.toNonIndexed():q;const cs=[];for(let i=0;i<a.attributes.position.count;i++)cs.push(...col);a.setAttribute('color',new THREE.Float32BufferAttribute(cs,3));a.deleteAttribute('uv');extras.push(a);};
-    const coat=feminine?[.48,.29,.31]:[.30,.38,.34];const cy=feminine?1.24:1.31;
-    const profile=[new THREE.Vector2(.29,0),new THREE.Vector2(.30,.12),new THREE.Vector2(feminine?.235:.25,.40),new THREE.Vector2(feminine?.23:.27,.68)];
-    const jacket=new THREE.LatheGeometry(profile,12);jacket.scale(1,1,.86);add(jacket,coat,0,cy-.34,0);
-    // Coat panels and oversized utility pockets, separate from the hero's own suit.
-    add(new THREE.BoxGeometry(.105,.14,.035),[.16,.20,.19],-.21,1.15,.235);add(new THREE.BoxGeometry(.105,.14,.035),[.16,.20,.19],.21,1.15,.235);
-    add(new THREE.BoxGeometry(.025,.57,.025),[.62,.65,.59],0,cy,.255);
-    for(const side of [-1,1]){add(new THREE.BoxGeometry(.09,.048,.03),[.08,.16,.18],side*.052,feminine?1.69:1.76,.295);add(new THREE.BoxGeometry(.067,.03,.032),[.22,.48,.48],side*.052,feminine?1.69:1.76,.313);}
-    for(const side of [-1,1]){const sleeve=new THREE.CylinderGeometry(.085,.075,.43,10);sleeve.rotateZ(side*.15);add(sleeve,coat,side*.295,feminine?1.40:1.46,0);const cuff=new THREE.CylinderGeometry(.077,.062,.33,9);cuff.rotateZ(side*.16);add(cuff,coat,side*.355,feminine?1.095:1.14,.01);}
-    return mergeGeometries(extras,false)!;
-}
+// Robot pedestrians: Polyfork free robot models (non-human, non-animal, fully plated/covered, blue sensor visor, no mouth or nose). Instanced, per-type, GPU-animated.
+const PED_TYPES = [
+    { model: 'robot', shell: [0.62, 0.70, 0.74], coat: [0.10, 0.28, 0.38] }, { model: 'robot', shell: [0.78, 0.72, 0.60], coat: [0.50, 0.30, 0.18] },
+    { model: 'robot', shell: [0.55, 0.62, 0.58], coat: [0.20, 0.34, 0.26] }, { model: 'companion' }, { model: 'sdrone' }] as const;
+const PED_LANES = 2, PED_PER_LANE = 5;
 function Civilians({sim}:{sim:Sim}){
-    const refs=useRef<THREE.InstancedMesh[]>([]), eyes=useRef<THREE.InstancedMesh>(null!);
-    const geos=useMemo(()=>[civilianGeo(false),civilianGeo(true)],[]);
-    const eyeGeo=useMemo(()=>{const g=new THREE.BoxGeometry(.28,.065,.06);g.translate(0,1.84,.135);return g;},[]);
+    const refs=useRef<THREE.InstancedMesh[]>([]);
     const time=useRef({value:0});
-    const mat=useMemo(()=>{const m=new THREE.MeshLambertMaterial({vertexColors:true});m.onBeforeCompile=sh=>{sh.uniforms.uCivilTime=time.current;sh.vertexShader='uniform float uCivilTime;\n'+sh.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
-    float side=sign(position.x), phase=uCivilTime*3.2+instanceMatrix[3].z*.3;
-    if(position.y<.98){float a=sin(phase)*side*.32;float yy=position.y-.98;transformed.y=.98+yy*cos(a)-position.z*sin(a);transformed.z=yy*sin(a)+position.z*cos(a);}
-    if(abs(position.x)>.28 && position.y>1.0 && position.y<1.65)transformed.z+=sin(phase)*side*(1.65-position.y)*.25;
-    transformed.y+=abs(sin(phase))*.015;`);};return m;},[]);
+    const set=useMemo(()=>PED_TYPES.map((t:any)=>{
+        const r=robotGeo({model:t.model,eye:EYE_BLUE,shell:t.shell,scale:t.model==='sdrone'?1.3:t.model==='companion'?1.15:1,extras:t.coat?coatRobot(t.coat):undefined});
+        return {geo:r.geo,mat:robotMat(r.parts,r.scale,time.current,t.model==='sdrone'?0:3.2)};
+    }),[]);
     const o=useMemo(()=>new THREE.Object3D(),[]);
-    useFrame(()=>{time.current.value=sim.t;const cnt=[0,0];for(let i=0;i<4;i++){const lane=Math.floor(i/2),R=.65,L=140,arc=Math.PI*R,total=2*L+2*arc,phase=(sim.t*.8+(i%2)*(L+arc))%total;
-        let z=25,x=lane?263:97,rot=0;
-        if(phase<L){z+=phase;x-=R;}
-        else if(phase<L+arc){const a=(phase-L)/R;z+=L+R*Math.sin(a);x-=R*Math.cos(a);rot=a;}
-        else if(phase<2*L+arc){z+=2*L+arc-phase;x+=R;rot=Math.PI;}
-        else{const a=(phase-2*L-arc)/R;z-=R*Math.sin(a);x+=R*Math.cos(a);rot=Math.PI+a;}
-        if(Math.hypot(x-sim.pos[0],z-sim.pos[2])>50)continue;
-        o.position.set(x,0,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.08);o.updateMatrix();refs.current[i%2].setMatrixAt(cnt[i%2]++,o.matrix);
-    }for(let i=0;i<2;i++){refs.current[i].count=cnt[i];refs.current[i].instanceMatrix.needsUpdate=true;}});
-    return <group>{geos.map((g,i)=><instancedMesh key={i} ref={m=>{if(m)refs.current[i]=m}} args={[g,mat,2]} frustumCulled={false}/>)}</group>;
+    useFrame(()=>{time.current.value=sim.t;const cnt=PED_TYPES.map(()=>0);
+        for(let i=0;i<PED_LANES*PED_PER_LANE;i++){const lane=Math.floor(i/PED_PER_LANE),k=i%PED_PER_LANE,R=.65,L=140,arc=Math.PI*R,total=2*L+2*arc,phase=(sim.t*.8+k*total/PED_PER_LANE+lane*13)%total;
+            let z=25,x=lane?263:97,rot=0;
+            if(phase<L){z+=phase;x-=R;}
+            else if(phase<L+arc){const a=(phase-L)/R;z+=L+R*Math.sin(a);x-=R*Math.cos(a);rot=a;}
+            else if(phase<2*L+arc){z+=2*L+arc-phase;x+=R;rot=Math.PI;}
+            else{const a=(phase-2*L-arc)/R;z-=R*Math.sin(a);x+=R*Math.cos(a);rot=Math.PI+a;}
+            if(Math.hypot(x-sim.pos[0],z-sim.pos[2])>50)continue;
+            const ty=(k+lane)%PED_TYPES.length,hov=ty===4?1.1+Math.sin(sim.t*2+i)*.12:0;
+            o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.08);o.updateMatrix();refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);
+        }
+        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];refs.current[i].instanceMatrix.needsUpdate=true;}});
+    return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m)refs.current[i]=m}} args={[p.geo,p.mat,PED_LANES*PED_PER_LANE]} frustumCulled={false}/>)}</group>;
 }
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
@@ -773,41 +753,15 @@ const waterMat = new THREE.ShaderMaterial({
     }`,
 });
 
-function buildEnemyGeo(kind: number): THREE.BufferGeometry {
-    // four simple robot bots (palette: white/gray/black/red): 0 pawn (round head, white/red), 1 crawler (gray box, four legs), 2 wasp drone (hovering, red/black), 3 coil (stacked white/gray)
-    const parts: THREE.BufferGeometry[] = [];
-    const add = (g: THREE.BufferGeometry, col: [number, number, number], x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
-        const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
-        let gg = g.clone(); gg.applyMatrix4(m);
-        const n = gg.attributes.position.count, a = new Float32Array(n * 3);
-        for (let i = 0; i < n; i++) { a[i * 3] = col[0]; a[i * 3 + 1] = col[1]; a[i * 3 + 2] = col[2]; }
-        gg.setAttribute('color', new THREE.BufferAttribute(a, 3)); gg.deleteAttribute('uv'); if (gg.index) gg = gg.toNonIndexed(); parts.push(gg);
-    };
-    const f = -0.85, B = (x: number, y: number, z: number) => new THREE.BoxGeometry(x, y, z);
-    type C = [number, number, number];
-    // Reference-informed (visual reference only, no geometry copied): Quaternius "Animated Robot" (round head, two big dark eyes, colour-blocked body) and "Easy Enemy Pack" (spider, wasp, snake, frog archetypes).
-    // Each bot is a few plain shapes with one main colour and a clear silhouette.
-    if (kind === 1) { // crawler robot (spider reference): steel box body, four angled legs, one red visor strip
-        const body: C = [0.55, 0.55, 0.57], leg: C = [0.07, 0.07, 0.08], eye: C = [3, 0.25, 0.25];
-        add(B(0.8, 0.45, 0.7), body, 0, f + 0.8, 0); add(B(0.62, 0.1, 0.05), eye, 0, f + 0.88, 0.72);
-        for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(B(0.1, 0.95, 0.1), leg, sx * 0.7, f + 0.5, sz * 0.45, sz * 0.5, 0, sx * -0.55);
-    } else if (kind === 2) { // wasp drone (wasp reference): striped body, two flat wings, hovers
-        const yel: C = [0.85, 0.12, 0.12], blk: C = [0.07, 0.07, 0.08], wing: C = [0.85, 0.85, 0.88], h = f + 1.3;
-        add(new THREE.CylinderGeometry(0.3, 0.3, 0.3, 8), yel, 0, h, 0.35, Math.PI / 2, 0, 0); add(new THREE.CylinderGeometry(0.32, 0.32, 0.2, 8), blk, 0, h, 0.05, Math.PI / 2, 0, 0);
-        add(new THREE.CylinderGeometry(0.26, 0.2, 0.3, 8), yel, 0, h, -0.2, Math.PI / 2, 0, 0); add(new THREE.ConeGeometry(0.2, 0.4, 6), blk, 0, h, -0.55, -Math.PI / 2, 0, 0);
-        for (const sx of [-1, 1]) add(B(0.8, 0.03, 0.3), wing, sx * 0.55, h + 0.3, 0.1, 0, sx * 0.3, sx * 0.25);
-        add(new THREE.SphereGeometry(0.2, 7, 5), blk, 0, h, 0.62); add(new THREE.SphereGeometry(0.1, 6, 5), [3, 0.3, 0.3] as C, 0, h, 0.8);
-    } else if (kind === 3) { // coil (snake reference): stacked tapered column, bright head with one big eye
-        const g1: C = [0.92, 0.92, 0.94], g2: C = [0.4, 0.4, 0.43], eye: C = [3, 0.25, 0.25];
-        add(new THREE.CylinderGeometry(0.5, 0.62, 0.4, 7), g2, 0, f + 0.2, 0); add(new THREE.CylinderGeometry(0.4, 0.5, 0.45, 7), g1, 0.05, f + 0.62, 0); add(new THREE.CylinderGeometry(0.3, 0.4, 0.5, 7), g2, 0, f + 1.08, 0);
-        add(new THREE.SphereGeometry(0.34, 8, 6), g1, 0, f + 1.55, 0.05, 0, 0, 0, 1, 0.9, 1.2); add(B(0.4, 0.09, 0.06), eye, 0, f + 1.62, 0.36); add(B(0.04, 0.4, 0.04), g2, 0.15, f + 1.95, 0);
-    } else { // pawn (robot reference): round dome head with two big dark eyes, block body, orange
-        const body: C = [0.93, 0.93, 0.95], dark: C = [0.07, 0.07, 0.08], cream: C = [0.8, 0.12, 0.12], glow: C = [3, 0.25, 0.25];
-        add(new THREE.SphereGeometry(0.46, 9, 7), body, 0, f + 1.75, 0, 0, 0, 0, 1.1, 0.9, 1); add(new THREE.CylinderGeometry(0.34, 0.26, 0.9, 6), body, 0, f + 1.0, 0);
-        for (const sx of [-1, 1]) { add(new THREE.SphereGeometry(0.15, 6, 5), dark, sx * 0.2, f + 1.8, 0.4); add(B(0.26, 0.05, 0.06), dark, sx * 0.2, f + 2.0, 0.42, 0, 0, sx * -0.25); add(B(0.2, 0.55, 0.2), cream, sx * 0.4, f + 0.35, 0.05); }
-        add(B(0.5, 0.08, 0.05), glow, 0, f + 1.0, 0.27);
-    }
-    return mergeGeometries(parts, false)!;
+// Enemies: heavily armoured robots, every sensor visor red (Polyfork free models, modified). 0 armoured trooper, 1 armoured walker, 2 hover drone, 3 armoured service drone.
+const ENEMY_DEFS: any[] = [
+    { model: 'robot', eye: EYE_RED, shell: [0.20, 0.21, 0.24], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.1, extras: armorRobot, dy: -0.85, spd: 5 },
+    { model: 'companion', eye: EYE_RED, dark: [0.14, 0.14, 0.17], shell: [0.18, 0.18, 0.21], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.6, extras: armorCompanion, dy: -0.85, spd: 6 },
+    { model: 'survey', eye: EYE_RED, shell: [0.20, 0.21, 0.24], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.7, extras: armorDrone, dy: 0.45, spd: 0 },
+    { model: 'sdrone', eye: EYE_RED, shell: [0.22, 0.22, 0.25], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.9, dy: 0.15, spd: 0 }];
+function buildEnemy(kind: number, time: { value: number }) {
+    const d = ENEMY_DEFS[kind], r = robotGeo(d); r.geo.translate(0, d.dy, 0);
+    return { geo: r.geo, mat: robotMat(r.parts, r.scale, time, d.spd) };
 }
 
 
@@ -863,7 +817,7 @@ function PlasmaFx({ sim }: { sim: Sim }) {
         const e = sim.aimE;
         ret.current.visible = !!e && sim.mode === 'play';
         if (e) {
-            ret.current.position.set(e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0] + 1.05, e.z);
+            ret.current.position.set(e.x, e.y + [0.8, 0.3, 1.05, 0.95][e.kind ?? 0] + 1.05, e.z);
             ret.current.quaternion.copy(camera.quaternion);
             const s2 = 1 + Math.sin(sim.t * 6) * 0.09; ret.current.scale.setScalar(s2);
             ret.current.children[0].rotation.z = sim.t * 2.4;
@@ -930,7 +884,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     }, []);
     const clipSt = useRef({ key: '', t: 0, w: 0 });
     const lastWall = useRef<{ n: number[]; b: number } | null>(null), wallCorr = useRef(0), groundCorr = useRef(0), groundMin = useRef({ key: '', v: 1e9 }), tp0 = useMemo(() => new THREE.Vector3(), []);
-    const enemyGeos = useMemo(() => [0, 1, 2, 3].map(buildEnemyGeo), []);
+    const enemyTime = useRef({ value: 0 });
+    const enemySet = useMemo(() => [0, 1, 2, 3].map((k) => buildEnemy(k, enemyTime.current)), []);
     const enMeshes = useRef<THREE.InstancedMesh[]>([]);
     const ecol = useMemo(() => new THREE.Color(), []);
     const beaconRef = useRef<THREE.Mesh>(null!);
@@ -1189,10 +1144,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             }
         }
         { // enemies (instanced, one mesh per bot kind)
-            const n = sim.enemies.length, cnt = [0, 0, 0, 0];
+            enemyTime.current.value = sim.t; const n = sim.enemies.length, cnt = [0, 0, 0, 0];
             for (let i = 0; i < n; i++) {
                 const e = sim.enemies[i], k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
-                const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k === 2 ? Math.sin(sim.t * 2.5 + i) * 0.08 : 0;
+                const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k >= 2 ? Math.sin(sim.t * 2.5 + i) * 0.12 : 0;
                 tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob, e.z); tmp.rotation.set(fall * -1.4, e.ang, 0); tmp.scale.set(1.25, 1.25, 1.25); tmp.updateMatrix();
                 m.setMatrixAt(cnt[k], tmp.matrix);
                 if (e.hit > 0) ecol.setRGB(2.6, 2.6, 2.6); else if (e.atk > 0) ecol.setRGB(1.8, 0.5 + Math.sin(sim.t * 30) * 0.2, 0.4); else ecol.setRGB(1, 1, 1);
@@ -1245,7 +1200,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh position={[0, WATER_Y, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]} ref={waterRef} material={waterMat} frustumCulled={false}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500, 160, 80]} /></mesh>
         <mesh position={[0, SEABED, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500]} /><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
-        {enemyGeos.map((g, k) => <instancedMesh key={k} ref={(r) => { if (r) enMeshes.current[k] = r; }} args={[undefined, undefined, 16]} frustumCulled={false} geometry={g}><meshLambertMaterial color="#ffffff" vertexColors /></instancedMesh>)}
+        {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r) enMeshes.current[k] = r; }} args={[p.geo, p.mat, 16]} frustumCulled={false} />)}
         <instancedMesh ref={cores} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" /></instancedMesh>
         <instancedMesh ref={glows} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
     </>;

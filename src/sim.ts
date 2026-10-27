@@ -149,7 +149,7 @@ function newBeacon(s: Sim): V3 {
     return [(b.x0 + b.x1) / 2, b.h + 1.5, (b.z0 + b.z1) / 2];
 }
 function inPk(x: number, z: number) { return x > PARK.x0 && x < PARK.x1 && z > PARK.z0 && z < PARK.z1; }   // street enemies stay out of the sunken park
-function spawnEnemy(s: Sim): Enemy { const e = spawnEnemy0(s); e.kind = [1, 2, 3][Math.floor(Math.random() * 3)]; return e; }
+function spawnEnemy(s: Sim): Enemy { const e = spawnEnemy0(s); e.kind = [0, 0, 1, 2, 3][Math.floor(Math.random() * 5)]; return e; }
 function spawnEnemy0(s: Sim): Enemy {
     if (Math.random() < 0.4) {
         const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return b.x1 - b.x0 > 10 && d > 30 && d < 150 && b.h < 60; });
@@ -435,7 +435,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
 }
 export const buildings = blds;
-const BODY_OFF = [1.2, -0.3, 0.67, 1.2];
+const BODY_OFF = [0.8, 0.3, 1.05, 0.95];
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
 const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1 && x < e.roof.x1 - 1 && z > e.roof.z0 + 1 && z < e.roof.z1 - 1;

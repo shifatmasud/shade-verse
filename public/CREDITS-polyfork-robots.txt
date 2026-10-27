@@ -1,0 +1,6 @@
+Robot pedestrians and armoured enemies in Shadow: The Soul of Darkness are modified Polyfork free models, baked into the game bundle:
+- Service Robot https://polyfork.dev/asset/service-robot-93f82e (2706 tri)
+- Companion bot https://polyfork.dev/asset/companion-bot-170074 (1850 tri)
+- Survey Drone https://polyfork.dev/asset/survey-drone-7c71f9 (1242 tri)
+- Service Drone Bot https://polyfork.dev/asset/service-drone-bot-3817e5 (602 tri)
+Licence: https://polyfork.dev/licensing (checked October 28, 2026). Game use and modification permitted, no attribution required; standalone asset redistribution not permitted. No purchase made.
