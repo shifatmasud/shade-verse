@@ -132,7 +132,7 @@ export function App() {
     const [swingOn, setSwingOn] = useState(false);
 
     return <div className="stage" onContextMenu={(e) => e.preventDefault()}>
-        <div id="uw" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, opacity: 0, transition: 'opacity .15s', background: 'linear-gradient(180deg, rgba(120,225,240,.38), rgba(30,140,175,.30) 45%, rgba(8,70,105,.5))' }} />
+        <div id="uw" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, opacity: 0, transition: 'opacity .15s', background: 'linear-gradient(180deg, rgba(110,215,235,.24), rgba(30,140,175,.30) 45%, rgba(8,70,105,.5))' }} />
         <Canvas
             dpr={[1, coarse ? 1.5 : 2]}
             gl={{ antialias: !coarse, powerPreference: 'high-performance', alpha: false, stencil: false }}

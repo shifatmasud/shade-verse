@@ -99,7 +99,8 @@ function DayNight() {
         const sy = TOD.sun.y, day = sstep(-0.12, 0.3, sy), warm = 1 - sstep(0.25, 0.7, sy);
         if (DBG) (window as any).__tod = { sy, day, warm, fog: TOD.fog.toArray() }; TOD.day.value = day; TOD.warm.value = warm; TOD.noon.value = sstep(0.3, 0.95, sy);
         _c1.copy(_cnoon).lerp(_cwarm, warm).lerp(_cn, 1 - day); TOD.fog.copy(_c1); TOD.sky.copy(_c1).lerp(_c2.set('#c4dcef'), 0.3 * day);
-        (scene.background as THREE.Color).copy(_c1);
+        if (!UW.on) (scene.background as THREE.Color).copy(_c1);
+        UWF.value.set('#176e8c').multiplyScalar(0.1 + 0.9 * day);
         { const wu = waterMat.uniforms, k = 0.16 + 0.84 * day; wu.uDeep.value.set('#0a6f92').multiplyScalar(k); wu.uShallow.value.set('#2fa8c4').multiplyScalar(k); }   // water body colour follows the light level (sky reflection already follows TOD.sky)
         const { h, a, b } = ls.current;
         h.color.set('#d4e4ff').lerp(_c2.set('#3a4c8c'), 1 - day); h.intensity = 0.5 + 0.75 * day;
@@ -171,7 +172,7 @@ function Sky() {
     const ref = useRef<THREE.Mesh>(null!);
     const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: { value: 0 }, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm } }), []);
     useFrame((st) => { mat.uniforms.uT.value = st.clock.elapsedTime; });
-    useFrame(({ camera }) => { ref.current.position.copy(camera.position); });
+    useFrame(({ camera }) => { ref.current.position.copy(camera.position); ref.current.visible = !UW.on; });
     return <mesh ref={ref} material={mat} renderOrder={-10} frustumCulled={false}><sphereGeometry args={[400, 24, 12]} /></mesh>;
 }
 
@@ -561,16 +562,17 @@ function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: n
 
 
 // seabed: sand with animated caustic light lines, fading into teal haze with distance (reference: two underwater game shots - sandy floor with web-like caustic lines, cyan fading to deeper teal)
+const UWF = { value: new THREE.Color('#176e8c') }, UW = { on: false };   // underwater far colour (seabed haze = background, so the seabed plane has no visible far edge) and flag
 const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uFog: UWF },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: `varying vec3 vW; uniform float uTime;
+    fragmentShader: `varying vec3 vW; uniform float uTime; uniform vec3 uFog;
     float cau(vec2 p){ vec2 q = p; float v = 0.0; for (int i = 0; i < 3; i++) { q += vec2(sin(q.y * 1.3 + uTime * 0.7), cos(q.x * 1.1 + uTime * 0.6)) * 0.55; v += 1.0 - abs(sin(q.x * 0.9) + sin(q.y * 0.9)) * 0.5; } return pow(clamp(v / 3.0, 0.0, 1.0), 5.0); }
     float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     void main(){ vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float c = cau(p) + 0.6 * cau(p * 1.7 + 3.0);
       vec3 sand = mix(vec3(0.46, 0.62, 0.58), vec3(0.58, 0.70, 0.62), h(floor(${xy ? 'vW.xy' : 'vW.xz'} * 3.0)) * 0.6);
       vec3 col = sand * 0.7 + vec3(0.75, 0.95, 0.9) * c * 0.55;
-      float d = length(vW - cameraPosition); vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.5); col = col * Tb + vec3(0.09, 0.43, 0.55) * (1.0 - exp(-d * 0.045));
+      float d = length(vW - cameraPosition); vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.5); col = col * Tb; float fg = 1.0 - exp(-d * 0.045 * 1.6); ${xy ? 'fg = fg * 0.8;' : ''} col = col * (1.0 - 0.4 * fg) + uFog * fg * 0.9; ${xy ? 'col = mix(col, uFog, smoothstep(-6.0, -0.6, vW.y));' : ''}
       gl_FragColor = vec4(col, 1.0); }`,
 });
 const seabedMat = mkSea(false), wallMat = mkSea(true);
@@ -597,9 +599,9 @@ function waveH(x: number, z: number, t: number) {
 }
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
+    uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
-    fragmentShader: WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow; varying vec3 vW;
+    fragmentShader: WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW;
     void main(){
       vec2 g = wg(vW.xz, uTime) + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
@@ -637,6 +639,7 @@ const waterMat = new THREE.ShaderMaterial({
         aOut = tir ? 0.96 : 0.45;
       }
       float haze = 1.0 - exp(-length(cameraPosition - vW) * 0.006);
+      if (below) col = mix(col, uUWF, 1.0 - exp(-length(cameraPosition - vW) * 0.045 * 1.6));
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
       if (!below) col *= mix(0.3, 1.0, uDay);
       gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)));
@@ -770,15 +773,15 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
             const uw = document.getElementById('uw');
             const inBay = camera.position.z < WATER_Z + 2;
-            const dy = camera.position.y - WATER_Y; const under = inBay && dy < 0;
+            const dy = camera.position.y - WATER_Y; const under = inBay && dy < 0; UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
             if (uw) {
                 if (inBay && dy < 1.2 && dy > -2.2) {
                     // project the waterline a little ahead of the camera to find where the surface cuts the screen
                     camera.getWorldDirection(_wd); const hx = _wd.x, hz = _wd.z, hl = Math.hypot(hx, hz) || 1;
                     const ax = camera.position.x + hx / hl * 11, az = camera.position.z + hz / hl * 11; _wp.set(ax, WATER_Y + waveH(ax, az, sim.t), az).project(camera);
                     const yPct = Math.max(0, Math.min(100, (1 - (_wp.y * 0.5 + 0.5)) * 100));
-                    uw.style.clipPath = `inset(${yPct}% 0 0 0)`; uw.style.opacity = '1'; uw.dataset.split = '1';
-                } else { uw.style.clipPath = 'none'; uw.style.opacity = under ? '1' : '0'; uw.dataset.split = '0'; }
+                    { const mk = `linear-gradient(180deg, transparent ${Math.max(0, yPct - 3)}%, #000 ${Math.min(100, yPct + 7)}%)`; uw.style.maskImage = mk; (uw.style as any).webkitMaskImage = mk; } uw.style.opacity = '1'; uw.dataset.split = '1';   // waterline tint edge fades over about 10% of the screen instead of a hard clip
+                } else { uw.style.maskImage = 'none'; (uw.style as any).webkitMaskImage = 'none'; uw.style.opacity = under ? '1' : '0'; uw.dataset.split = '0'; }
             }
         }
         // hero
