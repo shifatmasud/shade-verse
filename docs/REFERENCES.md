@@ -8,3 +8,6 @@
 | Wall crawl | Spiderbench (view only, https://github.com/xikhar/spiderbench) | Idea of surface attach plus wall camera only. No code or assets used. |
 | Character anatomy | Own SDF generator (tools/genhero.mjs) | Original masked humanoid. Spider-Man is inspiration only. |
 | Video ref (youtu.be/pyKONWsQ1ek) | NOT viewed (tools could not read it) | Nothing. |
+
+## Art direction benchmark (private research, frames NOT stored in repo)
+- Marvel's Spider-Man 2 (Insomniac) gameplay, public YouTube video uPANIcGM--Y (PS5 4K swinging/combat), viewed as 5 browser screenshots on 06:41. Informs: sky with volumetric clouds and haze, varied skyline heights and spires, trees/park, water reflections, wide third-person swing camera, minimal UI. Inspiration only; no assets, code or design copied.
