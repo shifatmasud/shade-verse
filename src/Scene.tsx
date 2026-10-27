@@ -656,6 +656,8 @@ const waterMat = new THREE.ShaderMaterial({
       // This is a local transparency approximation, not scene-colour refraction.
       float waterline = 1.0 - smoothstep(0.35, 1.4, abs(cameraPosition.y - wh(cameraPosition.xz, uTime)));
       float nearClear = mix(1.0, smoothstep(1.0, 16.0, length(cameraPosition - vW)), waterline);
+      float splitBlend = (1.0 - smoothstep(0.8, 1.4, -1.0 - cameraPosition.y)) * (1.0 - smoothstep(0.4, 4.0, length(cameraPosition - vW)));
+      if (below) { col = mix(col, linearToOutputTexel(vec4(uUWF, 1.0)).rgb, splitBlend); aOut = mix(aOut, 1.0, splitBlend); }
       gl_FragColor = vec4(col, below ? aOut : mix(0.82, 1.0, max(fr, haze)) * nearClear);
     }`,
 });
