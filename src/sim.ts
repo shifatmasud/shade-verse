@@ -101,7 +101,7 @@ export interface Sim {
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number; atkPend: number; shotE: Enemy | null; anchorReal: boolean; spring: number; shotT: number; shotTgt: V3; glideOn: boolean; airT: number;
     grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
 }
-export interface Input { attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean }
+export interface Input { jumpHeld?: boolean; jumpReleased?: boolean; jumpCancelled?: boolean; attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean }
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void }
 
 export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
@@ -160,6 +160,8 @@ export function resetSim(s: Sim) {
     s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
+    s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false;
+    input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
 }
@@ -237,8 +239,23 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
         if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
         else if (s.ground) { v[1] = JUMP_V; s.ground = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
+        else if (s.glideOn) { (s as any).flightPress = 0; }
         else if (!s.ground) { (s as any).glideBlocked = true; s.glideOn = false; ev.jump(); }   // mid-air JUMP cancels automatic glide for the rest of this flight
     }
+    const gl = s as any;
+    if (input.jumpCancelled) { input.jumpCancelled = false; gl.flightPress = undefined; }
+    if (gl.flightPress !== undefined) {
+        if (!s.glideOn || s.web || s.swim || s.wall || s.ground) gl.flightPress = undefined;
+        else {
+            if (input.jumpHeld || k[' ']) gl.flightPress += dt;
+            if (input.jumpReleased) {
+                if (gl.flightPress < 0.18) { gl.glideBlocked = true; s.glideOn = false; ev.jump(); }
+                gl.flightPress = undefined;
+            }
+        }
+    }
+    input.jumpReleased = false;
+    gl.flightBoost = gl.flightPress !== undefined && gl.flightPress >= 0.18 && !!(input.jumpHeld || k[' ']);
     const prevY = p[1];
     s.spring = Math.max(0, s.spring - dt); s.shotT = Math.max(0, s.shotT - dt);
     s.airT = (!s.ground && !s.swim && !s.wall && !s.web) ? s.airT + dt : 0;
@@ -272,7 +289,10 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     } else if (s.ground && !s.web) {
         const a = Math.min(1, dt * 10); v[0] += (wx * 15 - v[0]) * a; v[2] += (wz * 15 - v[2]) * a; v[1] = 0;
     } else {
-        v[1] -= G * dt;
+        // Glide lift balances gravity during descent; keep ordinary gravity through the rising launch.
+        if (s.glideOn && (s as any).flightBoost) v[1] += (8 - v[1]) * (1 - Math.exp(-3 * dt));
+        else if (s.glideOn && v[1] <= 0) v[1] += (-4.2 - v[1]) * (1 - Math.exp(-6 * dt));
+        else v[1] -= G * dt;
         const air = s.web ? 12 : 7; v[0] += wx * air * dt; v[2] += wz * air * dt;
         if (s.web) { const hs0 = Math.hypot(v[0], v[2]); const px = hs0 > 2 ? v[0] / hs0 : fx, pz = hs0 > 2 ? v[2] / hs0 : fz; const boost = hs0 < 34 ? 14 : 0; v[0] += px * boost * dt; v[2] += pz * boost * dt; }
         if (!s.web) { const dr = Math.pow(0.992, dt * 60); v[0] *= dr; v[2] *= dr; }
@@ -291,7 +311,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
             if (vn > 0) { v[0] -= n[0] * vn; v[1] -= n[1] * vn; v[2] -= n[2] * vn; }
         }
     }
-    if (s.glideOn) { if (v[1] < -4.2) v[1] += (-4.2 - v[1]) * Math.min(1, dt * 6); const hs = Math.hypot(v[0], v[2]); if (hs < 14) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * 10 * dt; v[2] += fz2 * 10 * dt; } }
+    if (s.glideOn) { const hs = Math.hypot(v[0], v[2]); if (hs < 14) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * 10 * dt; v[2] += fz2 * 10 * dt; } }
     collide(s, prevY);
     if (s.webDepartB !== undefined) { const b = blds[s.webDepartB]; if (!s.web || !b || p[0] < b.x0 - 1.2 || p[0] > b.x1 + 1.2 || p[2] < b.z0 - 1.2 || p[2] > b.z1 + 1.2 || p[1] - 1 > b.h + 0.2) s.webDepartB = undefined; }
     // Hero side-wall contact ends web travel and enters the existing crawl mode.

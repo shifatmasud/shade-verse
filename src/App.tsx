@@ -92,21 +92,22 @@ export function App() {
         const down = (e: KeyboardEvent) => {
             const k = e.key.toLowerCase();
             if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
-            if (k === ' ' && !input.keys[' ']) input.jumpQ = true;
+            if (k === ' ' && !input.keys[' ']) { input.jumpQ = true; input.jumpHeld = true; }
             if ((k === 'j' || k === 'e') && !input.keys[k]) input.attackQ = true;
             if ((k === 'c' || k === 'q') && !input.keys[k]) input.dodgeQ = true;
             if ((k === 'shift' || k === 'f') && !input.keys[k]) input.swingQ = true;
             if (k === 'enter' && sim.mode !== 'play') start();
             input.keys[k] = true;
         };
-        const up = (e: KeyboardEvent) => { input.keys[e.key.toLowerCase()] = false; };
-        const vis = () => { try { const c = actx.current; if (c) { if (document.hidden) c.suspend(); else c.resume(); } } catch (e) { /* ignore */ } if (document.hidden) { input.swing = false; input.mx = 0; input.my = 0; } };
+        const up = (e: KeyboardEvent) => { const k = e.key.toLowerCase(); input.keys[k] = false; if (k === ' ') { input.jumpHeld = false; input.jumpReleased = true; } };
+        const vis = () => { try { const c = actx.current; if (c) { if (document.hidden) c.suspend(); else c.resume(); } } catch (e) { /* ignore */ } if (document.hidden) { input.jumpHeld = false; input.jumpCancelled = true; input.keys[' '] = false; input.swing = false; input.mx = 0; input.my = 0; } };
         document.addEventListener('visibilitychange', vis);
         const blur = () => { try { for (const k of Object.keys((input as any).keys || {})) (input as any).keys[k] = false; } catch (e) { /* ignore */ } input.swing = false; input.mx = 0; input.my = 0; try { for (const k of Object.keys(input as any)) if (typeof (input as any)[k] === 'boolean') (input as any)[k] = false; } catch (e) { /* ignore */ } };
-        window.addEventListener('blur', blur);
+        const flightBlur = () => { blur(); input.jumpCancelled = true; };
+        window.addEventListener('blur', flightBlur);
         window.addEventListener('keydown', down); window.addEventListener('keyup', up);
         if (DBG) (window as any).__game = { sim, input, perf, fx, buildings, start: () => start() };
-        return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', blur); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+        return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', flightBlur); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
     }, []); // eslint-disable-line
 
     function start() {
@@ -173,7 +174,7 @@ export function App() {
             <button className="ico shot" aria-label="web shot" onPointerDown={() => { input.shotQ = true; input.attackQ = true; }}><IShot /></button>
             <button className={'ico special' + (hud.sc > 0 ? ' cd' : '')} aria-label="shadow snare" onPointerDown={() => { input.specialQ = true; }}><ISnare /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
             <button className="ico melee" aria-label="melee" onPointerDown={() => { input.meleeQ = true; input.attackQ = true; }}><IFist /></button>
-            <button className="ico jump" aria-label="jump" onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpQ = true; }}><IJump /></button>
+            <button className="ico jump" aria-label="jump" onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
         </>}
 
         <AnimatePresence>
