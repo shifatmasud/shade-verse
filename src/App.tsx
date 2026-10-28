@@ -10,15 +10,15 @@ const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks exist only in i
 let GL2 = false;   // functional WebGL2 capability flag lives in module state, not on window
 const isGl2 = () => GL2;
 // every button press: big icon kick, expanding ring, and a stage flash tinted per action (transform/opacity only, no extra render passes)
-const impact = (tint: string, size: number, shk: number) => {
-    const o = document.querySelector('.impact') as HTMLElement | null, f = document.querySelector('.flash') as HTMLElement | null, c = document.querySelector('.stage canvas') as HTMLElement | null;
+const impact = (tint: string, size: number, shk: number, showRing = true) => {
+    const o = showRing ? document.querySelector('.impact') as HTMLElement | null : null, f = document.querySelector('.flash') as HTMLElement | null, c = document.querySelector('.stage canvas') as HTMLElement | null;
     if (o) { o.style.color = tint; gsap.fromTo(o, { scale: 0.2, opacity: 1 }, { scale: size, opacity: 0, duration: 0.45, ease: 'power3.out' }); }
     if (f) { f.style.setProperty('--fx', tint); gsap.fromTo(f, { opacity: shk ? 0.9 : 0.5 }, { opacity: 0, duration: 0.35 }); }
     if (c && shk) gsap.fromTo(c, { x: shk, y: -shk * 0.6 }, { x: 0, y: 0, duration: 0.3, ease: 'elastic.out(1.2,0.3)' });
 };
-const burst = (e: React.PointerEvent, tint: string, spin = 0) => {
-    const el = e.currentTarget as HTMLElement; const r = document.createElement('i'); r.className = 'ripple'; r.style.color = tint; el.appendChild(r);
-    gsap.fromTo(r, { scale: 0.5, opacity: 0.95 }, { scale: 2.6, opacity: 0, duration: 0.5, ease: 'power2.out', onComplete: () => r.remove() });
+const burst = (e: React.PointerEvent, tint: string, spin = 0, showRing = true) => {
+    const el = e.currentTarget as HTMLElement;
+    if (showRing) { const r = document.createElement('i'); r.className = 'ripple'; r.style.color = tint; el.appendChild(r); gsap.fromTo(r, { scale: 0.5, opacity: 0.95 }, { scale: 2.6, opacity: 0, duration: 0.5, ease: 'power2.out', onComplete: () => r.remove() }); }
     gsap.fromTo(el.querySelector('svg:not(.ring)'), { scale: 1.7, rotate: spin }, { scale: 1, rotate: 0, duration: 0.42, ease: 'back.out(3)' });
     const f = document.querySelector('.flash') as HTMLElement | null; if (f) { f.style.setProperty('--fx', tint); gsap.fromTo(f, { opacity: 0.55 }, { opacity: 0, duration: 0.3, ease: 'power2.out' }); }
 };
@@ -68,7 +68,7 @@ export function App() {
     const ev: Events = useMemo(() => ({
         orb: () => { buzz(25); showToast('+' + (sim.score - lastScore.current), 700); lastScore.current = sim.score; beep(780 + Math.min(sim.score, 20) * 25, 0.15, 'sine', 0.09); gsap.fromTo(fx, { fov: 10 }, { fov: 0, duration: 0.5, ease: 'power2.out' }); },
         fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Knocked out. Back to your last rooftop.', 2000); beep(120, 0.3, 'sawtooth', 0.08); },
-        attach: () => { impact('#8fe9ff', 1.8, 0); buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
+        attach: () => { impact('#8fe9ff', 1.8, 0, false); buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
         release: () => { beep(300, 0.08, 'triangle'); },
         hit: () => { impact('#ffffff', 2.6, 8); buzz(30); beep(160, 0.09, 'square', 0.08); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
         blast: () => { impact('#aee6ff', 4.2, 14); buzz(60); beep(70, 0.3, 'sawtooth', 0.14); beep(140, 0.18, 'square', 0.07); gsap.fromTo(fx, { fov: 9 }, { fov: 0, duration: 0.45, ease: 'power3.out' }); gsap.fromTo(fx, { shake: 0.9 }, { shake: 0, duration: 0.3 }); },
@@ -121,7 +121,7 @@ export function App() {
         const flightBlur = () => { blur(); input.jumpCancelled = true; };
         window.addEventListener('blur', flightBlur);
         window.addEventListener('keydown', down); window.addEventListener('keyup', up);
-        if (DBG) (window as any).__game = { sim, input, perf, fx, buildings, start: () => start() };
+        if (DBG) (window as any).__game = { sim, input, perf, fx, buildings, events: ev, start: () => start() };
         return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', flightBlur); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
     }, []); // eslint-disable-line
 
@@ -187,7 +187,7 @@ export function App() {
             <div className="padzone" onPointerDown={padStart} onPointerMove={(e) => { if (e.pointerId === stickId.current) padMove(e); }} onPointerUp={stickEnd} onPointerCancel={stickEnd} />
             <div className="dpad" ref={padRef}><svg width="120" height="120" viewBox="0 0 120 120" {...IC} strokeWidth={2}><path d="M60 8l9 11H51zM60 112l-9-11h18zM8 60l11-9v18zM112 60l-11 9V51z" fill="currentColor" stroke="none" opacity=".85" /><circle cx="60" cy="60" r="38" opacity=".35" /></svg><div className="knob" ref={knobRef} /></div>
             <button className={'ico swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web swing"
-                onPointerDown={(e) => { burst(e, '#8fe9ff', -25); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.swing = true; input.swingQ = true; setSwingOn(true); }}
+                onPointerDown={(e) => { burst(e, '#8fe9ff', -25, false); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.swing = true; input.swingQ = true; setSwingOn(true); }}
                 onPointerUp={() => { input.swing = false; setSwingOn(false); }} onPointerCancel={() => { input.swing = false; setSwingOn(false); }}><ISwing /></button>
             <button className={'ico grab' + (hud.gr ? '' : ' off')} aria-label="web grab" onPointerDown={(e) => { burst(e, '#ffffff', 20); input.grabQ = true; }}><IGrab /></button>
             <button className={'ico shot' + (hud.sh ? '' : ' off')} aria-label="web shot" onPointerDown={(e) => { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; }}><IShot /></button>

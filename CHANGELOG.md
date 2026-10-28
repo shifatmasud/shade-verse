@@ -2,6 +2,13 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Ordinary swing ring cleanup
+### Changed
+- Removed the ordinary-swing screen attach ring, swing-button ripple, and linked dashed halo. The existing button icon kick, flash, cyan linked highlight, controls, and HUD layout remain; the purple Shadow and hot-pink Ghost Shock Web rings still render only during their owners' separate special attacks.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `git diff --check`, `node test/ordinary-swing-rings.mjs http://localhost:4174/`, `PORT=4174 node test/ghost-animation-sync.mjs`, `PORT=4174 node test/snare.mjs`, and `PORT=4174 node test/ghost-snare.mjs` pass. The focused 844×390 test checks attach feedback, button ripple, linked outline, both heroes' ordinary-swing ring/pulse counts, and browser errors; the special tests still see the 80-segment Shock Web rings. Physical-device appearance remains untested.
+- Scoped to the private mirror's `main`; the original repository remains untouched. The push is intended to trigger the mirror's existing Vercel deployment.
+
 ## [Released] - Procedural 3D enemy fire KO
 ### Added
 - Added a renderer-only pooled world-space burst on the existing enemy-down transition: an emissive low-poly core and tapered fire tongues, a short expanding ground ring, and additive embers. Four fixed-capacity instanced batches support up to six overlapping KOs; the VFX is tagged for the existing selective-bloom layer.

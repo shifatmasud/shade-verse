@@ -6,6 +6,14 @@
 - Device compatibility (estimate): 12/20 (physical Android/Windows appearance and target-GPU performance remain untested)
 Evidence: `node test/death-vfx.mjs http://localhost:4174/ art/death-vfx/shot-after-fire-ko-mobile-landscape.png` PASS at 844×390 in Chromium WebGL2/ANGLE SwiftShader. It drives the existing down-state transition directly, so it verifies VFX behavior rather than combat timing; assertions cover one trigger, world-space placement, fixed instance capacities, unchanged gameplay state, effect expiry, and no browser errors. Captures: `art/death-vfx/shot-before-fire-ko-mobile-landscape.png` and `art/death-vfx/shot-after-fire-ko-mobile-landscape.png`. Vite reports a non-blocking 2.77 MB minified JavaScript chunk; no physical-device performance claim is made.
 
+## Ordinary swing ring cleanup — provisional 86/100
+- Visuals: 18/20 (ordinary swings no longer draw a screen attach ring, button ripple, or linked dashed halo; Shock Web colors and effects remain distinct)
+- Controls/behavior: 25/25 (swing input, icon kick, flash, linked highlight, and HUD layout are preserved)
+- Performance (estimate): 17/20 (removes short-lived DOM/CSS ring visuals; no added scene geometry or draw calls)
+- Stability: 14/15 (type-check, production build, focused phone-landscape regression, animation parity, and both special-effect tests pass)
+- Device compatibility (estimate): 12/20 (physical-device appearance and target-GPU performance remain untested)
+Evidence: `node test/ordinary-swing-rings.mjs http://localhost:4174/` PASS at 844×390 in Chromium WebGL2/ANGLE SwiftShader; Shadow/Ghost ordinary swing rings and pulses remain zero, and the Shock Web tests still report 80 ring segments in each actor's own special. Vite reports a non-blocking 2.77 MB minified JavaScript chunk; no physical-device performance claim is made.
+
 ## Boss arena and Ghost traversal/morph update — provisional 83/100
 - Visuals: 18/20 (the phone-landscape capture shows the saturated red rooftop beacon and boss; the matched capture shows Ghost's pink-white particle re-form)
 - Controls/behavior: 24/25 (focused assertions confirm Ghost shares Shadow's wall, swing, and glide modes; the fixed boss remains on its assigned roof)
