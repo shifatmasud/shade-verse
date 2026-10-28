@@ -1,3 +1,11 @@
+## Giant humanoid boss iteration — provisional 79/100
+- Visuals: 17/20 (original white muscular silhouette at 5x root scale, blank lower face and two red eyes; paired local captures reviewed at matching viewport sizes, with debug-only rooftop/camera framing in the after-images)
+- Controls/behavior: 22/25 (one persistent boss, slow pursuit and telegraphed strike; plasma and Shadow Snare can hit it; ordinary melee target/damage exclusion is tested, with player input structure and timings unchanged)
+- Performance (estimate): 14/20 (seven merged low-poly meshes; software-rendered desktop simulation advanced slowly, so this is a conservative code-size estimate, not a device FPS measurement)
+- Stability: 14/15 (type-check, production build and focused two-viewport browser assertions pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
+Evidence: `test/boss.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390. It checks boss spawn/persistence, exact 7.5 root scale (five times the 1.5 hero root), red eye vertices, a wind-up and strike, Shadow Snare's target/damage path, and that an ordinary melee move neither selects nor damages the boss. For a short smoke check, the harness advances the existing strike/Snare timers to their impact edges; it is not a full timing/soak test. SwiftShader screenshots are in `art/boss/`; physical Android/Windows and target-GPU frame rates remain untested.
+
 ## Ghost autonomous companion iteration — provisional 82/100
 - Visuals: 18/20 (the same human suit silhouette now has a subtle feminine shape and white replacement panels; hot-pink lenses are assigned in the model; the captured rear-facing poses do not show the lens color clearly)
 - Controls/behavior: 23/25 (independent AI, autonomous melee and follow pass the focused test on two viewports; traversal intents are implemented but not separately asserted)

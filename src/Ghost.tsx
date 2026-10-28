@@ -9,6 +9,7 @@ import { buildRig, CLIPS, combatPose, sampleClip, type CombatPoseState } from '.
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const HERO_SCALE = 1.5;
 const BODY_OFF = [0.8, 0.3, 1.05, 1.7];
+const enemyBodyOffset = (e: Sim['enemies'][number]) => e.boss ? 7.5 : BODY_OFF[e.kind ?? 0];
 const SILENT: Events = {
     orb: () => {}, fall: () => {}, attach: () => {}, release: () => {}, jump: () => {},
     hit: () => {}, hurt: () => {}, ko: () => {}, land: () => {}, blast: () => {},
@@ -122,7 +123,7 @@ function selectTarget(actor: Sim) {
     for (const e of actor.enemies) {
         if (e.down > 0) continue;
         const d = Math.hypot(e.x - actor.pos[0], e.z - actor.pos[2]);
-        const dy = Math.abs(e.y + ((e as any).ly || 0) + BODY_OFF[e.kind ?? 0] - actor.pos[1]);
+        const dy = Math.abs(e.y + ((e as any).ly || 0) + enemyBodyOffset(e) - actor.pos[1]);
         if (d < 25 && dy < 16) count++;
         if (d < bestD && dy < 16) { best = e; bestD = d; }
     }
@@ -218,7 +219,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         const enemyD = choice.distance;
         const fighting = !!enemy && enemyD < 23;
         const gx = fighting && enemy ? enemy.x : tx, gz = fighting && enemy ? enemy.z : tz;
-        const gy = fighting && enemy ? enemy.y + ((enemy as any).ly || 0) + BODY_OFF[enemy.kind ?? 0] : ty;
+        const gy = fighting && enemy ? enemy.y + ((enemy as any).ly || 0) + enemyBodyOffset(enemy) : ty;
         const dx = gx - actor.pos[0], dz = gz - actor.pos[2], goalD = Math.hypot(dx, dz);
         const destYaw = Math.atan2(dx, dz);
         actor.yaw = destYaw;
@@ -275,8 +276,8 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             const targets = ((actor as any).snareList || []) as Sim['enemies'];
             for (let i = 0; i < Math.min(5, targets.length); i++) {
                 const e = targets[i]; if (e.down > 0) continue;
-                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e.x, e.y + BODY_OFF[e.kind ?? 0], e.z); n++;
-                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e.x, e.y + BODY_OFF[e.kind ?? 0], e.z); n++;
+                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e.x, e.y + enemyBodyOffset(e), e.z); n++;
+                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e.x, e.y + enemyBodyOffset(e), e.z); n++;
             }
         }
         lineGeo.setDrawRange(0, n * 2); la.needsUpdate = true;

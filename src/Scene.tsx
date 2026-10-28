@@ -14,6 +14,7 @@ import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
+import { GiantBoss } from './GiantBoss';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
 import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, type Sim, type Events } from './sim';
@@ -936,7 +937,7 @@ function PlasmaFx({ sim }: { sim: Sim }) {
         const e = sim.aimE;
         ret.current.visible = !!e && sim.mode === 'play';
         if (e) {
-            ret.current.position.set(e.x, e.y + [0.8, 0.3, 1.05, 0.95][e.kind ?? 0] + 1.05, e.z);
+            ret.current.position.set(e.x, e.y + (e.boss ? 7.5 : [0.8, 0.3, 1.05, 0.95][e.kind ?? 0]) + 1.05, e.z);
             ret.current.quaternion.copy(camera.quaternion);
             const s2 = 1 + Math.sin(sim.t * 6) * 0.09; ret.current.scale.setScalar(s2);
             ret.current.children[0].rotation.z = sim.t * 2.4;
@@ -1270,7 +1271,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         { // enemies (instanced, one mesh per bot kind)
             enemyTime.current.value = sim.t; const n = sim.enemies.length, cnt = [0, 0, 0, 0];
             for (let i = 0; i < n; i++) {
-                const e = sim.enemies[i], k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
+                const e = sim.enemies[i]; if (e.boss) continue; const k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
                 const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k >= 2 ? Math.sin(sim.t * 2.5 + i) * 0.12 : 0;
                 const ea = e as any, ly = ea.ly || 0, lean = e.down > 0 ? 0 : Math.min(1, e.hit / 0.35) * (ea.hitDir >= 3 ? 0.55 : 0.32), tum = ly > 0.05 ? Math.sin(Math.min(1, ly / 3) * 1.57) * (ea.slam ? -1.1 : 0.9) : 0;
                 tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob + ly, e.z); tmp.rotation.set(fall * -1.4 - lean - tum, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = (e.kind === 3 ? BOT_SC : 1.25) * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
@@ -1317,6 +1318,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 <primitive object={rig.root} />
             </group>
         </group>
+        <GiantBoss sim={sim} />
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={webB} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>
