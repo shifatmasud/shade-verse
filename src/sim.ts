@@ -101,7 +101,7 @@ function buildWorld() {
 export const world = buildWorld();
 const blds = world.blds;
 
-export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number }
+export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean }
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
@@ -149,14 +149,21 @@ function newBeacon(s: Sim): V3 {
     return [(b.x0 + b.x1) / 2, b.h + 1.5, (b.z0 + b.z1) / 2];
 }
 function inPk(x: number, z: number) { return x > PARK.x0 && x < PARK.x1 && z > PARK.z0 && z < PARK.z1; }   // street enemies stay out of the sunken park
-function spawnEnemy(s: Sim): Enemy { const e = spawnEnemy0(s); e.kind = [0, 0, 1, 2, 3][Math.floor(Math.random() * 5)]; return e; }
-function spawnEnemy0(s: Sim): Enemy {
-    if (Math.random() < 0.4) {
+export const ENEMY_N = 26;   // was 10: user wants many enemies always in view (iteration choice, not a user number)
+function spawnEnemy(s: Sim): Enemy {
+    const kind = [0, 0, 1, 2, 3, 3][Math.floor(Math.random() * 6)];
+    const e = spawnEnemy0(s, kind === 3); e.kind = kind;
+    if (kind === 3) { e.air = true; e.roof = undefined; e.y = 6 + Math.random() * 26; }   // hover drones patrol the street canyons at altitude
+    return e;
+}
+function spawnEnemy0(s: Sim, noRoof = false): Enemy {
+    if (!noRoof && Math.random() < 0.4) {
         const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return b.x1 - b.x0 > 10 && d > 30 && d < 150 && b.h < 60; });
         if (cand.length) { const b = cand[Math.floor(Math.random() * cand.length)]; return { roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 }, x: (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * 6, y: b.h + 1, z: (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * 6, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 }; }
     }
     for (let k = 0; k < 60; k++) {
-        const x = (Math.floor(Math.random() * (N - 1)) - (N - 2) / 2) * CELL + (Math.random() < 0.5 ? -CELL / 2 + 0 : CELL / 2 - 0), z = (Math.random() - 0.5) * 2 * (HALF - 40);
+        let x = (Math.floor(Math.random() * (N - 1)) - (N - 2) / 2) * CELL + (Math.random() < 0.5 ? -CELL / 2 + 0 : CELL / 2 - 0), z = (Math.random() - 0.5) * 2 * (HALF - 40);
+        if (Math.random() < 0.8) { x = s.pos[0] + (Math.random() - 0.5) * 200; z = s.pos[2] + (Math.random() - 0.5) * 200; if (Math.hypot(x - s.pos[0], z - s.pos[2]) > 100) continue; }   // most spawns land within ~100 m of the hero so the street stays populated
         if (z < WATER_Z + 8) continue;
         if (x > PARK.x0 - 4 && x < PARK.x1 + 4 && z > PARK.z0 - 4 && z < PARK.z1 + 4) continue;   // the park is a sunken bowl: no street-level spawns there
         const sx = Math.round((x - CELL / 2) / CELL) * CELL + CELL / 2;
@@ -177,7 +184,7 @@ export function resetSim(s: Sim) {
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.plasma = []; s.blasts = []; s.aimE = null; s.shotE = null;
-    s.enemies = []; for (let i = 0; i < 10; i++) s.enemies.push(spawnEnemy(s));
+    s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s));
 }
 
 function findAnchor(s: Sim, strict = false): V3 {
@@ -437,6 +444,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
 export const buildings = blds;
 const BODY_OFF = [0.8, 0.3, 1.05, 0.95];
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
+const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
 const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1 && x < e.roof.x1 - 1 && z > e.roof.z0 + 1 && z < e.roof.z1 - 1;
 function stepCombat(s: Sim, dt: number, ev: Events) {
@@ -485,16 +493,19 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
             if (hitAny) ev.hit();
         }
     }
+    let atkN = 0; for (const e0 of s.enemies) if (e0.atk > 0) atkN++;
     for (let i = 0; i < s.enemies.length; i++) {
         const e = s.enemies[i];
         if (e.down > 0) { e.down -= dt; if (e.down <= 0) s.enemies[i] = spawnEnemy(s); continue; }
         e.hit = Math.max(0, e.hit - dt);
+        if (e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = spawnEnemy(s); continue; }   // left far behind: re-place near the hero
         const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
         const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
-        if (d < 26 && dy < 5 && e.hit <= 0) {
+        if (d < (e.air ? 32 : 26) && (e.air || dy < 5) && e.hit <= 0) {
             e.ang = Math.atan2(dx, dz);
-            if (d > 2.0 && e.atk <= 0) { const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : !insideB(nx, e.z) && !inPk(nx, e.z)) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : !insideB(e.x, nz) && !inPk(e.x, nz)) e.z = nz; }
-            if (d <= 2.4 && e.atk <= 0) e.atk = 0.7; // telegraph
+            if (e.air) e.y += Math.max(-5 * dt, Math.min(5 * dt, Math.max(2, p[1]) - e.y));   // drones descend/climb to the hero's height
+            if (d > 2.0 && e.atk <= 0) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
+            if (d <= 2.4 && e.atk <= 0 && (!e.air || dy < 3) && atkN < (e.air ? 1 : 2) && ((s as any).windT ?? 0) <= s.t) { e.atk = 0.7 + (i % 3) * 0.12; atkN++; (s as any).windT = s.t + 0.45; } // telegraph; at most 2 enemies wind up at once (staggered, not one synchronized burst), drones wait to be at the hero's height
         }
         if (e.atk > 0) {
             e.atk -= dt;

@@ -5,6 +5,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import gsap from 'gsap';
 import heroData from './hero.json';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import baseTexUrl from './basetex';
 import clipIdle from './clips/idle.json';
 import clipJump from './clips/jump.json';
@@ -12,7 +13,6 @@ import clipWall from './clips/climbing_wall.json';
 import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
 import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
 
@@ -473,7 +473,7 @@ function WindLines({ sim }: { sim: Sim }) {
 const PED_TYPES = [
     { model: 'robot', shell: [0.62, 0.70, 0.74], coat: [0.10, 0.28, 0.38] }, { model: 'robot', shell: [0.78, 0.72, 0.60], coat: [0.50, 0.30, 0.18] },
     { model: 'robot', shell: [0.55, 0.62, 0.58], coat: [0.20, 0.34, 0.26] }, { model: 'companion' }, { model: 'sdrone' }] as const;
-const PED_LANES = 2, PED_PER_LANE = 5;
+const PED_NEAR = 16, PED_N = 170, AIR_N = 64, PED_CAP = PED_N + AIR_N;   // street crowd + airborne drones; counts are iteration choices, not user numbers
 function Civilians({sim}:{sim:Sim}){
     const refs=useRef<THREE.InstancedMesh[]>([]);
     const time=useRef({value:0});
@@ -481,20 +481,49 @@ function Civilians({sim}:{sim:Sim}){
         const r=robotGeo({model:t.model,eye:EYE_BLUE,shell:t.shell,scale:t.model==='sdrone'?1.3:t.model==='companion'?1.15:1,extras:t.coat?coatRobot(t.coat):undefined});
         return {geo:r.geo,mat:robotMat(r.parts,r.scale,time.current,t.model==='sdrone'?0:3.2)};
     }),[]);
+    if(DBG)(window as any).__pedInfo=set.map((p:any)=>{p.geo.computeBoundingBox();const b=p.geo.boundingBox;return{tris:(p.geo.index?p.geo.index.count:p.geo.attributes.position.count)/3,verts:p.geo.attributes.position.count,size:[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].map((x:number)=>+x.toFixed(2)),minY:+b.min.y.toFixed(2)}});
+    // distant tier: a ~40-triangle box proxy per type (torso, head, blue visor band), used beyond PED_NEAR metres; the full 600-2700 triangle robots stay for the near field
+    const far=useMemo(()=>PED_TYPES.map((t:any,ti:number)=>{
+        const sh=new THREE.Color().setRGB(...(t.shell||[0.82,0.84,0.88]) as [number,number,number]),cc=new THREE.Color().setRGB(...(t.coat||t.shell||[0.82,0.84,0.88]) as [number,number,number]),blue=new THREE.Color().setRGB(...(EYE_BLUE as unknown as [number,number,number])),dark=sh.clone().multiplyScalar(0.55);
+        const parts:THREE.BufferGeometry[]=[];
+        const box=(w:number,h:number,d:number,x:number,y:number,z:number,c:THREE.Color)=>{const g=new THREE.BoxGeometry(w,h,d).toNonIndexed();g.translate(x,y,z);const n=g.attributes.position.count,col=new Float32Array(n*3);for(let i=0;i<n;i++){col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;}g.setAttribute('color',new THREE.BufferAttribute(col,3));g.deleteAttribute('uv');parts.push(g);};
+        if(ti<3){box(0.5,0.75,0.32,0,1.05,0,cc);box(0.3,0.3,0.3,0,1.58,0,sh);box(0.26,0.07,0.04,0,1.6,0.16,blue);box(0.34,0.68,0.22,0,0.34,0,dark);}
+        else if(ti===3){box(0.9,0.9,0.9,0,0.7,0,sh);box(0.7,0.12,0.04,0,0.95,0.46,blue);}
+        else {box(0.9,0.75,0.9,0,0.45,0,sh);box(0.8,0.1,0.04,0,0.6,0.46,blue);}
+        const geo=mergeGeometries(parts,false)!;
+        return {geo,mat:new THREE.MeshLambertMaterial({vertexColors:true,emissive:new THREE.Color('#1c2230'),emissiveIntensity:0.6})};
+    }),[]);
+    const refsF=useRef<THREE.InstancedMesh[]>([]);
     const o=useMemo(()=>new THREE.Object3D(),[]);
-    useFrame(()=>{time.current.value=sim.t;const cnt=PED_TYPES.map(()=>0);
-        for(let i=0;i<PED_LANES*PED_PER_LANE;i++){const lane=Math.floor(i/PED_PER_LANE),k=i%PED_PER_LANE,R=.65,L=140,arc=Math.PI*R,total=2*L+2*arc,phase=(sim.t*.8+k*total/PED_PER_LANE+lane*13)%total;
-            let z=25,x=lane?263:97,rot=0;
-            if(phase<L){z+=phase;x-=R;}
-            else if(phase<L+arc){const a=(phase-L)/R;z+=L+R*Math.sin(a);x-=R*Math.cos(a);rot=a;}
-            else if(phase<2*L+arc){z+=2*L+arc-phase;x+=R;rot=Math.PI;}
-            else{const a=(phase-2*L-arc)/R;z-=R*Math.sin(a);x+=R*Math.cos(a);rot=Math.PI+a;}
-            if(Math.hypot(x-sim.pos[0],z-sim.pos[2])>50)continue;
-            const ty=(k+lane)%PED_TYPES.length,hov=ty===4?1.1+Math.sin(sim.t*2+i)*.12:0;
-            o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.08);o.updateMatrix();refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);
-        }
-        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];refs.current[i].instanceMatrix.needsUpdate=true;}});
-    return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m)refs.current[i]=m}} args={[p.geo,p.mat,PED_LANES*PED_PER_LANE]} frustumCulled={false}/>)}</group>;
+    const wrapS=(v:number,W:number)=>((v%W)+W+W/2)%W-W/2;
+    const ln=useRef({a:[0,0],y:30,t:0}),ys=useRef<number[]>([]);
+    useFrame(()=>{time.current.value=sim.t;const cnt=PED_TYPES.map(()=>0),cf=PED_TYPES.map(()=>0);
+        const hx=sim.pos[0],hz=sim.pos[2],near=(v:number)=>Math.round((v-CELL/2)/CELL)*CELL+CELL/2,L=ln.current.a;
+        // street line the crowd is centred on, with hysteresis so it only re-centres after the hero is well into the next block
+        const ym=ln.current;{const dtt=Math.max(0,Math.min(0.1,sim.t-ym.t));ym.t=sim.t;ym.y+=(Math.max(14,sim.pos[1])-ym.y)*Math.min(1,dtt*0.6);}   // air traffic layers follow the hero's altitude (smoothed) so rooftops and flights see drones at their own height
+        const nx=near(hx),nz=near(hz);if(Math.abs(hx-L[0])>CELL*0.75||L[0]===0)L[0]=nx;if(Math.abs(hz-L[1])>CELL*0.75||L[1]===0)L[1]=nz;
+        const cfg:any=(DBG&&(window as any).__pedCfg)||{},nP=cfg.n??PED_N,nA=cfg.a??AIR_N,rG=cfg.rg??85,rA=cfg.ra??110,nr=cfg.near??PED_NEAR;
+        if(DBG)(window as any).__air=[];
+        const place=(i:number,air:boolean)=>{
+            const axis=i&1,k=[0,0,0,0,0,-1,1,-1,1,-2,2,0][(((i>>1)*7)%12)],line=L[axis]+k*CELL,over=air&&((i>>2)&1)===1,lat=over?(((i*37)%13)-6)*4:(((i*37)%9)-4)*0.85,dir=(i&2)?1:-1,Wd=130,c=axis?hx:hz,cc=axis?hz:hx;
+            const sp=air?(3+((i*13)%7)*0.9):(0.9+((i*13)%7)*0.12),base=((((i>>1)*0.6180339)%1)*Wd),al=c+wrapS(base+dir*sim.t*sp-c,Wd);
+            const x=axis?al:line+lat,z=axis?line+lat:al;void cc;
+            if(Math.hypot(x-hx,z-hz)>(air?rA:rG))return;
+            if(z<WATER_Z+6)return; if(x>PARK.x0-3&&x<PARK.x1+3&&z>PARK.z0-3&&z<PARK.z1+3)return;
+            const rot=axis?(dir>0?Math.PI/2:-Math.PI/2):(dir>0?0:Math.PI);
+            if(air){const ty=4;let y=Math.max(8,ym.y+((i*29)%50)-22);
+                if(over){   // over-block route: fly above the actual roofs under a +-45 m window ahead and behind, smoothed so it climbs before it reaches a taller tower
+                    let wm=0;const ax0=axis?al-45:x-30,ax1=axis?al+45:x+30,az0=axis?z-30:al-45,az1=axis?z+30:al+45;
+                    for(const b of buildings){if(b.x1>ax0&&b.x0<ax1&&b.z1>az0&&b.z0<az1&&b.h>wm)wm=b.h;}
+                    const tgt=Math.max(y+12,wm+9),s0=ys.current,k0=i%AIR_N;if(!s0[k0])s0[k0]=tgt;s0[k0]+=(tgt-s0[k0])*Math.min(1,0.016*3);y=s0[k0];}
+                y+=Math.sin(sim.t*1.3+i)*0.6;if(DBG)((window as any).__air||((window as any).__air=[])).push([x,y,z,over?1:0]);o.position.set(x,y,z);o.rotation.set(0,rot,0);o.scale.setScalar(over?3.2:1.5);o.updateMatrix();if(Math.hypot(x-hx,y-sim.pos[1],z-hz)<nr*1.1)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);return;}
+            const ty=i%PED_TYPES.length,hov=ty===4?1.1+Math.sin(sim.t*2+i)*.12:0;
+            o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.08);o.updateMatrix();if(Math.hypot(x-hx,z-hz)<nr)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);
+        };
+        for(let i=0;i<nP;i++)place(i,false);
+        for(let i=0;i<nA;i++)place(i+1000,true);
+        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];refs.current[i].instanceMatrix.needsUpdate=true;refsF.current[i].count=cf[i];refsF.current[i].instanceMatrix.needsUpdate=true;}if(DBG)(window as any).__ped=cnt.slice();});
+    return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m)refs.current[i]=m}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}{far.map((p,i)=><instancedMesh key={'f'+i} ref={m=>{if(m)refsF.current[i]=m}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}</group>;
 }
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
@@ -1200,7 +1229,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh position={[0, WATER_Y, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]} ref={waterRef} material={waterMat} frustumCulled={false}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500, 160, 80]} /></mesh>
         <mesh position={[0, SEABED, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500]} /><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
-        {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r) enMeshes.current[k] = r; }} args={[p.geo, p.mat, 16]} frustumCulled={false} />)}
+        {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r) enMeshes.current[k] = r; }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
         <instancedMesh ref={cores} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" /></instancedMesh>
         <instancedMesh ref={glows} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
     </>;
