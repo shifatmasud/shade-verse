@@ -10,7 +10,7 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 ### Verification
 - `npx tsc --noEmit`, `npm run build`, `PORT=4173 node test/ghost.mjs`, `PORT=4173 node test/boss.mjs`, `PORT=4173 node test/ghost-traversal.mjs`, and `PORT=4173 node test/boss-arena.mjs` pass. Focused Chromium WebGL2/ANGLE SwiftShader assertions cover the existing desktop/mobile Ghost and boss checks plus phone-landscape wall/swing/glide/morph behavior and rooftop/beacon placement.
 - Phone-landscape captures (844×390): baseline `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`; after `art/ghost/shot-after-ghost-morph-mobile-landscape.png` and `art/boss/shot-after-boss-arena-mobile-landscape.png`. These are local browser captures, not physical-device screenshots.
-- Physical Android 10/Chrome 155 and Windows 10/Edge 155/Intel UHD 600 tests remain untested. The expected production URL is https://web-swinger-3d-mirror.vercel.app/; verify the Git-triggered deployment after pushing `main`.
+- Physical Android 10/Chrome 155 and Windows 10/Edge 155/Intel UHD 600 tests remain untested. Commit `01d40a7` was pushed to the mirror's `main`; the existing Git-triggered production URL https://web-swinger-3d-mirror.vercel.app/ returned HTTP 200 and served a 200 bundle containing the new red-beacon marker.
 ### References
 - Official Insomniac/PlayStation traversal references and the particle VFX reference are recorded in `docs/REFERENCES.md`; no source assets or code were copied.
 
