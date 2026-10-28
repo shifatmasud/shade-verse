@@ -6,6 +6,14 @@
 - Device compatibility (estimate): 12/20 (physical Android and Windows tests remain untested)
 Evidence: `test/ghost-traversal.mjs` and `test/boss-arena.mjs` PASS at phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader. The first checks same-wall attachment, swing, glide, and particle out/in states; the second checks the roof-contained boss, 84 m red beam, and rooftop ring. Captures: `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`, `art/ghost/shot-after-ghost-morph-mobile-landscape.png`, and `art/boss/shot-after-boss-arena-mobile-landscape.png`. Commit `01d40a7` is on the mirror's `main`; the live URL returned HTTP 200 with the updated bundle. Physical Android/Windows and target-GPU frame rates remain untested.
 
+## Polyfork lake, bridge, city and park rebuild — provisional 83/100
+- Visuals: 16/20 (the phone-landscape capture shows the Polyfork lake crossing, timber bridge, shoreline/support foam, mixed tree grove, and blossoms; software rendering only)
+- Controls/behavior: 25/25 (the hero remains grounded on the bridge deck and both approach ramps; city footprints, routes, rooftop boss arena, and existing traversal controls are preserved)
+- Performance (estimate): 16/20 (27 compact GLBs, batched into 178 building placements, 266 trees, and 54 bushes; curved grass uses a bounded instanced tuft pool and bloom renders a quarter-resolution light-only layer; no physical FPS result)
+- Stability: 14/15 (type-check, build, environment, water, ground, boss-arena/flight, Ghost animation, and both independent Shock Web regressions pass; full suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows devices and target-GPU frame rates remain untested)
+Evidence: `test/environment.mjs` PASS at 844×390; 27/27 Polyfork GLBs return HTTP 200, the city uses 15 model families across 178 placements, the nine tree species and bushes are present, and live simulation samples confirm grounding on the deck and ramp. `test/water.mjs`, `test/ground.mjs`, `test/boss-arena.mjs`, `test/boss-flight.mjs`, `test/ghost-animation-sync.mjs`, `test/snare.mjs`, and `test/ghost-snare.mjs` PASS. Before/after: `art/environment/shot-before-lake-bridge-mobile-landscape.jpg` and `art/environment/shot-after-lake-bridge-polyfork-mobile-landscape.png`. The later 3D fire KO effect remains queued for a separate iteration.
+
 ## Ghost full-action animation parity, one-hand web, and landing/wall morph — provisional 84/100
 - Visuals: 18/20 (Ghost now uses the same live Shadow clip/procedural action pose; phone-landscape morph evidence is reviewed, but only software rendering is available)
 - Controls/behavior: 25/25 (28 animation cases cover all implemented action families, including Shadow-matched alternating one-hand web strands and an actual dual-hand spring launch; four surface tests cover street, park, rooftop, and collision-backed wall attachment with no visible relocation)

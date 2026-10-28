@@ -1,6 +1,6 @@
 # Feature Backlog & Status Inventory
 
-Total requests extracted from project history: 68.
+Total requests extracted from project history: 69.
 
 ## Group 1: Implemented in Export & Verified in Repository (64 items)
 1. Browser 3D game engine (React 18, Three.js, R3F, Framer Motion, GSAP, WebGL2, Vite)
@@ -36,20 +36,20 @@ Total requests extracted from project history: 68.
 31. Water ripples, wake trail, and directional change wake fix
 32. Underwater visuals (fog, tint, lighting passes)
 33. Air/water split view at waterline
-34. Calm lighter lake coloration situated underneath bridge
-35. Bridge over lake
-36. Ocean area with shoreline water foam
+34. Calm Polyfork lake surface under the bridge, with a subdivided animated water mesh
+35. Polyfork six-module footbridge with walkable deck and sloped approaches over the lake
+36. Broad calm ocean swells with visible shoreline and object-intersection foam
 37. Free manual camera orbit with smart movement-based tracking (GTA-style)
 38. Day/night cycle with atmospheric variation (morning, day, evening, calm starry night)
 39. Distance depth blur, exponential fog, cinematic lighting, parallax windows
-40. Alpha-tested foliage for trees and bushes (scanned textures, not 3D polygon cones)
-41. Realistic tree varieties, distinct families, pine trees with needle textures
-42. Dense thin grass blades with subtle flowers and glowing fireflies
+40. Polyfork tree and bush models replace all legacy park and side-street trees
+41. Polyfork tree variety across palm, pine, oak, birch, maple, cherry blossom and cherry species
+42. Dense curved grass blades with eight geometry segments, subtle flowers, glowing fireflies, and no per-blade screen outline
 43. Calmer grass green colors (muted sage/olive)
-44. Polyfork environment models for buildings, trees, and vehicles
+44. Polyfork environment models for all existing building types and visible tree species; models are instanced for repeated city/park placement
 45. Polyfork six-home residential block / neighborhood
 46. Cell-based world rendering and culling for weak GPUs
-47. GPU instancing for crowds, vegetation, vehicles, outlines
+47. GPU instancing for crowds, vegetation, vehicles, outlines, and the rebuilt Polyfork city blocks
 48. Screen-space comic outline shader for buildings and world objects
 49. Robot civilian pedestrians using Shadow body topology
 50. Minimal robotic faceplates (smooth visor, eye slits/dots, no mouth/nose)
@@ -68,11 +68,12 @@ Total requests extracted from project history: 68.
 63. Second hero companion character: Ghost (feminine white-suited companion, hot-pink lenses, autonomous follow/traversal/combat from the first frame; now mirrors every applicable live Shadow clip/action pose—including melee, Snare, plasma, and dual-hand spring-shot—and morph-transports onto each ground landing or wall-crawl surface with the pink-white particle effect) - implemented in the private mirror's `main`; 26-action, surface-transition, and traversal phone-landscape tests pass; physical devices remain untested
 64. Giant boss (Shadow's existing human body at 3× scale, now covered in bulky bone-attached red armor with visible red eyes; ordinary melee locked, Shadow Snare allowed; fixed rooftop arena and red beacon preserved) - implemented in the private mirror's `main` with Git-triggered deployment; physical devices remain untested
 
-## Group 2: Still Queued / In Progress (4 items)
+## Group 2: Still Queued / In Progress (5 items)
 65. Detailed flying cars with collision pass and web anchor towing - queued
 66. Water surfing (hold swing on water surface, wake spray, web-tow surfing) - queued
 67. Building destruction (three-bvh-csg mesh subtraction, breakable sections, debris) - queued
 68. Armored military vehicles (tanks and hunter helicopters as rare heavy threats) - queued
+69. 3D fire KO effect (separate follow-up iteration; explicitly remains queued)
 
 ## Group 3: Not Verifiable Now on Physical Hardware (2 items)
 - Physical device 60fps frame rates on Android 10 (Chrome 155) and Windows 10 (Edge 155 / Intel UHD 600) (untested on physical hardware; estimated via GPU feature flags and code analysis)

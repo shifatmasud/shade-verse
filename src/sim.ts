@@ -10,6 +10,26 @@ export const JUMP_V = 16;
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
 // valley: the park floor sinks into a gentle rolling bowl; zero at the park edge so it meets street level, about -5 m in the middle
 export function parkH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
+export const PARK_POND = { cx: 180, cz: 100, rx: 16, rz: 11 };
+export const PARK_POND_Y = parkH(PARK_POND.cx, PARK_POND.cz) + 0.55;
+const bridgeYaw = -Math.atan2(0.857, 0.514); // follows the existing diagonal park trail
+export const PARK_BRIDGE = {
+    x: PARK_POND.cx, z: PARK_POND.cz, yaw: bridgeYaw,
+    axisX: Math.cos(bridgeYaw), axisZ: -Math.sin(bridgeYaw),
+    modules: 6, halfLength: 12, halfWidth: 1.35, rampLength: 6,
+    deckY: PARK_POND_Y + 0.95,
+};
+export function bridgeSurfaceAt(x: number, z: number): number | null {
+    const dx = x - PARK_BRIDGE.x, dz = z - PARK_BRIDGE.z;
+    const along = dx * PARK_BRIDGE.axisX + dz * PARK_BRIDGE.axisZ;
+    const across = -dx * PARK_BRIDGE.axisZ + dz * PARK_BRIDGE.axisX;
+    if (Math.abs(across) > PARK_BRIDGE.halfWidth) return null;
+    const end = Math.abs(along) - PARK_BRIDGE.halfLength;
+    if (end <= 0) return PARK_BRIDGE.deckY;
+    if (end > PARK_BRIDGE.rampLength) return null;
+    const t = end / PARK_BRIDGE.rampLength;
+    return PARK_BRIDGE.deckY * (1 - t) + parkH(x, z) * t;
+}
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 
 let seedv = 1337;
@@ -29,11 +49,12 @@ function buildWorld() {
     const streetBlds: Bld[] = [];
     const data: number[] = [];
     const idx: number[] = [];
+    let hideProceduralBuildingVisuals = false;
     const box = (cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, col: V3, seed: number, skipBottom = true) => {
         for (let fi = 0; fi < 6; fi++) {
             if (skipBottom && fi === 5) continue;
             const f = FACES[fi], base = data.length / 10, n = f[0];
-            for (let i = 1; i < 5; i++) { const p = f[i]; data.push(cx + p[0] * sx, cy + p[1] * sy, cz + p[2] * sz, n[0], n[1], n[2], col[0], col[1], col[2], seed); }
+            for (let i = 1; i < 5; i++) { const p = f[i]; data.push(cx + p[0] * sx, cy + p[1] * sy, cz + p[2] * sz, n[0], n[1], n[2], col[0], col[1], col[2], hideProceduralBuildingVisuals ? 100 : seed); }
             idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         }
     };
@@ -41,6 +62,7 @@ function buildWorld() {
     for (let i = 0; i < N; i++) for (let j = 2; j < N; j++) {
         const cx = (i - mi) * CELL, cz = (j - mi) * CELL;
         if (cx > PARK.x0 && cx < PARK.x1 && cz > PARK.z0 && cz < PARK.z1) continue; // forest park block
+        hideProceduralBuildingVisuals = true;
         const blockStart=[data.length,idx.length,blds.length];
         const dc = Math.hypot(cx, cz) / HALF;
         const w = 20 + rnd() * 8, d = 20 + rnd() * 8;
@@ -87,6 +109,7 @@ function buildWorld() {
         if (rnd() < 0.5) { box(cx + w * 0.25, h + 1.5, cz - d * 0.2, 0.4, 1.5, 0.4, [0.7, 0.2, 0.25], 0.5); }
         if (rnd() < 0.3) box(cx + w * 0.1, h + 0.25, cz - d * 0.1, w * 0.3, 0.25, d * 0.12, [0.9, 0.55, 0.3], 0.5); // roof glow strip
         // One six-home Polyfork block replaces an existing outer-city tower, preserving RNG for every other block.
+        hideProceduralBuildingVisuals = false;
         streetBlds.push(...blds.slice(blockStart[2]).filter(b=>b.host===undefined));
         if(cx===-240 && cz===80){data.length=blockStart[0];idx.length=blockStart[1];blds.length=blockStart[2];for(let k=0;k<6;k++){const x=-249+(k%3)*9,z=72+Math.floor(k/3)*17;const host=blds.length;blds.push({x0:x-4,x1:x+4,z0:z-4,z1:z+4,h:18});
             for(const q of [[-4,-3.7,-4,4], [3.7,4,-4,4], [-3.7,3.7,-4,-3.7],[-3.7,3.7,3.65,4]]) blds.push({x0:x+q[0],x1:x+q[1],z0:z+q[2],z1:z+q[3],h:19,host});
@@ -446,8 +469,9 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
     if (s.swim && p[1] < SEABED + 1) { p[1] = SEABED + 1; if (v[1] < 0) v[1] = 0; }
-    const gy = 1.0 + parkH(p[0], p[2]);
-    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level (or valley floor): walkable, snaps down gentle slopes
+    const parkFloor = parkH(p[0], p[2]), bridgeFloor = bridgeSurfaceAt(p[0], p[2]);
+    const gy = 1.0 + Math.max(parkFloor, bridgeFloor ?? -Infinity);
+    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes
         if (!s.ground) { s.ground = true; }
         p[1] = gy; if (v[1] < 0) v[1] = 0;
     }

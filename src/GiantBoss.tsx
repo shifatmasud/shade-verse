@@ -5,6 +5,7 @@ import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { BOSS_BODY_OFFSET, BOSS_ROOT_SCALE, BOSS_SCALE_FACTOR, SHADOW_ROOT_SCALE } from './bossConfig';
 import type { Sim } from './sim';
+import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const SOURCE_HERO = JSON.parse(JSON.stringify(heroData)) as any;
@@ -178,7 +179,7 @@ function buildBossRig(): BossRig {
         const eye = new THREE.Mesh(armorSphereGeometry, eyeMaterial);
         eye.name = `boss-original-red-eye-${side < 0 ? 'left' : 'right'}`;
         eye.position.set(side * 0.032, 0.044, 0.335); eye.scale.set(0.019, 0.012, 0.006);
-        eye.userData.bossEyeLens = true; byName.head.add(eye);
+        eye.userData.bossEyeLens = true; eye.layers.enable(SELECTIVE_BLOOM_LAYER); byName.head.add(eye);
     }
     plate(byName.neck, 'neck', [0, 0.035, 0], [0.135, 0.10, 0.135], armorTrimMaterial, armorBandGeometry);
 

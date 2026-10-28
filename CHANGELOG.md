@@ -2,6 +2,18 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Polyfork lake, bridge, city and park rebuild
+### Changed
+- Replaced the rendered procedural city blocks with instanced Polyfork models across 178 remaining building sites and 15 model families; retained the existing city footprints, collision records, original Polyfork six-home block, routes, and rooftop boss arena.
+- Replaced all mounted legacy park and side-street trees with 266 Polyfork trees spanning nine species, including palm, pine, oak, birch, maple, cherry blossom, and cherry, plus 54 Polyfork bushes. Added a mixed grove around the lake and kept bridge/path clearances.
+- Added the Polyfork water body and a six-module wooden footbridge with two walkable approach ramps, 14 animated shoreline/support foam patches, a cutout so the old trail does not show through the pond, and a subdivided water surface. Retuned ocean motion to broad, calm swells with restrained crest foam.
+- Rebuilt each grass blade as an eight-segment curved mesh and set its render alpha below the screen-outline mask threshold; the terrain/field silhouette keeps its outline. Added quarter-resolution selective bloom for explicitly tagged lights only (boss eyes, rooftop beacon, arena marker, orbs, and fireflies), excluding grass, blossom petals, and the full scene.
+- Shadow, Ghost, combat, HUD placement, boss flight/armor, and ordinary traversal remain intact; existing light meshes only gained bloom tagging, and bridge/ramp ground support was added to traversal.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, and `git diff --check` pass. `PORT=4173 node test/environment.mjs` passes at phone-landscape 844×390: all 27/27 Polyfork GLBs load, 178 city placements and all required species are present, and the hero grounds on both bridge deck and ramp with no browser errors. `test/water.mjs`, `test/ground.mjs`, `test/boss-arena.mjs`, `test/boss-flight.mjs`, `test/ghost-animation-sync.mjs`, `test/snare.mjs`, and `test/ghost-snare.mjs` also pass.
+- Landscape comparison: `art/environment/shot-before-lake-bridge-mobile-landscape.jpg` and `art/environment/shot-after-lake-bridge-polyfork-mobile-landscape.png`. Testing used Chromium WebGL2/SwiftShader; physical-device appearance and target-GPU frame rate remain untested.
+- Changes are scoped to the private mirror's `main`; the push is intended to trigger its Vercel deployment. No original-repository changes are included. Sources and asset/license notes are in `docs/REFERENCES.md`.
+
 ## [Released] - Rooftop boss autonomous flight
 ### Changed
 - The armored 3× Shadow-body boss now performs an arena-bounded flight cycle when engaged: controlled lift to 6.5 m, a steady hover, a propelled traverse within the roof bounds, and a controlled landing. The existing attack windup, strike range/damage/recovery, Snare targeting, armor, red eyes, rooftop beacon, and player systems are unchanged.
