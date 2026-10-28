@@ -16,7 +16,7 @@ import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, type Sim, type Events } from './sim';
 
 // time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
 const TOD = { sun: new THREE.Vector3(-0.55, 0.22, 0.8).normalize(), sunU: null as any, day: { value: 1 }, warm: { value: 1 }, noon: { value: 0 }, fog: new THREE.Color(FOG[0], FOG[1], FOG[2]), sky: new THREE.Color('#c4dcef') };
@@ -569,11 +569,54 @@ function Civilians({sim}:{sim:Sim}){
         for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];syncInk(refs.current[i]);refs.current[i].instanceMatrix.needsUpdate=true;refsF.current[i].count=cf[i];syncInk(refsF.current[i]);refsF.current[i].instanceMatrix.needsUpdate=true;}if(DBG)(window as any).__ped=cnt.slice();});
     return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m&&refs.current[i]!==m){refs.current[i]=m;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}{far.map((p,i)=><instancedMesh key={'f'+i} ref={m=>{if(m&&refsF.current[i]!==m){refsF.current[i]=m;m.userData.far=true;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}</group>;
 }
+// ===== combat choreography poses (procedural layer on the existing rig; model untouched) =====
+// Key poses read from real stills: Muybridge "Two men boxing" (1887) jab/cross shoulder turn + rear-heel pivot;
+// Taekwondo 540 hook + capoeira armada (chamber, counter-lean, extended hook leg); Spider-Man 2 combat (launcher, air spike, web pull/yank).
+type PoseK = Record<string, [number, number, number]>;
+const CP_BONES = ['hips', 'spine', 'chest', 'head', 'uarmL', 'farmL', 'uarmR', 'farmR', 'thighL', 'shinL', 'thighR', 'shinR'];
+const GUARD: PoseK = { hips: [0, 0.12, 0], spine: [0.12, 0, 0], chest: [0, 0.1, 0], head: [-0.08, -0.1, 0], uarmL: [-1.05, 0, 0.32], farmL: [-1.95, 0, 0], uarmR: [-0.85, 0, -0.38], farmR: [-2.05, 0, 0], thighL: [-0.38, 0, -0.06], shinL: [0.32, 0, 0], thighR: [0.28, 0, 0.06], shinR: [0.42, 0, 0] };
+const P = (o: PoseK): PoseK => ({ ...GUARD, ...o });
+const POSES: Record<number, [number, PoseK][]> = {
+    1: [[0, GUARD], [0.33, P({ hips: [0, 0.28, 0], chest: [0, 0.42, 0], uarmL: [-1.55, 0, 0.14], farmL: [-0.08, 0, 0], head: [-0.05, -0.3, 0] })], [0.55, P({ hips: [0, 0.22, 0], chest: [0, 0.3, 0], uarmL: [-1.45, 0, 0.2], farmL: [-0.5, 0, 0] })], [1, GUARD]],
+    2: [[0, P({ chest: [0, 0.3, 0] })], [0.34, P({ hips: [0, -0.38, 0], chest: [0, -0.62, 0], spine: [0.22, 0, 0], uarmR: [-1.58, 0, -0.12], farmR: [-0.06, 0, 0], uarmL: [-0.9, 0, 0.5], thighR: [0.12, 0, 0.04], shinR: [0.62, 0, 0], head: [-0.05, 0.35, 0] })], [0.6, P({ hips: [0, -0.3, 0], chest: [0, -0.45, 0], uarmR: [-1.4, 0, -0.2], farmR: [-0.6, 0, 0] })], [1, GUARD]],
+    3: [[0, P({ hips: [0, 0.3, 0], chest: [0, 0.45, 0] })], [0.22, P({ spine: [-0.1, 0, 0], thighR: [-1.2, 0, 0.35], shinR: [1.7, 0, 0], thighL: [-0.1, 0, 0], shinL: [0.25, 0, 0] })], [0.5, P({ hips: [0, 0, -0.42], spine: [-0.32, 0, 0.2], chest: [0, 0, 0.15], thighR: [-0.45, 0, 1.45], shinR: [0.06, 0, 0], thighL: [0.05, 0, -0.05], shinL: [0.18, 0, 0], uarmL: [-0.4, 0, -1.0], farmL: [-0.6, 0, 0], uarmR: [-0.3, 0, 0.9], farmR: [-0.8, 0, 0] })], [0.72, P({ thighR: [-0.9, 0, 0.5], shinR: [1.2, 0, 0], spine: [-0.1, 0, 0] })], [1, GUARD]],
+    4: [[0, P({ spine: [0.35, 0, 0], thighL: [-0.85, 0, 0], shinL: [1.3, 0, 0], thighR: [-0.25, 0, 0], shinR: [1.2, 0, 0], uarmR: [0.35, 0, 0.1], farmR: [-1.3, 0, 0] })], [0.38, P({ spine: [-0.28, 0, 0], chest: [0, -0.4, 0], uarmR: [-2.95, 0, -0.15], farmR: [-0.25, 0, 0], uarmL: [-0.4, 0, -0.6], farmL: [-1.2, 0, 0], thighL: [-1.6, 0, 0], shinL: [1.8, 0, 0], thighR: [0.2, 0, 0], shinR: [0.1, 0, 0], head: [-0.4, 0, 0] })], [0.7, P({ spine: [-0.15, 0, 0], uarmR: [-2.4, 0, -0.3], farmR: [-0.9, 0, 0], thighL: [-1.1, 0, 0], shinL: [1.6, 0, 0] })], [1, P({ thighL: [-0.6, 0, 0], shinL: [1.0, 0, 0], thighR: [-0.2, 0, 0], shinR: [0.8, 0, 0] })]],
+    5: [[0, P({ thighL: [-1.4, 0, 0], shinL: [2.1, 0, 0], thighR: [-1.3, 0, 0], shinR: [2.0, 0, 0], spine: [0.35, 0, 0] })], [0.3, P({ hips: [0.25, 0, 0], thighR: [-1.9, 0, 0.1], shinR: [1.9, 0, 0], thighL: [-1.2, 0, 0], shinL: [2.0, 0, 0], uarmL: [-0.6, 0, -0.9], uarmR: [-0.6, 0, 0.9] })], [0.52, P({ hips: [0.55, 0, 0], spine: [0.2, 0, 0], thighR: [-1.25, 0, 0.05], shinR: [0.05, 0, 0], thighL: [-0.6, 0, 0], shinL: [1.9, 0, 0], uarmL: [-0.3, 0, -1.25], farmL: [-0.3, 0, 0], uarmR: [-0.2, 0, 1.25], farmR: [-0.3, 0, 0], head: [-0.4, 0, 0] })], [0.8, P({ hips: [0.2, 0, 0], thighR: [-0.9, 0, 0], shinR: [1.2, 0, 0], thighL: [-0.7, 0, 0], shinL: [1.4, 0, 0] })], [1, P({ thighL: [-0.5, 0, 0], shinL: [0.9, 0, 0], thighR: [-0.3, 0, 0], shinR: [0.7, 0, 0] })]],
+    6: [[0, P({ uarmR: [-1.6, 0, -0.05], farmR: [-0.05, 0, 0], chest: [0, -0.35, 0] })], [0.22, P({ uarmR: [-1.55, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.5, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.4, P({ uarmR: [0.25, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.2, 0, 0], thighR: [-1.3, 0, 0], shinR: [1.8, 0, 0] })], [0.55, P({ hips: [0.12, 0, 0], spine: [-0.18, 0, 0], thighR: [-1.6, 0, 0], shinR: [0.05, 0, 0], thighL: [0.6, 0, 0], shinL: [1.8, 0, 0], uarmR: [0.6, 0, 0.3], farmR: [-0.5, 0, 0], uarmL: [0.5, 0, -0.3], farmL: [-0.5, 0, 0] })], [0.8, P({ thighR: [-0.8, 0, 0], shinR: [1.0, 0, 0] })], [1, GUARD]],
+    7: [[0, P({ uarmR: [-1.75, 0, -0.1], farmR: [-0.05, 0, 0], uarmL: [-1.7, 0, 0.1], farmL: [-0.05, 0, 0], spine: [0.15, 0, 0] })], [0.25, P({ uarmR: [-1.9, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.85, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.42, P({ uarmR: [0.45, 0, 0.15], farmR: [-1.4, 0, 0], uarmL: [0.45, 0, -0.15], farmL: [-1.4, 0, 0], spine: [-0.38, 0, 0], hips: [0, -0.2, 0], thighL: [-0.6, 0, 0], shinL: [0.6, 0, 0], thighR: [0.45, 0, 0], shinR: [0.4, 0, 0], head: [0.2, 0, 0] })], [0.75, P({ uarmR: [0.2, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.15, 0, 0] })], [1, GUARD]],
+};
+const _cp = { w: 0, c: new Float32Array(CP_BONES.length * 3), init: false };
+const cstep = (x: number) => x * x * (3 - 2 * x);
+function samplePose(keys: [number, PoseK][], u: number, out: Float32Array) {
+    let k = 0; while (k < keys.length - 2 && u > keys[k + 1][0]) k++;
+    const [u0, A] = keys[k], [u1, B] = keys[k + 1], f = cstep(Math.max(0, Math.min(1, (u - u0) / Math.max(1e-4, u1 - u0))));
+    CP_BONES.forEach((n, i) => { const a = A[n], b = B[n]; for (let j = 0; j < 3; j++) out[i * 3 + j] = a[j] + (b[j] - a[j]) * f; });
+}
+const _cpT = new Float32Array(CP_BONES.length * 3);
+function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number) {
+    const mv = sim.mv, fl = sim.flip, act = !!mv || !!fl;
+    const bones = CP_BONES.map((n) => rig.b[n] as THREE.Bone);
+    if (_cp.w < 0.02 && !act) { bones.forEach((b, i) => { _cp.c[i * 3] = b.rotation.x; _cp.c[i * 3 + 1] = b.rotation.y; _cp.c[i * 3 + 2] = b.rotation.z; }); _cp.w = 0; return; }
+    _cp.w += ((act ? 1 : 0) - _cp.w) * Math.min(1, dt * (act ? 16 : 7));   // ease in fast, settle out slower: momentum, no snap
+    if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), _cpT); }
+    else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, _cpT);
+        if (fl.ax === 'z') { const s0 = _cpT; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
+    else { bones.forEach((b, i) => { _cpT[i * 3] = b.rotation.x; _cpT[i * 3 + 1] = b.rotation.y; _cpT[i * 3 + 2] = b.rotation.z; }); }
+    const k = Math.min(1, dt * 24);   // per-bone follow: chained moves blend through each other instead of popping
+    for (let i = 0; i < _cpT.length; i++) _cp.c[i] += (_cpT[i] - _cp.c[i]) * k;
+    const w = _cp.w;
+    bones.forEach((b, i) => { b.rotation.x += (_cp.c[i * 3] - b.rotation.x) * w; b.rotation.y += (_cp.c[i * 3 + 1] - b.rotation.y) * w; b.rotation.z += (_cp.c[i * 3 + 2] - b.rotation.z) * w; });
+    // whole-body turns, not smoothed (continuous 0..2pi): spin hook kick, flips/cartwheels around the hips
+    if (mv && mv.id === 3) { const u = Math.min(1, mv.t / MOVES[3].dur), sp = cstep(Math.max(0, Math.min(1, (u - 0.08) / 0.72))); h.rotation.y += sp * Math.PI * 2; }
+    if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
+    if (fl) { const u = Math.min(1, fl.t / fl.dur), a = cstep(u) * Math.PI * 2 * fl.dir; if (fl.ax === 'x') rig.b.hips.rotation.x += a; else rig.b.hips.rotation.z += a; }
+}
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
-    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(4 * 2 * 2 * 3), 3)); return g; }, []);
+    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(10 * 2 * 3), 3)); return g; }, []);
     useFrame(() => { const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute; let n = 0;
         if (sa.snareT > 0.45) { const hw = sa.handW as number[][] | undefined; (sa.snareList as any[]).forEach((e, i) => { if (e.down > 0 || i > 3) return; for (let sd = 0; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z); n++; } }); }
+        { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const hw = sa.handW as number[][] | undefined, e = cw.e, ty = e.y + (e.ly || 0) + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0]; for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++; } } }
         geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0; });
     return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#ffffff" transparent opacity={0.95} /></lineSegments>;
 }
@@ -967,7 +1010,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const visor = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0b0c18' }), []);
 
     useFrame((state, rawDt) => {
-        const dt = Math.min(0.05, rawDt);
+        const dt = Math.min(0.05, rawDt) * (DBG && (window as any).__ts != null ? (window as any).__ts : 1);   // test hook: frame-exact stills
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
@@ -1027,7 +1070,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             for(let i=1;i<=32;i++){const f=safe*i/32,x=ax+dx*f,y=ay+dy*f,z=az+dz*f;const floor=z<WATER_Z?SEABED:Math.min(0,parkH(x,z));if(y<floor+.35){safe=safe*(i-1)/32;break;}}
             if(safe<1)q.set(ax+dx*safe,ay+dy*safe,az+dz*safe);
         }
-        camera.position.copy(cam.current); if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
+        camera.position.copy(cam.current); { const shk = (sim as any).shake || 0; if (shk > 0.001) { const a = shk * shk * 2.2, tt = sim.t * 61; camera.position.x += Math.sin(tt * 1.3) * a; camera.position.y += Math.sin(tt * 1.9 + 1.7) * a * 0.8; camera.position.z += Math.sin(tt * 1.1 + 4.1) * a; } } if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
         look.current.set(p[0], sim.swim ? p[1] + 0.7 : p[1] + 1.5, p[2]);
         const ov = DBG ? (window as any).__camOv : null; if (ov) { camera.position.set(ov[0], ov[1], ov[2]); look.current.set(ov[3], ov[4], ov[5]); }
         camera.lookAt(look.current);
@@ -1101,7 +1144,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         if ((sim as any).snareT > 0 && (sim as any).snareT < 0.45) { legR.current.rotation.x = -1.5; legL.current.rotation.x = 0.2; armR.current.rotation.x = -0.6; armL.current.rotation.x = -1.4; }
         { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground || sim.glideOn || wl ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.current.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
         {   // clip layer: pick a Mixamo-derived clip for the state, crossfade by weight
-            const ck = (((sim as any).snareT > 0 && (sim as any).snareT < 0.45) || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
+            const ck = ((sim as any).mv || (sim as any).flip || ((sim as any).snareT > 0 && (sim as any).snareT < 0.45) || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
             const cs = clipSt.current;
             if (ck !== cs.key) { cs.key = ck || cs.key; }
             cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
@@ -1124,6 +1167,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 for (const s2 of ['L', 'R']) { aimBone(rig.b['uarm' + s2], rig.b['farm' + s2], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + s2], rig.b['hand' + s2], _tg, wt); rig.root.updateWorldMatrix(true, true); }
             }
         }
+        combatPose(sim, rig, h, dt);
         if (!sim.swim && sim.ground && !wl && (clipSt.current.key === 'run' || clipSt.current.key === 'idle')) {   // plant the lowest foot vertex on the street (measured from the skinned mesh, replaces the fixed run drop)
             h.updateMatrixWorld(true);
             let mn = 1e9;
@@ -1141,7 +1185,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (DBG && (window as any).__dbgGround) (window as any).__gc = { mn, corr: groundCorr.current };
         } else { groundMin.current.key = ''; groundCorr.current += (0 - groundCorr.current) * Math.min(1, dt * 10); }
         h.position.y += groundCorr.current;
-        h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 ? 0.6 : 0);
+        h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 && !(sim as any).flip ? 0.6 : 0);
         if (!sim.swim && sim.ground && !wl) {   // Guard the skinned contact hull (including hands/feet) against the actual street, valley or rooftop support. Raise only.
             h.updateMatrixWorld(true);
             let mn2 = 1e9;
@@ -1177,7 +1221,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 c1.rotation.x = cs2[0]; c2.rotation.x = cs2[1]; c3.rotation.x = cs2[2]; c2.rotation.z = cs2[3]; c3.rotation.z = cs2[4];
             }
         }
-        if ((sim as any).snareT > 0.4) { const sa = sim as any; if (!sa.handW) sa.handW = [[0, 0, 0], [0, 0, 0]]; h.updateMatrixWorld(true); [rig.b.handL, rig.b.handR].forEach((b: any, i: number) => { b.getWorldPosition(_hp); sa.handW[i][0] = _hp.x; sa.handW[i][1] = _hp.y; sa.handW[i][2] = _hp.z; }); }
+        if ((sim as any).snareT > 0.4 || (sim as any).cWeb) { const sa = sim as any; if (!sa.handW) sa.handW = [[0, 0, 0], [0, 0, 0]]; h.updateMatrixWorld(true); [rig.b.handL, rig.b.handR].forEach((b: any, i: number) => { b.getWorldPosition(_hp); sa.handW[i][0] = _hp.x; sa.handW[i][1] = _hp.y; sa.handW[i][2] = _hp.z; }); }
         // web
         { // two web lines, each from an actual animated hand (world position), shot out to the anchor over ~0.14 s
             const wl2 = web.current, wr2 = webB.current, side = sim.swings % 2; // swing: alternate hands (odd = right); spring-shot jump and web-shot attack: both hands together
@@ -1222,7 +1266,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             for (let i = 0; i < n; i++) {
                 const e = sim.enemies[i], k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
                 const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k >= 2 ? Math.sin(sim.t * 2.5 + i) * 0.12 : 0;
-                tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob, e.z); tmp.rotation.set(fall * -1.4, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = (e.kind === 3 ? BOT_SC : 1.25) * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
+                const ea = e as any, ly = ea.ly || 0, lean = e.down > 0 ? 0 : Math.min(1, e.hit / 0.35) * (ea.hitDir >= 3 ? 0.55 : 0.32), tum = ly > 0.05 ? Math.sin(Math.min(1, ly / 3) * 1.57) * (ea.slam ? -1.1 : 0.9) : 0;
+                tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob + ly, e.z); tmp.rotation.set(fall * -1.4 - lean - tum, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = (e.kind === 3 ? BOT_SC : 1.25) * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
                 tmp.updateMatrix();
                 m.setMatrixAt(cnt[k], tmp.matrix);
                 if (e.hit > 0) ecol.setRGB(2.6, 2.6, 2.6); else if (e.atk > 0) ecol.setRGB(1.8, 0.5 + Math.sin(sim.t * 30) * 0.2, 0.4); else ecol.setRGB(1, 1, 1);

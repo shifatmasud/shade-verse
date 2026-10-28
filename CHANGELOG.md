@@ -2,6 +2,21 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [v0.77] - Flowing Combat Choreography
+### Added
+- 4-hit ground chain on the melee button: jab, cross, spin hook kick (full 360° turn, wide sweep), launcher (rising knee + uppercut that pops the bot into the air).
+- Aerial follow-up: melee while the launched bot hangs (or while airborne) leaps after it and lands a diving spike kick that slams it into the ground (bounce, extra damage, camera kick).
+- Web-pull strike: melee on a bot 6–16 m away webs it in, then a flying kick.
+- Web-yank slam: web shot at a launched bot yanks it down into the street.
+- Dodge is now a flip: backflip/forward roll or cartwheel by dodge direction, with a small hop; dodge cancels any strike.
+- Input buffering (press during a strike, the next one starts at its cancel point), eased gap-closing lunges, per-bone pose blending (no snapping), hit-stop per move, small camera shake on impacts, bot stagger/launch/tumble/slam reactions.
+### References (real stills, frame-by-frame)
+- Muybridge, Two men boxing (1887): https://commons.wikimedia.org/wiki/File:Two_men_boxing._Photogravure_after_Eadweard_Muybridge,_1887._Wellcome_V0048677.jpg and https://commons.wikimedia.org/wiki/File:Two_men_in_pelvis_clothes_boxing_(rbm-QP301M8-1887-336).jpg
+- Taekwondo 540 hook kick (frame sequence): https://commons.wikimedia.org/wiki/File:Taekwondo_540_Hook.gif ; Jump spin hook kick: https://commons.wikimedia.org/wiki/File:Jump_Spin_Hook_Kick.JPG ; Capoeira armada: https://commons.wikimedia.org/wiki/File:Capoeira_armada_kick.jpg
+- Marvel's Spider-Man 2 gameplay still: https://en.wikipedia.org/wiki/File:Spider-Man_2_gameplay_screenshot.jpg ; Muybridge wrestling (grapple/yank weight): https://commons.wikimedia.org/wiki/File:Two_men_wrestling._Photogravure_after_Eadweard_Muybridge,_18_Wellcome_V0048678.jpg
+
+---
+
 ## [v0.76] - Combat Choreography & Strike Lunges Release
 ### Added
 - Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (YouTube D9xHicWET3I reference at t=14.2s-15.7s).

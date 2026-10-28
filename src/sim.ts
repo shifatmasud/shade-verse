@@ -260,7 +260,8 @@ function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
 export function actionCtx(s: Sim) {
     const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let melee = false, shot = false, snare = false;
     for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs(e.y - p[1]);
-        if (d < 3.6 && dy < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) melee = true;   // exactly the melee hit condition
+        if (d < 3.6 && dy < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) melee = true;   // close strike
+        if (!melee && d < 16 && dy < 4.5 && !s.swim && !s.wall && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) melee = true;   // web-pull strike range
         if (d < 24 && dy < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) snare = true; }
     shot = !!pickPlasmaTarget(s);   // web shot lights when the plasma auto-target has a lock
     const grab = !s.swim && !s.wall && s.spring <= 0 && findAnchor(s, true) !== null;
@@ -453,6 +454,117 @@ const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz
 const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
 const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1 && x < e.roof.x1 - 1 && z > e.roof.z0 + 1 && z < e.roof.z1 - 1;
+// ===== COMBAT CHOREOGRAPHY (v0.77) =====
+// Move ids: 1 jab, 2 cross, 3 spin hook kick, 4 launcher (rising knee+uppercut), 5 aerial side-kick spike, 6 web-pull flying kick, 7 web-yank slam.
+// Refs: Muybridge "Two men boxing" 1887 plate (jab/cross weight shift), Taekwondo 540 hook (spin kick chamber + lean),
+// Capoeira armada (spin with torso counter-lean), Marvel's Spider-Man 2 combat (launch -> air follow-up, web pull/yank).
+// Each move: dur (s), hit time, cancel time (buffered next move may start), stop distance for the gap-closing lunge.
+export const MOVES: Record<number, { dur: number; hit: number; cancel: number; stop: number; dmg: number; kb: number; lift: number; shake: number; stopT: number; reach: number }> = {
+    1: { dur: 0.30, hit: 0.10, cancel: 0.17, stop: 1.75, dmg: 1, kb: 6, lift: 0, shake: 0.10, stopT: 0.045, reach: 3.2 },
+    2: { dur: 0.32, hit: 0.11, cancel: 0.19, stop: 1.75, dmg: 1, kb: 9, lift: 0, shake: 0.14, stopT: 0.05, reach: 3.0 },
+    3: { dur: 0.48, hit: 0.24, cancel: 0.33, stop: 2.05, dmg: 1, kb: 16, lift: 2.5, shake: 0.24, stopT: 0.075, reach: 3.4 },
+    4: { dur: 0.52, hit: 0.20, cancel: 0.30, stop: 1.65, dmg: 1, kb: 2, lift: 13.5, shake: 0.26, stopT: 0.08, reach: 3.2 },
+    5: { dur: 0.50, hit: 0.26, cancel: 0.40, stop: 1.80, dmg: 2, kb: 7, lift: -24, shake: 0.30, stopT: 0.09, reach: 3.6 },
+    6: { dur: 0.58, hit: 0.32, cancel: 0.42, stop: 1.90, dmg: 1, kb: 17, lift: 3, shake: 0.24, stopT: 0.07, reach: 3.6 },
+    7: { dur: 0.52, hit: 0.20, cancel: 0.40, stop: 0, dmg: 0, kb: 0, lift: -28, shake: 0.18, stopT: 0.06, reach: 24 },
+};
+const bodyY = (e: Enemy) => e.y + ((e as any).ly || 0) + BODY_OFF[e.kind ?? 0];
+function nearLifted(s: Sim, r: number, minLy = 1.2): Enemy | null {
+    const p = s.pos; let best: Enemy | null = null, bd = r;
+    for (const e of s.enemies) { if (e.down > 0 || !(((e as any).ly || 0) > minLy)) continue; const d = Math.hypot(e.x - p[0], e.z - p[2]); if (d < bd && losClear(p[0], p[1] + 1.5, p[2], e.x, bodyY(e), e.z)) { bd = d; best = e; } }
+    return best;
+}
+// pick the bot the chain should flow into: in front first, then nearest; returns [enemy, dist]
+function comboTarget(s: Sim, r: number): [Enemy | null, number] {
+    const p = s.pos, fx = Math.sin(s.ang), fz = Math.cos(s.ang); let best: Enemy | null = null, bs = 1e9, bdist = 0;
+    for (const e of s.enemies) {
+        if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d > r || Math.abs(bodyY(e) - p[1] - 0.5) > 4.5) continue;
+        const front = (dx * fx + dz * fz) / (d || 1); const sc = d - front * 2.2; if (sc < bs) { bs = sc; best = e; bdist = d; }
+    }
+    return [best, bdist];
+}
+function comboStart(s: Sim, ev: Events, force: boolean): boolean {
+    const sa = s as any;
+    if (s.swim || s.wall || s.web) return false;
+    // aerial follow-up: the bot we launched is still up -> leap after it
+    const up = nearLifted(s, 9, sa.chain === 4 ? 0.3 : 1.2);
+    if (up && (sa.chain === 4 || !s.ground)) { startMove(s, 5, up, ev); return true; }
+    const [e, d] = comboTarget(s, 16);
+    if (e && d > 5.8) { if (losClear(s.pos[0], s.pos[1] + 1.5, s.pos[2], e.x, bodyY(e), e.z)) { startMove(s, 6, e, ev); return true; } }
+    if (e && d <= 5.8) { if (!s.ground) { startMove(s, 5, e, ev); return true; } sa.chain = ((sa.chainT > 0 ? sa.chain || 0 : 0) % 4) + 1; startMove(s, sa.chain, e, ev); return true; }
+    if (force) { sa.chain = ((sa.chainT > 0 ? sa.chain || 0 : 0) % 2) + 1; startMove(s, s.ground ? sa.chain : 5, null, ev); return true; }   // whiff still reads as a strike
+    return false;
+}
+function startMove(s: Sim, id: number, e: Enemy | null, ev: Events) {
+    const sa = s as any, p = s.pos;
+    sa.mv = { id, t: 0, e, hit: false, d0: e ? Math.hypot(e.x - p[0], e.z - p[2]) : 0, spin: id === 3 ? 1 : 0 };
+    sa.mvQ = false; s.atkT = 0; s.shotT = 0; sa.kick = false; s.glideOn = false;
+    if (id === 6 || id === 7) { sa.cWeb = { e, t: 0, mode: id === 6 ? 'pull' : 'yank' }; ev.attach(); }
+    if (id === 5) {   // leap: reach the target's body height around the hit frame (hang-time juggle)
+        const ty = e ? bodyY(e) + 0.4 : p[1] + 2.2; const dh = Math.max(1.2, Math.min(9, ty - p[1] + 0.6));
+        s.vel[1] = Math.max(s.vel[1], Math.sqrt(2 * G * dh) * 0.92); s.ground = false;
+    }
+    if (id === 4) s.vel[1] = Math.max(s.vel[1], 5.5);   // launcher pops the hero off the ground a little
+}
+function stepMove(s: Sim, dt: number, ev: Events) {
+    const sa = s as any, p = s.pos, v = s.vel;
+    sa.chainT = Math.max(0, (sa.chainT || 0) - dt); sa.shake = Math.max(0, (sa.shake || 0) - dt * 1.6);
+    if (sa.cWeb) { sa.cWeb.t += dt; if (sa.cWeb.t > 0.42 || !sa.cWeb.e || sa.cWeb.e.down > 0) sa.cWeb = null; }
+    if (sa.flip) { sa.flip.t += dt; if (sa.flip.t >= sa.flip.dur) sa.flip = null; }
+    const m = sa.mv; if (!m) return;
+    const M = MOVES[m.id], e: Enemy | null = m.e && m.e.down <= 0 ? m.e : null;
+    m.t += dt;
+    // web pull: reel the bot in towards the hero for the first part of the move
+    if (m.id === 6 && e && m.t < 0.26) { const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > 2.6) { const st = Math.min(d - 2.6, 34 * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if (e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) { e.x = nx; e.z = nz; } (e as any).ly = Math.max((e as any).ly || 0, 0.6 * Math.sin(Math.min(1, m.t / 0.26) * Math.PI)); } e.hit = Math.max(e.hit, 0.2); e.atk = 0; }
+    // web yank: bot is held, then slammed down
+    if (m.id === 7 && e) { e.hit = Math.max(e.hit, 0.2); e.atk = 0; if (m.t < M.hit) (e as any).vy = Math.max(((e as any).vy || 0), 1.5); }
+    // face the target, smoothly
+    if (e) { let da = Math.atan2(e.x - p[0], e.z - p[2]) - s.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); s.ang += da * Math.min(1, dt * 22); }
+    // gap-closing lunge: eased slide up to the hit frame (momentum carried, no teleport)
+    if (e && M.stop > 0 && m.t < M.hit + 0.04) {
+        const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
+        if (d > M.stop) { const sp = Math.max(7, (m.d0 - M.stop) / Math.max(0.08, M.hit) * 1.25); const st = Math.min(d - M.stop, sp * dt); p[0] += dx / d * st; p[2] += dz / d * st; }
+        if (m.id === 5) { const ty = bodyY(e) + 0.4; if (ty > p[1]) v[1] = Math.max(v[1], Math.min(16, (ty - p[1]) * 7)); }
+    } else if (!e && m.t < M.hit && s.ground) { p[0] += Math.sin(s.ang) * 3.5 * dt; p[2] += Math.cos(s.ang) * 3.5 * dt; }   // whiff steps in
+    if (s.ground) { const k = 1 - Math.min(1, dt * 12); v[0] *= k; v[2] *= k; }   // plant: strikes don't skate
+    else if (m.id === 5 && m.t < M.hit + 0.1) v[1] = Math.max(v[1], -2);    // brief hang at the top of the aerial kick
+    if (!m.hit && m.t >= M.hit) {
+        m.hit = true;
+        if (m.id === 7) { if (e) { const ea = e as any; ea.vy = M.lift; ea.slam = 1; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1; e.kb = [dx / d * 9, dz / d * 9]; sa.shake = Math.max(sa.shake, M.shake); sa.hitStop = M.stopT; } }
+        else {
+            const fx = Math.sin(s.ang), fz = Math.cos(s.ang); let any = false;
+            for (const o of s.enemies) {
+                if (o.down > 0) continue; const dx = o.x - p[0], dz = o.z - p[2], d = Math.hypot(dx, dz), dy = bodyY(o) - (p[1] + 0.5);
+                const reachOK = o === e ? d < M.reach + 0.8 : d < M.reach;
+                if (!reachOK || Math.abs(dy) > (m.id === 5 ? 3.2 : 2.6) || (d > 1.2 && (dx * fx + dz * fz) / (d || 1) < (m.id === 3 ? -0.6 : -0.1))) continue;   // spin kick sweeps a wider arc
+                const oa = o as any; o.hp -= M.dmg; o.hit = Math.max(o.hit, m.id >= 3 ? 0.55 : 0.32); o.atk = 0;
+                const nx = d > 0.01 ? dx / d : fx, nz = d > 0.01 ? dz / d : fz; o.kb = [nx * M.kb, nz * M.kb];
+                if (M.lift > 0) oa.vy = Math.max(oa.vy || 0, M.lift); else if (M.lift < 0) { oa.vy = M.lift; oa.slam = 1; }
+                oa.hitDir = m.id; any = true; s.combo++; s.comboT = 1.4;
+                if (o.hp <= 0) { o.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, o); }
+            }
+            if (any) { ev.hit(); sa.hitStop = M.stopT; sa.shake = Math.max(sa.shake, M.shake); }
+        }
+    }
+    if (sa.mvQ && m.t >= M.cancel) { sa.mv = null; sa.chainT = 0.9; if (!comboStart(s, ev, true)) sa.mv = null; return; }
+    if (m.t >= M.dur) { sa.mv = null; sa.chainT = 0.75; }
+}
+// launched / slammed bots: vertical arc with juggle hang time, ground bounce + shake on slam
+function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
+    const ea = e as any; if (!(ea.ly > 0) && !(ea.vy > 0)) { ea.ly = 0; ea.vy = 0; return false; }
+    const juggled = (s as any).mv && (s as any).mv.e === e && (s as any).mv.id !== 7;
+    if (juggled && ea.vy > 0) ea.vy *= 1 - Math.min(1, dt * 5);   // hang at the apex while the follow-up arrives
+    ea.vy -= (juggled ? 9 : 26) * dt; ea.ly = (ea.ly || 0) + ea.vy * dt; ea.tumble = (ea.tumble || 0) + dt * (ea.slam ? 9 : 5);
+    if (ea.ly <= 0) {
+        const imp = -ea.vy; ea.ly = 0;
+        if (imp > 9) {   // slam: bounce, damage once, camera kick
+            ea.vy = imp * 0.22; if (ea.slam && e.down <= 0) { e.hp -= 1; e.hit = 0.6; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } ev.hit(); }
+            ea.slam = 0; (s as any).shake = Math.max((s as any).shake || 0, Math.min(0.34, imp * 0.012)); if (ev.blast && imp > 20) ev.blast(e.x, e.y + 0.3, e.z);
+        } else { ea.vy = 0; ea.tumble = 0; }
+    }
+    if (e.down <= 0) e.hit = Math.max(e.hit, 0.12);
+    return true;
+}
 function stepCombat(s: Sim, dt: number, ev: Events) {
     const p = s.pos, v = s.vel;
     s.aimE = pickPlasmaTarget(s);   // contextual lock indicator: what a web shot would hit right now
@@ -463,32 +575,26 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
     const fa = s.ang, fx = Math.sin(fa), fz = Math.cos(fa);
     if (input.dodgeQ) {
         input.dodgeQ = false;
-        if (s.dodgeT <= 0 && !s.web) { s.dodgeT = 0.38; const mx = input.mx + ((input.keys['d'] ? 1 : 0) - (input.keys['a'] ? 1 : 0)), my = input.my + ((input.keys['w'] ? 1 : 0) - (input.keys['s'] ? 1 : 0)); const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw); let dx = yx * my - yz * mx, dz = yz * my + yx * mx; const dl = Math.hypot(dx, dz); if (dl < 0.1) { dx = -fx; dz = -fz; } else { dx /= dl; dz /= dl; } v[0] = dx * 18; v[2] = dz * 18; }
+        if (s.dodgeT <= 0 && !s.web) { s.dodgeT = 0.38; const mx = input.mx + ((input.keys['d'] ? 1 : 0) - (input.keys['a'] ? 1 : 0)), my = input.my + ((input.keys['w'] ? 1 : 0) - (input.keys['s'] ? 1 : 0)); const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw); let dx = yx * my - yz * mx, dz = yz * my + yx * mx; const dl = Math.hypot(dx, dz); if (dl < 0.1) { dx = -fx; dz = -fz; } else { dx /= dl; dz /= dl; } v[0] = dx * 18; v[2] = dz * 18;
+            { const sa = s as any, fw = dx * fx + dz * fz, sd = dx * fz - dz * fx; sa.mv = null; sa.mvQ = false; sa.flip = { t: 0, dur: 0.5, ax: Math.abs(fw) > 0.55 ? 'x' : 'z', dir: Math.abs(fw) > 0.55 ? (fw < 0 ? -1 : 1) : (sd > 0 ? 1 : -1) }; if (s.ground) { v[1] = 7.5; s.ground = false; } } }
     }
       if (input.attackQ) {
           input.attackQ = false; const fShot = !!input.shotQ, fMelee = !!input.meleeQ; input.shotQ = false; input.meleeQ = false;
-          if (s.atkT <= 0) {
-              s.atkT = 0.32; s.atkPend = 0.11; s.shotE = null;
-              (s as any).comboStep = (((s as any).comboStep || 0) % 3) + 1;
-              let melee = false; if (!fShot) { (s as any).kickAlt = !(s as any).kickAlt; (s as any).kick = !!(s as any).kickAlt; }
-              if (!fShot) for (const e of s.enemies) {
-                  if (e.down > 0) continue;
-                  const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
-                  if (d < 5.8 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) {
-                      melee = true;
-                      if (d > 1.4 && !s.wall && !s.swim) {
-                          const lungeDist = Math.min(d - 1.2, 14 * dt);
-                          const nx = p[0] + (dx / d) * lungeDist, nz = p[2] + (dz / d) * lungeDist;
-                          if (!insideB(nx, nz) && !inPk(nx, nz)) { p[0] = nx; p[2] = nz; }
-                      }
-                      break;
+          const sa = s as any;
+          if (sa.mv) { if (!fShot) sa.mvQ = true; }   // buffered: the next move starts at this move's cancel point, so the chain flows
+          else if (s.atkT <= 0) {
+              // web-yank: a web shot at a bot that is airborne (launched) yanks it down into the street
+              const lifted = fShot ? nearLifted(s, 22) : null;
+              if (lifted) startMove(s, 7, lifted, ev);
+              else if (fShot || !comboStart(s, ev, fMelee)) {
+                  if (!fMelee) {
+                      s.atkT = 0.32; s.shotE = null;
+                      if (s.aimE) { s.shotT = 0.3; s.shotTgt = [s.aimE.x, s.aimE.y + BODY_OFF[s.aimE.kind ?? 0], s.aimE.z]; spawnPlasma(s, s.aimE); s.shotE = null; }
                   }
-              }
-              if (!melee && !fMelee) {
-                  if (s.aimE) { s.shotT = 0.3; s.shotTgt = [s.aimE.x, s.aimE.y + BODY_OFF[s.aimE.kind ?? 0], s.aimE.z]; spawnPlasma(s, s.aimE); s.shotE = null; }
               }
           }
       }
+      stepMove(s, dt, ev);
     // SHADOW SNARE (special, own button, 9 s cooldown): both hands web up to 4 nearby bots (reeled in, held), then a spin kick hits each bound bot within 5 m for 3 damage plus knockback
     { const sa = s as any; sa.snareCd = Math.max(0, (sa.snareCd || 0) - dt);
       if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, 4); if (L.length) { sa.snareList = L; sa.snareT = 1.0; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
@@ -497,31 +603,13 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
         if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.6; e.kb = [dx / (d || 1) * 14, dz / (d || 1) * 14]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) ev.hit(); }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
-      if (s.atkPend > 0) {
-          s.atkPend -= dt;
-          if (s.atkPend <= 0) {
-              let hitAny = false;
-              const step = (s as any).comboStep || 1;
-              const kbForce = step === 3 ? 15 : (step === 2 ? 10 : 8);
-              const dmg = step === 3 ? 2 : 1;
-              for (const e of s.enemies) {
-                  if (e.down > 0) continue;
-                  const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
-                  if (d < 3.8 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) {
-                      e.hp -= dmg; e.hit = 0.3; e.kb = [dx / (d || 1) * kbForce, dz / (d || 1) * kbForce];
-                      hitAny = true; s.combo++; s.comboT = 1.4;
-                      (s as any).hitStop = step === 3 ? 0.07 : 0.04;
-                      if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); }
-                  }
-              }
-              if (hitAny) ev.hit();
-          }
-      }
     let atkN = 0; for (const e0 of s.enemies) if (e0.atk > 0) atkN++;
     for (let i = 0; i < s.enemies.length; i++) {
         const e = s.enemies[i];
+        const airb = enemyAir(s, e, dt, ev);
         if (e.down > 0) { e.down -= dt; if (e.down <= 0) s.enemies[i] = spawnEnemy(s); continue; }
         e.hit = Math.max(0, e.hit - dt);
+        if (airb) { const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz)) { e.x += kx; e.z += kz; } e.kb[0] *= 0.92; e.kb[1] *= 0.92; e.atk = 0; continue; }
         if (e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = spawnEnemy(s); continue; }   // left far behind: re-place near the hero
         const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
         const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
