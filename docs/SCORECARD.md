@@ -4,7 +4,7 @@
 - Performance (estimate): 15/20 (one additional lightweight actor simulation and skinned rig; target-GPU frame rate not measured)
 - Stability: 14/15 (type-check, production build and focused SwiftShader assertions pass; full regression suite not run)
 - Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
-Evidence: `test/ghost.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390; SwiftShader captures reviewed and supplied separately with the report.
+Evidence: `test/ghost.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390; SwiftShader captures reviewed and supplied separately with the report. The Git-triggered Vercel production deployment from `main` is READY at https://web-swinger-3d-mirror.vercel.app/.
 
 ## Shadow Snare focused iteration — provisional 82/100
 - Visuals: 17/20 (five-target web gather and staged spin/kick are legible in the supplied desktop and landscape-phone captures; no physical-device visual check)
@@ -20,7 +20,7 @@ Evidence: `node test/snare.mjs` PASS locally. Before/after screenshot files are 
 - Performance (estimate): 15/20 (single low-poly follower with bounded movement math; target-GPU frame rate not measured)
 - Stability: 14/15 (focused two-viewport first-scene/follow test passes with zero page/console errors; full regression suite not rerun)
 - Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 untested)
-Evidence: `test/ghost.mjs` PASS under Chromium WebGL2/ANGLE SwiftShader at desktop and phone-landscape sizes. `art/ghost/` contains the four before/after PNGs; their central scene crops passed the nonblank checks. The pre-fix production bundle lacked Ghost markers. This branch has not been merged to main or deployed; production verification requires explicit approval.
+Evidence: `test/ghost.mjs` PASS under Chromium WebGL2/ANGLE SwiftShader at desktop and phone-landscape sizes. `art/ghost/` contains the four before/after PNGs; their central scene crops passed the nonblank checks. The pre-fix production bundle lacked Ghost markers; this iteration was subsequently merged to `main` and is included in the READY production deployment at https://web-swinger-3d-mirror.vercel.app/.
 
 ## v0.76 - Combat Choreography Release (Score: 85/100)
 - Visuals: 18/20 (tactile hit-stop frame impact weight, multi-angle strike animations, comic outlines intact)

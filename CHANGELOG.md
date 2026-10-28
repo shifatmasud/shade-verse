@@ -2,11 +2,12 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
-## [Unreleased] - Ghost autonomous companion and human suit
+## [Released] - Ghost autonomous companion and human suit
 ### Changed
 - Ghost now reuses Shadow's human body and clothing design as a feminine variant: dark suit panels are white and the lenses are hot pink. Her separate AI follows, traverses and fights alongside Shadow; shared enemies update only once. Shadow's model, spawn/follow behavior, controls, HUD, combat and landscape-only behavior remain unchanged.
 ### Verification
 - `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, and `PORT=4174 node test/ghost.mjs` pass on the exact requested baseline. Focused assertions pass at desktop 1365×768 and phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader, covering independent simulation, autonomous melee, follow, unchanged Shadow input, and browser errors. The SwiftShader captures were reviewed separately and are supplied with the report. Physical devices and full regression suite remain untested.
+- Merged to `main`; the Git-triggered Vercel production deployment is READY at https://web-swinger-3d-mirror.vercel.app/.
 
 ## [Unreleased] - Shadow Snare special ability
 ### Changed
@@ -17,13 +18,13 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 
 ---
 
-## [Unreleased] - Ghost first-scene companion visibility
+## [Released] - Ghost first-scene companion visibility
 ### Changed
 - Ghost now settles beside Shadow at a short rear-quarter distance on the first gameplay frame and continues to follow smoothly. It remains automatically mounted, with no Ghost activation button; Shadow's locked model, HUD, controls, melee, and landscape-only behavior are unchanged.
 ### Verification
 - Focused `test/ghost.mjs` passed on desktop and phone-landscape in Chromium with WebGL2 and an ANGLE SwiftShader renderer. It checks first-scene visibility/distance, absence of a Ghost activation button, follow movement, no page/console errors, and a nonblank central scene crop before writing screenshots.
 - Before/after captures are committed under `art/ghost/shot-{before,after}-ghost-{desktop,mobile-landscape}.png`; all four were captured with SwiftShader and passed the nonblank guard. Physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested.
-- The read-only public-page check before this branch update showed Shadow but no Ghost and no client errors; its JavaScript bundle lacked Ghost component markers. This iteration is on a non-production review branch; no main merge or production deploy was attempted. Production follow-up requires direct approval; no Vercel CLI/API/settings were used.
+- The read-only public-page check before this branch update showed Shadow but no Ghost and no client errors; its JavaScript bundle lacked Ghost component markers. That was the pre-release build: this iteration was subsequently merged to `main` with the autonomous Ghost release, and its Git-triggered Vercel production deployment is READY at https://web-swinger-3d-mirror.vercel.app/. No Vercel CLI/API/settings changes were used.
 
 ---
 

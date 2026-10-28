@@ -2,10 +2,10 @@
 
 Total requests extracted from project history: 68.
 
-## Group 1: Implemented in Export & Verified in Repository (60 items)
+## Group 1: Implemented in Export & Verified in Repository (63 items)
 1. Browser 3D game engine (React 18, Three.js, R3F, Framer Motion, GSAP, WebGL2, Vite)
 2. Version control via GitHub (shifatmasud/web-swinger-3d)
-3. Deployment on Vercel (https://web-swinger-3d-eight.vercel.app/)
+3. Deployment on Vercel (https://web-swinger-3d-mirror.vercel.app/)
 4. Target device performance architecture (adaptive scaling, lightweight shader passes)
 5. Touch controls & landscape viewport (100dvh, fullscreen on play, portrait dropped)
 6. Landscape menu layout fix (prevent clipping in mobile landscape)
@@ -65,9 +65,9 @@ Total requests extracted from project history: 68.
 60. Visual death explosion effect with debris on bot KO
 61. Plasma web projectile weapon (auto-targeting, homing, radial shockwave blast)
 62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (gap closing strikes, 3-hit combo cadence, hit-stop impact weighting)
+63. Second hero companion character: Ghost (feminine white-suited companion, hot-pink lenses, autonomous follow/traversal/combat beside Shadow from the first gameplay frame) - implemented, merged to `main`, and included in the READY Git-triggered production deployment at https://web-swinger-3d-mirror.vercel.app/
 
-## Group 2: Still Queued / In Progress (6 items)
-63. Second hero companion character: Ghost (female white-suited companion auto-visible beside Shadow from the first gameplay frame and following without an activation button) - active; `fix/ghost-first-scene` review branch ready, live-bundle verification pending explicit production approval
+## Group 2: Still Queued / In Progress (5 items)
 64. Giant boss (muscular white humanoid body, red eyes, no mouth, 5x hero size) - queued
 65. Detailed flying cars with collision pass and web anchor towing - queued
 66. Water surfing (hold swing on water surface, wake spray, web-tow surfing) - queued
