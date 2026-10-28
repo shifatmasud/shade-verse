@@ -2,6 +2,12 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Unreleased] - Ghost autonomous companion and human suit
+### Changed
+- Ghost now reuses Shadow's human body and clothing design as a feminine variant: dark suit panels are white and the lenses are hot pink. Her separate AI follows, traverses and fights alongside Shadow; shared enemies update only once. Shadow's model, spawn/follow behavior, controls, HUD, combat and landscape-only behavior remain unchanged.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, and `PORT=4174 node test/ghost.mjs` pass on the exact requested baseline. Focused assertions pass at desktop 1365×768 and phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader, covering independent simulation, autonomous melee, follow, unchanged Shadow input, and browser errors. The SwiftShader captures were reviewed separately and are supplied with the report. Physical devices and full regression suite remain untested.
+
 ## [Unreleased] - Shadow Snare special ability
 ### Changed
 - Shadow Snare now gathers up to five nearby eligible enemies, holds the group through an anticipation/spin, then lands a timed finisher with localized impact feedback. The ordinary melee chain, HUD, and controls remain unchanged.

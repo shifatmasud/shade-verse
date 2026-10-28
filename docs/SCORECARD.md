@@ -1,3 +1,11 @@
+## Ghost autonomous companion iteration — provisional 82/100
+- Visuals: 18/20 (the same human suit silhouette now has a subtle feminine shape and white replacement panels; hot-pink lenses are assigned in the model; the captured rear-facing poses do not show the lens color clearly)
+- Controls/behavior: 23/25 (independent AI, autonomous melee and follow pass the focused test on two viewports; traversal intents are implemented but not separately asserted)
+- Performance (estimate): 15/20 (one additional lightweight actor simulation and skinned rig; target-GPU frame rate not measured)
+- Stability: 14/15 (type-check, production build and focused SwiftShader assertions pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
+Evidence: `test/ghost.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390; SwiftShader captures reviewed and supplied separately with the report.
+
 ## Shadow Snare focused iteration — provisional 82/100
 - Visuals: 17/20 (five-target web gather and staged spin/kick are legible in the supplied desktop and landscape-phone captures; no physical-device visual check)
 - Controls: 23/25 (existing special button and nine-second cooldown preserved; focused test confirms the regular melee chain index is unchanged)

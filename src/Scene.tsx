@@ -585,27 +585,27 @@ const POSES: Record<number, [number, PoseK][]> = {
     6: [[0, P({ uarmR: [-1.6, 0, -0.05], farmR: [-0.05, 0, 0], chest: [0, -0.35, 0] })], [0.22, P({ uarmR: [-1.55, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.5, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.4, P({ uarmR: [0.25, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.2, 0, 0], thighR: [-1.3, 0, 0], shinR: [1.8, 0, 0] })], [0.55, P({ hips: [0.12, 0, 0], spine: [-0.18, 0, 0], thighR: [-1.6, 0, 0], shinR: [0.05, 0, 0], thighL: [0.6, 0, 0], shinL: [1.8, 0, 0], uarmR: [0.6, 0, 0.3], farmR: [-0.5, 0, 0], uarmL: [0.5, 0, -0.3], farmL: [-0.5, 0, 0] })], [0.8, P({ thighR: [-0.8, 0, 0], shinR: [1.0, 0, 0] })], [1, GUARD]],
     7: [[0, P({ uarmR: [-1.75, 0, -0.1], farmR: [-0.05, 0, 0], uarmL: [-1.7, 0, 0.1], farmL: [-0.05, 0, 0], spine: [0.15, 0, 0] })], [0.25, P({ uarmR: [-1.9, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.85, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.42, P({ uarmR: [0.45, 0, 0.15], farmR: [-1.4, 0, 0], uarmL: [0.45, 0, -0.15], farmL: [-1.4, 0, 0], spine: [-0.38, 0, 0], hips: [0, -0.2, 0], thighL: [-0.6, 0, 0], shinL: [0.6, 0, 0], thighR: [0.45, 0, 0], shinR: [0.4, 0, 0], head: [0.2, 0, 0] })], [0.75, P({ uarmR: [0.2, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.15, 0, 0] })], [1, GUARD]],
 };
-const _cp = { w: 0, c: new Float32Array(CP_BONES.length * 3), init: false };
+export type CombatPoseState = { w: number; c: Float32Array; t: Float32Array };
+const _cp: CombatPoseState = { w: 0, c: new Float32Array(CP_BONES.length * 3), t: new Float32Array(CP_BONES.length * 3) };
 const cstep = (x: number) => x * x * (3 - 2 * x);
 function samplePose(keys: [number, PoseK][], u: number, out: Float32Array) {
     let k = 0; while (k < keys.length - 2 && u > keys[k + 1][0]) k++;
     const [u0, A] = keys[k], [u1, B] = keys[k + 1], f = cstep(Math.max(0, Math.min(1, (u - u0) / Math.max(1e-4, u1 - u0))));
     CP_BONES.forEach((n, i) => { const a = A[n], b = B[n]; for (let j = 0; j < 3; j++) out[i * 3 + j] = a[j] + (b[j] - a[j]) * f; });
 }
-const _cpT = new Float32Array(CP_BONES.length * 3);
-function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number) {
+export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, state: CombatPoseState = _cp) {
     const mv = sim.mv, fl = sim.flip, act = !!mv || !!fl;
     const bones = CP_BONES.map((n) => rig.b[n] as THREE.Bone);
-    if (_cp.w < 0.02 && !act) { bones.forEach((b, i) => { _cp.c[i * 3] = b.rotation.x; _cp.c[i * 3 + 1] = b.rotation.y; _cp.c[i * 3 + 2] = b.rotation.z; }); _cp.w = 0; return; }
-    _cp.w += ((act ? 1 : 0) - _cp.w) * Math.min(1, dt * (act ? 16 : 7));   // ease in fast, settle out slower: momentum, no snap
-    if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), _cpT); }
-    else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, _cpT);
-        if (fl.ax === 'z') { const s0 = _cpT; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
-    else { bones.forEach((b, i) => { _cpT[i * 3] = b.rotation.x; _cpT[i * 3 + 1] = b.rotation.y; _cpT[i * 3 + 2] = b.rotation.z; }); }
+    if (state.w < 0.02 && !act) { bones.forEach((b, i) => { state.c[i * 3] = b.rotation.x; state.c[i * 3 + 1] = b.rotation.y; state.c[i * 3 + 2] = b.rotation.z; }); state.w = 0; return; }
+    state.w += ((act ? 1 : 0) - state.w) * Math.min(1, dt * (act ? 16 : 7));   // ease in fast, settle out slower: momentum, no snap
+    if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), state.t); }
+    else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, state.t);
+        if (fl.ax === 'z') { const s0 = state.t; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
+    else { bones.forEach((b, i) => { state.t[i * 3] = b.rotation.x; state.t[i * 3 + 1] = b.rotation.y; state.t[i * 3 + 2] = b.rotation.z; }); }
     const k = Math.min(1, dt * 24);   // per-bone follow: chained moves blend through each other instead of popping
-    for (let i = 0; i < _cpT.length; i++) _cp.c[i] += (_cpT[i] - _cp.c[i]) * k;
-    const w = _cp.w;
-    bones.forEach((b, i) => { b.rotation.x += (_cp.c[i * 3] - b.rotation.x) * w; b.rotation.y += (_cp.c[i * 3 + 1] - b.rotation.y) * w; b.rotation.z += (_cp.c[i * 3 + 2] - b.rotation.z) * w; });
+    for (let i = 0; i < state.t.length; i++) state.c[i] += (state.t[i] - state.c[i]) * k;
+    const w = state.w;
+    bones.forEach((b, i) => { b.rotation.x += (state.c[i * 3] - b.rotation.x) * w; b.rotation.y += (state.c[i * 3 + 1] - b.rotation.y) * w; b.rotation.z += (state.c[i * 3 + 2] - b.rotation.z) * w; });
     // whole-body turns, not smoothed (continuous 0..2pi): spin hook kick, flips/cartwheels around the hips
     if (mv && mv.id === 3) { const u = Math.min(1, mv.t / MOVES[3].dur), sp = cstep(Math.max(0, Math.min(1, (u - 0.08) / 0.72))); h.rotation.y += sp * Math.PI * 2; }
     if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
@@ -666,8 +666,8 @@ export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: 
 
 
 const _wv = new THREE.Vector3(), _wv2 = new THREE.Vector3();
-function buildRig() {
-    const d: any = heroData;
+export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLambertMaterial) {
+    const d: any = data;
     if (!d._capeRig && !(DBG && (window as any).__noCapeRig)) {   // user-approved (9:53) hidden cape rig: 3 extra bones + re-weighted cape vertices only. Rest pose is unchanged (new bones sit at identity under chest), mesh/UV/texture untouched.
         d._capeRig = true;
         const base = d.bones.length; d.bones.push({ n: 'cape1', p: 2, h: [0, 1.58, -0.13] }, { n: 'cape2', p: base, h: [0, 1.4, -0.15] }, { n: 'cape3', p: base + 1, h: [0, 1.27, -0.17] });
@@ -688,6 +688,7 @@ function buildRig() {
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(d.si, 4));
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(d.sw, 4));
     g.setIndex(d.idx);
+    if (d.rebuildNormals) g.computeVertexNormals();
     const bones: THREE.Bone[] = [], byName: Record<string, THREE.Bone> = {};
     d.bones.forEach((b: any, i: number) => {
         const bone = new THREE.Bone(); bone.name = b.n; bones.push(bone); byName[b.n] = bone;
@@ -696,7 +697,8 @@ function buildRig() {
         if (b.p >= 0) bones[b.p].add(bone);
     });
     let mat: THREE.MeshLambertMaterial;
-    if (d.uv) {
+    if (materialOverride) mat = materialOverride;
+    else if (d.uv) {
         const tex = new THREE.TextureLoader().load(baseTexUrl); tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 2;
         mat = new THREE.MeshLambertMaterial({ map: tex, emissive: new THREE.Color('#ffffff'), emissiveMap: tex, emissiveIntensity: 0.45 });
     } else mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1a2a66'), emissiveIntensity: 0.18 });
@@ -746,11 +748,11 @@ function buildRig() {
 
 
 // Mixamo-derived clips, retargeted offline (tools/fbx2clip.mjs) onto the generated rig
-type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
-const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any, run: clipRun as any };
+export type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
+export const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any, run: clipRun as any };
 const _wd = new THREE.Vector3(), _wp = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
-function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: number) {
+export function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: number) {
     let f = t * c.fps; if (loop) f = ((f % c.n) + c.n) % c.n; else f = Math.max(0, Math.min(c.n - 1, f));
     const i0 = Math.floor(f), i1 = loop ? (i0 + 1) % c.n : Math.min(c.n - 1, i0 + 1), k = f - i0, nb = c.bones.length;
     for (let b = 0; b < nb; b++) {

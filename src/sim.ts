@@ -118,6 +118,8 @@ export interface Input { jumpHeld?: boolean; jumpReleased?: boolean; jumpCancell
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void; blast?: (x: number, y: number, z: number) => void }
 
 export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
+let companionSim: Sim | null = null;
+export function setCompanionSim(s: Sim | null) { companionSim = s; }
 
 export function createSim(): Sim {
     let best = 0;
@@ -287,7 +289,9 @@ function collide(s: Sim, prevY: number) {
 
 export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 22, glideAcc: 14 };   // traversal tuning knobs
 const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 22, FLY_GLIDE_ACC = 14;   // traversal tuning (was 34 / 14 / 14 / 10): user asked for faster flight
-export function stepSim(s: Sim, dt: number, ev: Events) {
+export interface StepOptions { updateEnemies?: boolean; }
+export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
+    const input = controls;
     if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
@@ -438,7 +442,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     if (s.wall) { s.ang = Math.atan2(-s.wall[0], -s.wall[1]); } else if (hs > 1.5) { let da = Math.atan2(v[0], v[2]) - s.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); s.ang += da * Math.min(1, dt * 12); }
     if (s.ground) s.runPhase += hs * dt * 0.9;
     s.land = Math.max(0, s.land - dt * 3);
-    stepCombat(s, dt, ev);
+    stepCombat(s, dt, ev, controls, options);
     // Gentle heading assist only during forward movement, never during manual look or at rest.
     if (!s.camHeld && s.t - s.lastDrag > 2.5 && hs > 2.5 && my > 0.2 && Math.abs(mx) < 0.15 && !s.wall) {
         let da = Math.atan2(v[0], v[2]) - s.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); s.yaw += Math.max(-0.6 * dt, Math.min(0.6 * dt, da * (1 - Math.exp(-0.7 * dt))));
@@ -554,7 +558,8 @@ function stepMove(s: Sim, dt: number, ev: Events) {
 // launched / slammed bots: vertical arc with juggle hang time, ground bounce + shake on slam
 function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
     const ea = e as any; if (!(ea.ly > 0) && !(ea.vy > 0)) { ea.ly = 0; ea.vy = 0; return false; }
-    const juggled = (s as any).mv && (s as any).mv.e === e && (s as any).mv.id !== 7;
+    const mainMove = (s as any).mv, ghostMove = companionSim && companionSim !== s ? (companionSim as any).mv : null;
+    const juggled = (!!mainMove && mainMove.e === e && mainMove.id !== 7) || (!!ghostMove && ghostMove.e === e && ghostMove.id !== 7);
     if (juggled && ea.vy > 0) ea.vy *= 1 - Math.min(1, dt * 5);   // hang at the apex while the follow-up arrives
     ea.vy -= (juggled ? 9 : 26) * dt; ea.ly = (ea.ly || 0) + ea.vy * dt; ea.tumble = (ea.tumble || 0) + dt * (ea.slam ? 9 : 5);
     if (ea.ly <= 0) {
@@ -567,7 +572,8 @@ function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
     if (e.down <= 0) e.hit = Math.max(e.hit, 0.12);
     return true;
 }
-function stepCombat(s: Sim, dt: number, ev: Events) {
+function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
+    const input = controls;
     const p = s.pos, v = s.vel;
     s.aimE = pickPlasmaTarget(s);   // contextual lock indicator: what a web shot would hit right now
     if (s.hp <= 0) { s.hp = 100; p[0] = s.safe[0]; p[1] = s.safe[1] + 0.5; p[2] = s.safe[2]; v[0] = v[1] = v[2] = 0; s.web = false; ev.fall(); }
@@ -607,6 +613,7 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
         if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.max(sa.shake || 0, SNARE.SHAKE); } }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
+    if (options.updateEnemies !== false) {
     let atkN = 0; for (const e0 of s.enemies) if (e0.atk > 0) atkN++;
     for (let i = 0; i < s.enemies.length; i++) {
         const e = s.enemies[i];
@@ -633,6 +640,7 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
                 e.atk = -1.2;
             }
         } else if (e.atk < 0) e.atk = Math.min(0, e.atk + dt);
+    }
     }
     // plasma bolts: gentle homing toward the locked enemy, detonate on enemy/building/ground or timeout
     for (let i = s.plasma.length - 1; i >= 0; i--) {
