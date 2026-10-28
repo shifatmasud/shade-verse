@@ -13,6 +13,8 @@ import clipWall from './clips/climbing_wall.json';
 import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
+import { shadowGeo, shadowMat } from './shadowbot';
+import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
 import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, type Sim, type Events } from './sim';
 
@@ -151,6 +153,43 @@ function FxaaPass({ enabled }: { enabled: boolean }) {
         gl.getDrawingBufferSize(st.sz);
         if (st.ft.image.width !== st.sz.x || st.ft.image.height !== st.sz.y) { st.ft.dispose(); st.ft.image = { width: st.sz.x, height: st.sz.y } as any; st.mat.uniforms.uRes.value.copy(st.sz); }
         gl.render(scene, camera); gl.copyFramebufferToTexture(st.ft, _v0); gl.render(st.qs, st.qc);
+    }, 1);
+    return null;
+}
+
+const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; varying vec2 vUv;
+float vz(vec2 uv){ float d = texture2D(tDepth, uv).x; float zn = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - zn * (uFar - uNear)); }
+void main(){
+  vec3 c = texture2D(tColor, vUv).rgb;
+  vec2 px = uTh / uRes;
+  float z = vz(vUv);
+  float zx1 = vz(vUv + vec2(px.x, 0.0)), zx2 = vz(vUv - vec2(px.x, 0.0)), zy1 = vz(vUv + vec2(0.0, px.y)), zy2 = vz(vUv - vec2(0.0, px.y));
+  float e = max(max(zx1 - z, zx2 - z), max(zy1 - z, zy2 - z)) / z;   // one-sided: only the nearer pixel of a depth step is inked, so the line stays 1px and sits inside the near silhouette
+  float k = smoothstep(0.12, 0.30, e) * (1.0 - smoothstep(22.0, 55.0, z)) * uOn;
+  gl_FragColor = vec4(mix(c, vec3(0.04, 0.05, 0.10), k * 0.85), 1.0);
+}`;
+export const OUTLINE_STATE = { on: true };
+function OutlinePass() {
+    const { gl, scene, camera } = useThree();
+    const st = useMemo(() => {
+        const rt = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: true, samples: 0 }); (rt as any).isXRRenderTarget = true;   // makes three apply the renderer's tone mapping and output encoding inside the target, so colours match direct-to-screen rendering
+        rt.depthTexture = new THREE.DepthTexture(4, 4); rt.depthTexture.type = THREE.UnsignedIntType;
+        rt.texture.minFilter = rt.texture.magFilter = THREE.NearestFilter; rt.texture.colorSpace = THREE.SRGBColorSpace;
+        const mat = new THREE.ShaderMaterial({ uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture }, uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 700 }, uTh: { value: 1.0 }, uOn: { value: 1 } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: OUT_FS, depthTest: false, depthWrite: false, toneMapped: false });
+        const qs = new THREE.Scene(), q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); q.frustumCulled = false; qs.add(q);
+        const ft = new THREE.FramebufferTexture(4, 4); ft.minFilter = ft.magFilter = THREE.LinearFilter;
+        const fm = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: ft }, uRes: { value: new THREE.Vector2(4, 4) } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: FXAA_FS, depthTest: false, depthWrite: false, toneMapped: false });
+        const fs = new THREE.Scene(), fq = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fm); fq.frustumCulled = false; fs.add(fq);
+        return { rt, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), sz: new THREE.Vector2(), ft, fm, fs };
+    }, []);
+    useFrame(() => {
+        gl.getDrawingBufferSize(st.sz);
+        if (st.rt.width !== st.sz.x || st.rt.height !== st.sz.y) { st.rt.setSize(st.sz.x, st.sz.y); st.mat.uniforms.uRes.value.copy(st.sz); }
+        const cam = camera as THREE.PerspectiveCamera; st.mat.uniforms.uNear.value = cam.near; st.mat.uniforms.uFar.value = cam.far;
+        st.mat.uniforms.uTh.value = 1.0;
+        st.mat.uniforms.uOn.value = (DBG && (window as any).__noOutline) ? 0 : 1;
+        if (st.ft.image.width !== st.sz.x || st.ft.image.height !== st.sz.y) { st.ft.dispose(); st.ft.image = { width: st.sz.x, height: st.sz.y } as any; st.fm.uniforms.uRes.value.copy(st.sz); }
+        gl.setRenderTarget(st.rt); gl.render(scene, camera); gl.setRenderTarget(null); gl.render(st.qs, st.qc); gl.copyFramebufferToTexture(st.ft, _v0); gl.render(st.fs, st.qc);
     }, 1);
     return null;
 }
@@ -470,15 +509,17 @@ function WindLines({ sim }: { sim: Sim }) {
     return <mesh ref={ref} geometry={geo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} side={THREE.DoubleSide} uniforms={un} vertexShader={`attribute float aFade;varying float vFade;void main(){vFade=aFade;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`} fragmentShader={`varying float vFade;uniform float uDay;void main(){gl_FragColor=vec4(mix(vec3(.42,.57,.73),vec3(.86,.93,.96),uDay),vFade);}`} /></mesh>;
 }
 // Robot pedestrians: Polyfork free robot models (non-human, non-animal, fully plated/covered, blue sensor visor, no mouth or nose). Instanced, per-type, GPU-animated.
-const PED_TYPES = [
-    { model: 'robot', shell: [0.62, 0.70, 0.74], coat: [0.10, 0.28, 0.38] }, { model: 'robot', shell: [0.78, 0.72, 0.60], coat: [0.50, 0.30, 0.18] },
-    { model: 'robot', shell: [0.55, 0.62, 0.58], coat: [0.20, 0.34, 0.26] }, { model: 'companion' }, { model: 'sdrone' }] as const;
-const PED_NEAR = 16, PED_N = 170, AIR_N = 64, PED_CAP = PED_N + AIR_N;   // street crowd + airborne drones; counts are iteration choices, not user numbers
+const PED_TYPES = [   // 0-4 street peds: Shadow-body robots in five shell/accent palettes (blue eyes); 5 = quad drone, the only ped type that flies
+    { model: 'shadow', shell: [0.62, 0.70, 0.74], coat: [0.10, 0.28, 0.38] }, { model: 'shadow', shell: [0.78, 0.72, 0.60], coat: [0.50, 0.30, 0.18] },
+    { model: 'shadow', shell: [0.55, 0.62, 0.58], coat: [0.20, 0.34, 0.26] }, { model: 'shadow', shell: [0.82, 0.84, 0.88], coat: [0.20, 0.40, 0.80] },
+    { model: 'shadow', shell: [0.80, 0.64, 0.50], coat: [0.70, 0.30, 0.10] }, { model: 'survey' }] as const;
+const PED_NEAR = 16, PED_N = 380, AIR_N = 64, PED_CAP = PED_N + AIR_N;   // street crowd + airborne drones; counts are iteration choices, not user numbers
 function Civilians({sim}:{sim:Sim}){
     const refs=useRef<THREE.InstancedMesh[]>([]);
     const time=useRef({value:0});
     const set=useMemo(()=>PED_TYPES.map((t:any)=>{
-        const r=robotGeo({model:t.model,eye:EYE_BLUE,shell:t.shell,scale:t.model==='sdrone'?1.3:t.model==='companion'?1.15:1,extras:t.coat?coatRobot(t.coat):undefined});
+        if(t.model==='shadow')return {geo:shadowGeo({shell:t.shell,accent:t.coat,eye:EYE_BLUE}),mat:shadowMat(time.current,7)};
+        const r=robotGeo({model:t.model,eye:EYE_BLUE,shell:t.shell,scale:t.model==='sdrone'?1.3:t.model==='survey'?1.0:t.model==='companion'?1.15:1,extras:t.coat?coatRobot(t.coat):undefined});
         return {geo:r.geo,mat:robotMat(r.parts,r.scale,time.current,t.model==='sdrone'?0:3.2)};
     }),[]);
     if(DBG)(window as any).__pedInfo=set.map((p:any)=>{p.geo.computeBoundingBox();const b=p.geo.boundingBox;return{tris:(p.geo.index?p.geo.index.count:p.geo.attributes.position.count)/3,verts:p.geo.attributes.position.count,size:[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].map((x:number)=>+x.toFixed(2)),minY:+b.min.y.toFixed(2)}});
@@ -487,8 +528,9 @@ function Civilians({sim}:{sim:Sim}){
         const sh=new THREE.Color().setRGB(...(t.shell||[0.82,0.84,0.88]) as [number,number,number]),cc=new THREE.Color().setRGB(...(t.coat||t.shell||[0.82,0.84,0.88]) as [number,number,number]),blue=new THREE.Color().setRGB(...(EYE_BLUE as unknown as [number,number,number])),dark=sh.clone().multiplyScalar(0.55);
         const parts:THREE.BufferGeometry[]=[];
         const box=(w:number,h:number,d:number,x:number,y:number,z:number,c:THREE.Color)=>{const g=new THREE.BoxGeometry(w,h,d).toNonIndexed();g.translate(x,y,z);const n=g.attributes.position.count,col=new Float32Array(n*3);for(let i=0;i<n;i++){col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;}g.setAttribute('color',new THREE.BufferAttribute(col,3));g.deleteAttribute('uv');parts.push(g);};
-        if(ti<3){box(0.5,0.75,0.32,0,1.05,0,cc);box(0.3,0.3,0.3,0,1.58,0,sh);box(0.26,0.07,0.04,0,1.6,0.16,blue);box(0.34,0.68,0.22,0,0.34,0,dark);}
+        if(ti<5){box(0.5,0.75,0.32,0,1.05,0,cc);box(0.3,0.3,0.3,0,1.58,0,sh);box(0.26,0.07,0.04,0,1.6,0.16,blue);box(0.34,0.68,0.22,0,0.34,0,dark);}
         else if(ti===3){box(0.9,0.9,0.9,0,0.7,0,sh);box(0.7,0.12,0.04,0,0.95,0.46,blue);}
+        else if(ti===5){box(0.5,0.18,0.5,0,0.3,0,sh);box(1.6,0.05,0.12,0,0.38,0,dark);box(0.12,0.05,1.6,0,0.38,0,dark);box(0.2,0.08,0.04,0,0.3,0.26,blue);}   // quad drone: body, two rotor arms, blue lens
         else {box(0.9,0.75,0.9,0,0.45,0,sh);box(0.8,0.1,0.04,0,0.6,0.46,blue);}
         const geo=mergeGeometries(parts,false)!;
         return {geo,mat:new THREE.MeshLambertMaterial({vertexColors:true,emissive:new THREE.Color('#1c2230'),emissiveIntensity:0.6})};
@@ -504,26 +546,27 @@ function Civilians({sim}:{sim:Sim}){
         const nx=near(hx),nz=near(hz);if(Math.abs(hx-L[0])>CELL*0.75||L[0]===0)L[0]=nx;if(Math.abs(hz-L[1])>CELL*0.75||L[1]===0)L[1]=nz;
         const cfg:any=(DBG&&(window as any).__pedCfg)||{},nP=cfg.n??PED_N,nA=cfg.a??AIR_N,rG=cfg.rg??85,rA=cfg.ra??110,nr=cfg.near??PED_NEAR;
         if(DBG)(window as any).__air=[];
+        if(DBG)(window as any).__pl=[];
         const place=(i:number,air:boolean)=>{
-            const axis=i&1,k=[0,0,0,0,0,-1,1,-1,1,-2,2,0][(((i>>1)*7)%12)],line=L[axis]+k*CELL,over=air&&((i>>2)&1)===1,lat=over?(((i*37)%13)-6)*4:(((i*37)%9)-4)*0.85,dir=(i&2)?1:-1,Wd=130,c=axis?hx:hz,cc=axis?hz:hx;
+            const axis=i&1,hp=axis?hz:hx,NS=air?7:5,W2=NS*CELL,u0=Math.floor((((i>>1)*0.7548777)%1)*NS)*CELL+CELL/2,line=hp+wrapS(u0-hp,W2),over=air&&((i>>2)&1)===1,lat=over?(((i*37)%13)-6)*4:(((i*37)%9)-4)*0.85,dir=(i&2)?1:-1,Wd=air?260:180,c=axis?hx:hz,cc=axis?hz:hx;
             const sp=air?(3+((i*13)%7)*0.9):(0.9+((i*13)%7)*0.12),base=((((i>>1)*0.6180339)%1)*Wd),al=c+wrapS(base+dir*sim.t*sp-c,Wd);
             const x=axis?al:line+lat,z=axis?line+lat:al;void cc;
-            if(Math.hypot(x-hx,z-hz)>(air?rA:rG))return;
-            if(z<WATER_Z+6)return; if(x>PARK.x0-3&&x<PARK.x1+3&&z>PARK.z0-3&&z<PARK.z1+3)return;
+            const dd=Math.hypot(x-hx,z-hz),lim=air?rA:rG;if(dd>lim)return;const fz=1-Math.min(1,Math.max(0,(dd-(lim-18))/18)),fade=fz*fz*(3-2*fz);if(fade<0.03)return;   // streets are world-fixed (a ped never hops to another street near the hero) and the radius edge fades by scale instead of popping
+            if(!air&&(z<WATER_Z+6||(x>PARK.x0-3&&x<PARK.x1+3&&z>PARK.z0-3&&z<PARK.z1+3)))return;   // ground peds keep off water and the park; drones fly over them
             const rot=axis?(dir>0?Math.PI/2:-Math.PI/2):(dir>0?0:Math.PI);
-            if(air){const ty=4;let y=Math.max(8,ym.y+((i*29)%50)-22);
+            if(air){const ty=5;let y=Math.max(8,ym.y+((i*29)%50)-22);
                 if(over){   // over-block route: fly above the actual roofs under a +-45 m window ahead and behind, smoothed so it climbs before it reaches a taller tower
                     let wm=0;const ax0=axis?al-45:x-30,ax1=axis?al+45:x+30,az0=axis?z-30:al-45,az1=axis?z+30:al+45;
                     for(const b of buildings){if(b.x1>ax0&&b.x0<ax1&&b.z1>az0&&b.z0<az1&&b.h>wm)wm=b.h;}
                     const tgt=Math.max(y+12,wm+9),s0=ys.current,k0=i%AIR_N;if(!s0[k0])s0[k0]=tgt;s0[k0]+=(tgt-s0[k0])*Math.min(1,0.016*3);y=s0[k0];}
-                y+=Math.sin(sim.t*1.3+i)*0.6;if(DBG)((window as any).__air||((window as any).__air=[])).push([x,y,z,over?1:0]);o.position.set(x,y,z);o.rotation.set(0,rot,0);o.scale.setScalar(over?3.2:1.5);o.updateMatrix();if(Math.hypot(x-hx,y-sim.pos[1],z-hz)<nr*1.1)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);return;}
-            const ty=i%PED_TYPES.length,hov=ty===4?1.1+Math.sin(sim.t*2+i)*.12:0;
-            o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.08);o.updateMatrix();if(Math.hypot(x-hx,z-hz)<nr)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);
+                y+=Math.sin(sim.t*1.3+i)*0.6;if(DBG)(window as any).__pl.push([i,x,z,fade]);if(DBG)((window as any).__air||((window as any).__air=[])).push([x,y,z,over?1:0]);o.position.set(x,y,z);o.rotation.set(0,rot,0);o.scale.setScalar((over?3.2:1.5)*fade);o.updateMatrix();if(Math.hypot(x-hx,y-sim.pos[1],z-hz)<nr*1.1)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);return;}
+            const ty=i%5,hov=0;
+            if(DBG)(window as any).__pl.push([i,x,z,fade]);o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.0*fade);o.updateMatrix();if(Math.hypot(x-hx,z-hz)<nr)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);
         };
         for(let i=0;i<nP;i++)place(i,false);
         for(let i=0;i<nA;i++)place(i+1000,true);
-        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];refs.current[i].instanceMatrix.needsUpdate=true;refsF.current[i].count=cf[i];refsF.current[i].instanceMatrix.needsUpdate=true;}if(DBG)(window as any).__ped=cnt.slice();});
-    return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m)refs.current[i]=m}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}{far.map((p,i)=><instancedMesh key={'f'+i} ref={m=>{if(m)refsF.current[i]=m}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}</group>;
+        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];syncInk(refs.current[i]);refs.current[i].instanceMatrix.needsUpdate=true;refsF.current[i].count=cf[i];syncInk(refsF.current[i]);refsF.current[i].instanceMatrix.needsUpdate=true;}if(DBG)(window as any).__ped=cnt.slice();});
+    return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m&&refs.current[i]!==m){refs.current[i]=m;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}{far.map((p,i)=><instancedMesh key={'f'+i} ref={m=>{if(m&&refsF.current[i]!==m){refsF.current[i]=m;m.userData.far=true;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}</group>;
 }
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
@@ -787,9 +830,10 @@ const ENEMY_DEFS: any[] = [
     { model: 'robot', eye: EYE_RED, shell: [0.20, 0.21, 0.24], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.1, extras: armorRobot, dy: -0.85, spd: 5 },
     { model: 'companion', eye: EYE_RED, dark: [0.14, 0.14, 0.17], shell: [0.18, 0.18, 0.21], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.6, extras: armorCompanion, dy: -0.85, spd: 6 },
     { model: 'survey', eye: EYE_RED, shell: [0.20, 0.21, 0.24], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.7, extras: armorDrone, dy: 0.45, spd: 0 },
-    { model: 'sdrone', eye: EYE_RED, shell: [0.22, 0.22, 0.25], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.9, dy: 0.15, spd: 0 }];
+    { model: 'shadow', eye: EYE_RED, shell: [0.20, 0.21, 0.25], accent: [0.55, 0.07, 0.07], scale: 1.0, dy: 0, spd: 9 }];   // kind 3: Shadow-body heavy armoured robot (replaces the dome)
 function buildEnemy(kind: number, time: { value: number }) {
-    const d = ENEMY_DEFS[kind], r = robotGeo(d); r.geo.translate(0, d.dy, 0);
+    const d = ENEMY_DEFS[kind]; if (d.model === 'shadow') return { geo: shadowGeo({ shell: d.shell, accent: d.accent, eye: d.eye, heavy: true }), mat: shadowMat(time, d.spd) };
+    const r = robotGeo(d); r.geo.translate(0, d.dy, 0);
     return { geo: r.geo, mat: robotMat(r.parts, r.scale, time, d.spd) };
 }
 
@@ -1177,12 +1221,13 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             for (let i = 0; i < n; i++) {
                 const e = sim.enemies[i], k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
                 const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k >= 2 ? Math.sin(sim.t * 2.5 + i) * 0.12 : 0;
-                tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob, e.z); tmp.rotation.set(fall * -1.4, e.ang, 0); tmp.scale.set(1.25, 1.25, 1.25); tmp.updateMatrix();
+                tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob, e.z); tmp.rotation.set(fall * -1.4, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = 1.25 * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
+                tmp.updateMatrix();
                 m.setMatrixAt(cnt[k], tmp.matrix);
                 if (e.hit > 0) ecol.setRGB(2.6, 2.6, 2.6); else if (e.atk > 0) ecol.setRGB(1.8, 0.5 + Math.sin(sim.t * 30) * 0.2, 0.4); else ecol.setRGB(1, 1, 1);
                 m.setColorAt(cnt[k], ecol); cnt[k]++;
             }
-            for (let k = 0; k < 4; k++) { const m = enMeshes.current[k]; if (!m) continue; m.count = cnt[k]; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+            for (let k = 0; k < 4; k++) { const m = enMeshes.current[k]; if (!m) continue; m.count = cnt[k]; syncInk(m); m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
         }
         // orbs
         const t = sim.t;
@@ -1210,7 +1255,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
         <DayNight />
-        <FxaaPass enabled={coarse} />
+        {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={coarse} />}
         <Sky />
         <City /><TenementBlock />
         <FlyingCars />
@@ -1229,7 +1274,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh position={[0, WATER_Y, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]} ref={waterRef} material={waterMat} frustumCulled={false}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500, 160, 80]} /></mesh>
         <mesh position={[0, SEABED, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500]} /><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
-        {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r) enMeshes.current[k] = r; }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
+        {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
         <instancedMesh ref={cores} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" /></instancedMesh>
         <instancedMesh ref={glows} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
     </>;

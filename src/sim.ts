@@ -101,7 +101,7 @@ function buildWorld() {
 export const world = buildWorld();
 const blds = world.blds;
 
-export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean }
+export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean; born?: number }
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
@@ -151,9 +151,9 @@ function newBeacon(s: Sim): V3 {
 function inPk(x: number, z: number) { return x > PARK.x0 && x < PARK.x1 && z > PARK.z0 && z < PARK.z1; }   // street enemies stay out of the sunken park
 export const ENEMY_N = 26;   // was 10: user wants many enemies always in view (iteration choice, not a user number)
 function spawnEnemy(s: Sim): Enemy {
-    const kind = [0, 0, 1, 2, 3, 3][Math.floor(Math.random() * 6)];
-    const e = spawnEnemy0(s, kind === 3); e.kind = kind;
-    if (kind === 3) { e.air = true; e.roof = undefined; e.y = 6 + Math.random() * 26; }   // hover drones patrol the street canyons at altitude
+    const kind = [0, 0, 1, 2, 2, 3][Math.floor(Math.random() * 6)];   // kind 2 = flying quad drone, kind 3 = Shadow-body heavy robot (the dome is retired)
+    const e = spawnEnemy0(s, kind === 2); e.kind = kind; e.born = s.t;
+    if (kind === 2) { e.air = true; e.roof = undefined; e.y = 6 + Math.random() * 26; }   // hover drones patrol the street canyons at altitude
     return e;
 }
 function spawnEnemy0(s: Sim, noRoof = false): Enemy {
@@ -442,7 +442,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
 }
 export const buildings = blds;
-const BODY_OFF = [0.8, 0.3, 1.05, 0.95];
+const BODY_OFF = [0.8, 0.3, 1.05, 1.2];
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
 const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
