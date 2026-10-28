@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, motion } from 'framer-motion';
 import gsap from 'gsap';
 import { Scene } from './Scene';
+import { GhostCompanion } from './Ghost';
 import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks exist only in instrumented builds (VITE_DBG=1), never in the release build
@@ -166,7 +167,9 @@ export function App() {
             onPointerUp={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
             onPointerCancel={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
             onLostPointerCapture={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
-        ><Scene sim={sim} ev={ev} coarse={coarse} fx={fx} perf={perf} /></Canvas>
+        ><Scene sim={sim} ev={ev} coarse={coarse} fx={fx} perf={perf} />
+            <GhostCompanion sim={sim} />
+        </Canvas>
 
         <div className="hud">
             <div className="chip orbs" aria-label="orbs (tap to mute or unmute)" onPointerDown={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }}><IOrb /><Pips n={hud.score > 0 ? ((hud.score - 1) % 10) + 1 : 0} /><span className="tiers">{Array.from({ length: Math.min(6, Math.floor(Math.max(0, hud.score - 1) / 10)) }, (_, i) => <i key={i} />)}</span>{muted && <span className="mutedmark"><ISpeaker off /></span>}</div>
