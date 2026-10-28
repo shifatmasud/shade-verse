@@ -65,8 +65,8 @@ Total requests extracted from project history: 68.
 60. Visual death explosion effect with debris on bot KO
 61. Plasma web projectile weapon (auto-targeting, homing, radial shockwave blast)
 62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (gap closing strikes, 3-hit combo cadence, hit-stop impact weighting)
-63. Second hero companion character: Ghost (feminine white-suited companion, hot-pink lenses, autonomous follow/traversal/combat beside Shadow from the first gameplay frame) - implemented, merged to `main`, and included in the READY Git-triggered production deployment at https://web-swinger-3d-mirror.vercel.app/
-64. Giant boss (Shadow's existing human body model with a muscular white/red finish, 3x Shadow root scale; ordinary melee locked, Shadow Snare allowed) - revised for `main`; automatic Vercel Git deployment
+63. Second hero companion character: Ghost (feminine white-suited companion, hot-pink lenses, autonomous follow/traversal/combat beside Shadow from the first gameplay frame; now mirrors Shadow's wall-crawl/swing/glide modes and uses a pink-white particle morph for long catch-up) - implemented, merged to `main`, and included in the READY Git-triggered production deployment at https://web-swinger-3d-mirror.vercel.app/
+64. Giant boss (Shadow's existing human body model with a muscular white/red finish, 3x Shadow root scale; ordinary melee locked, Shadow Snare allowed; fixed central rooftop arena with a large red beacon) - revised for `main`; automatic Vercel Git deployment
 
 ## Group 2: Still Queued / In Progress (4 items)
 65. Detailed flying cars with collision pass and web anchor towing - queued

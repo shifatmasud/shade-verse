@@ -1,3 +1,11 @@
+## Boss arena and Ghost traversal/morph update — provisional 83/100
+- Visuals: 18/20 (the phone-landscape capture shows the saturated red rooftop beacon and boss; the matched capture shows Ghost's pink-white particle re-form)
+- Controls/behavior: 24/25 (focused assertions confirm Ghost shares Shadow's wall, swing, and glide modes; the fixed boss remains on its assigned roof)
+- Performance (estimate): 15/20 (bounded 96-point morph cloud and a small marker scene graph; SwiftShader is not a target-device FPS result)
+- Stability: 14/15 (type-check, production build, existing Ghost/boss tests, and new focused phone-landscape tests pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows tests remain untested)
+Evidence: `test/ghost-traversal.mjs` and `test/boss-arena.mjs` PASS at phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader. The first checks same-wall attachment, swing, glide, and particle out/in states; the second checks the roof-contained boss, 84 m red beam, and rooftop ring. Captures: `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`, `art/ghost/shot-after-ghost-morph-mobile-landscape.png`, and `art/boss/shot-after-boss-arena-mobile-landscape.png`. Physical Android/Windows and target-GPU frame rates remain untested.
+
 ## Shadow-bodied giant boss revision — provisional 79/100
 - Visuals: 17/20 (the actual Shadow human mesh now drives a broader athletic white body with red eyes; the accepted before/after visual pair is phone-landscape)
 - Controls/behavior: 22/25 (one persistent boss and its slow pursuit/telegraphed strike remain; tests confirm ordinary melee cannot select or damage it and Shadow Snare still does)

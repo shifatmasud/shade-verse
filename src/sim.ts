@@ -102,6 +102,16 @@ function buildWorld() {
 export const world = buildWorld();
 const blds = world.blds;
 
+// Fixed rooftop arena on the central tower, distinct from the player's spawn roof.
+const arenaRoof = blds.find((b) => b.host === undefined && Math.abs((b.x0 + b.x1) / 2 - 40) < 1 && Math.abs((b.z0 + b.z1) / 2) < 1);
+if (!arenaRoof) throw new Error('Boss arena rooftop was not generated');
+export const BOSS_ARENA = {
+    x: (arenaRoof.x0 + arenaRoof.x1) / 2,
+    y: arenaRoof.h + 1,
+    z: (arenaRoof.z0 + arenaRoof.z1) / 2,
+    roof: { x0: arenaRoof.x0, x1: arenaRoof.x1, z0: arenaRoof.z0, z1: arenaRoof.z1 },
+};
+
 export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean; born?: number; boss?: boolean }
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
@@ -179,6 +189,7 @@ function spawnEnemy0(s: Sim, noRoof = false): Enemy {
 }
 function spawnBoss(s: Sim): Enemy {
     const e = spawnEnemy0(s, true);
+    e.x = BOSS_ARENA.x; e.y = BOSS_ARENA.y; e.z = BOSS_ARENA.z; e.roof = { ...BOSS_ARENA.roof };
     e.boss = true; e.kind = 0; e.hp = 24; e.atk = 0; e.hit = 0; e.kb = [0, 0]; e.ang = 0; e.down = 0; e.born = s.t;
     return e;
 }

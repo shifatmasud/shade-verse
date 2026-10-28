@@ -15,6 +15,7 @@ import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
 import { GiantBoss } from './GiantBoss';
+import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
@@ -1319,6 +1320,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 <primitive object={rig.root} />
             </group>
         </group>
+        <BossArenaMarker />
         <GiantBoss sim={sim} />
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={webB} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>

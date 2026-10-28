@@ -2,6 +2,18 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Ghost traversal match, particle morph, and fixed boss arena
+### Changed
+- Fixed the existing white, red-eyed, 3× Shadow-body boss to a central rooftop arena, constrained its pursuit to that roof, and marked the location with a pulsing 84 m red beacon and rooftop rings.
+- Ghost now follows Shadow's active wall-crawl, web-swing, and airborne/glide mode using its own simulation. Long-distance catch-up fades through a pink-and-white particle morph instead of a visible snap.
+- Preserved Shadow's model, HUD, controls, ordinary melee, the boss's model/scale, and landscape-only gameplay; no normal-melee tuning changed.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `PORT=4173 node test/ghost.mjs`, `PORT=4173 node test/boss.mjs`, `PORT=4173 node test/ghost-traversal.mjs`, and `PORT=4173 node test/boss-arena.mjs` pass. Focused Chromium WebGL2/ANGLE SwiftShader assertions cover the existing desktop/mobile Ghost and boss checks plus phone-landscape wall/swing/glide/morph behavior and rooftop/beacon placement.
+- Phone-landscape captures (844×390): baseline `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`; after `art/ghost/shot-after-ghost-morph-mobile-landscape.png` and `art/boss/shot-after-boss-arena-mobile-landscape.png`. These are local browser captures, not physical-device screenshots.
+- Physical Android 10/Chrome 155 and Windows 10/Edge 155/Intel UHD 600 tests remain untested. The expected production URL is https://web-swinger-3d-mirror.vercel.app/; verify the Git-triggered deployment after pushing `main`.
+### References
+- Official Insomniac/PlayStation traversal references and the particle VFX reference are recorded in `docs/REFERENCES.md`; no source assets or code were copied.
+
 ## [Released] - Shadow-bodied giant boss revision
 ### Changed
 - Replaced the custom boss body with Shadow's existing skinned human model and skeleton. The boss uses an exact 3× root-scale ratio (4.5 versus Shadow's 1.5), with a broadened athletic chest/arms, white-painted suit texture, and red eyes.
