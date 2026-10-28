@@ -6,6 +6,14 @@
 - Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 untested)
 Evidence: `node test/snare.mjs` PASS locally. Before/after screenshot files are supplied separately with the handoff; no production deployment status is claimed.
 
+## Ghost first-scene follow iteration — provisional 81/100
+- Visuals: 16/20 (original white-suited silhouette now sits beside Shadow in the first gameplay frame; captures are SwiftShader/WebGL2-verified, but physical-device appearance is untested)
+- Controls: 24/25 (automatic spawn and follow; no activation button and no changes to existing controls)
+- Performance (estimate): 15/20 (single low-poly follower with bounded movement math; target-GPU frame rate not measured)
+- Stability: 14/15 (focused two-viewport first-scene/follow test passes with zero page/console errors; full regression suite not rerun)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 untested)
+Evidence: `test/ghost.mjs` PASS under Chromium WebGL2/ANGLE SwiftShader at desktop and phone-landscape sizes. `art/ghost/` contains the four before/after PNGs; their central scene crops passed the nonblank checks. The pre-fix production bundle lacked Ghost markers. This branch has not been merged to main or deployed; production verification requires explicit approval.
+
 ## v0.76 - Combat Choreography Release (Score: 85/100)
 - Visuals: 18/20 (tactile hit-stop frame impact weight, multi-angle strike animations, comic outlines intact)
 - Controls: 23/25 (gap-closing strike lunges within 5.8m, responsive 3-hit combo cadence, fluid ground-to-combat transition)

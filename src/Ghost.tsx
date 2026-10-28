@@ -130,11 +130,11 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         }
         root.visible = true;
 
-        // Trail on Shadow's rear quarter. The follower uses only the leader's public movement state;
-        // it never reads inputs, changes collision, picks enemies, or enters melee.
+        // Keep Ghost beside Shadow from the first gameplay frame, with a short rear-quarter follow gap.
+        // This is presentation-only: no input, collision, targeting, or melee changes.
         const fx = Math.sin(sim.ang), fz = Math.cos(sim.ang), rx = -fz, rz = fx;
-        const tx = sim.pos[0] - fx * 1.45 + rx * 2.6;
-        const tz = sim.pos[2] - fz * 1.45 + rz * 2.6;
+        const tx = sim.pos[0] - fx * 0.55 + rx * 1.45;
+        const tz = sim.pos[2] - fz * 0.55 + rz * 1.45;
         const airborne = !sim.ground && !sim.wall && !sim.swim;
         let ty: number;
         if (sim.ground && !sim.web && !sim.wall && !sim.swim) {

@@ -67,7 +67,7 @@ Total requests extracted from project history: 68.
 62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (gap closing strikes, 3-hit combo cadence, hit-stop impact weighting)
 
 ## Group 2: Still Queued / In Progress (6 items)
-63. Second hero companion character: Ghost (female hero companion in white suit, swings/walks/fights alongside Shadow) - active in InstaBox
+63. Second hero companion character: Ghost (female white-suited companion auto-visible beside Shadow from the first gameplay frame and following without an activation button) - active; `fix/ghost-first-scene` review branch ready, live-bundle verification pending explicit production approval
 64. Giant boss (muscular white humanoid body, red eyes, no mouth, 5x hero size) - queued
 65. Detailed flying cars with collision pass and web anchor towing - queued
 66. Water surfing (hold swing on water surface, wake spray, web-tow surfing) - queued

@@ -11,6 +11,16 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 
 ---
 
+## [Unreleased] - Ghost first-scene companion visibility
+### Changed
+- Ghost now settles beside Shadow at a short rear-quarter distance on the first gameplay frame and continues to follow smoothly. It remains automatically mounted, with no Ghost activation button; Shadow's locked model, HUD, controls, melee, and landscape-only behavior are unchanged.
+### Verification
+- Focused `test/ghost.mjs` passed on desktop and phone-landscape in Chromium with WebGL2 and an ANGLE SwiftShader renderer. It checks first-scene visibility/distance, absence of a Ghost activation button, follow movement, no page/console errors, and a nonblank central scene crop before writing screenshots.
+- Before/after captures are committed under `art/ghost/shot-{before,after}-ghost-{desktop,mobile-landscape}.png`; all four were captured with SwiftShader and passed the nonblank guard. Physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested.
+- The read-only public-page check before this branch update showed Shadow but no Ghost and no client errors; its JavaScript bundle lacked Ghost component markers. This iteration is on a non-production review branch; no main merge or production deploy was attempted. Production follow-up requires direct approval; no Vercel CLI/API/settings were used.
+
+---
+
 ## [v0.77] - Flowing Combat Choreography
 ### Added
 - 4-hit ground chain on the melee button: jab, cross, spin hook kick (full 360° turn, wide sweep), launcher (rising knee + uppercut that pops the bot into the air).
