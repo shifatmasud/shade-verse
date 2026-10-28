@@ -2,14 +2,14 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
-## [Unreleased] - Giant humanoid boss
+## [Released] - Giant humanoid boss
 ### Added
 - An original, procedural white humanoid boss at 5x Shadow's root scale, with a muscular torso and limbs, two red eyes, and a deliberately blank lower face. Its slow pursuit and telegraphed heavy strike use the existing enemy loop; the boss is targetable by the existing plasma weapon and Shadow Snare, but excluded from ordinary melee.
 - The boss uses seven merged low-poly meshes. Shadow's model, HUD, controls, ordinary melee tuning, and landscape-only behavior remain unchanged.
 ### Verification
 - `npx tsc --noEmit`, `npm run build`, and `PORT=4173 node test/boss.mjs` pass. The focused local Chromium WebGL2/ANGLE SwiftShader checks cover desktop 1365×768 and phone-landscape 844×390, one boss plus 26 normal enemies, 5x root scale, red-eye geometry, a boss strike, Shadow Snare target/damage, ordinary-melee target/damage exclusion, and unchanged input keys.
 - `art/boss/shot-before-boss-{desktop,mobile-landscape}.png` and `art/boss/shot-after-boss-{desktop,mobile-landscape}.png` are paired local captures at the same viewport sizes. The after-images use a debug-only rooftop placement and lower camera framing so the full boss fits; the live spawn remains at street level. The browser harness advances the existing strike and Snare timers to their impact edges, so this is a focused smoke check, not a timing soak or full regression suite.
-- Desktop SwiftShader simulation was slow; that is software-renderer evidence only, not physical-device FPS. Android 10/Adreno 506 and Windows 10/Intel UHD 600 have not been tested. Main push and live-deployment verification are pending; stable link: https://web-swinger-3d-mirror.vercel.app/.
+- Desktop SwiftShader simulation was slow; that is software-renderer evidence only, not physical-device FPS. Android 10/Adreno 506 and Windows 10/Intel UHD 600 have not been tested. After commit `40e7899` was pushed to `main`, the stable public URL returned HTTP 200 and served `/assets/index-BUWdjKMy.js` with the `giantBoss` component marker, confirming the Git-triggered release: https://web-swinger-3d-mirror.vercel.app/. No Vercel CLI/API or settings were used.
 ### References
 - [5 Rules For Animating Colossi, GameAnim](https://www.gameanim.com/2021/09/30/5-rules-for-animating-colossi/) — weighty acceleration and restrained heavy-limb motion.
 - [The Biomechanical Characteristics of the Strongman Yoke Walk, Frontiers in Sports and Active Living](https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2021.670297/full) — loaded human gait context for slower cadence and longer stance.
