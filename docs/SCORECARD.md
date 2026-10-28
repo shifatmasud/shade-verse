@@ -6,13 +6,13 @@
 - Device compatibility (estimate): 12/20 (physical Android and Windows tests remain untested)
 Evidence: `test/ghost-traversal.mjs` and `test/boss-arena.mjs` PASS at phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader. The first checks same-wall attachment, swing, glide, and particle out/in states; the second checks the roof-contained boss, 84 m red beam, and rooftop ring. Captures: `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`, `art/ghost/shot-after-ghost-morph-mobile-landscape.png`, and `art/boss/shot-after-boss-arena-mobile-landscape.png`. Commit `01d40a7` is on the mirror's `main`; the live URL returned HTTP 200 with the updated bundle. Physical Android/Windows and target-GPU frame rates remain untested.
 
-## Ghost full-action animation parity and landing/wall morph — provisional 84/100
+## Ghost full-action animation parity, one-hand web, and landing/wall morph — provisional 84/100
 - Visuals: 18/20 (Ghost now uses the same live Shadow clip/procedural action pose; phone-landscape morph evidence is reviewed, but only software rendering is available)
-- Controls/behavior: 25/25 (26 animation cases cover all implemented action families, including an actual dual-hand spring launch; four surface tests cover street, park, rooftop, and collision-backed wall attachment with no visible relocation)
+- Controls/behavior: 25/25 (28 animation cases cover all implemented action families, including Shadow-matched alternating one-hand web strands and an actual dual-hand spring launch; four surface tests cover street, park, rooftop, and collision-backed wall attachment with no visible relocation)
 - Performance (estimate): 15/20 (shared pose function and bounded 96-particle morph; target-GPU frame rate not measured)
 - Stability: 14/15 (type-check, production build, action/morph/traversal, Ghost, and boss tests pass; legacy combat/Snare tests also fail on the exact baseline; full suite not run)
 - Device compatibility (estimate): 12/20 (physical Android and Windows tests remain untested)
-Evidence: `test/ghost-animation-sync.mjs` PASS at 844×390, including matching Shadow/Ghost spring state, two aimed hands, and the same anchor; `test/ghost-surface-morph.mjs` and `test/ghost-traversal.mjs` PASS at 844×390. Morph screenshot: `art/ghost/shot-after-ghost-morph-mobile-landscape.png`. Legacy `test/combat.mjs` and `test/snare.mjs` produce the same failures on baseline `e3439faa`; no `sim.ts` changes were made. Physical-device and target-GPU results are UNTESTED.
+Evidence: `test/ghost-animation-sync.mjs` PASS at 844×390, including one right-hand strand on odd swings, one left-hand strand on even swings, and matching Shadow/Ghost spring state with two aimed hands on the same anchor; `test/ghost-surface-morph.mjs` and `test/ghost-traversal.mjs` PASS at 844×390. Morph screenshot: `art/ghost/shot-after-ghost-morph-mobile-landscape.png`. Legacy `test/combat.mjs` and `test/snare.mjs` produce the same failures on baseline `e3439faa`; no `sim.ts` or Shadow rendering changes were made. Physical-device and target-GPU results are UNTESTED.
 
 ## Shadow-bodied giant boss revision — provisional 79/100
 - Visuals: 17/20 (the actual Shadow human mesh now drives a broader athletic white body with red eyes; the accepted before/after visual pair is phone-landscape)
@@ -38,13 +38,13 @@ Evidence: `test/boss.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1
 - Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
 Evidence: `test/ghost.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390; SwiftShader captures reviewed and supplied separately with the report. The Git-triggered Vercel production deployment from `main` is READY at https://web-swinger-3d-mirror.vercel.app/.
 
-## Shadow Snare focused iteration — provisional 82/100
-- Visuals: 17/20 (five-target web gather and staged spin/kick are legible in the supplied desktop and landscape-phone captures; no physical-device visual check)
-- Controls: 23/25 (existing special button and nine-second cooldown preserved; focused test confirms the regular melee chain index is unchanged)
+## Ghost swing parity and independent Shock Web — provisional 84/100
+- Visuals: 19/20 (ordinary swings show no pulse/ring effect; Shadow's own purple and Ghost's own hot-pink shocks match their lenses and bind five targets; desktop and landscape-phone behavior is browser-checked, with special-effect captures from phone-landscape only; physical devices untested)
+- Controls: 23/25 (alternating one-hand swings, two-hand spring launch, independent target groups/timing/cooldowns, the lightning/shock glyph with original label and 48px box, and the regular melee chain are covered; button placement, styling, and cooldown ring are unchanged)
 - Performance (estimate): 16/20 (bounded five-target simulation and line geometry; target-GPU frame rate not measured)
-- Stability: 14/15 (focused local Chromium/SwiftShader assertions pass on two landscape viewports; not a full regression suite)
+- Stability: 14/15 (focused Chromium/SwiftShader animation, traversal, Snare, boss, and boss-arena assertions pass; not a full regression suite)
 - Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 untested)
-Evidence: `node test/snare.mjs` PASS locally. Before/after screenshot files are supplied separately with the handoff; no production deployment status is claimed.
+Evidence: `test/ghost-animation-sync.mjs` PASS (25 shared-action cases, alternating right/left strands, dual-hand spring, and zero pulse/ring geometry on both heroes during swing); `test/snare.mjs` PASS at desktop 1365×768 and phone-landscape 844×390 (Shadow alone binds five targets, advances its purple pulse, deals one hit per target, and leaves Ghost's special inactive); `test/ghost-snare.mjs` PASS at phone-landscape (Ghost alone uses its own five-target list and hot-pink shock without changing Shadow's input or cooldown); and `test/ghost-traversal.mjs` PASS. Captures: `art/shadow-snare/after-{desktop,mobile-landscape}.png`, `art/shadow-snare/shock-mobile-landscape.png`, and Ghost's hot-pink pulse `art/shadow-snare/ghost-shock-mobile-landscape.png`.
 
 ## Ghost first-scene follow iteration — provisional 81/100
 - Visuals: 16/20 (original white-suited silhouette now sits beside Shadow in the first gameplay frame; captures are SwiftShader/WebGL2-verified, but physical-device appearance is untested)

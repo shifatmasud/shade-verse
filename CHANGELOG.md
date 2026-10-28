@@ -2,6 +2,23 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Ghost swing parity and independent eye-colored Shock Web
+### Changed
+- Ghost now uses the same alternating one-hand web strand as Shadow during ordinary swings (odd swing: right; even swing: left); both hands remain reserved for the spring-launch pose. Neither hero emits pulse or ring geometry during an ordinary swing.
+- Shadow and Ghost keep independent Shock Web instances, target lists, timing, and cooldowns. One hero's activation does not trigger or merge the other's attack. Shadow's special strands/pulse/rings are purple (`#a855f7`); Ghost's are hot pink (`#ff1a96`), matching their lenses. Each effect is visible only during its owner's special.
+- Changed only the special button glyph to a lightning/shock symbol; its 48px box, position, label, styling, cooldown ring, and every other HUD element are unchanged. Shadow's model, controls, ordinary melee, spring-launch behavior, landscape-only gameplay, and the 3× red-armored rooftop boss and beacon are preserved.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `PORT=4187 node test/ghost-animation-sync.mjs` (25 shared-action cases, alternating one-hand swings, dual-hand spring, and no swing pulses/rings), `PORT=4187 node test/snare.mjs` (Shadow-only five-target attack and purple shock at desktop and phone-landscape), and `PORT=4187 node test/ghost-snare.mjs` (Ghost-only attack and hot-pink shock at phone-landscape), plus focused traversal and boss checks.
+- Changes are scoped to private mirror `main`; the original-repository copy remains pinned at `9358d66` and is not included.
+
+## [Released] - Ghost one-hand swing strand parity
+### Changed
+- Ghost now emits a single web strand from the same alternating hand as Shadow during ordinary swings (odd swing: right; even swing: left). Both strands remain reserved for the two-hand spring-launch pose.
+- Shadow’s model, controls, animation/action source, spring launch, simulator, HUD, ordinary melee, landscape-only behavior, and the 3× red-armored rooftop boss remain unchanged.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, and `PORT=4173 node test/ghost-animation-sync.mjs` cover 25 shared-action cases, including alternating one-hand web strands, no swing shock rings/pulses, and the existing two-hand spring-launch regression. Focused Ghost traversal and boss checks are recorded below after the release verification run.
+- Changes are scoped to private mirror `main`; the original-repository copy remains pinned at `9358d66` and is not included.
+
 ## [Released] - Full-body red boss armor
 ### Changed
 - Added 50 original, low-poly red armor plates over the existing 17-bone Shadow boss from helmet and gorget through chest/back, shoulders, arms, gauntlets, pelvis, thighs, knees, greaves, and boots. The open-faced helmet leaves Shadow's original red lens pixels unobstructed; two tiny red eye highlights make them legible at phone size. The armor is bone-attached and follows the existing heavy stride/attack.
@@ -13,7 +30,7 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 
 ## [Released] - Ghost full-action animation parity and surface morph
 ### Changed
-- Ghost now renders Shadow's shared live clip and procedural action poses for traversal, spring-shot, glide/flight, swimming/dive, dodge/roll/cartwheel, all seven melee moves, plasma web, and every Shadow Snare phase. The two-hand spring shot is driven by the real jump-from-web simulator transition and aims both hands at Shadow's anchor.
+- Ghost renders Shadow's shared live clip and procedural action poses for traversal, spring-shot, glide/flight, swimming/dive, dodge/roll/cartwheel, all seven melee moves, and plasma web; each hero's Shock Web special is evaluated from its own simulator, targets, and timing. The two-hand spring shot is driven by the real jump-from-web simulator transition and aims both hands at Shadow's anchor.
 - On Shadow's ground landings and wall-crawl surface entries, Ghost finds a nearby point on the same valid support and morph-transports through the existing pink-white 96-particle effect; the fade hides relocation so it never visibly snaps. Long-distance catch-up remains intact.
 - Shadow's model, HUD, controls, ordinary melee simulation, landscape-only behavior, the 3× rooftop boss, red beacon, and prior Ghost features remain unchanged; no simulation/combat rules were edited.
 ### Verification
@@ -67,13 +84,6 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 ### Verification
 - `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, and `PORT=4174 node test/ghost.mjs` pass on the exact requested baseline. Focused assertions pass at desktop 1365×768 and phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader, covering independent simulation, autonomous melee, follow, unchanged Shadow input, and browser errors. The SwiftShader captures were reviewed separately and are supplied with the report. Physical devices and full regression suite remain untested.
 - Merged to `main`; the Git-triggered Vercel production deployment is READY at https://web-swinger-3d-mirror.vercel.app/.
-
-## [Unreleased] - Shadow Snare special ability
-### Changed
-- Shadow Snare now gathers up to five nearby eligible enemies, holds the group through an anticipation/spin, then lands a timed finisher with localized impact feedback. The ordinary melee chain, HUD, and controls remain unchanged.
-### Verification
-- Focused `test/snare.mjs` passed in local headless Chromium/SwiftShader at desktop-landscape and phone-landscape viewports; it checks target cap, gather/hold, impact, cooldown, normal melee-chain isolation, and browser errors. Physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 runs remain untested.
-- Before/after images are supplied separately with the handoff, not in this text-only commit. No Vercel settings or direct deployment operation was used; the main push is expected to use the existing Git integration, and live deployment status is not verified here.
 
 ---
 

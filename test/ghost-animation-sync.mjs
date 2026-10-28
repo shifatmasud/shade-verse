@@ -23,11 +23,11 @@ await page.evaluate(() => {
 async function waitFor(predicate, timeout = 2500) {
     const end = Date.now() + timeout;
     while (Date.now() < end) {
-        const value = await page.evaluate(() => ({ state: window.__ghostState, shadow: window.__shadowAnimation }));
+        const value = await page.evaluate(() => ({ state: window.__ghostState, shadow: window.__shadowAnimation, shadowFx: window.__shadowSnareFx }));
         if (predicate(value)) return value;
         await new Promise((resolve) => setTimeout(resolve, 40));
     }
-    return await page.evaluate(() => ({ state: window.__ghostState, shadow: window.__shadowAnimation }));
+    return await page.evaluate(() => ({ state: window.__ghostState, shadow: window.__shadowAnimation, shadowFx: window.__shadowSnareFx }));
 }
 
 const actions = [
@@ -36,6 +36,8 @@ const actions = [
     { name: 'wall-jump', expected: 'wall-jump', state: { ground: false, pos: [30, 60, 30], wallT: 0.24, vel: [2, 5, 0] }, clip: 'jump' },
     { name: 'rooftop-vault-landing', expected: 'rooftop-vault', state: { ground: true, land: 0.22, pos: [0, 31, 0], vel: [2, 0, 0], vaulted: 1 }, clip: '' },
     { name: 'dual-hand-spring-shot-launch', expected: 'web-spring-launch', triggerSpring: true, state: { ground: false, pos: [30, 60, 30], web: true, webT: 0.25, anchorReal: true, anchor: [34, 90, 32], rope: 50, swings: 1, vel: [0, 0, 0] }, clip: 'jump' },
+    { name: 'single-hand-web-swing-right', expected: 'web-swing', webHandMask: 2, state: { ground: false, pos: [30, 60, 30], web: true, webT: 0.25, anchorReal: true, anchor: [34, 80, 32], rope: 50, swings: 1, vel: [0, 0, 0] }, clip: '' },
+    { name: 'single-hand-web-swing-left', expected: 'web-swing', webHandMask: 1, state: { ground: false, pos: [30, 60, 30], web: true, webT: 0.25, anchorReal: true, anchor: [34, 80, 32], rope: 50, swings: 2, vel: [0, 0, 0] }, clip: '' },
     { name: 'auto-glide', expected: 'glide', state: { ground: false, pos: [30, 60, 30], glideOn: true, airT: 0.6, gB: 0.6, vel: [0, 1, 4] }, clip: '' },
     { name: 'powered-flight', expected: 'powered-flight', state: { ground: false, pos: [30, 60, 30], glideOn: true, airT: 0.6, flightPress: 0.2, jumpHeld: true, gB: 0.8, vel: [0, 3, 5] }, clip: '' },
     { name: 'glide-cancel', expected: 'glide-cancel', state: { ground: false, pos: [30, 60, 30], glideOn: false, airT: 0.2, flightTapCancel: true, glideBlocked: true, vel: [0, -2, 1] }, clip: 'jump' },
@@ -48,9 +50,6 @@ const actions = [
     { name: 'cartwheel-right', expected: 'dodge-flip', state: { ground: false, pos: [30, 60, 30], dodgeT: 0.42, flip: { t: 0.18, dur: 0.68, ax: 'x', dir: 1 }, vel: [2, 3, 0] }, clip: '' },
     ...Array.from({ length: 7 }, (_, i) => ({ name: `melee-move-${i + 1}`, expected: `move-${i + 1}`, state: { ground: i !== 5, pos: i === 5 ? [30, 60, 30] : [0, 31, 0], atkT: 0.25, mv: { id: i + 1, t: 0.18, e: null }, vel: [0, 0, 0] }, clip: '' })),
     { name: 'homing-plasma-web-shot', expected: 'plasma-web-shot', state: { ground: true, pos: [0, 31, 0], shotT: 0.25, shotTgt: [8, 35, 3], vel: [0, 0, 0] }, clip: 'idle' },
-    { name: 'shadow-snare-gather', expected: 'shadow-snare', state: { ground: true, snareT: 1.2, vel: [0, 0, 0] }, clip: '' },
-    { name: 'shadow-snare-hold', expected: 'shadow-snare', state: { ground: true, snareT: 0.75, vel: [0, 0, 0] }, clip: '' },
-    { name: 'shadow-snare-finisher', expected: 'shadow-snare', state: { ground: true, snareT: 0.2, vel: [0, 0, 0] }, clip: '' },
 ];
 
 const results = [];
@@ -78,7 +77,10 @@ for (const test of actions) {
             && (test.state.snareT === undefined || Math.abs(a.snareT - test.state.snareT) < 1e-5)
             && (test.state.shotT === undefined || Math.abs(a.shotT - test.state.shotT) < 1e-5)
             && (test.state.spring === undefined || Math.abs(a.spring - test.state.spring) < 1e-5)
-            && (!test.triggerSpring || a.spring > 0 && a.aimedHands === 2 && JSON.stringify(a.aimTarget) === JSON.stringify(test.state.anchor));
+            && (!test.triggerSpring || a.spring > 0 && a.aimedHands === 2 && JSON.stringify(a.aimTarget) === JSON.stringify(test.state.anchor))
+            && (test.webHandMask === undefined || v.state?.webHandMask === test.webHandMask
+                && v.state?.pulseSegments === 0 && v.state?.ringSegments === 0 && v.state?.snareColor === null
+                && v.shadowFx?.pulseSegments === 0 && v.shadowFx?.ringSegments === 0 && v.shadowFx?.snareColor === null);
     });
     const ghost = result.state?.animation, shadow = result.shadow;
     const clipMatch = (!test.clip || ghost?.key === test.clip && shadow?.key === test.clip)
@@ -93,8 +95,9 @@ for (const test of actions) {
         : test.state.flip ? JSON.stringify(ghost?.flip) === JSON.stringify(shadow?.flip) : true;
     const aimMatch = !test.triggerSpring || ghost?.aimedHands === 2 && shadow?.aimedHands === 2 && JSON.stringify(ghost?.aimTarget) === JSON.stringify(test.state.anchor) && JSON.stringify(shadow?.aimTarget) === JSON.stringify(test.state.anchor);
     const springMatch = !test.triggerSpring || ghost?.spring > 0 && shadow?.spring > 0 && ghost?.spring === shadow?.spring;
-    const ok = ghost?.source === 'shadow' && actionMatch && clipMatch && moveMatch && timeMatch && aimMatch && springMatch;
-    results.push({ name: test.name, ok, source: ghost?.source, action: ghost?.action, shadowAction: shadow?.action, clip: ghost?.key, shadowClip: shadow?.key, clipKey: ghost?.clipKey, shadowClipKey: shadow?.clipKey, frame: ghost?.frame, shadowFrame: shadow?.frame, weight: ghost?.weight, shadowWeight: shadow?.weight, poseWeight: ghost?.poseWeight, shadowPoseWeight: shadow?.poseWeight, moveId: ghost?.moveId, moveT: ghost?.moveT, flip: ghost?.flip, snareT: ghost?.snareT, shotT: ghost?.shotT, spring: ghost?.spring, aimedHands: ghost?.aimedHands, aimTarget: ghost?.aimTarget, shadowAimedHands: shadow?.aimedHands, shadowAimTarget: shadow?.aimTarget });
+    const handMatch = test.webHandMask === undefined || result.state?.webHandMask === test.webHandMask;
+    const ok = ghost?.source === 'shadow' && actionMatch && clipMatch && moveMatch && timeMatch && aimMatch && springMatch && handMatch;
+    results.push({ name: test.name, ok, source: ghost?.source, action: ghost?.action, shadowAction: shadow?.action, clip: ghost?.key, shadowClip: shadow?.key, clipKey: ghost?.clipKey, shadowClipKey: shadow?.clipKey, frame: ghost?.frame, shadowFrame: shadow?.frame, weight: ghost?.weight, shadowWeight: shadow?.weight, poseWeight: ghost?.poseWeight, shadowPoseWeight: shadow?.poseWeight, moveId: ghost?.moveId, moveT: ghost?.moveT, flip: ghost?.flip, snareT: ghost?.snareT, shotT: ghost?.shotT, spring: ghost?.spring, aimedHands: ghost?.aimedHands, aimTarget: ghost?.aimTarget, shadowAimedHands: shadow?.aimedHands, shadowAimTarget: shadow?.aimTarget, webHandMask: result.state?.webHandMask, ghostPulses: result.state?.pulseSegments, ghostRings: result.state?.ringSegments, shadowPulses: result.shadowFx?.pulseSegments, shadowRings: result.shadowFx?.ringSegments });
     if (!ok) break;
     if (result.state.transport !== 'idle') await waitFor((v) => v.state?.transport === 'idle', 1800);
 }

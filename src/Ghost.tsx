@@ -4,11 +4,12 @@ import * as THREE from 'three';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
-import { animateHeroBones, buildRig, type CombatPoseState, type HeroClipState } from './Scene';
+import { animateHeroBones, buildRig, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, writeSnareRing, type CombatPoseState, type HeroClipState } from './Scene';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const HERO_SCALE = 1.5;
+const GHOST_SNARE_COLOR = '#ff1a96';
 const BODY_OFF = [0.8, 0.3, 1.05, 1.7];
 const enemyBodyOffset = (e: Sim['enemies'][number]) => e.boss ? BOSS_BODY_OFFSET : BODY_OFF[e.kind ?? 0];
 const SILENT: Events = {
@@ -160,8 +161,6 @@ function animateHuman(actor: Sim, rig: ReturnType<typeof buildRig>, dt: number, 
     root.position.set(actor.pos[0], actor.pos[1] - 1, actor.pos[2]);
     root.rotation.set(0, driver.ang, 0);
     root.scale.setScalar(HERO_SCALE);
-    const sn = sa.snareT || 0, spin = sn > 0 && sn < SNARE.SPIN_START ? Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))) : 0;
-    root.rotation.y += spin * Math.PI * 2;
     const wall = !!driver.wall, swim = driver.swim;
     if (wall) { root.position.x += Math.sin(driver.ang) * 0.2; root.position.z += Math.cos(driver.ang) * 0.2; }
     if (swim) { root.position.y = actor.pos[1] - 1.7 + (sa.swW || 0); root.position.x -= Math.sin(driver.ang) * (driver.dive ? 0.6 : 1.3); root.position.z -= Math.cos(driver.ang) * (driver.dive ? 0.6 : 1.3); }
@@ -230,9 +229,13 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     const actorRef = useRef<Sim | null>(null);
     const controls = useMemo(makeControls, []);
     const lineGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(72 * 3), 3)); return g; }, []);
+    const shockGeo = useMemo(() => { const cap = SNARE.MAX_TARGETS * (2 * SNARE_PULSE_SEGMENTS + SNARE_RING_SEGMENTS), g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap * 2 * 3), 3)); return g; }, []);
     const plasmaGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 3), 3)); g.setDrawRange(0, 0); return g; }, []);
     const morphGeo = useMemo(makeMorphGeometry, []);
     const lineRef = useRef<THREE.LineSegments>(null!);
+    const shockRef = useRef<THREE.LineSegments>(null!);
+    const lineMatRef = useRef<THREE.LineBasicMaterial>(null!);
+    const shockMatRef = useRef<THREE.LineBasicMaterial>(null!);
     const plasmaRef = useRef<THREE.Points>(null!);
     const morphRef = useRef<THREE.Points>(null!);
     const morphMatRef = useRef<THREE.PointsMaterial>(null!);
@@ -249,6 +252,8 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             st.attackAt = st.shotAt = st.jumpAt = st.swingAt = st.specialAt = st.dodgeAt = 0;
             st.anim.key = ''; st.anim.t = 0; st.anim.w = 0; st.pose.w = 0; st.pose.c.fill(0); st.pose.t.fill(0);
             if (lineRef.current) lineRef.current.visible = false;
+            if (shockRef.current) shockRef.current.visible = false;
+            shockGeo.setDrawRange(0, 0);
             if (plasmaRef.current) plasmaRef.current.visible = false;
             if (morphRef.current) morphRef.current.visible = false;
             morphGeo.setDrawRange(0, 0);
@@ -294,7 +299,8 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         actor.safe[0] = tx; actor.safe[1] = ty; actor.safe[2] = tz;
         setCompanionSim(actor);
         resetControls(controls);
-        const animationSource = hasLiveShadowAction(sim) || sim.t < st.vaultUntil ? sim : actor;
+        const independentSnare = (sim as any).snareT > 0 || (actor as any).snareT > 0;
+        const animationSource = !independentSnare && (hasLiveShadowAction(sim) || sim.t < st.vaultUntil) ? sim : actor;
         const toLeader = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[1] - sim.pos[1], actor.pos[2] - sim.pos[2]);
         const targetDistance = Math.hypot(tx - actor.pos[0], ty - actor.pos[1], tz - actor.pos[2]);
         if (!st.ready) {
@@ -332,6 +338,8 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             root.scale.setScalar(HERO_SCALE * (0.82 + 0.18 * (st.morph.phase === 'out' ? 1 - eased : eased)));
             if (morphRef.current && morphMatRef.current) { morphRef.current.visible = true; updateMorphParticles(morphGeo, morphMatRef.current, st.morph); }
             if (lineRef.current) lineRef.current.visible = false;
+            if (shockRef.current) shockRef.current.visible = false;
+            shockGeo.setDrawRange(0, 0);
             if (plasmaRef.current) plasmaRef.current.visible = false;
             if (DBG) (window as any).__ghostState = { visible: true, mode: sim.mode, position: [...actor.pos], target: [tx, ty, tz], action: 'transport', leaderTraversal: leaderWall ? 'wall' : sim.web ? 'swing' : leaderAir ? 'glide' : 'ground', ghostTraversal: 'transport', transport: st.morph.phase, morphReason: st.morph.reason, morphT: st.morph.t, morphFrom: [...st.morph.from], morphTo: [...st.morph.to], bodyOpacity, particles: MORPH_PARTICLES, grounded: actor.ground, wallB: actor.wallB, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1, targetSupportY: leaderWall ? null : floorAt(st.morph.to[0], st.morph.to[2]), leaderSurfaceY: leaderWall ? null : sim.pos[1] - 1, animation };
             return;
@@ -380,12 +388,11 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         }
         if (actor.swim && sim.swim && actor.dive !== sim.dive && sim.t >= st.jumpAt) { controls.jumpQ = true; st.jumpAt = sim.t + 1.0; }
 
-        if (fighting && enemy) {
+        if (fighting && enemy && !((actor as any).snareT > 0) && !(DBG && (window as any).__ghostDisableCombat)) {
             const lifted = ((enemy as any).ly || 0) > 1.1 || ((enemy as any).vy || 0) > 1.2;
-            if (choice.count >= 2 && (actor as any).snareCd <= 0 && sim.t >= st.specialAt) {
-                controls.specialQ = true; st.specialAt = sim.t + 9.2;
-            }
-            if (lifted && enemyD < 22 && sim.t >= st.attackAt) {
+            const useSpecial = choice.count >= 2 && (actor as any).snareCd <= 0 && sim.t >= st.specialAt;
+            if (useSpecial) { controls.specialQ = true; st.specialAt = sim.t + 9.2; }
+            else if (lifted && enemyD < 22 && sim.t >= st.attackAt) {
                 controls.attackQ = true; controls.shotQ = true; st.attackAt = sim.t + 0.48;
             } else if (enemyD < 16 && sim.t >= st.attackAt) {
                 controls.attackQ = true; controls.meleeQ = true; st.attackAt = sim.t + 0.48;
@@ -394,6 +401,11 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             }
         }
 
+        if (DBG && (window as any).__ghostForceSpecial) {
+            controls.attackQ = controls.shotQ = controls.meleeQ = false;
+            controls.specialQ = true;
+            (window as any).__ghostForceSpecial = false;
+        }
         for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
         if (leaderAir) actor.vel[1] += Math.max(-8, Math.min(8, (ty - actor.pos[1]) * 0.32 - actor.vel[1] * 0.65)) * dt;
         const animation = animateHuman(actor, model, dt, st, animationSource);
@@ -405,24 +417,40 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         plasmaGeo.setDrawRange(0, bolts.length); pa.needsUpdate = true;
         if (plasmaRef.current) plasmaRef.current.visible = bolts.length > 0;
 
-        const la = lineGeo.attributes.position as THREE.BufferAttribute; let n = 0;
+        const la = lineGeo.attributes.position as THREE.BufferAttribute, xa = shockGeo.attributes.position as THREE.BufferAttribute; let n = 0, webHandMask = 0, pulseSegments = 0, ringSegments = 0, snareWebLines = 0, pulseProgress = 0;
         const webSource = animationSource, webState = webSource as any;
         if (webSource.web || webSource.spring > 0 || webState.snareT > 0) {
             model.root.updateMatrixWorld(true);
             model.b.handL.getWorldPosition(_handL); model.b.handR.getWorldPosition(_handR);
             if (webSource.web || webSource.spring > 0) {
-                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
-                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
+                const bothHands = webSource.spring > 0, swingSide = webSource.swings % 2;
+                if (bothHands || swingSide === 0) {
+                    la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
+                    webHandMask |= 1;
+                }
+                if (bothHands || swingSide === 1) {
+                    la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
+                    webHandMask |= 2;
+                }
             }
             const targets = (webState.snareList || []) as Sim['enemies'];
+            const sn = webState.snareT || 0;
             for (let i = 0; i < Math.min(5, targets.length); i++) {
                 const e = targets[i]; if (e.down > 0) continue;
-                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e.x, e.y + enemyBodyOffset(e), e.z); n++;
-                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e.x, e.y + enemyBodyOffset(e), e.z); n++;
+                const ty = e.y + ((e as any).ly || 0) + enemyBodyOffset(e);
+                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e.x, ty, e.z); n++;
+                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e.x, ty, e.z); n++; snareWebLines += 2;
+                if (sn > SNARE.IMPACT && sn <= SNARE.SHOCK_START) { const p = 1 - (sn - SNARE.IMPACT) / (SNARE.SHOCK_START - SNARE.IMPACT); pulseProgress = p; pulseSegments = writeSnarePulse(xa, pulseSegments, _handL.x, _handL.y, _handL.z, e.x, ty, e.z, p, i * 3.1); pulseSegments = writeSnarePulse(xa, pulseSegments, _handR.x, _handR.y, _handR.z, e.x, ty, e.z, p, i * 3.1 + 1.7); }
+                if (sn > 0 && sn <= SNARE.IMPACT) { const p = 1 - sn / SNARE.IMPACT; ringSegments = writeSnareRing(xa, ringSegments, e.x, ty, e.z, 0.35 + p * 1.75); }
             }
         }
         lineGeo.setDrawRange(0, n * 2); la.needsUpdate = true;
         if (lineRef.current) lineRef.current.visible = n > 0;
+        shockGeo.setDrawRange(0, (pulseSegments + ringSegments) * 2); xa.needsUpdate = true;
+        if (shockRef.current) shockRef.current.visible = pulseSegments + ringSegments > 0;
+        const ownSnare = (actor as any).snareT > 0;
+        if (lineMatRef.current) lineMatRef.current.color.set(ownSnare ? GHOST_SNARE_COLOR : '#d8f5ff');
+        if (shockMatRef.current) shockMatRef.current.color.set(ownSnare ? GHOST_SNARE_COLOR : '#ffffff');
         if (DBG) (window as any).__ghostState = {
             visible: true, mode: sim.mode, position: [...actor.pos], target: [tx, ty, tz], speed: Math.hypot(actor.vel[0], actor.vel[1], actor.vel[2]),
             leaderDistance: Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[1] - sim.pos[1], actor.pos[2] - sim.pos[2]),
@@ -432,7 +460,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             morphReason: st.morph.reason, surfaceTransition, landed, wallEntered, leaderGround: !!sim.ground, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1,
             leaderTraversal: leaderWall ? 'wall' : sim.web ? 'swing' : leaderAir ? 'glide' : sim.swim ? 'swim' : 'ground',
             ghostTraversal: actor.wall ? 'wall' : actor.web ? 'swing' : actor.glideOn ? 'glide' : actor.swim ? 'swim' : 'follow',
-            transport: 'idle', web: actor.web, combo: actor.combo, kos: actor.kos,
+            transport: 'idle', web: actor.web, webHandMask, snareWebLines, pulseSegments, ringSegments, pulseProgress, snareColor: ownSnare ? GHOST_SNARE_COLOR : null, strandColor: lineMatRef.current?.color.getHexString(), shockColor: shockMatRef.current?.color.getHexString(), gripHands: animation.gripHands, snarePhase: animation.snarePhase, combo: actor.combo, kos: actor.kos,
         };
         if (DBG) (window as any).__ghostSim = actor;
     });
@@ -440,7 +468,10 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     return <>
         <primitive object={model.root} dispose={null} />
         <lineSegments ref={lineRef} geometry={lineGeo} frustumCulled={false} dispose={null}>
-            <lineBasicMaterial color="#d8f5ff" transparent opacity={0.92} depthTest={false} depthWrite={false} />
+            <lineBasicMaterial ref={lineMatRef} color="#d8f5ff" transparent opacity={0.92} depthTest={false} depthWrite={false} />
+        </lineSegments>
+        <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false} dispose={null}>
+            <lineBasicMaterial ref={shockMatRef} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} />
         </lineSegments>
         <points ref={plasmaRef} geometry={plasmaGeo} frustumCulled={false} dispose={null}>
             <pointsMaterial color="#c9f5ff" size={0.52} sizeAttenuation transparent opacity={0.95} depthWrite={false} />
