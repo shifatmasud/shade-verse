@@ -20,6 +20,13 @@ type BossRig = {
     muscleGeometry: THREE.SphereGeometry;
     muscleMaterial: THREE.MeshLambertMaterial;
     muscleOutline: THREE.MeshLambertMaterial;
+    armorGeometry: THREE.DodecahedronGeometry;
+    armorSphereGeometry: THREE.SphereGeometry;
+    armorBandGeometry: THREE.CylinderGeometry;
+    armorMaterial: THREE.MeshLambertMaterial;
+    armorTrimMaterial: THREE.MeshLambertMaterial;
+    eyeMaterial: THREE.MeshBasicMaterial;
+    armorMeshes: THREE.Mesh[];
 };
 
 function smoothstep(a: number, b: number, x: number) {
@@ -56,7 +63,7 @@ function muscularShadowGeometry(data: any) {
     return geometry;
 }
 
-function whiteRedShadowMaterial() {
+function redArmorUnderlayMaterial() {
     const material = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#101010', emissiveIntensity: 0.08 });
     new THREE.TextureLoader().load(baseTexUrl, (source) => {
         const image = source.image as HTMLImageElement;
@@ -75,8 +82,8 @@ function whiteRedShadowMaterial() {
                 const shade = 0.84 + 0.16 * (luminance / 255);
                 data[i] = 255 * shade; data[i + 1] = 20 * shade; data[i + 2] = 32 * shade;
             } else {
-                const shade = 0.78 + 0.22 * (luminance / 255);
-                data[i] = 250 * shade; data[i + 1] = 252 * shade; data[i + 2] = 255 * shade;
+                const shade = 0.72 + 0.28 * (luminance / 255);
+                data[i] = 106 * shade; data[i + 1] = 16 * shade; data[i + 2] = 29 * shade;
             }
         }
         ctx.putImageData(pixels, 0, 0);
@@ -98,7 +105,7 @@ function addMuscle(parent: THREE.Bone, name: string, position: [number, number, 
 function buildBossRig(): BossRig {
     const data = SOURCE_HERO;
     const geometry = muscularShadowGeometry(data);
-    const skin = whiteRedShadowMaterial();
+    const skin = redArmorUnderlayMaterial();
     const body = new THREE.SkinnedMesh(geometry, skin);
     body.name = 'giant-boss-shadow-body'; body.frustumCulled = false;
     body.userData.shadowBody = true;
@@ -114,7 +121,7 @@ function buildBossRig(): BossRig {
     body.add(bones[0]);
 
     const muscleGeometry = new THREE.SphereGeometry(1, 14, 10);
-    const muscleMaterial = new THREE.MeshLambertMaterial({ color: '#f8f9fb', emissive: '#101010', emissiveIntensity: 0.06 });
+    const muscleMaterial = new THREE.MeshLambertMaterial({ color: '#69121f', emissive: '#160208', emissiveIntensity: 0.08 });
     const outline = new THREE.MeshBasicMaterial({ color: '#0a0d1a', side: THREE.BackSide });
     outline.onBeforeCompile = (shader) => {
         shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', 'transformed += normalize(objectNormal) * 0.014;\n#include <project_vertex>');
@@ -125,6 +132,21 @@ function buildBossRig(): BossRig {
         shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', 'transformed += normalize(objectNormal) * 0.014;\n#include <project_vertex>');
     };
     muscleOutline.customProgramCacheKey = () => 'shadow-boss-muscle-outline-v1';
+
+    const armorGeometry = new THREE.DodecahedronGeometry(1, 0);
+    const armorSphereGeometry = new THREE.SphereGeometry(1, 12, 8);
+    const armorBandGeometry = new THREE.CylinderGeometry(1, 0.82, 1, 10, 1);
+    const armorMaterial = new THREE.MeshLambertMaterial({ color: '#c92338', emissive: '#27030a', emissiveIntensity: 0.12 });
+    const armorTrimMaterial = new THREE.MeshLambertMaterial({ color: '#74111f', emissive: '#190207', emissiveIntensity: 0.08 });
+    const eyeMaterial = new THREE.MeshBasicMaterial({ color: '#ff1d32' });
+    const armorMeshes: THREE.Mesh[] = [];
+    const plate = (parent: THREE.Bone, part: string, position: [number, number, number], size: [number, number, number], material = armorMaterial, shape: THREE.BufferGeometry = armorGeometry) => {
+        const mesh = new THREE.Mesh(shape, material);
+        mesh.name = `boss-armor-${part}-${armorMeshes.length}`;
+        mesh.position.set(...position); mesh.scale.set(...size);
+        mesh.userData.bossArmor = true; mesh.userData.armorPart = part;
+        parent.add(mesh); armorMeshes.push(mesh); return mesh;
+    };
 
     for (const side of [-1, 1]) {
         const label = side < 0 ? 'left' : 'right';
@@ -137,14 +159,69 @@ function buildBossRig(): BossRig {
         addMuscle(byName[side < 0 ? 'thighL' : 'thighR'], `boss-quad-${label}`, [side * 0.045, -0.18, 0.035], [0.082, 0.17, 0.095], muscleGeometry, muscleMaterial, muscleOutline);
     }
 
+    // The open-faced helmet keeps Shadow's original red lens pixels unobstructed.
+    plate(byName.head, 'helmet', [0, 0.12, 0.035], [0.125, 0.065, 0.14], armorTrimMaterial, armorSphereGeometry);
+    for (const side of [-1, 1]) {
+        plate(byName.head, 'helmet', [side * 0.095, 0.015, 0.12], [0.04, 0.12, 0.15], armorMaterial, armorSphereGeometry);
+        plate(byName.head, 'helmet', [side * 0.075, -0.105, 0.22], [0.05, 0.05, 0.10], armorTrimMaterial, armorSphereGeometry);
+    }
+    plate(byName.head, 'helmet', [0, 0.095, 0.31], [0.093, 0.025, 0.045], armorMaterial);
+    plate(byName.head, 'helmet', [0, -0.13, 0.23], [0.085, 0.04, 0.09], armorMaterial);
+    for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(armorSphereGeometry, eyeMaterial);
+        eye.name = `boss-original-red-eye-${side < 0 ? 'left' : 'right'}`;
+        eye.position.set(side * 0.032, 0.044, 0.335); eye.scale.set(0.019, 0.012, 0.006);
+        eye.userData.bossEyeLens = true; byName.head.add(eye);
+    }
+    plate(byName.neck, 'neck', [0, 0.035, 0], [0.135, 0.10, 0.135], armorTrimMaterial, armorBandGeometry);
+
+    plate(byName.chest, 'chest', [0, 0.045, 0.13], [0.36, 0.27, 0.13]);
+    for (const side of [-1, 1]) plate(byName.chest, 'chest', [side * 0.15, 0.075, 0.205], [0.18, 0.13, 0.075], armorMaterial, armorSphereGeometry);
+    plate(byName.chest, 'chest', [0, -0.035, 0.232], [0.075, 0.20, 0.055], armorTrimMaterial);
+    plate(byName.chest, 'back', [0, 0.045, -0.135], [0.31, 0.25, 0.105], armorTrimMaterial, armorSphereGeometry);
+    plate(byName.spine, 'abdomen', [0, 0.035, 0.145], [0.23, 0.16, 0.085]);
+    plate(byName.spine, 'abdomen', [0, -0.095, 0.14], [0.205, 0.095, 0.08], armorTrimMaterial);
+
+    plate(byName.hips, 'pelvis', [0, -0.045, 0.045], [0.27, 0.16, 0.17], armorTrimMaterial, armorSphereGeometry);
+    plate(byName.hips, 'pelvis', [0, -0.04, 0.15], [0.205, 0.12, 0.085]);
+    plate(byName.hips, 'pelvis', [0, -0.14, 0], [0.26, 0.075, 0.24], armorTrimMaterial, armorBandGeometry);
+    for (const side of [-1, 1]) plate(byName.hips, 'pelvis', [side * 0.205, -0.025, 0.035], [0.11, 0.15, 0.135]);
+
+    for (const side of [-1, 1]) {
+        const upper = byName[side < 0 ? 'uarmL' : 'uarmR'];
+        const fore = byName[side < 0 ? 'farmL' : 'farmR'];
+        const hand = byName[side < 0 ? 'handL' : 'handR'];
+        plate(upper, 'shoulder', [0, 0.01, 0.005], [0.205, 0.175, 0.19]);
+        plate(upper, 'upper-arm', [0, -0.155, 0], [0.125, 0.16, 0.125], armorTrimMaterial, armorBandGeometry);
+        plate(upper, 'upper-arm', [0, -0.145, 0.082], [0.115, 0.16, 0.072]);
+        plate(upper, 'elbow', [0, -0.305, 0.025], [0.13, 0.085, 0.125], armorMaterial, armorSphereGeometry);
+        plate(fore, 'forearm', [0, -0.14, 0], [0.108, 0.15, 0.108], armorTrimMaterial, armorBandGeometry);
+        plate(fore, 'forearm', [0, -0.135, 0.072], [0.11, 0.16, 0.075]);
+        plate(hand, 'gauntlet', [0, -0.005, 0.045], [0.11, 0.09, 0.13]);
+        plate(hand, 'gauntlet', [0, 0.015, 0.105], [0.078, 0.055, 0.055], armorTrimMaterial);
+    }
+
+    for (const side of [-1, 1]) {
+        const thigh = byName[side < 0 ? 'thighL' : 'thighR'];
+        const shin = byName[side < 0 ? 'shinL' : 'shinR'];
+        const foot = byName[side < 0 ? 'footL' : 'footR'];
+        plate(thigh, 'thigh', [0, -0.22, 0], [0.145, 0.23, 0.14], armorTrimMaterial, armorBandGeometry);
+        plate(thigh, 'thigh', [0, -0.205, 0.075], [0.13, 0.205, 0.078]);
+        plate(shin, 'knee', [0, 0.005, 0.03], [0.145, 0.105, 0.13], armorMaterial, armorSphereGeometry);
+        plate(shin, 'shin', [0, -0.22, 0], [0.12, 0.23, 0.12], armorTrimMaterial, armorBandGeometry);
+        plate(shin, 'shin', [0, -0.215, 0.075], [0.115, 0.22, 0.078]);
+        plate(foot, 'boot', [0, -0.02, 0.07], [0.145, 0.095, 0.205]);
+        plate(foot, 'boot', [0, -0.055, 0.135], [0.12, 0.048, 0.10], armorTrimMaterial);
+    }
+
     const root = new THREE.Group(); root.add(body); root.updateMatrixWorld(true);
     body.bind(new THREE.Skeleton(bones));
     const ink = new THREE.SkinnedMesh(geometry, outline);
     ink.name = 'giant-boss-shadow-outline'; ink.frustumCulled = false;
     root.add(ink); ink.bind(body.skeleton, body.bindMatrix);
 
-    root.userData = { giantBoss: true, bodyModel: 'Shadow hero mesh', scaleFactor: BOSS_SCALE_FACTOR, shadowRootScale: SHADOW_ROOT_SCALE, bodyOffset: BOSS_BODY_OFFSET };
-    return { root, body, bones, byName, geometry, skin, outline, muscleGeometry, muscleMaterial, muscleOutline };
+    root.userData = { giantBoss: true, bodyModel: 'Shadow hero mesh', scaleFactor: BOSS_SCALE_FACTOR, shadowRootScale: SHADOW_ROOT_SCALE, bodyOffset: BOSS_BODY_OFFSET, armorMeshCount: armorMeshes.length, armorCoverage: [...new Set(armorMeshes.map((mesh) => mesh.userData.armorPart))] };
+    return { root, body, bones, byName, geometry, skin, outline, muscleGeometry, muscleMaterial, muscleOutline, armorGeometry, armorSphereGeometry, armorBandGeometry, armorMaterial, armorTrimMaterial, eyeMaterial, armorMeshes };
 }
 
 export function GiantBoss({ sim }: { sim: Sim }) {
@@ -155,6 +232,7 @@ export function GiantBoss({ sim }: { sim: Sim }) {
     useEffect(() => () => {
         rig.geometry.dispose(); rig.skin.map?.dispose(); rig.skin.dispose(); rig.outline.dispose();
         rig.muscleGeometry.dispose(); rig.muscleMaterial.dispose(); rig.muscleOutline.dispose();
+        rig.armorGeometry.dispose(); rig.armorSphereGeometry.dispose(); rig.armorBandGeometry.dispose(); rig.armorMaterial.dispose(); rig.armorTrimMaterial.dispose(); rig.eyeMaterial.dispose();
     }, [rig]);
 
     useFrame((_, rawDt) => {

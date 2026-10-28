@@ -111,3 +111,11 @@ UPDATE 5:37: wall crawl/run, wall jump, wall vault, higher jump (apex 4.6 m) imp
 Wall crawling, wall walking/running, higher jump, running, swimming (ocean, split view, underwater).
 Tests required before any claim: wall attach/detach, wall jump, water entry/exit, transitions ground<->wall<->swing.
 Current jump apex 2.4 m (to raise). Run PASS. Wall and swim: none.
+
+## Full-body red boss armor — provisional 84/100
+- Visuals: 18/20 (the phone-landscape capture shows the 3× Shadow-bodied boss in bulky red armor from helmet to boots, with two clear red eyes through the open face)
+- Controls/behavior: 25/25 (the existing 3× body, fixed roof/beacon, boss strike, ordinary-melee exclusion, and Snare damage remain covered by focused regressions)
+- Performance (estimate): 15/20 (50 bone-attached armor meshes are limited to the single boss; SwiftShader is not a target-device FPS result)
+- Stability: 14/15 (type-check, production build, boss, arena, and Ghost animation/morph regressions pass; full suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows remain untested)
+Evidence: `test/boss.mjs` PASS at desktop 1365×768 and phone-landscape 844×390; verifies all 50 red armor meshes are attached to the existing bones, required helmet-to-boot coverage, the open eye aperture, original red lens texture and two red highlights, exact 3× scale, and unchanged combat checks. `test/boss-arena.mjs` plus Ghost animation, morph, and traversal tests PASS. Captures: `art/boss/shot-after-red-armor-mobile-landscape.png` and `art/boss/shot-after-boss-arena-mobile-landscape.png`; physical-device and target-GPU frame-rate results are UNTESTED.

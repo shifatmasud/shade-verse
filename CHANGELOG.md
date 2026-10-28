@@ -2,6 +2,15 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Full-body red boss armor
+### Changed
+- Added 50 original, low-poly red armor plates over the existing 17-bone Shadow boss from helmet and gorget through chest/back, shoulders, arms, gauntlets, pelvis, thighs, knees, greaves, and boots. The open-faced helmet leaves Shadow's original red lens pixels unobstructed; two tiny red eye highlights make them legible at phone size. The armor is bone-attached and follows the existing heavy stride/attack.
+- Kept the boss's Shadow skinned human body, exact 3× root scale, hitbox/combat rules, fixed rooftop arena and red beacon, Ghost animation parity/morphs, and the player's model/HUD/controls/melee/landscape behavior unchanged. No simulator, player, or Ghost logic was modified; the armor geometry/materials are original and use no external assets.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, `PORT=4173 node test/boss.mjs` (17-bone body, 3× scale, 50 red bone-attached armor meshes, full-body coverage, eye aperture, boss strike, ordinary-melee exclusion, and Snare damage at desktop 1365×768 and phone-landscape 844×390), `PORT=4173 node test/boss-arena.mjs`, and the Ghost animation/morph/traversal regressions pass in Chromium WebGL2/ANGLE SwiftShader.
+- Phone-landscape armor evidence: `art/boss/shot-after-red-armor-mobile-landscape.png` (844×390), paired against the earlier white-body view `art/boss/shot-after-shadow-body-boss-mobile-landscape.png`. Physical Android/Windows and target-GPU frame rates remain untested.
+- Changes are scoped to the private mirror's `main`; no push was made to the original repository.
+
 ## [Released] - Ghost full-action animation parity and surface morph
 ### Changed
 - Ghost now renders Shadow's shared live clip and procedural action poses for traversal, spring-shot, glide/flight, swimming/dive, dodge/roll/cartwheel, all seven melee moves, plasma web, and every Shadow Snare phase. The two-hand spring shot is driven by the real jump-from-web simulator transition and aims both hands at Shadow's anchor.
