@@ -2,7 +2,7 @@
 
 Total requests extracted from project history: 69.
 
-## Group 1: Implemented in Export & Verified in Repository (64 items)
+## Group 1: Implemented in Export & Verified in Repository (65 items)
 1. Browser 3D game engine (React 18, Three.js, R3F, Framer Motion, GSAP, WebGL2, Vite)
 2. Version control via GitHub (shifatmasud/web-swinger-3d)
 3. Deployment on Vercel (https://web-swinger-3d-mirror.vercel.app/)
@@ -67,13 +67,13 @@ Total requests extracted from project history: 69.
 62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (gap closing strikes, 3-hit combo cadence, hit-stop impact weighting)
 63. Second hero companion character: Ghost (feminine white-suited companion, hot-pink lenses, autonomous follow/traversal/combat from the first frame; now mirrors every applicable live Shadow clip/action pose—including melee, Snare, plasma, and dual-hand spring-shot—and morph-transports onto each ground landing or wall-crawl surface with the pink-white particle effect) - implemented in the private mirror's `main`; 26-action, surface-transition, and traversal phone-landscape tests pass; physical devices remain untested
 64. Giant boss (Shadow's existing human body at 3× scale, now covered in bulky bone-attached red armor with visible red eyes; ordinary melee locked, Shadow Snare allowed; fixed rooftop arena and red beacon preserved) - implemented in the private mirror's `main` with Git-triggered deployment; physical devices remain untested
+69. 3D fire KO effect (procedural world-space emissive burst on enemy-down; fixed pooled instances and focused 844×390 regression) - implemented in the private mirror's `main`; physical devices remain untested
 
-## Group 2: Still Queued / In Progress (5 items)
+## Group 2: Still Queued / In Progress (4 items)
 65. Detailed flying cars with collision pass and web anchor towing - queued
 66. Water surfing (hold swing on water surface, wake spray, web-tow surfing) - queued
 67. Building destruction (three-bvh-csg mesh subtraction, breakable sections, debris) - queued
 68. Armored military vehicles (tanks and hunter helicopters as rare heavy threats) - queued
-69. 3D fire KO effect (separate follow-up iteration; explicitly remains queued)
 
 ## Group 3: Not Verifiable Now on Physical Hardware (2 items)
 - Physical device 60fps frame rates on Android 10 (Chrome 155) and Windows 10 (Edge 155 / Intel UHD 600) (untested on physical hardware; estimated via GPU feature flags and code analysis)

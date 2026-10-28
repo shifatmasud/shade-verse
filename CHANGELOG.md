@@ -2,6 +2,18 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Procedural 3D enemy fire KO
+### Added
+- Added a renderer-only pooled world-space burst on the existing enemy-down transition: an emissive low-poly core and tapered fire tongues, a short expanding ground ring, and additive embers. Four fixed-capacity instanced batches support up to six overlapping KOs; the VFX is tagged for the existing selective-bloom layer.
+### Preserved
+- No simulation, damage, hit cadence, KO/score logic, player controls/position, HUD, or environment code changed. The effect reads the existing down state and expires after 1.05 seconds.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `git diff --check`, and `node test/death-vfx.mjs http://localhost:4174/ art/death-vfx/shot-after-fire-ko-mobile-landscape.png` pass. The focused browser test directly drives the existing down-state transition (it does not measure combat timing) and checks no pre-KO burst, one trigger, world-space anchoring, pooled instance capacities, unchanged score/KOs/player HP/position/attack input, expiry, and zero browser errors.
+- Matched phone-landscape evidence at 844×390: `art/death-vfx/shot-before-fire-ko-mobile-landscape.png` (alive) and `art/death-vfx/shot-after-fire-ko-mobile-landscape.png` (KO with fire). Chromium WebGL2/SwiftShader only; physical-device appearance and target-GPU frame rate remain untested.
+- Release scope is the private mirror's `main`; the original repository remains untouched. The production push is intended to trigger the mirror's existing Vercel deployment.
+### References
+- Real-time VFX and Three.js implementation references are recorded in `docs/REFERENCES.md`; no third-party code, models, or textures were copied.
+
 ## [Released] - Polyfork lake, bridge, city and park rebuild
 ### Changed
 - Replaced the rendered procedural city blocks with instanced Polyfork models across 178 remaining building sites and 15 model families; retained the existing city footprints, collision records, original Polyfork six-home block, routes, and rooftop boss arena.

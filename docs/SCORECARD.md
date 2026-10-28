@@ -1,3 +1,11 @@
+## Procedural 3D enemy fire KO — provisional 85/100
+- Visuals: 18/20 (the emissive orange core, tapered tongues, ground ring, and embers read as a 3D burst in the phone-landscape capture; software-rendered only)
+- Controls/behavior: 25/25 (the effect consumes the existing enemy-down state; the focused test confirms score, KO count, player health/position, and attack input are unchanged)
+- Performance (estimate): 16/20 (four fixed-capacity instanced batches, bounded to six active bursts; target-GPU frame rate is not measured)
+- Stability: 14/15 (type-check, production build, whitespace check, and the focused phone-landscape regression pass; full suite not rerun)
+- Device compatibility (estimate): 12/20 (physical Android/Windows appearance and target-GPU performance remain untested)
+Evidence: `node test/death-vfx.mjs http://localhost:4174/ art/death-vfx/shot-after-fire-ko-mobile-landscape.png` PASS at 844×390 in Chromium WebGL2/ANGLE SwiftShader. It drives the existing down-state transition directly, so it verifies VFX behavior rather than combat timing; assertions cover one trigger, world-space placement, fixed instance capacities, unchanged gameplay state, effect expiry, and no browser errors. Captures: `art/death-vfx/shot-before-fire-ko-mobile-landscape.png` and `art/death-vfx/shot-after-fire-ko-mobile-landscape.png`. Vite reports a non-blocking 2.77 MB minified JavaScript chunk; no physical-device performance claim is made.
+
 ## Boss arena and Ghost traversal/morph update — provisional 83/100
 - Visuals: 18/20 (the phone-landscape capture shows the saturated red rooftop beacon and boss; the matched capture shows Ghost's pink-white particle re-form)
 - Controls/behavior: 24/25 (focused assertions confirm Ghost shares Shadow's wall, swing, and glide modes; the fixed boss remains on its assigned roof)
