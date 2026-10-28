@@ -1,4 +1,12 @@
-## Giant humanoid boss iteration — provisional 79/100
+## Shadow-bodied giant boss revision — provisional 79/100
+- Visuals: 17/20 (the actual Shadow human mesh now drives a broader athletic white body with red eyes; the accepted before/after visual pair is phone-landscape)
+- Controls/behavior: 22/25 (one persistent boss and its slow pursuit/telegraphed strike remain; tests confirm ordinary melee cannot select or damage it and Shadow Snare still does)
+- Performance (estimate): 14/20 (one 5,172-vertex skinned body plus its outline; SwiftShader is software-rendered evidence, not a physical-device FPS measurement)
+- Stability: 14/15 (type-check, production build, and focused two-viewport assertions pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows devices remain untested)
+Evidence: `node test/boss.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader structural and combat checks at desktop 1365×768 and phone-landscape 844×390. It checks exact 3× root scale (4.5 versus Shadow's 1.5), the 17-bone/5,172-vertex Shadow mesh, muscle-profile geometry, white material, red-eye texture pixels, boss strike, melee exclusion, and Snare target/damage with unchanged input keys. The phone-landscape capture pair is `art/boss/shot-before-shadow-body-boss-mobile-landscape.png` and `art/boss/shot-after-shadow-body-boss-mobile-landscape.png`. The desktop after-capture was blank and is not used as visual evidence; desktop rendering is unclaimed. Physical Android/Windows and target-GPU frame rates remain untested.
+
+## Previous custom giant humanoid boss iteration — 79/100
 - Visuals: 17/20 (original white muscular silhouette at 5x root scale, blank lower face and two red eyes; paired local captures reviewed at matching viewport sizes, with debug-only rooftop/camera framing in the after-images)
 - Controls/behavior: 22/25 (one persistent boss, slow pursuit and telegraphed strike; plasma and Shadow Snare can hit it; ordinary melee target/damage exclusion is tested, with player input structure and timings unchanged)
 - Performance (estimate): 14/20 (seven merged low-poly meshes; software-rendered desktop simulation advanced slowly, so this is a conservative code-size estimate, not a device FPS measurement)

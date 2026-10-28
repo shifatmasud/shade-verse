@@ -5,11 +5,12 @@ import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { buildings, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
 import { buildRig, CLIPS, combatPose, sampleClip, type CombatPoseState } from './Scene';
+import { BOSS_BODY_OFFSET } from './bossConfig';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const HERO_SCALE = 1.5;
 const BODY_OFF = [0.8, 0.3, 1.05, 1.7];
-const enemyBodyOffset = (e: Sim['enemies'][number]) => e.boss ? 7.5 : BODY_OFF[e.kind ?? 0];
+const enemyBodyOffset = (e: Sim['enemies'][number]) => e.boss ? BOSS_BODY_OFFSET : BODY_OFF[e.kind ?? 0];
 const SILENT: Events = {
     orb: () => {}, fall: () => {}, attach: () => {}, release: () => {}, jump: () => {},
     hit: () => {}, hurt: () => {}, ko: () => {}, land: () => {}, blast: () => {},

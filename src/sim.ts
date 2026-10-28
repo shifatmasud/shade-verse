@@ -1,4 +1,5 @@
 // Pure game simulation: city generation + swing physics. No rendering code here.
+import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
 export type V3 = [number, number, number];
 export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number }
 
@@ -459,7 +460,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 }
 export const buildings = blds;
 const BODY_OFF = [0.8, 0.3, 1.05, 1.7];   // kind 3 torso height follows its 1.8 scale (1.2 at scale 1.25)
-const BOSS_BODY_OFF = 7.5;
+const BOSS_BODY_OFF = BOSS_BODY_OFFSET;
 const enemyBodyOffset = (e: Enemy) => e.boss ? BOSS_BODY_OFF : BODY_OFF[e.kind ?? 0];
 const targetY = (e: Enemy) => e.y + enemyBodyOffset(e);
 // Shadow Snare special ability only; regular melee move timing and tuning stay separate.
@@ -660,7 +661,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         }
         const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt, nz = b.z + b.vz * dt;
         let boom = b.t > 1.4;
-        if (!boom) for (const e of s.enemies) { if (e.down > 0) continue; if (Math.hypot(e.x - nx, e.z - nz) < (e.boss ? 4.0 : 1.6) && Math.abs((e.y + enemyBodyOffset(e)) - ny) < (e.boss ? 7.5 : 2.4)) { boom = true; break; } }
+        if (!boom) for (const e of s.enemies) { if (e.down > 0) continue; if (Math.hypot(e.x - nx, e.z - nz) < (e.boss ? BOSS_HIT_RADIUS : 1.6) && Math.abs((e.y + enemyBodyOffset(e)) - ny) < (e.boss ? BOSS_HIT_HALF_HEIGHT : 2.4)) { boom = true; break; } }
         if (!boom) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { boom = true; break; } }
         if (!boom) { const gy = nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.85) boom = true; }
         if (boom) { detonate(s, nx, ny, nz, ev); s.plasma.splice(i, 1); } else { b.x = nx; b.y = ny; b.z = nz; }

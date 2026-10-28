@@ -15,6 +15,7 @@ import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
 import { GiantBoss } from './GiantBoss';
+import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
 import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, type Sim, type Events } from './sim';
@@ -937,7 +938,7 @@ function PlasmaFx({ sim }: { sim: Sim }) {
         const e = sim.aimE;
         ret.current.visible = !!e && sim.mode === 'play';
         if (e) {
-            ret.current.position.set(e.x, e.y + (e.boss ? 7.5 : [0.8, 0.3, 1.05, 0.95][e.kind ?? 0]) + 1.05, e.z);
+            ret.current.position.set(e.x, e.y + (e.boss ? BOSS_BODY_OFFSET : [0.8, 0.3, 1.05, 0.95][e.kind ?? 0]) + 1.05, e.z);
             ret.current.quaternion.copy(camera.quaternion);
             const s2 = 1 + Math.sin(sim.t * 6) * 0.09; ret.current.scale.setScalar(s2);
             ret.current.children[0].rotation.z = sim.t * 2.4;

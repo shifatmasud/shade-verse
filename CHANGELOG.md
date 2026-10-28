@@ -2,6 +2,19 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Shadow-bodied giant boss revision
+### Changed
+- Replaced the custom boss body with Shadow's existing skinned human model and skeleton. The boss uses an exact 3× root-scale ratio (4.5 versus Shadow's 1.5), with a broadened athletic chest/arms, white-painted suit texture, and red eyes.
+- Kept Shadow's model, HUD, controls, ordinary melee, Ghost behavior, and landscape-only behavior unchanged. Boss aim/collision centers now match the smaller model; ordinary melee still cannot damage it, while Shadow Snare remains the only player attack that can.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, and `PORT=4173 node test/boss.mjs` pass. Chromium WebGL2/ANGLE SwiftShader structural and combat assertions ran at desktop 1365×768 and phone-landscape 844×390, checking the 17-bone/5,172-vertex Shadow mesh, exact 3× scale, white material/red-eye texture, boss strike, ordinary-melee exclusion, Shadow Snare damage, and unchanged input keys.
+- Accepted visual evidence is the matched phone-landscape SwiftShader/WebGL2 pair: `art/boss/shot-before-shadow-body-boss-mobile-landscape.png` and `art/boss/shot-after-shadow-body-boss-mobile-landscape.png` (844×390). The desktop after-capture was blank, so it is excluded and desktop rendering is not claimed. These are focused smoke checks, not a full regression or timing soak.
+- Physical Android and Windows testing remains untested. Pushing this revision to the mirror's `main` uses its existing Vercel Git integration; the public URL is https://web-swinger-3d-mirror.vercel.app/.
+### References
+- [Michelangelo's David — right view 2, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Michelangelo%27s_David_-_right_view_2.jpg) — real sculptural reference for a broad heroic human silhouette and white finish; no photo or external model asset is included.
+- [The Biomechanical Characteristics of the Strongman Yoke Walk, Frontiers](https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2021.670297/full) — loaded human gait findings used as context for a short, restrained heavy stride.
+- [5 Rules For Animating Colossi, GameAnim](https://www.gameanim.com/2021/09/30/5-rules-for-animating-colossi/) — smooth starts for large mass and restrained heavy-limb motion.
+
 ## [Released] - Giant humanoid boss
 ### Added
 - An original, procedural white humanoid boss at 5x Shadow's root scale, with a muscular torso and limbs, two red eyes, and a deliberately blank lower face. Its slow pursuit and telegraphed heavy strike use the existing enemy loop; the boss is targetable by the existing plasma weapon and Shadow Snare, but excluded from ordinary melee.

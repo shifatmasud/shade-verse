@@ -25,6 +25,13 @@ for (const [name, width, height, mobile] of cases) {
     await page.evaluate(() => { window.__game.input.specialQ = false; window.__game.start(); });
     await new Promise((r) => setTimeout(r, 4300));
 
+    const runtime = await page.evaluate(() => {
+        const canvas = document.querySelector('canvas');
+        const gl = canvas?.getContext('webgl2');
+        const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+        return { webgl2: !!gl, renderer: gl ? gl.getParameter(ext?.UNMASKED_RENDERER_WEBGL || gl.RENDERER) : 'unavailable' };
+    });
+
     const start = await page.evaluate(() => {
         const { sim, input } = window.__game;
         const bosses = sim.enemies.filter((e) => e.boss);
@@ -41,20 +48,38 @@ for (const [name, width, height, mobile] of cases) {
             standardEnemies: sim.enemies.filter((e) => !e.boss).length, inputKeys: Object.keys(input).sort(),
         };
     });
+    await page.waitForFunction(() => {
+        const body = window.__giantBossRoot?.getObjectByName('giant-boss-shadow-body');
+        return !!body?.material?.map?.image;
+    }, { timeout: 5000 });
     await new Promise((r) => setTimeout(r, 700));
+
     const visual = await page.evaluate(() => {
         const root = window.__giantBossRoot;
-        let redEyeVertices = 0;
-        root?.traverse((o) => {
-            const colors = o.isMesh && o.geometry?.attributes?.color;
-            if (colors) for (let i = 0; i < colors.count; i++) {
-                const r = colors.getX(i), g = colors.getY(i), b = colors.getZ(i);
-                if (r > 0.9 && g < 0.15 && b < 0.35) redEyeVertices++;
+        const body = root?.getObjectByName('giant-boss-shadow-body');
+        const material = body?.material;
+        const textureCanvas = material?.map?.image;
+        let redEyePixels = 0;
+        const ctx = textureCanvas?.getContext?.('2d');
+        if (ctx) {
+            const pixels = ctx.getImageData(0, 0, textureCanvas.width, textureCanvas.height).data;
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (pixels[i] > 175 && pixels[i + 1] < 90 && pixels[i + 2] < 105 && pixels[i + 3] > 100) redEyePixels++;
             }
-        });
-        return { visible: !!root?.visible, scale: root?.scale.x, tagged: root?.userData?.giantBoss, redEyeVertices };
+        }
+        const bounds = body?.geometry?.boundingBox;
+        return {
+            visible: !!root?.visible, scale: root?.scale.x, tagged: root?.userData?.giantBoss,
+            bodyModel: root?.userData?.bodyModel, scaleFactor: root?.userData?.scaleFactor,
+            shadowScale: root?.userData?.shadowRootScale, bodyOffset: root?.userData?.bodyOffset,
+            skinned: !!body?.isSkinnedMesh, bones: body?.skeleton?.bones?.length,
+            vertices: body?.geometry?.attributes?.position?.count,
+            bodyWidth: bounds ? bounds.max.x - bounds.min.x : 0,
+            materialColor: material?.color?.getHexString(), textureReady: !!textureCanvas,
+            redEyePixels, muscleProfile: body?.userData?.muscularProfile,
+        };
     });
-    await page.screenshot({ path: `art/boss/shot-after-boss-${name}.png` });
+    if (name === 'mobile-landscape') await page.screenshot({ path: 'art/boss/shot-after-shadow-body-boss-mobile-landscape.png' });
 
     let windupStarted = true;
     let meleeCheck = { started: true, targetBoss: false, hpBefore: 24, hpAfter: 24 };
@@ -66,7 +91,8 @@ for (const [name, width, height, mobile] of cases) {
             const { sim, input } = window.__game, boss = sim.enemies.find((e) => e.boss);
             if (!boss) return;
             sim.enemies.forEach((e, i) => { if (e !== boss) { e.down = 10000; e.atk = 0; e.x = 10000 + i * 30; e.z = 10000; } });
-            boss.x = sim.pos[0] + 3; boss.y = sim.pos[1] - 7.5; boss.z = sim.pos[2];
+            const bodyOffset = window.__giantBossRoot.userData.bodyOffset;
+            boss.x = sim.pos[0] + 3; boss.y = sim.pos[1] - bodyOffset; boss.z = sim.pos[2];
             boss.hp = 24; boss.hit = 0; boss.atk = 0; boss.down = 0; boss.kb = [0, 0];
             sim.ground = true; sim.swim = false; sim.wall = null; sim.web = false; sim.mv = null; sim.mvQ = false; sim.atkT = 0; sim.windT = sim.t + 100;
             sim.ang = Math.atan2(boss.x - sim.pos[0], boss.z - sim.pos[2]); input.attackQ = true; input.meleeQ = true;
@@ -129,10 +155,14 @@ for (const [name, width, height, mobile] of cases) {
 
     const attackOK = name !== 'desktop' || (meleeCheck.started && !meleeCheck.targetBoss && meleeCheck.hpBefore === 24 && meleeCheck.hpAfter === 24 && windupStarted && attacked.hp <= 80 && attacked.hp >= 0);
     const snareOK = name !== 'mobile-landscape' || (snareStart.active && snareStart.targetsBoss && snared.bossHp <= 21 && snared.inputKeysUnchanged);
+    const modelOK = visual.bodyModel === 'Shadow hero mesh' && visual.scaleFactor === 3 && visual.shadowScale === 1.5
+        && visual.skinned && visual.bones === 17 && visual.vertices === 5172 && visual.bodyWidth > 0.98
+        && visual.materialColor === 'ffffff' && visual.textureReady && visual.redEyePixels >= 100;
+    const runtimeOK = runtime.webgl2 && /swiftshader/i.test(runtime.renderer);
     const ok = start.bosses === 1 && start.standardEnemies === 26 && start.boss?.hp === 24
-        && visual.visible && Math.abs(visual.scale - 7.5) < 0.001 && visual.tagged && visual.redEyeVertices >= 100
+        && visual.visible && Math.abs(visual.scale - 4.5) < 0.001 && visual.tagged && modelOK && runtimeOK
         && attackOK && snareOK && errors.length === 0;
-    console.log(name, JSON.stringify({ ok, start, visual, meleeCheck, windupStarted, attacked, snareStart, snared, errors }));
+    console.log(name, JSON.stringify({ ok, runtime, start, visual, meleeCheck, windupStarted, attacked, snareStart, snared, errors }));
     passed = passed && ok;
     await page.close();
 }
