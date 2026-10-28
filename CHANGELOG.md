@@ -2,6 +2,15 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Unreleased] - Shadow Snare special ability
+### Changed
+- Shadow Snare now gathers up to five nearby eligible enemies, holds the group through an anticipation/spin, then lands a timed finisher with localized impact feedback. The ordinary melee chain, HUD, and controls remain unchanged.
+### Verification
+- Focused `test/snare.mjs` passed in local headless Chromium/SwiftShader at desktop-landscape and phone-landscape viewports; it checks target cap, gather/hold, impact, cooldown, normal melee-chain isolation, and browser errors. Physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 runs remain untested.
+- Before/after images are supplied separately with the handoff, not in this text-only commit. No Vercel settings or direct deployment operation was used; the main push is expected to use the existing Git integration, and live deployment status is not verified here.
+
+---
+
 ## [v0.77] - Flowing Combat Choreography
 ### Added
 - 4-hit ground chain on the melee button: jab, cross, spin hook kick (full 360° turn, wide sweep), launcher (rising knee + uppercut that pops the bot into the air).

@@ -23,3 +23,13 @@
 
 ## Greenery and Tree Visual Reference (for world redesign phase)
 - https://x.com/keydol123/status/2115168883040817610 : Color and tree references for greenery palette and vegetation when world upgrade / full environment redesign starts via Polyfork. Inspiration and palette reference only; scene not copied wholesale.
+
+## Shadow Snare upgrade reference pass (2026-10-28)
+
+Visual research was completed before changing gameplay code. The reference footage is inspiration only; no game assets or code were copied.
+
+- Web Blossom special-attack footage: https://makeagif.com/gif/spider-man-ps4-e3-2018-special-attack-EaNJa6 (source video: https://youtu.be/X3ricWI0KHE). Captured/reviewed sequential moments in the GIF: Spider-Man airborne above a group with both arms extended and the WEB BLOSSOM HUD label; bright orange impact-like effects around a target below; then a crouched recovery with several enemies down and lingering effects. A distinct web-spread pattern was not visible in the retained captures, so this source informs launch-to-recovery cadence only.
+- Web Bomb visual: https://makeagif.com/gif/spidermans-web-bomb-gameplay-of-marvels-spider-man-on-ps4-kG9YKW (direct GIF: https://i.makeagif.com/media/12-18-2023/kG9YKW.gif). The inspected still showed a bright white burst with web-like spray around nearby enemies. The source is a user-hosted, watermarked GIF; use it only as a visual reference, not as a redistributed asset. Sequential web-spread frames were unavailable.
+- 540 hook-kick motion: https://commons.wikimedia.org/wiki/File:Taekwondo_540_Hook.gif. The Wikimedia page identifies a 64-frame, 3.2-second 540 hook-kick GIF and CC0 1.0 license. Captured/reviewed key poses in order: low load; torso pivot and arm counterbalance; airborne chamber; high extended hook; landing; upright recovery. Use the movement order to time the finisher, not as a model or exact choreography.
+
+Implementation direction from the inspected references: widen the Snare's multi-target web gather, hold the grouped enemies briefly, then use a committed spinning kick with a larger impact response. Keep melee choreography and hero/UI design unchanged.

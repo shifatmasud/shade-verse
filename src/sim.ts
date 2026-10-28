@@ -183,7 +183,7 @@ export function resetSim(s: Sim) {
     s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false; (s as any).flightTapCancel = false;
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
-    s.plasma = []; s.blasts = []; s.aimE = null; s.shotE = null;
+    s.plasma = []; s.blasts = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = [];
     s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s));
 }
 
@@ -450,6 +450,8 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
 }
 export const buildings = blds;
 const BODY_OFF = [0.8, 0.3, 1.05, 1.7];   // kind 3 torso height follows its 1.8 scale (1.2 at scale 1.25)
+// Shadow Snare special ability only; regular melee move timing and tuning stay separate.
+export const SNARE = { MAX_TARGETS: 5, RANGE: 24, VERTICAL_RANGE: 14, TOTAL: 1.65, GATHER_END: 0.9, SPIN_START: 0.6, IMPACT: 0.15, HIT_RANGE: 5.5, GROUP_RADIUS: 2.4, PULL_SPEED: 30, DAMAGE: 3, KNOCKBACK: 18, HIT_STOP: 0.10, SHAKE: 0.34 } as const;
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
 const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
@@ -595,19 +597,23 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
           }
       }
       stepMove(s, dt, ev);
-    // SHADOW SNARE (special, own button, 9 s cooldown): both hands web up to 4 nearby bots (reeled in, held), then a spin kick hits each bound bot within 5 m for 3 damage plus knockback
+    // SHADOW SNARE special: gather, bind briefly, spin through the group, impact, then recover.
     { const sa = s as any; sa.snareCd = Math.max(0, (sa.snareCd || 0) - dt);
-      if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, 4); if (L.length) { sa.snareList = L; sa.snareT = 1.0; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
-      if (sa.snareT > 0) { const before = sa.snareT; sa.snareT -= dt; const L = sa.snareList as Enemy[];
-        if (sa.snareT > 0.45) { for (const e of L) { if (e.down > 0) continue; e.hit = 0.3; e.atk = 0; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > 2.4) { const st = Math.min(d - 2.4, 28 * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } } }
-        if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.6; e.kb = [dx / (d || 1) * 14, dz / (d || 1) * 14]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) ev.hit(); }
+      if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, SNARE.MAX_TARGETS); if (L.length) { sa.snareList = L; sa.snareT = SNARE.TOTAL; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
+      if (sa.snareT > 0) { const before = sa.snareT; sa.snareT = Math.max(0, sa.snareT - dt); const L = sa.snareList as Enemy[];
+        if (sa.snareT > SNARE.IMPACT) { for (const e of L) { if (e.down > 0) continue; e.hit = Math.max(e.hit, 0.3); e.atk = 0; e.kb[0] = 0; e.kb[1] = 0;
+          if (sa.snareT > SNARE.GATHER_END) { const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > SNARE.GROUP_RADIUS) { const st = Math.min(d - SNARE.GROUP_RADIUS, SNARE.PULL_SPEED * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } }
+        } }
+        if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.max(sa.shake || 0, SNARE.SHAKE); } }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
     let atkN = 0; for (const e0 of s.enemies) if (e0.atk > 0) atkN++;
     for (let i = 0; i < s.enemies.length; i++) {
         const e = s.enemies[i];
-        const airb = enemyAir(s, e, dt, ev);
+        const sa = s as any, snareBound = e.down <= 0 && sa.snareT > SNARE.IMPACT && sa.snareList?.includes(e);
+        const airb = snareBound ? false : enemyAir(s, e, dt, ev);
         if (e.down > 0) { e.down -= dt; if (e.down <= 0) s.enemies[i] = spawnEnemy(s); continue; }
+        if (snareBound) { e.atk = 0; e.kb[0] = 0; e.kb[1] = 0; continue; }
         e.hit = Math.max(0, e.hit - dt);
         if (airb) { const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz)) { e.x += kx; e.z += kz; } e.kb[0] *= 0.92; e.kb[1] *= 0.92; e.atk = 0; continue; }
         if (e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = spawnEnemy(s); continue; }   // left far behind: re-place near the hero

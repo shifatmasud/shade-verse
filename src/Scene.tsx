@@ -16,7 +16,7 @@ import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, type Sim, type Events } from './sim';
 
 // time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
 const TOD = { sun: new THREE.Vector3(-0.55, 0.22, 0.8).normalize(), sunU: null as any, day: { value: 1 }, warm: { value: 1 }, noon: { value: 0 }, fog: new THREE.Color(FOG[0], FOG[1], FOG[2]), sky: new THREE.Color('#c4dcef') };
@@ -613,12 +613,12 @@ function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number) {
 }
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
-    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(10 * 2 * 3), 3)); return g; }, []);
+    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SNARE.MAX_TARGETS * 2 + 2) * 2 * 3), 3)); return g; }, []);
     useFrame(() => { const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute; let n = 0;
-        if (sa.snareT > 0.45) { const hw = sa.handW as number[][] | undefined; (sa.snareList as any[]).forEach((e, i) => { if (e.down > 0 || i > 3) return; for (let sd = 0; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z); n++; } }); }
+        if (sa.snareT > SNARE.IMPACT) { const hw = sa.handW as number[][] | undefined; (sa.snareList as any[]).forEach((e, i) => { if (e.down > 0 || i >= SNARE.MAX_TARGETS) return; for (let sd = 0; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z); n++; } }); }
         { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const hw = sa.handW as number[][] | undefined, e = cw.e, ty = e.y + (e.ly || 0) + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0]; for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++; } } }
         geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0; });
-    return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#ffffff" transparent opacity={0.95} /></lineSegments>;
+    return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#ffffff" transparent opacity={0.95} depthTest={false} depthWrite={false} /></lineSegments>;
 }
 // flying cars: instanced, lane traffic above the streets (decor only, no collision)
 const CAR_N = 36;
@@ -1101,7 +1101,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const h = hero.current;
         for (const bn of rig.bones) bn.rotation.set(0, 0, 0);
         h.position.set(p[0], p[1] - 1.0, p[2]);
-        h.rotation.set(0, sim.ang + (((sim as any).snareT > 0 && (sim as any).snareT < 0.45) ? (1 - (sim as any).snareT / 0.45) * Math.PI * 2 : 0), 0); h.scale.setScalar(HERO_SC);
+        { const sn = (sim as any).snareT || 0, u = sn > 0 && sn < SNARE.SPIN_START ? Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))) : 0; h.rotation.set(0, sim.ang + cstep(u) * Math.PI * 2, 0); } h.scale.setScalar(HERO_SC);
         const wl = !!sim.wall;
         if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
         const sw2 = sim.swim;
@@ -1141,10 +1141,14 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         
         if ((sim as any).kick && sim.atkT > 0 && sim.shotT <= 0) { const kp = Math.sin((1 - sim.atkT / 0.32) * Math.PI); legR.current.rotation.x = -1.7 * kp; legL.current.rotation.x = 0.15; armR.current.rotation.x = -0.8; armL.current.rotation.x = -1.2; }
         if (sim.glideOn && !((sim as any).snareT > 0)) { armR.current.rotation.x = -0.1; armL.current.rotation.x = -0.1; armR.current.rotation.z = 1.3; armL.current.rotation.z = -1.3; const gt = Math.sin(sim.t * 5) * 0.05; legR.current.rotation.x = 0.12 + gt; legL.current.rotation.x = 0.06 - gt; }
-        if ((sim as any).snareT > 0 && (sim as any).snareT < 0.45) { legR.current.rotation.x = -1.5; legL.current.rotation.x = 0.2; armR.current.rotation.x = -0.6; armL.current.rotation.x = -1.4; }
+        { const sn = (sim as any).snareT || 0;
+            if (sn > SNARE.GATHER_END) { armR.current.rotation.x = -1.35; armL.current.rotation.x = -1.35; legR.current.rotation.x = -0.2; legL.current.rotation.x = 0.1; }
+            else if (sn > SNARE.SPIN_START) { const hold = Math.max(0, Math.min(1, (SNARE.GATHER_END - sn) / (SNARE.GATHER_END - SNARE.SPIN_START))); armR.current.rotation.x = -1.35 - 0.35 * hold; armL.current.rotation.x = -1.35 - 0.25 * hold; legR.current.rotation.x = -0.2 - 0.35 * hold; legL.current.rotation.x = 0.1 + 0.1 * hold; }
+            else if (sn > 0) { const spin = Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))), recover = sn <= SNARE.IMPACT ? Math.max(0, sn / SNARE.IMPACT) : 1, kick = Math.sin(spin * Math.PI * 0.5) * recover; legR.current.rotation.x = -1.5 * kick; legL.current.rotation.x = 0.2 * kick; armR.current.rotation.x = -0.6 * kick; armL.current.rotation.x = -1.4 * kick; }
+        }
         { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground || sim.glideOn || wl ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.current.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
         {   // clip layer: pick a Mixamo-derived clip for the state, crossfade by weight
-            const ck = ((sim as any).mv || (sim as any).flip || ((sim as any).snareT > 0 && (sim as any).snareT < 0.45) || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
+            const ck = ((sim as any).mv || (sim as any).flip || (sim as any).snareT > 0 || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
             const cs = clipSt.current;
             if (ck !== cs.key) { cs.key = ck || cs.key; }
             cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
@@ -1221,7 +1225,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 c1.rotation.x = cs2[0]; c2.rotation.x = cs2[1]; c3.rotation.x = cs2[2]; c2.rotation.z = cs2[3]; c3.rotation.z = cs2[4];
             }
         }
-        if ((sim as any).snareT > 0.4 || (sim as any).cWeb) { const sa = sim as any; if (!sa.handW) sa.handW = [[0, 0, 0], [0, 0, 0]]; h.updateMatrixWorld(true); [rig.b.handL, rig.b.handR].forEach((b: any, i: number) => { b.getWorldPosition(_hp); sa.handW[i][0] = _hp.x; sa.handW[i][1] = _hp.y; sa.handW[i][2] = _hp.z; }); }
+        if ((sim as any).snareT > SNARE.IMPACT || (sim as any).cWeb) { const sa = sim as any; if (!sa.handW) sa.handW = [[0, 0, 0], [0, 0, 0]]; h.updateMatrixWorld(true); [rig.b.handL, rig.b.handR].forEach((b: any, i: number) => { b.getWorldPosition(_hp); sa.handW[i][0] = _hp.x; sa.handW[i][1] = _hp.y; sa.handW[i][2] = _hp.z; }); }
         // web
         { // two web lines, each from an actual animated hand (world position), shot out to the anchor over ~0.14 s
             const wl2 = web.current, wr2 = webB.current, side = sim.swings % 2; // swing: alternate hands (odd = right); spring-shot jump and web-shot attack: both hands together

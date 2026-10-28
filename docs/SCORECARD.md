@@ -1,3 +1,11 @@
+## Shadow Snare focused iteration — provisional 82/100
+- Visuals: 17/20 (five-target web gather and staged spin/kick are legible in the supplied desktop and landscape-phone captures; no physical-device visual check)
+- Controls: 23/25 (existing special button and nine-second cooldown preserved; focused test confirms the regular melee chain index is unchanged)
+- Performance (estimate): 16/20 (bounded five-target simulation and line geometry; target-GPU frame rate not measured)
+- Stability: 14/15 (focused local Chromium/SwiftShader assertions pass on two landscape viewports; not a full regression suite)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 untested)
+Evidence: `node test/snare.mjs` PASS locally. Before/after screenshot files are supplied separately with the handoff; no production deployment status is claimed.
+
 ## v0.76 - Combat Choreography Release (Score: 85/100)
 - Visuals: 18/20 (tactile hit-stop frame impact weight, multi-angle strike animations, comic outlines intact)
 - Controls: 23/25 (gap-closing strike lunges within 5.8m, responsive 3-hit combo cadence, fluid ground-to-combat transition)
