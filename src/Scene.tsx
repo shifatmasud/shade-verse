@@ -16,7 +16,7 @@ import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, type Sim, type Events } from './sim';
 
 // time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
 const TOD = { sun: new THREE.Vector3(-0.55, 0.22, 0.8).normalize(), sunU: null as any, day: { value: 1 }, warm: { value: 1 }, noon: { value: 0 }, fog: new THREE.Color(FOG[0], FOG[1], FOG[2]), sky: new THREE.Color('#c4dcef') };
@@ -585,27 +585,27 @@ const POSES: Record<number, [number, PoseK][]> = {
     6: [[0, P({ uarmR: [-1.6, 0, -0.05], farmR: [-0.05, 0, 0], chest: [0, -0.35, 0] })], [0.22, P({ uarmR: [-1.55, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.5, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.4, P({ uarmR: [0.25, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.2, 0, 0], thighR: [-1.3, 0, 0], shinR: [1.8, 0, 0] })], [0.55, P({ hips: [0.12, 0, 0], spine: [-0.18, 0, 0], thighR: [-1.6, 0, 0], shinR: [0.05, 0, 0], thighL: [0.6, 0, 0], shinL: [1.8, 0, 0], uarmR: [0.6, 0, 0.3], farmR: [-0.5, 0, 0], uarmL: [0.5, 0, -0.3], farmL: [-0.5, 0, 0] })], [0.8, P({ thighR: [-0.8, 0, 0], shinR: [1.0, 0, 0] })], [1, GUARD]],
     7: [[0, P({ uarmR: [-1.75, 0, -0.1], farmR: [-0.05, 0, 0], uarmL: [-1.7, 0, 0.1], farmL: [-0.05, 0, 0], spine: [0.15, 0, 0] })], [0.25, P({ uarmR: [-1.9, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.85, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.42, P({ uarmR: [0.45, 0, 0.15], farmR: [-1.4, 0, 0], uarmL: [0.45, 0, -0.15], farmL: [-1.4, 0, 0], spine: [-0.38, 0, 0], hips: [0, -0.2, 0], thighL: [-0.6, 0, 0], shinL: [0.6, 0, 0], thighR: [0.45, 0, 0], shinR: [0.4, 0, 0], head: [0.2, 0, 0] })], [0.75, P({ uarmR: [0.2, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.15, 0, 0] })], [1, GUARD]],
 };
-const _cp = { w: 0, c: new Float32Array(CP_BONES.length * 3), init: false };
+export type CombatPoseState = { w: number; c: Float32Array; t: Float32Array };
+const _cp: CombatPoseState = { w: 0, c: new Float32Array(CP_BONES.length * 3), t: new Float32Array(CP_BONES.length * 3) };
 const cstep = (x: number) => x * x * (3 - 2 * x);
 function samplePose(keys: [number, PoseK][], u: number, out: Float32Array) {
     let k = 0; while (k < keys.length - 2 && u > keys[k + 1][0]) k++;
     const [u0, A] = keys[k], [u1, B] = keys[k + 1], f = cstep(Math.max(0, Math.min(1, (u - u0) / Math.max(1e-4, u1 - u0))));
     CP_BONES.forEach((n, i) => { const a = A[n], b = B[n]; for (let j = 0; j < 3; j++) out[i * 3 + j] = a[j] + (b[j] - a[j]) * f; });
 }
-const _cpT = new Float32Array(CP_BONES.length * 3);
-function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number) {
+export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, state: CombatPoseState = _cp) {
     const mv = sim.mv, fl = sim.flip, act = !!mv || !!fl;
     const bones = CP_BONES.map((n) => rig.b[n] as THREE.Bone);
-    if (_cp.w < 0.02 && !act) { bones.forEach((b, i) => { _cp.c[i * 3] = b.rotation.x; _cp.c[i * 3 + 1] = b.rotation.y; _cp.c[i * 3 + 2] = b.rotation.z; }); _cp.w = 0; return; }
-    _cp.w += ((act ? 1 : 0) - _cp.w) * Math.min(1, dt * (act ? 16 : 7));   // ease in fast, settle out slower: momentum, no snap
-    if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), _cpT); }
-    else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, _cpT);
-        if (fl.ax === 'z') { const s0 = _cpT; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
-    else { bones.forEach((b, i) => { _cpT[i * 3] = b.rotation.x; _cpT[i * 3 + 1] = b.rotation.y; _cpT[i * 3 + 2] = b.rotation.z; }); }
+    if (state.w < 0.02 && !act) { bones.forEach((b, i) => { state.c[i * 3] = b.rotation.x; state.c[i * 3 + 1] = b.rotation.y; state.c[i * 3 + 2] = b.rotation.z; }); state.w = 0; return; }
+    state.w += ((act ? 1 : 0) - state.w) * Math.min(1, dt * (act ? 16 : 7));   // ease in fast, settle out slower: momentum, no snap
+    if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), state.t); }
+    else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, state.t);
+        if (fl.ax === 'z') { const s0 = state.t; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
+    else { bones.forEach((b, i) => { state.t[i * 3] = b.rotation.x; state.t[i * 3 + 1] = b.rotation.y; state.t[i * 3 + 2] = b.rotation.z; }); }
     const k = Math.min(1, dt * 24);   // per-bone follow: chained moves blend through each other instead of popping
-    for (let i = 0; i < _cpT.length; i++) _cp.c[i] += (_cpT[i] - _cp.c[i]) * k;
-    const w = _cp.w;
-    bones.forEach((b, i) => { b.rotation.x += (_cp.c[i * 3] - b.rotation.x) * w; b.rotation.y += (_cp.c[i * 3 + 1] - b.rotation.y) * w; b.rotation.z += (_cp.c[i * 3 + 2] - b.rotation.z) * w; });
+    for (let i = 0; i < state.t.length; i++) state.c[i] += (state.t[i] - state.c[i]) * k;
+    const w = state.w;
+    bones.forEach((b, i) => { b.rotation.x += (state.c[i * 3] - b.rotation.x) * w; b.rotation.y += (state.c[i * 3 + 1] - b.rotation.y) * w; b.rotation.z += (state.c[i * 3 + 2] - b.rotation.z) * w; });
     // whole-body turns, not smoothed (continuous 0..2pi): spin hook kick, flips/cartwheels around the hips
     if (mv && mv.id === 3) { const u = Math.min(1, mv.t / MOVES[3].dur), sp = cstep(Math.max(0, Math.min(1, (u - 0.08) / 0.72))); h.rotation.y += sp * Math.PI * 2; }
     if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
@@ -613,21 +613,12 @@ function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number) {
 }
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
-    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(64 * 2 * 3), 3)); return g; }, []);
-    useFrame(() => { const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute, L = sa.snareList as any[] | undefined; let n = 0;
-        const put = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => { const o = n * 2; a.setXYZ(o, x0, y0, z0); a.setXYZ(o + 1, x1, y1, z1); n++; };
-        if (sa.snareT > 0.45 && L) { const hw = sa.handW as number[][] | undefined, count = Math.min(L.length, 6), age = 1.25 - sa.snareT, burst = age >= 0 && age < 0.24, radius = burst ? 0.45 + 1.35 * (age / 0.24) : 0;
-            for (let i = 0; i < count; i++) { const e = L[i]; if (e.down > 0) continue; const ty = e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0];
-                for (let sd = 0; sd < 2; sd++) { const hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; put(hp[0], hp[1], hp[2], e.x, ty, e.z); }
-                if (burst) { const cy = ty, base = sim.ang + i * 0.37, step = Math.PI * 2 / 3;
-                    for (let ray = 0; ray < 3; ray++) { const a0 = base + ray * step, a1 = base + ((ray + 1) % 3) * step, x0 = e.x + Math.cos(a0) * radius, z0 = e.z + Math.sin(a0) * radius, y0 = cy + Math.sin(a0 * 2) * 0.12, x1 = e.x + Math.cos(a1) * radius, z1 = e.z + Math.sin(a1) * radius, y1 = cy + Math.sin(a1 * 2) * 0.12; put(e.x, cy, e.z, x0, y0, z0); put(x0, y0, z0, x1, y1, z1); }
-                }
-            }
-            if (count > 1) { for (let i = 0; i < count; i++) { const e = L[i], next = L[(i + 1) % count]; if (e.down > 0 || next.down > 0) continue; const dx = next.x - e.x, dz = next.z - e.z; if (dx * dx + dz * dz < 14 * 14) put(e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z, next.x, next.y + [1.2, -0.3, 0.67, 1.2][next.kind ?? 0], next.z); } }
-        }
-        { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const hw = sa.handW as number[][] | undefined, e = cw.e, ty = e.y + (e.ly || 0) + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0]; for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; put(hp[0], hp[1], hp[2], e.x, ty, e.z); } } }
+    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SNARE.MAX_TARGETS * 2 + 2) * 2 * 3), 3)); return g; }, []);
+    useFrame(() => { const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute; let n = 0;
+        if (sa.snareT > SNARE.IMPACT) { const hw = sa.handW as number[][] | undefined; (sa.snareList as any[]).forEach((e, i) => { if (e.down > 0 || i >= SNARE.MAX_TARGETS) return; for (let sd = 0; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z); n++; } }); }
+        { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const hw = sa.handW as number[][] | undefined, e = cw.e, ty = e.y + (e.ly || 0) + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0]; for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++; } } }
         geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0; });
-    return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#e9fbff" transparent opacity={0.92} depthWrite={false} /></lineSegments>;
+    return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#ffffff" transparent opacity={0.95} depthTest={false} depthWrite={false} /></lineSegments>;
 }
 // flying cars: instanced, lane traffic above the streets (decor only, no collision)
 const CAR_N = 36;
@@ -675,8 +666,8 @@ export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: 
 
 
 const _wv = new THREE.Vector3(), _wv2 = new THREE.Vector3();
-function buildRig() {
-    const d: any = heroData;
+export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLambertMaterial) {
+    const d: any = data;
     if (!d._capeRig && !(DBG && (window as any).__noCapeRig)) {   // user-approved (9:53) hidden cape rig: 3 extra bones + re-weighted cape vertices only. Rest pose is unchanged (new bones sit at identity under chest), mesh/UV/texture untouched.
         d._capeRig = true;
         const base = d.bones.length; d.bones.push({ n: 'cape1', p: 2, h: [0, 1.58, -0.13] }, { n: 'cape2', p: base, h: [0, 1.4, -0.15] }, { n: 'cape3', p: base + 1, h: [0, 1.27, -0.17] });
@@ -697,6 +688,7 @@ function buildRig() {
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(d.si, 4));
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(d.sw, 4));
     g.setIndex(d.idx);
+    if (d.rebuildNormals) g.computeVertexNormals();
     const bones: THREE.Bone[] = [], byName: Record<string, THREE.Bone> = {};
     d.bones.forEach((b: any, i: number) => {
         const bone = new THREE.Bone(); bone.name = b.n; bones.push(bone); byName[b.n] = bone;
@@ -705,7 +697,8 @@ function buildRig() {
         if (b.p >= 0) bones[b.p].add(bone);
     });
     let mat: THREE.MeshLambertMaterial;
-    if (d.uv) {
+    if (materialOverride) mat = materialOverride;
+    else if (d.uv) {
         const tex = new THREE.TextureLoader().load(baseTexUrl); tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 2;
         mat = new THREE.MeshLambertMaterial({ map: tex, emissive: new THREE.Color('#ffffff'), emissiveMap: tex, emissiveIntensity: 0.45 });
     } else mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1a2a66'), emissiveIntensity: 0.18 });
@@ -755,11 +748,11 @@ function buildRig() {
 
 
 // Mixamo-derived clips, retargeted offline (tools/fbx2clip.mjs) onto the generated rig
-type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
-const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any, run: clipRun as any };
+export type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
+export const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any, run: clipRun as any };
 const _wd = new THREE.Vector3(), _wp = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
-function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: number) {
+export function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: number) {
     let f = t * c.fps; if (loop) f = ((f % c.n) + c.n) % c.n; else f = Math.max(0, Math.min(c.n - 1, f));
     const i0 = Math.floor(f), i1 = loop ? (i0 + 1) % c.n : Math.min(c.n - 1, i0 + 1), k = f - i0, nb = c.bones.length;
     for (let b = 0; b < nb; b++) {
@@ -1110,7 +1103,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const h = hero.current;
         for (const bn of rig.bones) bn.rotation.set(0, 0, 0);
         h.position.set(p[0], p[1] - 1.0, p[2]);
-        h.rotation.set(0, sim.ang + (((sim as any).snareT > 0 && (sim as any).snareT < 0.45) ? (1 - (sim as any).snareT / 0.45) * Math.PI * 2 : 0), 0); h.scale.setScalar(HERO_SC);
+        { const sn = (sim as any).snareT || 0, u = sn > 0 && sn < SNARE.SPIN_START ? Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))) : 0; h.rotation.set(0, sim.ang + cstep(u) * Math.PI * 2, 0); } h.scale.setScalar(HERO_SC);
         const wl = !!sim.wall;
         if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
         const sw2 = sim.swim;
@@ -1150,10 +1143,14 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         
         if ((sim as any).kick && sim.atkT > 0 && sim.shotT <= 0) { const kp = Math.sin((1 - sim.atkT / 0.32) * Math.PI); legR.current.rotation.x = -1.7 * kp; legL.current.rotation.x = 0.15; armR.current.rotation.x = -0.8; armL.current.rotation.x = -1.2; }
         if (sim.glideOn && !((sim as any).snareT > 0)) { armR.current.rotation.x = -0.1; armL.current.rotation.x = -0.1; armR.current.rotation.z = 1.3; armL.current.rotation.z = -1.3; const gt = Math.sin(sim.t * 5) * 0.05; legR.current.rotation.x = 0.12 + gt; legL.current.rotation.x = 0.06 - gt; }
-        if ((sim as any).snareT > 0 && (sim as any).snareT < 0.45) { legR.current.rotation.x = -1.5; legL.current.rotation.x = 0.2; armR.current.rotation.x = -0.6; armL.current.rotation.x = -1.4; }
+        { const sn = (sim as any).snareT || 0;
+            if (sn > SNARE.GATHER_END) { armR.current.rotation.x = -1.35; armL.current.rotation.x = -1.35; legR.current.rotation.x = -0.2; legL.current.rotation.x = 0.1; }
+            else if (sn > SNARE.SPIN_START) { const hold = Math.max(0, Math.min(1, (SNARE.GATHER_END - sn) / (SNARE.GATHER_END - SNARE.SPIN_START))); armR.current.rotation.x = -1.35 - 0.35 * hold; armL.current.rotation.x = -1.35 - 0.25 * hold; legR.current.rotation.x = -0.2 - 0.35 * hold; legL.current.rotation.x = 0.1 + 0.1 * hold; }
+            else if (sn > 0) { const spin = Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))), recover = sn <= SNARE.IMPACT ? Math.max(0, sn / SNARE.IMPACT) : 1, kick = Math.sin(spin * Math.PI * 0.5) * recover; legR.current.rotation.x = -1.5 * kick; legL.current.rotation.x = 0.2 * kick; armR.current.rotation.x = -0.6 * kick; armL.current.rotation.x = -1.4 * kick; }
+        }
         { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground || sim.glideOn || wl ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.current.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
         {   // clip layer: pick a Mixamo-derived clip for the state, crossfade by weight
-            const ck = ((sim as any).mv || (sim as any).flip || ((sim as any).snareT > 0 && (sim as any).snareT < 0.45) || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
+            const ck = ((sim as any).mv || (sim as any).flip || (sim as any).snareT > 0 || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
             const cs = clipSt.current;
             if (ck !== cs.key) { cs.key = ck || cs.key; }
             cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
@@ -1230,7 +1227,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 c1.rotation.x = cs2[0]; c2.rotation.x = cs2[1]; c3.rotation.x = cs2[2]; c2.rotation.z = cs2[3]; c3.rotation.z = cs2[4];
             }
         }
-        if ((sim as any).snareT > 0.4 || (sim as any).cWeb) { const sa = sim as any; if (!sa.handW) sa.handW = [[0, 0, 0], [0, 0, 0]]; h.updateMatrixWorld(true); [rig.b.handL, rig.b.handR].forEach((b: any, i: number) => { b.getWorldPosition(_hp); sa.handW[i][0] = _hp.x; sa.handW[i][1] = _hp.y; sa.handW[i][2] = _hp.z; }); }
+        if ((sim as any).snareT > SNARE.IMPACT || (sim as any).cWeb) { const sa = sim as any; if (!sa.handW) sa.handW = [[0, 0, 0], [0, 0, 0]]; h.updateMatrixWorld(true); [rig.b.handL, rig.b.handR].forEach((b: any, i: number) => { b.getWorldPosition(_hp); sa.handW[i][0] = _hp.x; sa.handW[i][1] = _hp.y; sa.handW[i][2] = _hp.z; }); }
         // web
         { // two web lines, each from an actual animated hand (world position), shot out to the anchor over ~0.14 s
             const wl2 = web.current, wr2 = webB.current, side = sim.swings % 2; // swing: alternate hands (odd = right); spring-shot jump and web-shot attack: both hands together

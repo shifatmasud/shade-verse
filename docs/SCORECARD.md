@@ -1,3 +1,13 @@
+## v0.79 - Ghost Companion + Mirror Shadow Snare (Provisional Score: 81/100)
+- Visuals: 17/20 (desktop and phone-landscape SwiftShader captures were reviewed; physical-device visuals remain untested)
+- Controls/behavior: 23/25 (Ghost follow and autonomous combat, plus Snare's five-target gather, group hold, finisher, cooldown, and unchanged melee chain pass focused assertions)
+- Performance (estimate): 15/20 (one additional bounded companion simulation; target-device frame rate was not measured)
+- Stability: 14/15 (type-check, production build, and both focused two-viewport browser tests pass; full regression suite not rerun)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
+Evidence: `test/ghost.mjs` and `test/snare.mjs` pass in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390. Captures were reviewed during local QA but are not committed.
+
+---
+
 ## v0.76 - Combat Choreography Release (Score: 85/100)
 - Visuals: 18/20 (tactile hit-stop frame impact weight, multi-angle strike animations, comic outlines intact)
 - Controls: 23/25 (gap-closing strike lunges within 5.8m, responsive 3-hit combo cadence, fluid ground-to-combat transition)

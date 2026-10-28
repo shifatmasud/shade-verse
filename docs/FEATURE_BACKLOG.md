@@ -2,7 +2,7 @@
 
 Total requests extracted from project history: 68.
 
-## Group 1: Implemented in Export & Verified in Repository (60 items)
+## Group 1: Implemented in Export & Verified in Repository (61 items)
 1. Browser 3D game engine (React 18, Three.js, R3F, Framer Motion, GSAP, WebGL2, Vite)
 2. Version control via GitHub (shifatmasud/web-swinger-3d)
 3. Deployment on Vercel (https://web-swinger-3d-eight.vercel.app/)
@@ -64,10 +64,10 @@ Total requests extracted from project history: 68.
 59. Bot scale 1.2x hero size
 60. Visual death explosion effect with debris on bot KO
 61. Plasma web projectile weapon (auto-targeting, homing, radial shockwave blast)
-62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (gap closing strikes, 3-hit combo cadence, hit-stop impact weighting)
+62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (gap closing strikes, 3-hit combo cadence, hit-stop impact weighting, and Shadow Snare)
+63. Second hero companion character: Ghost (white suit, hot-pink lenses, autonomous follow/traversal/combat beside Shadow) - implemented and browser-verified in this release
 
-## Group 2: Still Queued / In Progress (6 items)
-63. Second hero companion character: Ghost (female hero companion in white suit, swings/walks/fights alongside Shadow) - active in InstaBox
+## Group 2: Still Queued / In Progress (5 items)
 64. Giant boss (muscular white humanoid body, red eyes, no mouth, 5x hero size) - queued
 65. Detailed flying cars with collision pass and web anchor towing - queued
 66. Water surfing (hold swing on water surface, wake spray, web-tow surfing) - queued

@@ -2,6 +2,16 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [v0.79] - Ghost Companion and Mirror Shadow Snare
+### Added
+- Ghost follows, traverses, and fights alongside Shadow using a separate simulation while sharing enemies and leaving Shadow's input unchanged.
+### Changed
+- Shadow Snare now follows the mirror implementation: it gathers up to five visible targets within 24 m (14 m vertical range), holds them in a group through a 1.65 s gather/spin/recovery, then deals 3 damage with 18 knockback within 5.5 m; cooldown remains 9 s and the normal melee chain is unchanged.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, `PORT=4174 node test/ghost.mjs`, and `PORT=4174 node test/snare.mjs` pass in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390. Physical devices and the full regression suite remain untested.
+
+---
+
 ## [v0.78] - Shadow Snare Bind and Finisher
 ### Changed
 - Shadow Snare now catches up to 6 bots within 30 m, extends the bind to 1.25 s, and finishes with 4 damage, 6.5 m reach, and 18 knockback.
