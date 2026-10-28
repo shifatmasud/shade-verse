@@ -595,12 +595,15 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
           }
       }
       stepMove(s, dt, ev);
-    // SHADOW SNARE (special, own button, 9 s cooldown): both hands web up to 4 nearby bots (reeled in, held), then a spin kick hits each bound bot within 5 m for 3 damage plus knockback
+    // SHADOW SNARE (special, own button, 9 s cooldown): catches up to 6 bots within 30 m, holds them in a web bind, then spins through them for a stronger finisher.
     { const sa = s as any; sa.snareCd = Math.max(0, (sa.snareCd || 0) - dt);
-      if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, 4); if (L.length) { sa.snareList = L; sa.snareT = 1.0; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
+      if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) {
+        const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 30 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, 6);
+        if (L.length) { sa.snareList = L; sa.snareT = 1.25; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); }
+      } }
       if (sa.snareT > 0) { const before = sa.snareT; sa.snareT -= dt; const L = sa.snareList as Enemy[];
-        if (sa.snareT > 0.45) { for (const e of L) { if (e.down > 0) continue; e.hit = 0.3; e.atk = 0; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > 2.4) { const st = Math.min(d - 2.4, 28 * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } } }
-        if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.6; e.kb = [dx / (d || 1) * 14, dz / (d || 1) * 14]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) ev.hit(); }
+        if (sa.snareT > 0.45) { for (const e of L) { if (e.down > 0) continue; e.hit = 0.55; e.atk = 0; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > 2.1) { const st = Math.min(d - 2.1, 32 * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } } }
+        if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 6.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 4; e.hit = 0.6; e.kb = [dx / (d || 1) * 18, dz / (d || 1) * 18]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) ev.hit(); }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
     let atkN = 0; for (const e0 of s.enemies) if (e0.atk > 0) atkN++;

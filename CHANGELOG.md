@@ -2,6 +2,13 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [v0.78] - Shadow Snare Bind and Finisher
+### Changed
+- Shadow Snare now catches up to 6 bots within 30 m, extends the bind to 1.25 s, and finishes with 4 damage, 6.5 m reach, and 18 knockback.
+- Added a brief per-target web burst and short tether links using a fixed, low-cost line buffer.
+
+---
+
 ## [v0.77] - Flowing Combat Choreography
 ### Added
 - 4-hit ground chain on the melee button: jab, cross, spin hook kick (full 360° turn, wide sweep), launcher (rising knee + uppercut that pops the bot into the air).

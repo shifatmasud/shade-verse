@@ -613,12 +613,21 @@ function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number) {
 }
 function SnareLines({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.LineSegments>(null!);
-    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(10 * 2 * 3), 3)); return g; }, []);
-    useFrame(() => { const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute; let n = 0;
-        if (sa.snareT > 0.45) { const hw = sa.handW as number[][] | undefined; (sa.snareList as any[]).forEach((e, i) => { if (e.down > 0 || i > 3) return; for (let sd = 0; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z); n++; } }); }
-        { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const hw = sa.handW as number[][] | undefined, e = cw.e, ty = e.y + (e.ly || 0) + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0]; for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++; } } }
+    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(64 * 2 * 3), 3)); return g; }, []);
+    useFrame(() => { const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute, L = sa.snareList as any[] | undefined; let n = 0;
+        const put = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => { const o = n * 2; a.setXYZ(o, x0, y0, z0); a.setXYZ(o + 1, x1, y1, z1); n++; };
+        if (sa.snareT > 0.45 && L) { const hw = sa.handW as number[][] | undefined, count = Math.min(L.length, 6), age = 1.25 - sa.snareT, burst = age >= 0 && age < 0.24, radius = burst ? 0.45 + 1.35 * (age / 0.24) : 0;
+            for (let i = 0; i < count; i++) { const e = L[i]; if (e.down > 0) continue; const ty = e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0];
+                for (let sd = 0; sd < 2; sd++) { const hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; put(hp[0], hp[1], hp[2], e.x, ty, e.z); }
+                if (burst) { const cy = ty, base = sim.ang + i * 0.37, step = Math.PI * 2 / 3;
+                    for (let ray = 0; ray < 3; ray++) { const a0 = base + ray * step, a1 = base + ((ray + 1) % 3) * step, x0 = e.x + Math.cos(a0) * radius, z0 = e.z + Math.sin(a0) * radius, y0 = cy + Math.sin(a0 * 2) * 0.12, x1 = e.x + Math.cos(a1) * radius, z1 = e.z + Math.sin(a1) * radius, y1 = cy + Math.sin(a1 * 2) * 0.12; put(e.x, cy, e.z, x0, y0, z0); put(x0, y0, z0, x1, y1, z1); }
+                }
+            }
+            if (count > 1) { for (let i = 0; i < count; i++) { const e = L[i], next = L[(i + 1) % count]; if (e.down > 0 || next.down > 0) continue; const dx = next.x - e.x, dz = next.z - e.z; if (dx * dx + dz * dz < 14 * 14) put(e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z, next.x, next.y + [1.2, -0.3, 0.67, 1.2][next.kind ?? 0], next.z); } }
+        }
+        { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const hw = sa.handW as number[][] | undefined, e = cw.e, ty = e.y + (e.ly || 0) + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0]; for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; put(hp[0], hp[1], hp[2], e.x, ty, e.z); } } }
         geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0; });
-    return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#ffffff" transparent opacity={0.95} /></lineSegments>;
+    return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#e9fbff" transparent opacity={0.92} depthWrite={false} /></lineSegments>;
 }
 // flying cars: instanced, lane traffic above the streets (decor only, no collision)
 const CAR_N = 36;
