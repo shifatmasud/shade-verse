@@ -39,7 +39,7 @@ const wallSetup = await page.evaluate(() => {
 await page.waitForFunction(() => !!window.__game.sim.wall, { timeout: 2500 });
 await page.evaluate(() => { window.__game.input.keys.w = false; window.__game.input.my = 0.35; });
 const wallResult = await waitForState((value) => value.state?.transport === 'idle' && value.state?.leaderTraversal === 'wall' && value.state?.ghostTraversal === 'wall', 3500);
-const wall = { leader: wallResult.state?.leaderTraversal, ghost: wallResult.state?.ghostTraversal, leaderWall: !!wallResult.player.wall, ghostWall: !!wallResult.actor.wall, sameWall: wallResult.player.wallB === wallResult.actor.wallB };
+const wall = { leader: wallResult.state?.leaderTraversal, ghost: wallResult.state?.ghostTraversal, leaderWall: !!wallResult.player.wall, ghostWall: !!wallResult.actor.wall, sameWall: wallResult.player.wallB === wallResult.actor.wallB, animation: wallResult.state?.animation };
 
 await page.evaluate(() => {
     const g = window.__game, s = g.sim;
@@ -50,17 +50,27 @@ await page.evaluate(() => {
 });
 const swung = await waitForState((value) => value.player.web === true, 2500);
 const swingResult = await waitForState((value) => value.state?.transport === 'idle' && value.state?.leaderTraversal === 'swing' && value.state?.ghostTraversal === 'swing', 3000);
-const swing = { leader: swingResult.state?.leaderTraversal, ghost: swingResult.state?.ghostTraversal, leaderSwing: !!swingResult.player.web, ghostSwing: !!swingResult.actor.web, foundLeaderSwing: !!swung.player.web };
+const swing = { leader: swingResult.state?.leaderTraversal, ghost: swingResult.state?.ghostTraversal, leaderSwing: !!swingResult.player.web, ghostSwing: !!swingResult.actor.web, foundLeaderSwing: !!swung.player.web, animation: swingResult.state?.animation };
+
+await page.evaluate(() => {
+    const g = window.__game, s = g.sim;
+    g.input.swing = true; g.input.swingQ = false; g.input.keys.w = false;
+    s.pos[1] = 1; s.vel = [0, 0, 0]; s.ground = false; s.web = true; s.webT = 0.5;
+    s.anchor = [s.pos[0], s.pos[1] + 30, s.pos[2] + 1]; s.rope = 40;
+    window.__ts = 0;
+});
+const zipResult = await waitForState((value) => value.player.web && value.state?.animation?.action === 'street-zip-up', 2000);
+const zip = { action: zipResult.state?.animation?.action, source: zipResult.state?.animation?.source, leaderWeb: !!zipResult.player.web };
 
 await page.evaluate(() => {
     const g = window.__game, s = g.sim;
     g.input.swing = false; g.input.swingQ = false; g.input.keys.w = false;
-    s.wall = null; s.wallB = -1; s.web = false; s.swim = false; s.grappleFlight = false; s.spring = 0;
+    s.wall = null; s.wallB = -1; s.web = false; s.swim = false; s.grappleFlight = false; s.spring = 0; s.flightBoost = false;
     s.pos[1] = Math.max(s.pos[1] + 12, 42); s.vel = [0, 0, 0]; s.ground = false; s.airT = 0.6; s.glideOn = true;
     window.__ts = 0;
 });
 const glideResult = await waitForState((value) => value.state?.transport === 'idle' && value.state?.leaderTraversal === 'glide' && value.state?.ghostTraversal === 'glide', 3000);
-const glide = { leader: glideResult.state?.leaderTraversal, ghost: glideResult.state?.ghostTraversal, leaderGlide: !!glideResult.player.glideOn, ghostGlide: !!glideResult.actor.glideOn };
+const glide = { leader: glideResult.state?.leaderTraversal, ghost: glideResult.state?.ghostTraversal, leaderGlide: !!glideResult.player.glideOn, ghostGlide: !!glideResult.actor.glideOn, animation: glideResult.state?.animation };
 
 await page.evaluate(() => { window.__game.sim.pos[0] += 100; });
 let morphOut = false, morphIn = false, captured = false;
@@ -84,8 +94,8 @@ for (let i = 0; i < 80; i++) {
 }
 const final = await page.evaluate(() => ({ state: window.__ghostState, leader: window.__game.sim.pos, actor: window.__ghostSim.pos }));
 const finalDistance = Math.hypot(final.actor[0] - final.leader[0], final.actor[1] - final.leader[1], final.actor[2] - final.leader[2]);
-const ok = wall.leader === 'wall' && wall.ghost === 'wall' && wall.leaderWall && wall.ghostWall && wall.sameWall && swing.leader === 'swing' && swing.ghost === 'swing' && swing.leaderSwing && swing.ghostSwing && swing.foundLeaderSwing && glide.leader === 'glide' && glide.ghost === 'glide' && glide.leaderGlide && glide.ghostGlide && morphOut && morphIn && final.state.transport === 'idle' && finalDistance < 18 && errors.length === 0;
-console.log(JSON.stringify({ ok, wallSetup, wall, swing, glide, morph: { out: morphOut, in: morphIn, final: final.state, finalDistance }, errors }));
+const ok = wall.leader === 'wall' && wall.ghost === 'wall' && wall.leaderWall && wall.ghostWall && wall.sameWall && wall.animation?.source === 'shadow' && wall.animation?.action === 'wall-crawl' && wall.animation?.key === 'wall' && swing.leader === 'swing' && swing.ghost === 'swing' && swing.leaderSwing && swing.ghostSwing && swing.foundLeaderSwing && swing.animation?.source === 'shadow' && swing.animation?.action === 'web-swing' && zip.action === 'street-zip-up' && zip.source === 'shadow' && zip.leaderWeb && glide.leader === 'glide' && glide.ghost === 'glide' && glide.leaderGlide && glide.ghostGlide && glide.animation?.source === 'shadow' && glide.animation?.action === 'glide' && morphOut && morphIn && final.state.transport === 'idle' && finalDistance < 18 && errors.length === 0;
+console.log(JSON.stringify({ ok, wallSetup, wall, swing, zip, glide, morph: { out: morphOut, in: morphIn, final: final.state, finalDistance }, errors }));
 console.log(ok ? 'GHOST TRAVERSAL PASS' : 'GHOST TRAVERSAL FAIL');
 await browser.close();
 process.exit(ok ? 0 : 1);

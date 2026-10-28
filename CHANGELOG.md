@@ -2,6 +2,18 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Ghost full-action animation parity and surface morph
+### Changed
+- Ghost now renders Shadow's shared live clip and procedural action poses for traversal, spring-shot, glide/flight, swimming/dive, dodge/roll/cartwheel, all seven melee moves, plasma web, and every Shadow Snare phase. The two-hand spring shot is driven by the real jump-from-web simulator transition and aims both hands at Shadow's anchor.
+- On Shadow's ground landings and wall-crawl surface entries, Ghost finds a nearby point on the same valid support and morph-transports through the existing pink-white 96-particle effect; the fade hides relocation so it never visibly snaps. Long-distance catch-up remains intact.
+- Shadow's model, HUD, controls, ordinary melee simulation, landscape-only behavior, the 3× rooftop boss, red beacon, and prior Ghost features remain unchanged; no simulation/combat rules were edited.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, `PORT=4173 node test/ghost-animation-sync.mjs` (26 action cases, including dual-hand spring-shot), `node test/ghost-surface-morph.mjs` (street, park, roof, wall), `node test/ghost-traversal.mjs` (wall, swing, zip-up, glide/morph), `node test/ghost.mjs`, `node test/boss.mjs`, and `node test/boss-arena.mjs` pass in Chromium WebGL2/ANGLE SwiftShader. The phone-landscape morph capture is `art/ghost/shot-after-ghost-morph-mobile-landscape.png` (844×390).
+- Legacy `test/combat.mjs` and `test/snare.mjs` fail unchanged on the exact starting commit `e3439faa` in a temporary baseline worktree (no KO/damage and Snare impact wait timeout, respectively); these are pre-existing test failures, not introduced here. Physical Android/Windows devices and target-GPU frame rates remain untested.
+- Changes are scoped to the private mirror's `main`; no push was made to the original repository.
+### References
+- Adobe Mixamo animation workflow, Insomniac/PlayStation traversal and combat references, and the existing particle-VFX inspiration are recorded in `docs/REFERENCES.md`; no third-party code or game assets were copied.
+
 ## [Released] - Ghost traversal match, particle morph, and fixed boss arena
 ### Changed
 - Fixed the existing white, red-eyed, 3× Shadow-body boss to a central rooftop arena, constrained its pursuit to that roof, and marked the location with a pulsing 84 m red beacon and rooftop rings.

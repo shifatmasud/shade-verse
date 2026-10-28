@@ -664,6 +664,60 @@ function aimBone(bone: THREE.Bone, child: THREE.Object3D, target: THREE.Vector3,
     bone.parent!.getWorldQuaternion(_pq); bone.quaternion.premultiply(_pq.clone().invert().multiply(_aq).multiply(_pq));
 }
 const _id = new THREE.Quaternion(), _tg = new THREE.Vector3();
+export type HeroClipState = { key: string; t: number; w: number };
+export function animateHeroBones(sim: any, rig: any, dt: number, clipState: HeroClipState, poseState?: CombatPoseState, preserveClipState = false, sourceClipState?: HeroClipState, poseDt = dt) {
+    const h = rig.root, sa = sim as any, v = sim.vel;
+    rig.bones.forEach((b: THREE.Bone) => b.rotation.set(0, 0, 0));
+    const speed = Math.hypot(v[0], v[1], v[2]), hs = Math.hypot(v[0], v[2]);
+    const legR = rig.b.thighR as THREE.Bone, legL = rig.b.thighL as THREE.Bone;
+    const armR = rig.b.uarmR as THREE.Bone, armL = rig.b.uarmL as THREE.Bone;
+    const sw = sim.ground ? Math.sin(sim.runPhase * 3) * 0.9 * Math.min(1, hs / 6) : 0.25;
+    legR.rotation.x = sw; legL.rotation.x = -sw; armL.rotation.x = -sw * 0.8;
+    if (sim.swim) { const cs = Math.sin(sim.runPhase * 2.4); legR.rotation.x = cs * 0.5; legL.rotation.x = -cs * 0.5; armL.rotation.x = -2.6 + cs * 1.2; }
+    if (sim.wall) { const moving = Math.min(1, speed / 7), cw = Math.sin(sim.runPhase * 2.5) * moving; legR.rotation.x = -0.3 + cw * 1.05; legL.rotation.x = -0.3 - cw * 1.05; armL.rotation.x = -1.35 - cw * 0.8; }
+    armR.rotation.x = sim.swim ? -2.6 - Math.sin(sim.runPhase * 2.4) * 1.2 : sim.wall ? -1.35 + Math.sin(sim.runPhase * 2.5) * 0.8 * Math.min(1, speed / 7) : sim.web ? (sim.swings % 2 === 1 ? -2.7 : -0.5) : sim.atkT > 0 ? -1.5 - Math.sin((0.32 - sim.atkT) * 10) * 0.6 : sw * 0.8;
+    if (sim.web && !sim.swim && !sim.wall) armL.rotation.x = sim.swings % 2 === 0 ? -2.7 : -0.5;
+    if (sa.kick && sim.atkT > 0 && sim.shotT <= 0) { const kp = Math.sin((1 - sim.atkT / 0.32) * Math.PI); legR.rotation.x = -1.7 * kp; legL.rotation.x = 0.15; armR.rotation.x = -0.8; armL.rotation.x = -1.2; }
+    if (sim.glideOn && !(sa.snareT > 0)) { armR.rotation.x = -0.1; armL.rotation.x = -0.1; armR.rotation.z = 1.3; armL.rotation.z = -1.3; const gt = Math.sin(sim.t * 5) * 0.05; legR.rotation.x = 0.12 + gt; legL.rotation.x = 0.06 - gt; }
+    const sn = sa.snareT || 0;
+    if (sn > SNARE.GATHER_END) { armR.rotation.x = -1.35; armL.rotation.x = -1.35; legR.rotation.x = -0.2; legL.rotation.x = 0.1; }
+    else if (sn > SNARE.SPIN_START) { const hold = Math.max(0, Math.min(1, (SNARE.GATHER_END - sn) / (SNARE.GATHER_END - SNARE.SPIN_START))); armR.rotation.x = -1.35 - 0.35 * hold; armL.rotation.x = -1.35 - 0.25 * hold; legR.rotation.x = -0.2 - 0.35 * hold; legL.rotation.x = 0.1 + 0.1 * hold; }
+    else if (sn > 0) { const spin = Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))), recover = sn <= SNARE.IMPACT ? Math.max(0, sn / SNARE.IMPACT) : 1, kick = Math.sin(spin * Math.PI * 0.5) * recover; legR.rotation.x = -1.5 * kick; legL.rotation.x = 0.2 * kick; armR.rotation.x = -0.6 * kick; armL.rotation.x = -1.4 * kick; }
+    { const tR = legR.rotation.x, tL = legL.rotation.x, tuck = sim.ground || sim.glideOn || sim.wall ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
+    const ck = (sa.mv || sa.flip || sn > 0 || (sim.glideOn && (sa.gB ?? 0) > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? (sa.kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
+    const cs = clipState;
+    if (sourceClipState) { cs.key = sourceClipState.key; cs.t = sourceClipState.t; cs.w = sourceClipState.w; }
+    else {
+        if (ck !== cs.key) {
+            if (preserveClipState) cs.key = ck || cs.key;
+            else { cs.key = ck; cs.t = 0; }
+        }
+        cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
+        if (ck) {
+            const c = CLIPS[ck];
+            if (ck === 'wall') cs.t += dt * Math.min(1.6, speed / 3);
+            else if (ck === 'swim') cs.t += dt * (0.6 + Math.min(1.2, speed / 8));
+            else if (ck === 'punch') cs.t = 0.10 + (0.32 - sim.atkT) * 2.0;
+            else if (ck === 'jump') cs.t = (c.n / c.fps) * 0.5;
+            else if (ck === 'run') cs.t += dt * Math.max(0.5, Math.min(2, hs / 5.5));
+            else cs.t += dt;
+        }
+    }
+    if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
+    if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
+    if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
+    if (sim.shotT > 0 || sim.spring > 0) { const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12); rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]); for (const side of ['L', 'R']) { aimBone(rig.b['uarm' + side], rig.b['farm' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + side], rig.b['hand' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); } }
+    const activePoseState = poseState ?? _cp;
+    combatPose(sim, rig, h, poseDt, activePoseState);
+    if (preserveClipState && !sourceClipState) {
+        sa.__heroClipState = { key: cs.key, t: cs.t, w: cs.w };
+        const sharedPose = sa.__heroPoseState ?? (sa.__heroPoseState = { w: 0, c: new Float32Array(activePoseState.c.length), t: new Float32Array(activePoseState.t.length) });
+        sharedPose.w = activePoseState.w; sharedPose.c.set(activePoseState.c); sharedPose.t.set(activePoseState.t);
+    }
+    const zip = sim.web && sim.webT < 1.6 && sim.anchor[1] - sim.pos[1] > 25 && Math.hypot(sim.anchor[0] - sim.pos[0], sim.anchor[1] - sim.pos[1], sim.anchor[2] - sim.pos[2]) < sim.rope - 0.5;
+    const action = sn > 0 ? 'shadow-snare' : sa.mv ? `move-${sa.mv.id}` : sa.flip ? 'dodge-flip' : sim.shotT > 0 ? 'plasma-web-shot' : sim.spring > 0 ? 'web-spring-launch' : sim.web ? (zip ? 'street-zip-up' : 'web-swing') : sim.swim ? (sim.dive ? 'dive' : 'swim') : sim.wall ? 'wall-crawl' : sim.wallT > 0 ? 'wall-jump' : sim.glideOn ? (sa.flightBoost ? 'powered-flight' : 'glide') : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne') : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
+    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, shotT: sim.shotT, spring: sim.spring, aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
+}
 export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: number; shake: number }; perf: { scale: number; fps: number; speed: number } }
 
 
@@ -1135,48 +1189,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         h.children[0].rotation.x = lean;
         { const c0 = h.children[0], sb = sim as any; c0.rotation.order = 'ZXY'; const yr = sb.bYaw === undefined ? 0 : ((sim.yaw - sb.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3); sb.bYaw = sim.yaw; sb.bR = (sb.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * sa0.gB - (sb.bR || 0)) * Math.min(1, dt * 4); c0.rotation.z = sb.bR; }   // glide banking: roll into the turn, eased
         if (sa0.gB > 0.01) { const lc = 0.9 * sa0.gB; h.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; h.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; h.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
-        const hs = Math.hypot(v[0], v[2]);
-        const sw = sim.ground ? Math.sin(sim.runPhase * 3) * 0.9 * Math.min(1, hs / 6) : 0.25;
-        legR.current.rotation.x = sw; legL.current.rotation.x = -sw;
-        armL.current.rotation.x = -sw * 0.8;
-        if (sw2) { const cs = Math.sin(sim.runPhase * 2.4); legR.current.rotation.x = cs * 0.5; legL.current.rotation.x = -cs * 0.5; armL.current.rotation.x = -2.6 + cs * 1.2; }
-        if (wl) { const moving=Math.min(1,Math.hypot(v[0],v[1],v[2])/7),cw = Math.sin(sim.runPhase * 2.5)*moving; legR.current.rotation.x = -.3 + cw * 1.05; legL.current.rotation.x = -.3 - cw * 1.05; armL.current.rotation.x = -1.35 - cw * .8; }
-        armR.current.rotation.x = sw2 ? -2.6 - Math.sin(sim.runPhase * 2.4) * 1.2 : wl ? -1.35 + Math.sin(sim.runPhase * 2.5) * .8 * Math.min(1,Math.hypot(v[0],v[1],v[2])/7) : sim.web ? (sim.swings % 2 === 1 ? -2.7 : -0.5) : sim.atkT > 0 ? -1.5 - Math.sin((0.32 - sim.atkT) * 10) * 0.6 : sw * 0.8;
-        if (sim.web && !sw2 && !wl) armL.current.rotation.x = sim.swings % 2 === 0 ? -2.7 : -0.5;
-        
-        if ((sim as any).kick && sim.atkT > 0 && sim.shotT <= 0) { const kp = Math.sin((1 - sim.atkT / 0.32) * Math.PI); legR.current.rotation.x = -1.7 * kp; legL.current.rotation.x = 0.15; armR.current.rotation.x = -0.8; armL.current.rotation.x = -1.2; }
-        if (sim.glideOn && !((sim as any).snareT > 0)) { armR.current.rotation.x = -0.1; armL.current.rotation.x = -0.1; armR.current.rotation.z = 1.3; armL.current.rotation.z = -1.3; const gt = Math.sin(sim.t * 5) * 0.05; legR.current.rotation.x = 0.12 + gt; legL.current.rotation.x = 0.06 - gt; }
-        { const sn = (sim as any).snareT || 0;
-            if (sn > SNARE.GATHER_END) { armR.current.rotation.x = -1.35; armL.current.rotation.x = -1.35; legR.current.rotation.x = -0.2; legL.current.rotation.x = 0.1; }
-            else if (sn > SNARE.SPIN_START) { const hold = Math.max(0, Math.min(1, (SNARE.GATHER_END - sn) / (SNARE.GATHER_END - SNARE.SPIN_START))); armR.current.rotation.x = -1.35 - 0.35 * hold; armL.current.rotation.x = -1.35 - 0.25 * hold; legR.current.rotation.x = -0.2 - 0.35 * hold; legL.current.rotation.x = 0.1 + 0.1 * hold; }
-            else if (sn > 0) { const spin = Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))), recover = sn <= SNARE.IMPACT ? Math.max(0, sn / SNARE.IMPACT) : 1, kick = Math.sin(spin * Math.PI * 0.5) * recover; legR.current.rotation.x = -1.5 * kick; legL.current.rotation.x = 0.2 * kick; armR.current.rotation.x = -0.6 * kick; armL.current.rotation.x = -1.4 * kick; }
-        }
-        { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground || sim.glideOn || wl ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.current.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
-        {   // clip layer: pick a Mixamo-derived clip for the state, crossfade by weight
-            const ck = ((sim as any).mv || (sim as any).flip || (sim as any).snareT > 0 || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
-            const cs = clipSt.current;
-            if (ck !== cs.key) { cs.key = ck || cs.key; }
-            cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
-            if (ck) {
-                const c = CLIPS[ck];
-                if (ck === 'wall') cs.t += dt * Math.min(1.6, speed / 3);
-                else if (ck === 'swim') cs.t += dt * (0.6 + Math.min(1.2, speed / 8));
-                else if (ck === 'punch') cs.t = 0.10 + (0.32 - sim.atkT) * 2.0;  // clip frames: fist reaches 0.67 m forward at clip t 0.233 s, holds to ~0.55 s; so arrival ~0.10 s after input
-                else if (ck === 'jump') cs.t = (c.n / c.fps) * 0.5;
-                else if (ck === 'run') cs.t += dt * Math.max(0.5, Math.min(2, hs / 5.5));
-                else cs.t += dt;
-            }
-            if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
-            if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
-            if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
-            if (false as boolean) { _gq.setFromAxisAngle(_gz, 1.45); rig.b.uarmL.quaternion.premultiply(_gq); _gq.setFromAxisAngle(_gz, -1.45); rig.b.uarmR.quaternion.premultiply(_gq); }
-            if (sim.shotT > 0 || sim.spring > 0) { // both arms aimed at the web target (shot: the enemy, spring: the anchor), blended in/out
-                const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12);
-                rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]);
-                for (const s2 of ['L', 'R']) { aimBone(rig.b['uarm' + s2], rig.b['farm' + s2], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + s2], rig.b['hand' + s2], _tg, wt); rig.root.updateWorldMatrix(true, true); }
-            }
-        }
-        combatPose(sim, rig, h, dt);
+        const shadowAnimation = animateHeroBones(sim, rig, dt, clipSt.current, undefined, true);
+        if (DBG) (window as any).__shadowAnimation = shadowAnimation;
         if (!sim.swim && sim.ground && !wl && (clipSt.current.key === 'run' || clipSt.current.key === 'idle')) {   // plant the lowest foot vertex on the street (measured from the skinned mesh, replaces the fixed run drop)
             h.updateMatrixWorld(true);
             let mn = 1e9;
