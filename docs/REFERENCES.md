@@ -48,6 +48,9 @@ Implementation direction: retain the multi-target web gather and short hold, the
 ## Full-body red boss armor (2026-10-29)
 - The armor is original procedural low-poly geometry attached to the project's existing 17-bone Shadow skeleton. Helmet framing leaves the original red eye pixels clear; two small red lens highlights sit in front of those preserved pixels for phone-size legibility. The segmented plates, dark-red underlayer, materials, and proportions were authored in-project. No external armor model, texture, or game asset was copied.
 
+## Rooftop boss autonomous flight (2026-10-29)
+- The lift, hover, roof-bounded propel, controlled landing, tucked-leg pose, and paired cyan boot exhaust are original in-project procedural behavior and visuals, built on the existing red-armored Shadow-body boss and rooftop arena. No external flight code, model, texture, or VFX asset was copied; the 6.5 m lift and phase durations are game-tuning values rather than real-world specifications.
+
 ## Ghost full-action animation parity and landing/wall morph (2026-10-29)
 
 - Animation workflow: [Adobe Mixamo — animate characters](https://helpx.adobe.com/creative-cloud/help/animate-characters-mixamo.html). Adobe documents browsing its animation library, applying a selected animation to a built-in or uploaded character, and editing settings such as speed and arm spacing. The project's existing Mixamo-derived idle/run/jump/wall/swim/punch clips are retargeted to its own rig; Ghost now uses the same live clip and pose evaluator as Shadow. The seven melee moves, dodge variants, plasma shot, spring targeting, and Snare phases remain project-owned procedural gameplay poses; no Mixamo files are redistributed.

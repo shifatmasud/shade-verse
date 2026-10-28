@@ -41,6 +41,7 @@ for (const [name, width, height, mobile] of cases) {
             // Debug-only front-facing view for a clear full-body armor/eye capture; production camera and placement are unchanged.
             sim.pitch = -0.15;
             boss.x = sim.pos[0] + 3; boss.y = sim.pos[1]; boss.z = sim.pos[2] + 8; boss.atk = 0;
+            if (boss.flight) { boss.flight.phase = 'grounded'; boss.flight.phaseT = -10000; boss.flight.baseY = boss.y; }
             boss.ang = Math.atan2(sim.pos[0] - boss.x, sim.pos[2] - boss.z);
             const d = 12, fx = Math.sin(boss.ang), fz = Math.cos(boss.ang);
             window.__camOv = [boss.x + fx * d, boss.y + 5.2, boss.z + fz * d, boss.x, boss.y + 4.35, boss.z];
@@ -119,6 +120,7 @@ for (const [name, width, height, mobile] of cases) {
             sim.enemies.forEach((e, i) => { if (e !== boss) { e.down = 10000; e.atk = 0; e.x = 10000 + i * 30; e.z = 10000; } });
             const bodyOffset = window.__giantBossRoot.userData.bodyOffset;
             boss.x = sim.pos[0] + 3; boss.y = sim.pos[1] - bodyOffset; boss.z = sim.pos[2];
+            if (boss.flight) { boss.flight.phase = 'grounded'; boss.flight.phaseT = -10000; boss.flight.baseY = boss.y; }
             boss.hp = 24; boss.hit = 0; boss.atk = 0; boss.down = 0; boss.kb = [0, 0];
             sim.ground = true; sim.swim = false; sim.wall = null; sim.web = false; sim.mv = null; sim.mvQ = false; sim.atkT = 0; sim.windT = sim.t + 100;
             sim.ang = Math.atan2(boss.x - sim.pos[0], boss.z - sim.pos[2]); input.attackQ = true; input.meleeQ = true;
@@ -135,7 +137,7 @@ for (const [name, width, height, mobile] of cases) {
             input.attackQ = false; input.meleeQ = false;
             const result = { ...before, hpAfter: boss?.hp };
             sim.mv = null; sim.mvQ = false; sim.atkT = 0;
-            if (boss) { boss.x = sim.pos[0] + 4; boss.y = sim.pos[1]; boss.z = sim.pos[2]; boss.atk = 0; boss.hp = 24; }
+            if (boss) { boss.x = sim.pos[0] + 4; boss.y = sim.pos[1]; boss.z = sim.pos[2]; boss.atk = 0; boss.hp = 24; if (boss.flight) { boss.flight.phase = 'grounded'; boss.flight.phaseT = -10000; boss.flight.baseY = boss.y; } }
             sim.ang = Math.atan2(sim.pos[0] + 4 - sim.pos[0], sim.pos[2] - sim.pos[2]); sim.windT = sim.t - 1;
             return result;
         }, meleeCheck);
@@ -145,6 +147,7 @@ for (const [name, width, height, mobile] of cases) {
             if (!boss) return;
             sim.enemies.forEach((e, i) => { if (e !== boss) { e.down = 10000; e.atk = 0; e.x = 10000 + i * 30; e.z = 10000; } });
             boss.x = sim.pos[0] + 4; boss.y = sim.pos[1]; boss.z = sim.pos[2];
+            if (boss.flight) { boss.flight.phase = 'grounded'; boss.flight.phaseT = -10000; boss.flight.baseY = boss.y; }
             boss.ang = Math.atan2(sim.pos[0] - boss.x, sim.pos[2] - boss.z);
             boss.hp = 24; boss.atk = 0; boss.hit = 0; boss.down = 0; boss.kb = [0, 0]; sim.hp = 100; sim.windT = sim.t - 1;
         });
@@ -162,6 +165,7 @@ for (const [name, width, height, mobile] of cases) {
             sim.enemies.forEach((e, i) => { if (e !== boss) { e.down = 10000; e.atk = 0; e.x = 10000 + i * 30; e.z = 10000; } });
             if (boss) {
                 boss.x = sim.pos[0] + 4; boss.y = sim.pos[1]; boss.z = sim.pos[2];
+                if (boss.flight) { boss.flight.phase = 'grounded'; boss.flight.phaseT = -10000; boss.flight.baseY = boss.y; }
                 boss.atk = 0; boss.hit = 0; boss.hp = 24; boss.down = 0; boss.kb = [0, 0];
             }
             sim.hp = 100; input.specialQ = true;

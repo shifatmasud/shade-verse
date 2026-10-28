@@ -112,6 +112,14 @@ Wall crawling, wall walking/running, higher jump, running, swimming (ocean, spli
 Tests required before any claim: wall attach/detach, wall jump, water entry/exit, transitions ground<->wall<->swing.
 Current jump apex 2.4 m (to raise). Run PASS. Wall and swim: none.
 
+## Rooftop boss autonomous flight — provisional 82/100
+- Visuals: 18/20 (the 3× red-armored Shadow-body boss retains its red eyes; paired cyan boot plumes are visible during the flight cycle in the phone-landscape capture)
+- Controls/behavior: 24/25 (engaged boss lift, hover, bounded propel, and controlled landing are verified; existing strike, Snare targeting, and player's input fields remain intact)
+- Performance (estimate): 14/20 (two shared cone geometries and four plume meshes are isolated to the single boss; target-device frame rate is unmeasured)
+- Stability: 14/15 (type-check/build, flight, boss/arena, and 25-action Ghost parity regressions pass; generic combat harness wall-clock sampling was not reliable on SwiftShader)
+- Device compatibility (estimate): 12/20 (physical Android and Windows remain untested)
+Evidence: `test/boss-flight.mjs` verifies takeoff, hover, roof-bounded propulsion, landing, plume response, and unchanged player input; `test/boss.mjs`, `test/boss-arena.mjs`, and `test/ghost-animation-sync.mjs` pass. Capture: `art/boss/shot-after-boss-flight-mobile-landscape.png` (844×390). The legacy `test/combat.mjs` missed melee/landing events at its SwiftShader wall-clock sample intervals; a direct live trace confirmed a normal melee hit and HP reduction. Physical-device and target-GPU results are UNTESTED.
+
 ## Full-body red boss armor — provisional 84/100
 - Visuals: 18/20 (the phone-landscape capture shows the 3× Shadow-bodied boss in bulky red armor from helmet to boots, with two clear red eyes through the open face)
 - Controls/behavior: 25/25 (the existing 3× body, fixed roof/beacon, boss strike, ordinary-melee exclusion, and Snare damage remain covered by focused regressions)

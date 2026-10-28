@@ -112,7 +112,10 @@ export const BOSS_ARENA = {
     roof: { x0: arenaRoof.x0, x1: arenaRoof.x1, z0: arenaRoof.z0, z1: arenaRoof.z1 },
 };
 
-export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean; born?: number; boss?: boolean }
+export type BossFlightPhase = 'grounded' | 'takeoff' | 'hover' | 'propel' | 'landing';
+export interface BossFlightState { phase: BossFlightPhase; phaseT: number; baseY: number; startX: number; startZ: number; targetX: number; targetZ: number; cycle: number }
+const BOSS_FLIGHT = { groundWait: 3.2, takeoff: 0.95, hover: 1.15, propel: 1.8, landing: 0.9, altitude: 6.5, forward: 8.5, lateral: 4.5 };
+export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean; born?: number; boss?: boolean; flight?: BossFlightState }
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
@@ -191,6 +194,7 @@ function spawnBoss(s: Sim): Enemy {
     const e = spawnEnemy0(s, true);
     e.x = BOSS_ARENA.x; e.y = BOSS_ARENA.y; e.z = BOSS_ARENA.z; e.roof = { ...BOSS_ARENA.roof };
     e.boss = true; e.kind = 0; e.hp = 24; e.atk = 0; e.hit = 0; e.kb = [0, 0]; e.ang = 0; e.down = 0; e.born = s.t;
+    e.flight = { phase: 'grounded', phaseT: 0, baseY: e.y, startX: e.x, startZ: e.z, targetX: e.x, targetZ: e.z, cycle: 0 };
     return e;
 }
 export function resetSim(s: Sim) {
@@ -592,6 +596,47 @@ function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
     if (e.down <= 0) e.hit = Math.max(e.hit, 0.12);
     return true;
 }
+function bossRoofClamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
+function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
+    const flight = e.flight; if (!flight) return;
+    const roof = e.roof ?? BOSS_ARENA.roof;
+    const marginX = Math.min(1.5, Math.max(0, (roof.x1 - roof.x0) * 0.1));
+    const marginZ = Math.min(1.5, Math.max(0, (roof.z1 - roof.z0) * 0.1));
+    const minX = roof.x0 + marginX, maxX = roof.x1 - marginX, minZ = roof.z0 + marginZ, maxZ = roof.z1 - marginZ;
+    const ease = (t: number) => t * t * (3 - 2 * t);
+    if (flight.phase === 'grounded') {
+        e.y = flight.baseY; flight.phaseT += dt;
+        if (flight.phaseT >= BOSS_FLIGHT.groundWait && engaged && e.hit <= 0 && e.atk <= 0) {
+            const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1;
+            const ux = dx / d, uz = dz / d, side = flight.cycle % 2 === 0 ? 1 : -1;
+            flight.startX = e.x; flight.startZ = e.z;
+            flight.targetX = bossRoofClamp(e.x + ux * BOSS_FLIGHT.forward - uz * BOSS_FLIGHT.lateral * side, minX, maxX);
+            flight.targetZ = bossRoofClamp(e.z + uz * BOSS_FLIGHT.forward + ux * BOSS_FLIGHT.lateral * side, minZ, maxZ);
+            flight.cycle++; flight.phase = 'takeoff'; flight.phaseT = 0;
+        }
+        return;
+    }
+    flight.phaseT += dt;
+    if (flight.phase === 'takeoff') {
+        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.takeoff);
+        e.y = flight.baseY + BOSS_FLIGHT.altitude * ease(t);
+        if (t >= 1) { flight.phase = 'hover'; flight.phaseT = 0; }
+    } else if (flight.phase === 'hover') {
+        e.y = flight.baseY + BOSS_FLIGHT.altitude + Math.sin(flight.phaseT * 2.6) * 0.16;
+        if (flight.phaseT >= BOSS_FLIGHT.hover) { flight.phase = 'propel'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; }
+    } else if (flight.phase === 'propel') {
+        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.propel), k = ease(t);
+        e.x = flight.startX + (flight.targetX - flight.startX) * k;
+        e.z = flight.startZ + (flight.targetZ - flight.startZ) * k;
+        e.y = flight.baseY + BOSS_FLIGHT.altitude + Math.sin(flight.phaseT * 2.6) * 0.12;
+        if (t < 1) e.ang = Math.atan2(flight.targetX - flight.startX, flight.targetZ - flight.startZ);
+        if (t >= 1) { flight.phase = 'landing'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; }
+    } else if (flight.phase === 'landing') {
+        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.landing);
+        e.y = flight.baseY + BOSS_FLIGHT.altitude * (1 - ease(t));
+        if (t >= 1) { e.y = flight.baseY; flight.phase = 'grounded'; flight.phaseT = 0; }
+    }
+}
 function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
     const input = controls;
     const p = s.pos, v = s.vel;
@@ -645,11 +690,15 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         if (airb) { const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz)) { e.x += kx; e.z += kz; } e.kb[0] *= 0.92; e.kb[1] *= 0.92; e.atk = 0; continue; }
         if (e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = e.boss ? spawnBoss(s) : spawnEnemy(s); continue; }   // preserve boss type when re-placing far actors near the hero
         const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
-        const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
+        let dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
+        if (isBoss) {
+            stepBossFlight(s, e, dt, p, d < 54 && dy < 18 && e.hit <= 0);
+            dx = p[0] - e.x; dz = p[2] - e.z; d = Math.hypot(dx, dz); dy = Math.abs(p[1] - e.y);
+        }
         if (d < (e.air ? 32 : isBoss ? 54 : 26) && (e.air || dy < (isBoss ? 18 : 5)) && e.hit <= 0) {
             e.ang = Math.atan2(dx, dz);
             if (e.air) e.y += Math.max(-5 * dt, Math.min(5 * dt, Math.max(2, p[1]) - e.y));   // drones descend/climb to the hero's height
-            if (d > (isBoss ? 5.0 : 2.0) && e.atk <= 0) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = (isBoss ? 1.65 : 4.2) * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
+            if (d > (isBoss ? 5.0 : 2.0) && e.atk <= 0 && (!isBoss || e.flight?.phase === 'grounded')) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = (isBoss ? 1.65 : 4.2) * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
             if (d <= (isBoss ? 5.3 : 2.4) && e.atk <= 0 && (!e.air || dy < 3) && (!isBoss || dy < 16) && atkN < (e.air ? 1 : 2) && ((s as any).windT ?? 0) <= s.t) { e.atk = isBoss ? 1.3 : 0.7 + (i % 3) * 0.12; atkN++; (s as any).windT = s.t + 0.45; } // telegraph; at most 2 enemies wind up at once (staggered, not one synchronized burst), drones wait to be at the hero's height
         }
         if (e.atk > 0) {

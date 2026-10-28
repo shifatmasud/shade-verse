@@ -2,6 +2,15 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Rooftop boss autonomous flight
+### Changed
+- The armored 3× Shadow-body boss now performs an arena-bounded flight cycle when engaged: controlled lift to 6.5 m, a steady hover, a propelled traverse within the roof bounds, and a controlled landing. The existing attack windup, strike range/damage/recovery, Snare targeting, armor, red eyes, rooftop beacon, and player systems are unchanged.
+- Added a restrained paired cyan boot-exhaust cue and tucked airborne leg pose. The exhaust responds to takeoff/hover/propel/landing and shuts off when grounded, hit, or KO'd; the Shadow player, controls, HUD, ordinary melee, and landscape-only behavior are untouched.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `PORT=4187 node test/boss-flight.mjs` (all flight phases, roof bounds, thruster response, touchdown, and unchanged player input), `PORT=4187 node test/boss.mjs` (desktop and phone-landscape body/armor/eyes/melee exclusion/strike/Snare), `PORT=4187 node test/boss-arena.mjs` (roof and 84 m beacon), and `PORT=4173 node test/ghost-animation-sync.mjs` (25 shared-action cases) pass in Chromium WebGL2/SwiftShader.
+- The legacy `test/combat.mjs` did not complete reliably in this SwiftShader environment: its wall-clock waits sampled before melee/landing events. A direct live trace registered the ordinary melee hit and lowered enemy health; no player combat or control code was changed. Physical devices and target-GPU frame rates remain untested.
+- Phone-landscape flight evidence: `art/boss/shot-after-boss-flight-mobile-landscape.png` (844×390). Changes are scoped to the private mirror `main`; no original-repository changes were made.
+
 ## [Released] - Ghost swing parity and independent eye-colored Shock Web
 ### Changed
 - Ghost now uses the same alternating one-hand web strand as Shadow during ordinary swings (odd swing: right; even swing: left); both hands remain reserved for the spring-launch pose. Neither hero emits pulse or ring geometry during an ordinary swing.

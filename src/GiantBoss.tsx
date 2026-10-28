@@ -27,6 +27,13 @@ type BossRig = {
     armorTrimMaterial: THREE.MeshLambertMaterial;
     eyeMaterial: THREE.MeshBasicMaterial;
     armorMeshes: THREE.Mesh[];
+    thrusterGroup: THREE.Group;
+    thrusterOuterGeometry: THREE.ConeGeometry;
+    thrusterCoreGeometry: THREE.ConeGeometry;
+    thrusterOuterMaterial: THREE.MeshBasicMaterial;
+    thrusterCoreMaterial: THREE.MeshBasicMaterial;
+    thrusterOuter: THREE.Mesh[];
+    thrusterCore: THREE.Mesh[];
 };
 
 function smoothstep(a: number, b: number, x: number) {
@@ -220,8 +227,24 @@ function buildBossRig(): BossRig {
     ink.name = 'giant-boss-shadow-outline'; ink.frustumCulled = false;
     root.add(ink); ink.bind(body.skeleton, body.bindMatrix);
 
+    const thrusterGroup = new THREE.Group(); thrusterGroup.name = 'boss-thrusters'; thrusterGroup.visible = false; thrusterGroup.userData.bossThrusterCue = true;
+    const thrusterOuterGeometry = new THREE.ConeGeometry(0.085, 0.52, 8);
+    const thrusterCoreGeometry = new THREE.ConeGeometry(0.045, 0.36, 8);
+    const thrusterOuterMaterial = new THREE.MeshBasicMaterial({ color: '#51dfff', transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false });
+    const thrusterCoreMaterial = new THREE.MeshBasicMaterial({ color: '#f4fdff', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+    const thrusterOuter: THREE.Mesh[] = [], thrusterCore: THREE.Mesh[] = [];
+    for (const side of [-1, 1]) {
+        const suffix = side < 0 ? 'left' : 'right';
+        const outer = new THREE.Mesh(thrusterOuterGeometry, thrusterOuterMaterial); outer.name = `boss-thruster-outer-${suffix}`;
+        outer.position.set(side * 0.115, -0.28, 0.015); outer.userData.bossThruster = true; outer.frustumCulled = false;
+        const core = new THREE.Mesh(thrusterCoreGeometry, thrusterCoreMaterial); core.name = `boss-thruster-core-${suffix}`;
+        core.position.set(side * 0.115, -0.22, 0.018); core.userData.bossThruster = true; core.frustumCulled = false;
+        thrusterGroup.add(outer, core); thrusterOuter.push(outer); thrusterCore.push(core);
+    }
+    root.add(thrusterGroup);
+
     root.userData = { giantBoss: true, bodyModel: 'Shadow hero mesh', scaleFactor: BOSS_SCALE_FACTOR, shadowRootScale: SHADOW_ROOT_SCALE, bodyOffset: BOSS_BODY_OFFSET, armorMeshCount: armorMeshes.length, armorCoverage: [...new Set(armorMeshes.map((mesh) => mesh.userData.armorPart))] };
-    return { root, body, bones, byName, geometry, skin, outline, muscleGeometry, muscleMaterial, muscleOutline, armorGeometry, armorSphereGeometry, armorBandGeometry, armorMaterial, armorTrimMaterial, eyeMaterial, armorMeshes };
+    return { root, body, bones, byName, geometry, skin, outline, muscleGeometry, muscleMaterial, muscleOutline, armorGeometry, armorSphereGeometry, armorBandGeometry, armorMaterial, armorTrimMaterial, eyeMaterial, armorMeshes, thrusterGroup, thrusterOuterGeometry, thrusterCoreGeometry, thrusterOuterMaterial, thrusterCoreMaterial, thrusterOuter, thrusterCore };
 }
 
 export function GiantBoss({ sim }: { sim: Sim }) {
@@ -233,6 +256,7 @@ export function GiantBoss({ sim }: { sim: Sim }) {
         rig.geometry.dispose(); rig.skin.map?.dispose(); rig.skin.dispose(); rig.outline.dispose();
         rig.muscleGeometry.dispose(); rig.muscleMaterial.dispose(); rig.muscleOutline.dispose();
         rig.armorGeometry.dispose(); rig.armorSphereGeometry.dispose(); rig.armorBandGeometry.dispose(); rig.armorMaterial.dispose(); rig.armorTrimMaterial.dispose(); rig.eyeMaterial.dispose();
+        rig.thrusterOuterGeometry.dispose(); rig.thrusterCoreGeometry.dispose(); rig.thrusterOuterMaterial.dispose(); rig.thrusterCoreMaterial.dispose();
     }, [rig]);
 
     useFrame((_, rawDt) => {
@@ -251,6 +275,14 @@ export function GiantBoss({ sim }: { sim: Sim }) {
         const hit = boss.hit > 0 ? Math.min(0.06, boss.hit * 0.04) : 0;
         const fall = boss.down > 0 ? Math.max(0, Math.min(1, (3 - boss.down) / 0.55)) : 0;
         const b = rig.byName;
+        const flightPhase = boss.flight?.phase ?? 'grounded';
+        const flightPower = boss.down > 0 || boss.hit > 0 ? 0 : flightPhase === 'takeoff' ? 0.9 : flightPhase === 'hover' ? 0.52 : flightPhase === 'propel' ? 1 : flightPhase === 'landing' ? 0.34 : 0;
+        const plume = flightPower * (0.9 + 0.1 * Math.sin(sim.t * 27));
+        rig.thrusterGroup.visible = plume > 0.05;
+        rig.thrusterGroup.userData.phase = flightPhase; rig.thrusterGroup.userData.power = plume;
+        rig.thrusterOuterMaterial.opacity = 0.18 + plume * 0.58; rig.thrusterCoreMaterial.opacity = 0.22 + plume * 0.72;
+        rig.thrusterOuter.forEach((mesh) => { mesh.scale.y = 0.45 + plume * 0.75; });
+        rig.thrusterCore.forEach((mesh) => { mesh.scale.y = 0.45 + plume * 0.65; });
 
         root.visible = true;
         root.position.set(boss.x, boss.y + ((boss as any).ly || 0), boss.z);
@@ -258,12 +290,14 @@ export function GiantBoss({ sim }: { sim: Sim }) {
         root.scale.setScalar(BOSS_ROOT_SCALE * Math.max(0.002, 1 - fall * 0.78));
 
         rig.bones.forEach((bone) => bone.rotation.set(0, 0, 0));
-        b.thighL.rotation.x = stride * 0.22 * moving;
-        b.thighR.rotation.x = -stride * 0.22 * moving;
-        b.shinL.rotation.x = Math.max(0, -stride) * 0.28 * moving;
-        b.shinR.rotation.x = Math.max(0, stride) * 0.28 * moving;
+        const airborne = flightPhase !== 'grounded';
+        b.thighL.rotation.x = stride * 0.22 * moving - (airborne ? 0.22 : 0);
+        b.thighR.rotation.x = -stride * 0.22 * moving - (airborne ? 0.22 : 0);
+        b.shinL.rotation.x = airborne ? 0.42 : Math.max(0, -stride) * 0.28 * moving;
+        b.shinR.rotation.x = airborne ? 0.42 : Math.max(0, stride) * 0.28 * moving;
         b.uarmL.rotation.x = -stride * 0.12 * moving;
         b.uarmR.rotation.x = stride * 0.12 * moving;
+        if (airborne) { b.uarmL.rotation.z = -0.08; b.uarmR.rotation.z = 0.08; }
         b.chest.rotation.x = 0.018 + Math.sin(sim.t * 1.1) * 0.012;
         b.chest.rotation.z = Math.sin(motion.phase * 0.5) * 0.018 * moving;
         b.head.rotation.x = -0.025 + Math.sin(motion.phase - 0.5) * 0.025 * moving;
