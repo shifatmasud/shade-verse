@@ -63,10 +63,10 @@ Total requests extracted from project history: 68.
 58. Crowd distance LOD and staggered enemy strikes
 59. Bot scale 1.2x hero size
 60. Visual death explosion effect with debris on bot KO
+61. Plasma web projectile weapon (auto-targeting, homing, radial shockwave blast)
+62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (gap closing strikes, 3-hit combo cadence, hit-stop impact weighting)
 
 ## Group 2: Still Queued / In Progress (6 items)
-61. Plasma web projectile weapon (auto-targeting, homing, radial shockwave blast) - code implemented in commit 0c55f56, visual FX refinement in progress
-62. Insomniac Spider-Man 2 martial arts combat flow & web combo choreography - footage analyzed (YouTube D9xHicWET3I), transition timing in progress
 63. Second hero companion character: Ghost (female hero companion in white suit, swings/walks/fights alongside Shadow) - active in InstaBox
 64. Giant boss (muscular white humanoid body, red eyes, no mouth, 5x hero size) - queued
 65. Detailed flying cars with collision pass and web anchor towing - queued

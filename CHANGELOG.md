@@ -2,6 +2,16 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [v0.76] - Combat Choreography & Strike Lunges Release
+### Added
+- Insomniac Spider-Man 2 martial arts combat flow & web combo choreography (YouTube D9xHicWET3I reference at t=14.2s-15.7s).
+- Gap-closing strike lunges toward enemies within 5.8m range for fluid melee transitions.
+- 3-hit combo progression (jab, cross, spinning roundhouse) with scaling damage and 15 force finisher knockback.
+- Hit-stop impact frame weighting (0.04s on light hits, 0.07s on combo finisher) for tactile impact punch.
+- Headless combat assertion test suite in test/combat.mjs and test/fight.mjs with multi-viewport screenshot verification.
+
+---
+
 ## [v0.75] - Commit 8f43a7f
 ### Added
 - Bot scale increased to 1.2x hero size across civilian and enemy humanoid robots.

@@ -1,3 +1,11 @@
+## v0.76 - Combat Choreography Release (Score: 85/100)
+- Visuals: 18/20 (tactile hit-stop frame impact weight, multi-angle strike animations, comic outlines intact)
+- Controls: 23/25 (gap-closing strike lunges within 5.8m, responsive 3-hit combo cadence, fluid ground-to-combat transition)
+- Performance (estimate): 16/20 (code analysis, lightweight math in sim loop, zero heavy allocations per frame; physical hardware untested)
+- Stability: 14/15 (headless Puppeteer tests pass with zero console errors or uncaught exceptions across mobile and desktop)
+- Device Compatibility (estimate): 14/20 (WebGL2/WebGPU features aligned with Android 10 Chrome and Windows 10 Intel UHD 600 about:gpu exports; physical device testing not performed)
+Evidence: test/combat.mjs and test/fight.mjs PASS (street combat, 3-punch KO, combo lunge, hit-stop). Screenshots captured: shot-after-mobile-combat.png (249 KB), shot-after-desktop-combat.png (603 KB).
+
 # Web Swinger scorecard (self-scored, evidence based)
 Stack: React 18.3.1, three 0.169, @react-three/fiber 8.17.10, framer-motion 11, gsap 3.12, WebGL2, Vite.
 Pillars (weight): Visuals 20, Swinging/controls 25, Performance 20, Stability 15, Device compatibility 20. Device numbers marked UNTESTED are not measured.

@@ -287,6 +287,7 @@ function collide(s: Sim, prevY: number) {
 export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 22, glideAcc: 14 };   // traversal tuning knobs
 const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 22, FLY_GLIDE_ACC = 14;   // traversal tuning (was 34 / 14 / 14 / 10): user asked for faster flight
 export function stepSim(s: Sim, dt: number, ev: Events) {
+    if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
@@ -464,17 +465,30 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
         input.dodgeQ = false;
         if (s.dodgeT <= 0 && !s.web) { s.dodgeT = 0.38; const mx = input.mx + ((input.keys['d'] ? 1 : 0) - (input.keys['a'] ? 1 : 0)), my = input.my + ((input.keys['w'] ? 1 : 0) - (input.keys['s'] ? 1 : 0)); const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw); let dx = yx * my - yz * mx, dz = yz * my + yx * mx; const dl = Math.hypot(dx, dz); if (dl < 0.1) { dx = -fx; dz = -fz; } else { dx /= dl; dz /= dl; } v[0] = dx * 18; v[2] = dz * 18; }
     }
-    if (input.attackQ) {
-        input.attackQ = false; const fShot = !!input.shotQ, fMelee = !!input.meleeQ; input.shotQ = false; input.meleeQ = false;
-        if (s.atkT <= 0) {
-            s.atkT = 0.32; s.atkPend = 0.11; s.shotE = null;   // melee damage lands when the fist arrives (~0.11 s, measured from the clip with tools/fistcheck.mjs)
-            let melee = false; if (!fShot) { (s as any).kickAlt = !(s as any).kickAlt; (s as any).kick = !!(s as any).kickAlt; }
-            if (!fShot) for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 3.6 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) { melee = true; break; } }
-            if (!melee && !fMelee) { // plasma web shot (both hands): auto-target locked with line of sight; the bolt flies and detonates on impact
-                if (s.aimE) { s.shotT = 0.3; s.shotTgt = [s.aimE.x, s.aimE.y + BODY_OFF[s.aimE.kind ?? 0], s.aimE.z]; spawnPlasma(s, s.aimE); s.shotE = null; }
-            }
-        }
-    }   // damage lands when the fist arrives (~0.12 s), not at input
+      if (input.attackQ) {
+          input.attackQ = false; const fShot = !!input.shotQ, fMelee = !!input.meleeQ; input.shotQ = false; input.meleeQ = false;
+          if (s.atkT <= 0) {
+              s.atkT = 0.32; s.atkPend = 0.11; s.shotE = null;
+              (s as any).comboStep = (((s as any).comboStep || 0) % 3) + 1;
+              let melee = false; if (!fShot) { (s as any).kickAlt = !(s as any).kickAlt; (s as any).kick = !!(s as any).kickAlt; }
+              if (!fShot) for (const e of s.enemies) {
+                  if (e.down > 0) continue;
+                  const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
+                  if (d < 5.8 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) {
+                      melee = true;
+                      if (d > 1.4 && !s.wall && !s.swim) {
+                          const lungeDist = Math.min(d - 1.2, 14 * dt);
+                          const nx = p[0] + (dx / d) * lungeDist, nz = p[2] + (dz / d) * lungeDist;
+                          if (!insideB(nx, nz) && !inPk(nx, nz)) { p[0] = nx; p[2] = nz; }
+                      }
+                      break;
+                  }
+              }
+              if (!melee && !fMelee) {
+                  if (s.aimE) { s.shotT = 0.3; s.shotTgt = [s.aimE.x, s.aimE.y + BODY_OFF[s.aimE.kind ?? 0], s.aimE.z]; spawnPlasma(s, s.aimE); s.shotE = null; }
+              }
+          }
+      }
     // SHADOW SNARE (special, own button, 9 s cooldown): both hands web up to 4 nearby bots (reeled in, held), then a spin kick hits each bound bot within 5 m for 3 damage plus knockback
     { const sa = s as any; sa.snareCd = Math.max(0, (sa.snareCd || 0) - dt);
       if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, 4); if (L.length) { sa.snareList = L; sa.snareT = 1.0; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
@@ -483,21 +497,26 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
         if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.6; e.kb = [dx / (d || 1) * 14, dz / (d || 1) * 14]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) ev.hit(); }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
-    if (s.atkPend > 0) {
-        s.atkPend -= dt;
-        if (s.atkPend <= 0) {
-            let hitAny = false;
-            for (const e of s.enemies) {
-                if (e.down > 0) continue;
-                const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
-                if (d < 3.6 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) {
-                    e.hp -= 1; e.hit = 0.25; e.kb = [dx / (d || 1) * 9, dz / (d || 1) * 9]; hitAny = true; s.combo++; s.comboT = 1.2;
-                    if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); }
-                }
-            }
-            if (hitAny) ev.hit();
-        }
-    }
+      if (s.atkPend > 0) {
+          s.atkPend -= dt;
+          if (s.atkPend <= 0) {
+              let hitAny = false;
+              const step = (s as any).comboStep || 1;
+              const kbForce = step === 3 ? 15 : (step === 2 ? 10 : 8);
+              const dmg = step === 3 ? 2 : 1;
+              for (const e of s.enemies) {
+                  if (e.down > 0) continue;
+                  const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
+                  if (d < 3.8 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) {
+                      e.hp -= dmg; e.hit = 0.3; e.kb = [dx / (d || 1) * kbForce, dz / (d || 1) * kbForce];
+                      hitAny = true; s.combo++; s.comboT = 1.4;
+                      (s as any).hitStop = step === 3 ? 0.07 : 0.04;
+                      if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); }
+                  }
+              }
+              if (hitAny) ev.hit();
+          }
+      }
     let atkN = 0; for (const e0 of s.enemies) if (e0.atk > 0) atkN++;
     for (let i = 0; i < s.enemies.length; i++) {
         const e = s.enemies[i];

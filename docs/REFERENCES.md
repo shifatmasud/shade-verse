@@ -17,3 +17,9 @@
 
 ## Hero model v2 (Gemini 4 Argon)
 - tools/genhero_g4a.mjs was written by Gemini 4 Argon (Gemini web, user's Pro account, no per-use charge seen) from a brief for an original masked hero with our 17-bone skeleton. It writes src/hero.json (17k verts). Previous hero kept as tools/genhero.mjs.
+
+## Combat choreography benchmark (private research, frames NOT stored in repo)
+- YouTube D9xHicWET3I at t=14.2s to 15.7s: Spider-Man 2 martial arts combat choreography, gap-closing strike lunges, 3-hit combo cadence, and hit-stop impact frame weighting. Inspiration only; no code or assets copied.
+
+## Greenery and Tree Visual Reference (for world redesign phase)
+- https://x.com/keydol123/status/2115168883040817610 : Color and tree references for greenery palette and vegetation when world upgrade / full environment redesign starts via Polyfork. Inspiration and palette reference only; scene not copied wholesale.
