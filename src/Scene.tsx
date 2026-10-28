@@ -23,6 +23,7 @@ const TOD = { sun: new THREE.Vector3(-0.55, 0.22, 0.8).normalize(), sunU: null a
 TOD.sunU = { value: TOD.sun };
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
+const HERO_SC = 1.5, BOT_SC = HERO_SC * 1.2;   // user: humanoid bots are 1.2x the hero (same hero.json mesh at the same native height, so scales compare directly)
 const CITY_VS = `attribute vec3 aCol;attribute float aSeed;
 varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
 void main(){vPos=position;vNor=normal;vCol=aCol;vSeed=aSeed;gl_Position=projectionMatrix*viewMatrix*vec4(position,1.0);}`;
@@ -160,12 +161,12 @@ function FxaaPass({ enabled }: { enabled: boolean }) {
 const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; varying vec2 vUv;
 float vz(vec2 uv){ float d = texture2D(tDepth, uv).x; float zn = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - zn * (uFar - uNear)); }
 void main(){
-  vec3 c = texture2D(tColor, vUv).rgb;
+  vec4 c4 = texture2D(tColor, vUv); vec3 c = c4.rgb; float lightMask = step(0.75, c4.a);   // glowing lights are drawn with alpha 0.5 and get no outline
   vec2 px = uTh / uRes;
   float z = vz(vUv);
   float zx1 = vz(vUv + vec2(px.x, 0.0)), zx2 = vz(vUv - vec2(px.x, 0.0)), zy1 = vz(vUv + vec2(0.0, px.y)), zy2 = vz(vUv - vec2(0.0, px.y));
   float e = max(max(zx1 - z, zx2 - z), max(zy1 - z, zy2 - z)) / z;   // one-sided: only the nearer pixel of a depth step is inked, so the line stays 1px and sits inside the near silhouette
-  float k = smoothstep(0.12, 0.30, e) * (1.0 - smoothstep(22.0, 55.0, z)) * uOn;
+  float k = smoothstep(0.12, 0.30, e) * (1.0 - smoothstep(22.0, 55.0, z)) * uOn * lightMask;
   gl_FragColor = vec4(mix(c, vec3(0.04, 0.05, 0.10), k * 0.85), 1.0);
 }`;
 export const OUTLINE_STATE = { on: true };
@@ -561,7 +562,7 @@ function Civilians({sim}:{sim:Sim}){
                     const tgt=Math.max(y+12,wm+9),s0=ys.current,k0=i%AIR_N;if(!s0[k0])s0[k0]=tgt;s0[k0]+=(tgt-s0[k0])*Math.min(1,0.016*3);y=s0[k0];}
                 y+=Math.sin(sim.t*1.3+i)*0.6;if(DBG)(window as any).__pl.push([i,x,z,fade]);if(DBG)((window as any).__air||((window as any).__air=[])).push([x,y,z,over?1:0]);o.position.set(x,y,z);o.rotation.set(0,rot,0);o.scale.setScalar((over?3.2:1.5)*fade);o.updateMatrix();if(Math.hypot(x-hx,y-sim.pos[1],z-hz)<nr*1.1)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);return;}
             const ty=i%5,hov=0;
-            if(DBG)(window as any).__pl.push([i,x,z,fade]);o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(1.0*fade);o.updateMatrix();if(Math.hypot(x-hx,z-hz)<nr)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);
+            if(DBG)(window as any).__pl.push([i,x,z,fade]);o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(BOT_SC*fade);o.updateMatrix();if(Math.hypot(x-hx,z-hz)<nr)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);
         };
         for(let i=0;i<nP;i++)place(i,false);
         for(let i=0;i<nA;i++)place(i+1000,true);
@@ -580,12 +581,12 @@ function SnareLines({ sim }: { sim: Sim }) {
 const CAR_N = 36;
 function carGeo() {
     const parts: THREE.BufferGeometry[] = [];
-    const add = (g: THREE.BufferGeometry, c: number[], x: number, y: number, z: number) => { g.translate(x, y, z); const n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c[0]; a[i * 3 + 1] = c[1]; a[i * 3 + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); parts.push(g.index ? g.toNonIndexed() : g); };
+    const add = (g: THREE.BufferGeometry, c: number[], x: number, y: number, z: number, al = 1) => { g.translate(x, y, z); const n = g.attributes.position.count, a = new Float32Array(n * 4); for (let i = 0; i < n; i++) { a[i * 4] = c[0]; a[i * 4 + 1] = c[1]; a[i * 4 + 2] = c[2]; a[i * 4 + 3] = al; } g.setAttribute('color', new THREE.BufferAttribute(a, 4)); parts.push(g.index ? g.toNonIndexed() : g); };
     // reference: Kenney Car Kit (CC0) silhouettes - chunky body, tinted cabin, light pods; hover pods instead of wheels
     add(new THREE.BoxGeometry(2.0, 0.65, 4.4), [0.9, 0.9, 0.9], 0, 0, 0); add(new THREE.BoxGeometry(1.7, 0.6, 2.2), [0.12, 0.16, 0.22], 0, 0.6, -0.3);
     add(new THREE.BoxGeometry(1.5, 0.12, 1.9), [0.9, 0.9, 0.9], 0, 0.95, -0.3);
-    add(new THREE.BoxGeometry(1.6, 0.14, 0.12), [1.5, 1.4, 1.0], 0, 0.05, 2.22); add(new THREE.BoxGeometry(1.6, 0.14, 0.12), [1.6, 0.2, 0.2], 0, 0.05, -2.22);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 8), [0.15, 0.15, 0.18], sx * 1.0, -0.4, sz * 1.4), add(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8), [0.3, 2.0, 2.6], sx * 1.0, -0.5, sz * 1.4);
+    add(new THREE.BoxGeometry(1.6, 0.14, 0.12), [1.5, 1.4, 1.0], 0, 0.05, 2.22, 0.5); add(new THREE.BoxGeometry(1.6, 0.14, 0.12), [1.6, 0.2, 0.2], 0, 0.05, -2.22, 0.5);   // alpha 0.5 = light tag for the outline pass
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 8), [0.15, 0.15, 0.18], sx * 1.0, -0.4, sz * 1.4), add(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8), [0.3, 2.0, 2.6], sx * 1.0, -0.5, sz * 1.4, 0.5);
     return mergeGeometries(parts, false)!;
 }
 function FlyingCars() {
@@ -598,12 +599,12 @@ function FlyingCars() {
             const u = ((c.off + t * c.sp) % 640 + 640) % 640 - 320, l = c.lane * CELL + CELL / 2;
             if (c.axis === 0) { tmp.position.set(l, c.y + Math.sin(t + i) * 0.6, u); tmp.rotation.set(0, c.sp > 0 ? 0 : Math.PI, 0); }
             else { tmp.position.set(u, c.y + Math.sin(t + i) * 0.6, l); tmp.rotation.set(0, c.sp > 0 ? Math.PI / 2 : -Math.PI / 2, 0); }
-            tmp.scale.setScalar(2.4); tmp.updateMatrix(); m.setMatrixAt(i, tmp.matrix);
+            tmp.scale.setScalar(2.4); tmp.updateMatrix(); m.setMatrixAt(i, tmp.matrix); if (DBG && i === 0) (window as any).__car0 = [tmp.position.x, tmp.position.y, tmp.position.z, c.axis, c.sp];
         });
         m.instanceMatrix.needsUpdate = true;
     });
     useEffect(() => { const pal = ['#e5483a', '#f2b632', '#3aa66a', '#3f6fd8', '#f07a2a', '#8e5bd6']; cars.forEach((_, i) => ref.current.setColorAt(i, new THREE.Color(pal[i % 6]))); ref.current.instanceColor!.needsUpdate = true; }, [cars]);
-    return <instancedMesh ref={ref} args={[undefined, undefined, CAR_N]} geometry={geo} frustumCulled={false}><meshBasicMaterial vertexColors toneMapped={false} /></instancedMesh>;
+    return <instancedMesh ref={ref} args={[undefined, undefined, CAR_N]} geometry={geo} frustumCulled={false}><meshBasicMaterial vertexColors toneMapped={false} transparent blending={THREE.NoBlending} /></instancedMesh>;
 }
 const Y = new THREE.Vector3(0, 1, 0);
 
@@ -864,7 +865,7 @@ function PlasmaFx({ sim }: { sim: Sim }) {
                 const pu = 1 + Math.sin(sim.t * 31) * 0.12; g.children[0].scale.setScalar(pu);
             }
         }
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 6; i++) {
             const grp = blasts.current[i]; if (!grp) continue;
             const bl = sim.blasts[i], on = !!bl && bl.t < 0.85;
             grp.g.visible = !!on;
@@ -898,11 +899,11 @@ function PlasmaFx({ sim }: { sim: Sim }) {
     });
     return <>
         {[0, 1, 2].map((i) => <group key={'p' + i} ref={(g) => { if (g) proj.current[i] = g; }} visible={false} frustumCulled={false}>
-            <mesh frustumCulled={false}><sphereGeometry args={[0.3, 10, 8]} /><meshBasicMaterial color="#e8fdff" toneMapped={false} /></mesh>
+            <mesh frustumCulled={false}><sphereGeometry args={[0.3, 10, 8]} /><meshBasicMaterial color="#e8fdff" toneMapped={false} transparent opacity={0.5} blending={THREE.NoBlending} /></mesh>
             <mesh frustumCulled={false}><sphereGeometry args={[0.78, 10, 8]} /><meshBasicMaterial color="#5fd8ff" transparent opacity={0.38} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
             {[0.42, 0.58, 0.5].map((r, j) => <mesh key={j} frustumCulled={false} position={[0, 0, (j - 1) * 0.55]}><torusGeometry args={[r, 0.035, 5, 14]} /><meshBasicMaterial color="#f4f8ff" transparent opacity={0.9} depthWrite={false} /></mesh>)}
         </group>)}
-        {[0, 1, 2, 3].map((i) => <group key={'b' + i} ref={(g) => {
+        {[0, 1, 2, 3, 4, 5].map((i) => <group key={'b' + i} ref={(g) => {
             if (g && !blasts.current[i]) {
                 const flash = g.children[0] as THREE.Mesh, ring = g.children[1] as THREE.Mesh, sparks = g.children[2] as THREE.InstancedMesh;
                 const dir = new Float32Array(12 * 4);
@@ -933,7 +934,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const lens = useMemo(() => { const sh = new THREE.Shape(); sh.moveTo(-0.075, 0.015); sh.lineTo(0.085, 0.045); sh.lineTo(0.065, -0.015); sh.lineTo(-0.055, -0.04); sh.closePath(); return new THREE.ShapeGeometry(sh); }, []);
     const tail1 = useMemo(() => new THREE.PlaneGeometry(0.16, 0.95).translate(0, -0.475, 0), []);
     const tail2 = useMemo(() => new THREE.PlaneGeometry(0.12, 0.7).translate(0, -0.35, 0), []);
-    const stripe = useMemo(() => new THREE.MeshBasicMaterial({ color: '#5ff2ff' }), []);
+    const stripe = useMemo(() => new THREE.MeshBasicMaterial({ color: '#5ff2ff', transparent: true, opacity: 0.5, blending: THREE.NoBlending }), []);
     const gold = useMemo(() => new THREE.MeshLambertMaterial({ color: '#f2c038' }), []);
     const dark = useMemo(() => new THREE.MeshLambertMaterial({ color: '#232a4a' }), []);
     const red = useMemo(() => new THREE.MeshLambertMaterial({ color: '#d9344f', side: THREE.DoubleSide }), []);
@@ -962,7 +963,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const enMeshes = useRef<THREE.InstancedMesh[]>([]);
     const ecol = useMemo(() => new THREE.Color(), []);
     const beaconRef = useRef<THREE.Mesh>(null!);
-    const eye = useMemo(() => new THREE.MeshBasicMaterial({ color: '#8ffcff', side: THREE.DoubleSide }), []);
+    const eye = useMemo(() => new THREE.MeshBasicMaterial({ color: '#8ffcff', side: THREE.DoubleSide, transparent: true, opacity: 0.5, blending: THREE.NoBlending }), []);
     const visor = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0b0c18' }), []);
 
     useFrame((state, rawDt) => {
@@ -1057,7 +1058,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const h = hero.current;
         for (const bn of rig.bones) bn.rotation.set(0, 0, 0);
         h.position.set(p[0], p[1] - 1.0, p[2]);
-        h.rotation.set(0, sim.ang + (((sim as any).snareT > 0 && (sim as any).snareT < 0.45) ? (1 - (sim as any).snareT / 0.45) * Math.PI * 2 : 0), 0); h.scale.setScalar(1.5);
+        h.rotation.set(0, sim.ang + (((sim as any).snareT > 0 && (sim as any).snareT < 0.45) ? (1 - (sim as any).snareT / 0.45) * Math.PI * 2 : 0), 0); h.scale.setScalar(HERO_SC);
         const wl = !!sim.wall;
         if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
         const sw2 = sim.swim;
@@ -1221,7 +1222,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             for (let i = 0; i < n; i++) {
                 const e = sim.enemies[i], k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
                 const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k >= 2 ? Math.sin(sim.t * 2.5 + i) * 0.12 : 0;
-                tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob, e.z); tmp.rotation.set(fall * -1.4, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = 1.25 * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
+                tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob, e.z); tmp.rotation.set(fall * -1.4, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = (e.kind === 3 ? BOT_SC : 1.25) * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
                 tmp.updateMatrix();
                 m.setMatrixAt(cnt[k], tmp.matrix);
                 if (e.hit > 0) ecol.setRGB(2.6, 2.6, 2.6); else if (e.atk > 0) ecol.setRGB(1.8, 0.5 + Math.sin(sim.t * 30) * 0.2, 0.4); else ecol.setRGB(1, 1, 1);
@@ -1275,7 +1276,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh position={[0, SEABED, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500]} /><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
-        <instancedMesh ref={cores} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" /></instancedMesh>
+        <instancedMesh ref={cores} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" transparent opacity={0.5} blending={THREE.NoBlending} /></instancedMesh>
         <instancedMesh ref={glows} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
     </>;
 }

@@ -7,6 +7,14 @@ const B = (x: number, y: number, z: number, tx: number, ty: number, tz: number) 
 export type RGB = [number, number, number];
 const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 export const EYE_BLUE: RGB = [0.18, 0.55, 3.0], EYE_RED: RGB = [3.0, 0.14, 0.14];
+// Semantic light tag for the screen-space outline pass: emissive (HDR, any channel > 1.5) vertices get alpha 0.5, everything else 1.
+// The material draws with NoBlending, so the 0.5 reaches the frame buffer untouched and the outline shader skips those pixels.
+export function tagLights(g: THREE.BufferGeometry) {
+    const c = g.attributes.color; if (!c || c.itemSize === 4) return g;
+    const n = c.count, a = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) { const r = c.getX(i), gg = c.getY(i), b = c.getZ(i); a[i * 4] = r; a[i * 4 + 1] = gg; a[i * 4 + 2] = b; a[i * 4 + 3] = Math.max(r, gg, b) > 1.5 ? 0.5 : 1; }
+    g.setAttribute('color', new THREE.BufferAttribute(a, 4)); return g;
+}
 const isEye = (c: number[]) => c[2] > c[0] + 60 && c[1] > c[0] + 60;   // the models' cyan sensor visors
 export interface Extra { g: THREE.BufferGeometry; col: RGB; part: number; }
 export interface RobotOpts { model: 'robot' | 'companion' | 'survey' | 'sdrone'; eye: RGB; shell?: RGB; frame?: RGB; accent?: RGB; dark?: RGB; scale: number; extras?: (scale: number) => Extra[]; }
@@ -48,14 +56,14 @@ export function robotGeo(o: RobotOpts) {
         for (let i = 0; i < m; i++) { c.push(...e.col); p.push(e.part); }
         g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); g.setAttribute('aPart', new THREE.Float32BufferAttribute(p, 1)); g.deleteAttribute('normal'); gs.push(g);
     }
-    const g = mergeGeometries(gs, false)!; g.computeVertexNormals();
+    const g = mergeGeometries(gs, false)!; g.computeVertexNormals(); tagLights(g);
     return { geo: g, parts: d.parts as { m: number; piv?: number[]; s?: number }[], scale: o.scale };
 }
 // one animated Lambert material per geometry: legs/arms swing about their baked pivots, rotors spin (all on the GPU, no per-frame JS per robot)
 export function robotMat(parts: { m: number; piv?: number[]; s?: number }[], scale: number, time: { value: number }, speed: number) {
     const piv = Array.from({ length: 8 }, (_, i) => { const p = parts[i]; return p && p.piv ? new THREE.Vector4(p.piv[0] * scale, p.piv[1] * scale, p.piv[2] * scale, p.m) : new THREE.Vector4(0, 0, 0, 0); });
     const sgn = Array.from({ length: 8 }, (_, i) => (parts[i] && parts[i].s) || 0);
-    const m = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const m = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, blending: THREE.NoBlending });
     m.onBeforeCompile = (sh) => {
         sh.uniforms.uRT = time; sh.uniforms.uPiv = { value: piv }; sh.uniforms.uSgn = { value: sgn }; sh.uniforms.uSpd = { value: speed };
         sh.vertexShader = 'attribute float aPart;uniform float uRT;uniform vec4 uPiv[8];uniform float uSgn[8];uniform float uSpd;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>

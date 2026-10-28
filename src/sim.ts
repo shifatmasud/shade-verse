@@ -223,13 +223,18 @@ export function pickPlasmaTarget(s: Sim): Enemy | null {
     }
     return best;
 }
-const PLASMA_SPEED = 55, PLASMA_CAP = 3, BLAST_CAP = 4, BLAST_R = 8;
+const PLASMA_SPEED = 55, PLASMA_CAP = 3, BLAST_CAP = 6, BLAST_R = 8;
 function spawnPlasma(s: Sim, tgt: Enemy) {
     if (s.plasma.length >= PLASMA_CAP) s.plasma.shift();   // cap concurrent bolts (low-end budget)
     const p = s.pos, ty = tgt.y + BODY_OFF[tgt.kind ?? 0];
     const ox = p[0] + Math.sin(s.yaw) * 0.6, oy = p[1] + 1.4, oz = p[2] + Math.cos(s.yaw) * 0.6;   // from the raised hands
     const d = norm([tgt.x - ox, ty - oy, tgt.z - oz]);
     s.plasma.push({ x: ox, y: oy, z: oz, vx: d[0] * PLASMA_SPEED, vy: d[1] * PLASMA_SPEED, vz: d[2] * PLASMA_SPEED, t: 0, tgt });
+}
+// visual-only death explosion: pooled blast at the bot's body, no damage, no chain reaction
+function deathBlast(s: Sim, e: Enemy) {
+    s.blasts.push({ x: e.x, y: e.y + BODY_OFF[e.kind ?? 0], z: e.z, t: 0, r: 5.5 });
+    if (s.blasts.length > BLAST_CAP) s.blasts.shift();
 }
 function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
     s.blasts.push({ x, y, z, t: 0, r: BLAST_R });
@@ -442,7 +447,7 @@ export function stepSim(s: Sim, dt: number, ev: Events) {
     }
 }
 export const buildings = blds;
-const BODY_OFF = [0.8, 0.3, 1.05, 1.2];
+const BODY_OFF = [0.8, 0.3, 1.05, 1.7];   // kind 3 torso height follows its 1.8 scale (1.2 at scale 1.25)
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
 const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
@@ -475,7 +480,7 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
       if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, 4); if (L.length) { sa.snareList = L; sa.snareT = 1.0; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
       if (sa.snareT > 0) { const before = sa.snareT; sa.snareT -= dt; const L = sa.snareList as Enemy[];
         if (sa.snareT > 0.45) { for (const e of L) { if (e.down > 0) continue; e.hit = 0.3; e.atk = 0; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > 2.4) { const st = Math.min(d - 2.4, 28 * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } } }
-        if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.6; e.kb = [dx / (d || 1) * 14, dz / (d || 1) * 14]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); } } } if (any) ev.hit(); }
+        if (before > 0.45 && sa.snareT <= 0.45) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.6; e.kb = [dx / (d || 1) * 14, dz / (d || 1) * 14]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) ev.hit(); }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
     if (s.atkPend > 0) {
@@ -487,7 +492,7 @@ function stepCombat(s: Sim, dt: number, ev: Events) {
                 const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz);
                 if (d < 3.6 && Math.abs(e.y - p[1]) < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) {
                     e.hp -= 1; e.hit = 0.25; e.kb = [dx / (d || 1) * 9, dz / (d || 1) * 9]; hitAny = true; s.combo++; s.comboT = 1.2;
-                    if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); }
+                    if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); }
                 }
             }
             if (hitAny) ev.hit();
