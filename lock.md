@@ -8,6 +8,8 @@ Melee combat is locked. Only the Shadow Snare is allowed to change.
 
 The Shadow hero model, HUD, and controls are locked.
 
+The heroes (Shadow and Ghost) are locked, including their models, materials, textures, animation and the hero HD pass (`src/heroHD.ts`). Shifat, Oct 29 2026: "Heroes must be locked cause they are perfect already, don't touch without permission." Change nothing about them without his explicit permission.
+
 ## Display orientation
 
 Landscape only. Do not add or enable portrait gameplay.

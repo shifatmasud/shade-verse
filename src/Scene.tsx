@@ -148,6 +148,22 @@ void main(){
   vec3 col = (lb < lMin || lb > lMax) ? a : b;
   gl_FragColor = vec4(col, 1.0);
 }`;
+// env-iter3 near-field sharpen (Shifat Oct 29: "sharpen what's closer to view & keep same res what's not"). Same FXAA pass as above,
+// then a clamped unsharp mask on the world image (contrast-adaptive in the spirit of AMD FidelityFX CAS: limited to the local
+// min/max so it cannot halo, and backed off on hard geometric edges so FXAA's smoothing survives). Its strength comes from the
+// world depth: full within ~6 m of the camera, gone by ~28 m, never on the sky. One extra depth fetch + ~20 ALU per world pixel.
+// Heroes are redrawn afterwards at native resolution by the (locked) hero HD pass, so this only ever shows on the world.
+const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2 uRes; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uSharp;')
+    .replace('  gl_FragColor = vec4(col, 1.0);\n}', `  float sd = texture2D(tDepth, vUv).x;
+  float szn = sd * 2.0 - 1.0, sz = (2.0 * uNear * uFar) / (uFar + uNear - szn * (uFar - uNear));
+  float sk = uSharp * (1.0 - smoothstep(6.0, 28.0, sz)) * step(sd, 0.99999) * (1.0 - smoothstep(0.14, 0.38, lMax - lMin));
+  if (sk > 0.002) {
+    vec3 sMin = min(cM, min(min(cNW, cNE), min(cSW, cSE))), sMax = max(cM, max(max(cNW, cNE), max(cSW, cSE)));
+    col = clamp(col + (col - 0.25 * (cNW + cNE + cSW + cSE)) * sk, sMin, sMax);
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`);
+export const SHARPEN = { amount: 0.7 };
 export const FXAA_STATE = { on: false };
 function FxaaPass({ enabled }: { enabled: boolean }) {
     const { gl, scene, camera } = useThree();
@@ -171,11 +187,19 @@ function FxaaPass({ enabled }: { enabled: boolean }) {
 const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; varying vec2 vUv;
 float vz(vec2 uv){ float d = texture2D(tDepth, uv).x; float zn = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - zn * (uFar - uNear)); }
 void main(){
-  vec4 c4 = texture2D(tColor, vUv); vec3 c = c4.rgb; float lightMask = step(0.75, c4.a);   // glowing lights are drawn with alpha 0.5 and get no outline
+  vec4 c4 = texture2D(tColor, vUv); vec3 c = c4.rgb;
+  // alpha classes: >= 0.75 ordinary surfaces; 0.5 band = glowing lights (never inked); env-iter3: 0.25 = grass blades/flowers, 0.375 = park ground
+  float lightMask = 1.0 - step(0.45, c4.a) * (1.0 - step(0.75, c4.a)) - (1.0 - step(0.75, c4.a)) * step(c4.a, 0.18);
   vec2 px = uTh / uRes;
   float z = vz(vUv);
-  float zx1 = vz(vUv + vec2(px.x, 0.0)), zx2 = vz(vUv - vec2(px.x, 0.0)), zy1 = vz(vUv + vec2(0.0, px.y)), zy2 = vz(vUv - vec2(0.0, px.y));
+  vec2 ox = vec2(px.x, 0.0), oy = vec2(0.0, px.y);
+  float zx1 = vz(vUv + ox), zx2 = vz(vUv - ox), zy1 = vz(vUv + oy), zy2 = vz(vUv - oy);
   float e = max(max(zx1 - z, zx2 - z), max(zy1 - z, zy2 - z)) / z;   // one-sided: only the nearer pixel of a depth step is inked, so the line stays 1px and sits inside the near silhouette
+  if (abs(c4.a - 0.25) < 0.06) {   // env-iter3 (Shifat: "grass blades must not get outline solo, whole grass lands get outline as one"): a blade pixel only inks against what is neither grass nor park ground, so blade-on-blade and blade-on-ground steps vanish and only the meadow's outer silhouette remains
+    vec4 an = vec4(texture2D(tColor, vUv + ox).a, texture2D(tColor, vUv - ox).a, texture2D(tColor, vUv + oy).a, texture2D(tColor, vUv - oy).a);
+    vec4 land = step(an, vec4(0.43)) * step(vec4(0.19), an);   // neighbour is grass (0.25) or ground (0.375)
+    e = max(max((zx1 - z) * (1.0 - land.x), (zx2 - z) * (1.0 - land.y)), max((zy1 - z) * (1.0 - land.z), (zy2 - z) * (1.0 - land.w))) / z;
+  }
   float k = smoothstep(0.12, 0.30, e) * (1.0 - smoothstep(22.0, 55.0, z)) * uOn * lightMask;
   gl_FragColor = vec4(mix(c, vec3(0.04, 0.05, 0.10), k * 0.85), 1.0);
 }`;
@@ -199,14 +223,14 @@ function OutlinePass() {
         const mat = new THREE.ShaderMaterial({ uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture }, uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 700 }, uTh: { value: 1.0 }, uOn: { value: 1 } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: OUT_FS, depthTest: false, depthWrite: false, toneMapped: false });
         const qs = new THREE.Scene(), q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); q.frustumCulled = false; qs.add(q);
         const ft = new THREE.FramebufferTexture(4, 4); ft.minFilter = ft.magFilter = THREE.LinearFilter;
-        const fm = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: ft }, uRes: { value: new THREE.Vector2(4, 4) } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: FXAA_FS, depthTest: false, depthWrite: false, toneMapped: false });
+        const fm = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: ft }, uRes: { value: new THREE.Vector2(4, 4) }, tDepth: { value: rt.depthTexture }, uNear: { value: 0.5 }, uFar: { value: 700 }, uSharp: { value: SHARPEN.amount } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: FXAA_SHARP_FS, depthTest: false, depthWrite: false, toneMapped: false });
         const fs = new THREE.Scene(), fq = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fm); fq.frustumCulled = false; fs.add(fq);
         return { rt, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), sz: new THREE.Vector2(), ft, fm, fs };
     }, []);
     useFrame(() => {
         worldBufferSize(gl, st.sz);
         if (st.rt.width !== st.sz.x || st.rt.height !== st.sz.y) { st.rt.setSize(st.sz.x, st.sz.y); st.mat.uniforms.uRes.value.copy(st.sz); }
-        const cam = camera as THREE.PerspectiveCamera; st.mat.uniforms.uNear.value = cam.near; st.mat.uniforms.uFar.value = cam.far;
+        const cam = camera as THREE.PerspectiveCamera; st.mat.uniforms.uNear.value = cam.near; st.mat.uniforms.uFar.value = cam.far; st.fm.uniforms.uNear.value = cam.near; st.fm.uniforms.uFar.value = cam.far; st.fm.uniforms.uSharp.value = DBG && (window as any).__sharp !== undefined ? (window as any).__sharp : SHARPEN.amount;
         st.mat.uniforms.uTh.value = 1.0;
         st.mat.uniforms.uOn.value = (DBG && (window as any).__noOutline) ? 0 : 1;
         if (st.ft.image.width !== st.sz.x || st.ft.image.height !== st.sz.y) { st.ft.dispose(); st.ft.image = { width: st.sz.x, height: st.sz.y } as any; st.fm.uniforms.uRes.value.copy(st.sz); }
@@ -267,6 +291,48 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`);
 
 const tmp = new THREE.Object3D();
 
+// env-iter3 natural trunks (Shifat Oct 29: "tree trunks look unnatural, fix; foliages are perfect"). One tube per trunk instead of a
+// straight open cylinder: power-curve taper, a gentle seeded bend, a root flare with 5 buttress lobes fading up the first metre,
+// slight bark irregularity, darker root-end vertex colour; the bark texture doubles as a bump map. Seeded by its OWN generator, so the
+// leaf/canopy generator's random stream (and therefore every canopy) is exactly what it was.
+type TubeOpt = { H: number; rBot: number; rTop: number; hSeg: number; rSeg: number; flare: number; lobes: number; bend: number; seed: number; path?: (t: number) => THREE.Vector3; radius?: (t: number) => number; vScale?: number };
+function trunkTube(o: TubeOpt) {
+    let r = o.seed * 7 + 13; const tr = () => (r = (r * 48271) % 2147483647) / 2147483647;
+    const ph = tr() * 6.28, ph2 = tr() * 6.28, bx = (tr() - 0.5) * 2 * o.bend, bz = (tr() - 0.5) * 2 * o.bend;
+    const path = o.path || ((t: number) => new THREE.Vector3(bx * Math.sin(Math.PI * t * 0.9) + bz * 0.3 * Math.sin(Math.PI * t * 1.7), o.H * t, bz * Math.sin(Math.PI * t * 0.8)));
+    const rad = o.radius || ((t: number) => o.rTop + (o.rBot - o.rTop) * Math.pow(1 - t, 1.5));
+    const pos: number[] = [], uv: number[] = [], col: number[] = [], idx: number[] = [];
+    const T = new THREE.Vector3(), S1 = new THREE.Vector3(), S2 = new THREE.Vector3(), Z = new THREE.Vector3(0, 0, 1);
+    for (let i = 0; i <= o.hSeg; i++) {
+        const t = Math.pow(i / o.hSeg, 1.5), c = path(t); T.copy(path(Math.min(1, t + 0.01))).sub(path(Math.max(0, t - 0.01))).normalize();
+        S1.crossVectors(Z, T).normalize(); S2.crossVectors(T, S1).normalize();
+        const hm = o.H * t, fl = Math.exp(-hm / 0.7), base = rad(t) * (1 + o.flare * fl);
+        const tint = 0.8 + 0.2 * Math.min(1, hm / 1.4), tv = 1 + (tr() - 0.5) * 0.08;
+        for (let j = 0; j <= o.rSeg; j++) {
+            const a = (j / o.rSeg) * Math.PI * 2;
+            const rr = base * (1 + o.lobes * fl * Math.sin(5 * a + ph) + 0.045 * Math.sin(3 * a + ph2 + hm * 0.9) + 0.03 * Math.sin(7 * a + hm * 2.3));
+            const p = c.clone().addScaledVector(S1, Math.cos(a) * rr).addScaledVector(S2, Math.sin(a) * rr);
+            pos.push(p.x, p.y, p.z); uv.push(j / o.rSeg, o.vScale ? hm / o.vScale : t);
+            const k = tint * tv; col.push(k, k * 0.98, k * 0.95);
+            if (i < o.hSeg && j < o.rSeg) { const a0 = i * (o.rSeg + 1) + j, a1 = a0 + o.rSeg + 1; idx.push(a0, a1, a0 + 1, a0 + 1, a1, a1 + 1); }
+        }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+    g.computeVertexNormals();
+    { const n = g.attributes.normal as THREE.BufferAttribute, w = o.rSeg + 1; for (let i = 0; i <= o.hSeg; i++) { const a = i * w, b = a + o.rSeg; const x = n.getX(a) + n.getX(b), y = n.getY(a) + n.getY(b), z = n.getZ(a) + n.getZ(b), l = Math.hypot(x, y, z) || 1; n.setXYZ(a, x / l, y / l, z / l); n.setXYZ(b, x / l, y / l, z / l); } }   // close the seam
+    return { geo: g, at: (t: number) => path(t) };
+}
+/** Branch limb: tapered, 3 segments, curving up into the canopy, thicker collar where it leaves the trunk. Built along +Y. */
+function limbGeo(rTop: number, rBot: number, len: number, rSeg: number) {
+    const g = new THREE.CylinderGeometry(rTop, rBot, len, rSeg, 3, true); g.translate(0, len / 2, 0);
+    const pa = g.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pa.count; i++) { const y = pa.getY(i), t = y / len, col = 1 + 0.35 * Math.max(0, 1 - t / 0.18); pa.setXYZ(i, pa.getX(i) * col + len * 0.16 * t * t, y, pa.getZ(i) * col); }
+    g.computeVertexNormals();
+    const c = new Float32Array(pa.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    return g;
+}
+const withColor = (g: THREE.BufferGeometry, k = 1) => { if (!g.attributes.color) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(k), 3)); return g; };
+
 // forest park: leafy trees. Reference study: Poly Haven CC0 scanned trees (island_tree_01 leaf atlas, jacaranda bark) - AAA-style alpha-cut leaf cards on a branching trunk; geometry here is my own, low card count for weak devices
 const LEAF_BOX = [[14,18,151,526],[166,18,348,404],[708,18,838,426],[367,30,497,373],[527,48,667,374],[219,588,366,1024],[430,615,578,1024],[15,642,189,1024]];
 type TreeSpec = { kind: 'broad' | 'umbrella' | 'poplar' | 'pine' | 'spruce' | 'cherry' | 'palm'; seed: number };
@@ -277,9 +343,9 @@ function treeGeo(kind: 'broad' | 'umbrella' | 'poplar' | 'cherry', seed: number,
     const trunkP: THREE.BufferGeometry[] = [], leafP: THREE.BufferGeometry[] = [];
     const shape = { broad: { H: 7.5, R: 4.4, sx: 1, sy: 0.85, sz: 1, nb: 6, cyk: 0.35, ls: 1 }, umbrella: { H: 5.2, R: 5.2, sx: 1.5, sy: 0.32, sz: 1.5, nb: 7, cyk: 0.2, ls: 0.62 }, poplar: { H: 5.5, R: 6.2, sx: 0.34, sy: 1, sz: 0.34, nb: 4, cyk: 0.55, ls: 0.8 }, cherry: { H: 3.9, R: 5.4, sx: 1.3, sy: 0.62, sz: 1.3, nb: 8, cyk: 0.28, ls: 0.46 } }[kind];
     const H = shape.H * (0.9 + rnd() * 0.25), R = shape.R * (0.9 + rnd() * 0.2);
-    const tg = new THREE.CylinderGeometry(kind === 'poplar' ? 0.22 : kind === 'broad' ? 0.42 : 0.28, kind === 'poplar' ? 0.4 : kind === 'broad' ? 0.78 : kind === 'cherry' ? 0.42 : 0.5, H, 8, 1, true); tg.translate(0, H / 2, 0); trunkP.push(tg);   // env-iter1: oak gets a thick flared trunk
+    const tube = trunkTube({ H, rTop: kind === 'poplar' ? 0.22 : kind === 'broad' ? 0.42 : 0.28, rBot: kind === 'poplar' ? 0.4 : kind === 'broad' ? 0.78 : kind === 'cherry' ? 0.42 : 0.5, hSeg: 7, rSeg: 10, flare: kind === 'cherry' ? 0.45 : 0.38, lobes: 0.2, bend: kind === 'cherry' ? 0.3 : 0.2, seed }); trunkP.push(tube.geo);   // env-iter1: oak gets a thick flared trunk; env-iter3: natural tube
     const cy = H + R * shape.cyk * (kind === 'poplar' ? 0.7 : 1); const ctr: THREE.Vector3[] = [];
-    for (let i = 0; i < shape.nb; i++) { const ang = rnd() * 6.28; const len = R * (0.7 + rnd() * 0.4) * (kind === 'poplar' ? 0.25 : 1); const bg = new THREE.CylinderGeometry(kind === 'broad' ? 0.1 : 0.06, kind === 'broad' ? 0.26 : 0.16, len, 5, 1, true); bg.translate(0, len / 2, 0); bg.rotateZ(kind === 'umbrella' || kind === 'cherry' ? 0.95 + rnd() * 0.35 : 0.7 + rnd() * 0.5); bg.rotateY(ang); bg.translate(0, H * (0.55 + rnd() * 0.3), 0); trunkP.push(bg); ctr.push(new THREE.Vector3(Math.cos(ang) * R * 0.55 * shape.sx, cy + (rnd() - 0.4) * R * 0.5 * shape.sy, Math.sin(ang) * R * 0.55 * shape.sz)); }
+    for (let i = 0; i < shape.nb; i++) { const ang = rnd() * 6.28; const len = R * (0.7 + rnd() * 0.4) * (kind === 'poplar' ? 0.25 : 1); const bg = limbGeo(kind === 'broad' ? 0.08 : 0.05, kind === 'broad' ? 0.26 : 0.16, len, 5); bg.rotateZ(kind === 'umbrella' || kind === 'cherry' ? 0.95 + rnd() * 0.35 : 0.7 + rnd() * 0.5); bg.rotateY(ang); const hb = H * (0.55 + rnd() * 0.3), ba = tube.at(hb / H); bg.translate(ba.x, hb, ba.z); trunkP.push(bg); ctr.push(new THREE.Vector3(Math.cos(ang) * R * 0.55 * shape.sx, cy + (rnd() - 0.4) * R * 0.5 * shape.sy, Math.sin(ang) * R * 0.55 * shape.sz)); }
     ctr.push(new THREE.Vector3(0, cy + R * 0.3 * shape.sy, 0));
     for (let i = 0; i < leafN; i++) {
         const c = ctr[Math.floor(rnd() * ctr.length)]; const bx = LEAF_BOX[Math.floor(rnd() * 8)];
@@ -300,7 +366,7 @@ function coniferGeo(kind: 'pine' | 'spruce', seed: number, bpw: number, cpb: num
     let r = seed; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
     const trunkP: THREE.BufferGeometry[] = [], leafP: THREE.BufferGeometry[] = [];
     const pine = kind === 'pine'; const H = (pine ? 12 : 10.5) * (0.9 + rnd() * 0.2), W = pine ? 9 : 14;
-    const tg = new THREE.CylinderGeometry(pine ? 0.16 : 0.12, pine ? 0.42 : 0.4, H, 7, 1, true); tg.translate(0, H / 2, 0); trunkP.push(tg);
+    const tube = trunkTube({ H, rTop: pine ? 0.1 : 0.08, rBot: pine ? 0.42 : 0.4, hSeg: 8, rSeg: 8, flare: 0.42, lobes: 0.18, bend: pine ? 0.22 : 0.08, seed }); trunkP.push(tube.geo);   // env-iter3: natural tube (was a straight 7-sided cylinder)
     const bx = PINE_BOX[0], w = (bx[2] - bx[0]) / 1024, h = (bx[3] - bx[1]) / 1024;
     const card = (pos: THREE.Vector3, dir: THREE.Vector3, len: number, shade: number) => {
         for (let pl = 0; pl < 2; pl++) {
@@ -318,7 +384,7 @@ function coniferGeo(kind: 'pine' | 'spruce', seed: number, bpw: number, cpb: num
         for (let b = 0; b < bpw; b++) {
             const ang = off + (b / bpw) * 6.28 + (rnd() - 0.5) * 0.5; const dir = new THREE.Vector3(Math.cos(ang), el + (rnd() - 0.5) * 0.2, Math.sin(ang)).normalize();
             const L = Lb * (0.8 + rnd() * 0.4);
-            if (pine) { const bg = new THREE.CylinderGeometry(0.03, 0.09, L, 4, 1, true); bg.translate(0, L / 2, 0); _q.setFromUnitVectors(_Y, dir); bg.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(_q)); bg.translate(0, y, 0); trunkP.push(bg); }
+            if (pine) { const bg = withColor(new THREE.CylinderGeometry(0.03, 0.09, L, 4, 1, true)); bg.translate(0, L / 2, 0); _q.setFromUnitVectors(_Y, dir); bg.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(_q)); bg.translate(0, y, 0); trunkP.push(bg); }
             for (let c = 0; c < cpb; c++) {
                 const t = 0.3 + 0.7 * (c + 1) / cpb; const p = new THREE.Vector3(0, y, 0).addScaledVector(dir, L * t);
                 const cd = dir.clone(); cd.y += pine ? 0.25 : 0.1 - 0.5 * t; cd.x += (rnd() - 0.5) * 0.5; cd.z += (rnd() - 0.5) * 0.5; cd.normalize();
@@ -331,49 +397,107 @@ function coniferGeo(kind: 'pine' | 'spruce', seed: number, bpw: number, cpb: num
 }
 
 // env-iter1 palm (coconut palm refs: Wikimedia Cocos nucifera photos cited in the report): curved ringed trunk from flared
-// segments + a fan of drooping pinnate fronds as solid vertex-coloured geometry (no alpha cards), and three coconuts.
-function palmGeo(seed: number) {
-    let r = seed; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
-    const trunkP: THREE.BufferGeometry[] = [], leafP: THREE.BufferGeometry[] = [];
-    const H = 7.2 + rnd() * 1.4, lean = 0.9 + rnd() * 0.7, segs = 11;
-    const at = (t: number) => new THREE.Vector3(lean * t * t * 1.15, H * t, 0.25 * Math.sin(t * 3.0));
-    for (let i = 0; i < segs; i++) {
-        const a = at(i / segs), b = at((i + 1) / segs), d = b.clone().sub(a), len = d.length();
-        const r0 = 0.27 - 0.1 * (i / segs), r1 = r0 * 0.88;
-        const g = new THREE.CylinderGeometry(r1, r0, len * 1.02, 7, 1, true); g.translate(0, len / 2, 0);
-        _q.setFromUnitVectors(_Y, d.normalize()); g.applyQuaternion(_q); g.translate(a.x, a.y, a.z); trunkP.push(g);
+// segments, a crown boot, three coconuts. env-iter3 fronds (Shifat Oct 29 "palm fronds look basic"): each frond is one arched,
+// drooping strip folded into a shallow inverted V along its rib (left edge, rib, right edge x 9 segments = 36 tris), textured with
+// a procedural pinnate leaflet alpha map (central rib + ~60 thin leaflet pairs) and alpha-tested, never alpha-blended. 18 living
+// fronds in a golden-angle spiral (upper ones rise, lower ones droop), 4 browning hangers and 2 young spears: ~860 tris per palm
+// (the old solid fronds were 720), 240 tris on the far LOD. Refs: Cocos nucifera crown photos (Wikimedia Commons) for the
+// V-fold, leaflet angle and the ring of dead hanging fronds.
+const PALM_TEX_W = 256, PALM_TEX_H = 512;
+let _palmFrondTex: THREE.Texture | null = null, _palmTrunkTex: THREE.Texture | null = null;
+function palmFrondTex() {
+    if (_palmFrondTex) return _palmFrondTex;
+    const W = PALM_TEX_W, H = PALM_TEX_H, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const g = cv.getContext('2d')!; let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+    const Y = (v: number) => (1 - v) * H;   // v = 0 at the frond base (canvas bottom), 1 at the tip
+    const N = 62;
+    for (const s of [-1, 1]) for (let k = 0; k < N; k++) {
+        const v0 = 0.1 + 0.87 * (k + rnd() * 0.6) / N, tip = Math.min(1, v0 + 0.06 + 0.03 * rnd());
+        const reach = (0.86 + 0.13 * rnd()) * (W * 0.5 - 4);
+        const x0 = W / 2 + s * 2, y0 = Y(v0), x2 = W / 2 + s * reach, y2 = Y(tip), x1 = W / 2 + s * reach * 0.45, y1 = Y(v0 + (tip - v0) * 0.85);
+        const wb = 4.4 - 1.6 * v0, steps = 10, L: number[][] = [], R: number[][] = [];
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
+            const px = a * x0 + b * x1 + c * x2, py = a * y0 + b * y1 + c * y2;
+            const dx = 2 * (1 - t) * (x1 - x0) + 2 * t * (x2 - x1), dy = 2 * (1 - t) * (y1 - y0) + 2 * t * (y2 - y1), dl = Math.hypot(dx, dy) || 1;
+            const hw = 0.5 * wb * (1 - 0.85 * t) * (t < 0.15 ? 0.6 + t * 2.7 : 1);
+            L.push([px - dy / dl * hw, py + dx / dl * hw]); R.push([px + dy / dl * hw, py - dx / dl * hw]);
+        }
+        const h = 80 + rnd() * 16, sat = 46 + rnd() * 14, li = 33 + rnd() * 8 + v0 * 7;
+        const gr = g.createLinearGradient(x0, y0, x2, y2); gr.addColorStop(0, `hsl(${h},${sat}%,${li}%)`); gr.addColorStop(1, `hsl(${h - 14},${sat + 6}%,${li + 13}%)`);
+        g.fillStyle = gr; g.beginPath(); g.moveTo(L[0][0], L[0][1]); for (const p of L) g.lineTo(p[0], p[1]); for (let i = R.length - 1; i >= 0; i--) g.lineTo(R[i][0], R[i][1]); g.closePath(); g.fill();
     }
-    const top = at(1);
-    for (let k = 0; k < 3; k++) { const c = new THREE.SphereGeometry(0.17, 6, 4); const a = k * 2.1 + 0.4; c.translate(top.x + Math.cos(a) * 0.22, top.y - 0.25, top.z + Math.sin(a) * 0.22); trunkP.push(c); }
-    const nF = 10, pos: number[] = [], col: number[] = [], nrm: number[] = [];
-    const push = (v: THREE.Vector3, c: number[]) => { pos.push(v.x, v.y, v.z); col.push(c[0], c[1], c[2]); nrm.push(0, 1, 0); };
-    for (let f = 0; f < nF; f++) {
-        const ang = (f / nF) * Math.PI * 2 + rnd() * 0.4, up = f % 3 === 0 ? 0.75 : 0.35 + rnd() * 0.25, L = 3.6 + rnd() * 1.2;
-        const dir = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang)), side = new THREE.Vector3(-dir.z, 0, dir.x);
-        const rib = (t: number) => top.clone().addScaledVector(dir, L * t * Math.cos(up * (1 - t))).add(new THREE.Vector3(0, L * (Math.sin(up) * t - 0.85 * t * t), 0));
-        const n = 12;
-        for (let i = 0; i < n; i++) {
-            const t0 = i / n, t1 = (i + 1) / n, p0 = rib(t0), p1 = rib(t1);
-            const w = Math.sin(Math.PI * Math.min(1, t0 * 1.15 + 0.08)) * 0.95 + 0.05, droop = 0.35 + 0.4 * t0;
-            const base = [0.13 + 0.1 * t0, 0.29 + 0.12 * t0 + 0.04 * rnd(), 0.07 + 0.03 * t0], tip = [0.32, 0.45, 0.12];
-            for (const s of [-1, 1]) {   // a leaflet pair: narrow quads hanging out and down from the rib
-                const o0 = p0.clone().addScaledVector(side, s * w).add(new THREE.Vector3(0, -droop * w, 0)).addScaledVector(dir, 0.18);
-                const o1 = p1.clone().addScaledVector(side, s * w * 0.9).add(new THREE.Vector3(0, -droop * w * 0.9, 0)).addScaledVector(dir, 0.18);
-                const m0 = p0.clone().lerp(p1, 0.35);
-                push(p0, base); push(o0, tip); push(m0, base);
-                push(m0, base); push(o0, tip); push(o1, tip);
-                push(m0, base); push(o1, tip); push(p1, base);
+    for (let i = 0; i < 40; i++) {   // the rib: a pale tapering midrib drawn over the leaflet roots
+        const v0 = i / 40, v1 = (i + 1) / 40, w = 7 - 5.2 * v0;
+        g.fillStyle = `rgb(${178 - 30 * v0},${170 - 18 * v0},${92 - 10 * v0})`; g.fillRect(W / 2 - w / 2, Y(v1), w, Y(v0) - Y(v1) + 1);
+    }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    return (_palmFrondTex = t);
+}
+function palmTrunkTex() {
+    if (_palmTrunkTex) return _palmTrunkTex;
+    const W = 64, H = 256, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d')!;
+    let r = 977; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+    g.fillStyle = 'rgb(226,216,200)'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(${90 + rnd() * 40},${80 + rnd() * 30},${64 + rnd() * 20},0.16)`; g.fillRect(rnd() * W, 0, 1 + rnd() * 2, H); }   // vertical fibre
+    const n = 14;
+    for (let k = 0; k < n; k++) {   // leaf-scar rings: dark groove with a lit lip above it, slightly wavy
+        const y = (k + 0.5) * H / n;
+        for (let x = 0; x < W; x += 2) { const w = Math.sin(x / W * 6.283 * 2 + k) * 1.4; g.fillStyle = 'rgba(120,102,84,0.55)'; g.fillRect(x, y + w, 2, 2.2); g.fillStyle = 'rgba(245,238,226,0.6)'; g.fillRect(x, y + w - 1.2, 2, 1.2); }
+    }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return (_palmTrunkTex = t);
+}
+type Frond = { ang: number; up: number; L: number; droop: number; W: number; fold: number; ph: number; c: number[] };
+function palmFrondStrips(top: THREE.Vector3, fronds: Frond[], n: number) {
+    const pos: number[] = [], col: number[] = [], uv: number[] = [], fr: number[] = [], idx: number[] = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const f of fronds) {
+        const dir = new THREE.Vector3(Math.cos(f.ang), 0, Math.sin(f.ang)), side = new THREE.Vector3(-dir.z, 0, dir.x);
+        const rib = (t: number) => top.clone().addScaledVector(dir, 0.12 + f.L * t * Math.cos(f.up) * (1 - 0.12 * t)).addScaledVector(up, f.L * (Math.sin(f.up) * t - f.droop * t * t));
+        const b = pos.length / 3;
+        for (let i = 0; i <= n; i++) {
+            const t = i / n, p = rib(t), w = f.W * (0.1 + 0.9 * Math.pow(Math.sin(Math.PI * Math.min(1, 0.06 + t * 1.0)), 0.55)) * (t < 0.1 ? t * 7 + 0.3 : 1);
+            const fold = f.fold * (0.55 + 0.75 * t), cw = Math.cos(fold) * w, sw = Math.sin(fold) * w;
+            const sh = 0.72 + 0.28 * t, cc = [f.c[0] * sh, f.c[1] * sh, f.c[2] * sh];
+            for (const s of [-1, 0, 1]) {
+                const q = p.clone().addScaledVector(side, s * cw).addScaledVector(up, -Math.abs(s) * sw);
+                pos.push(q.x, q.y, q.z); col.push(...(s === 0 ? cc.map((x) => x * 1.05) : cc)); uv.push(0.5 + s * 0.5, t); fr.push(t, f.ph);
             }
+            if (i < n) { const a = b + i * 3; idx.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5); }
         }
     }
-    const fronds = new THREE.BufferGeometry();
-    fronds.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); fronds.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    fronds.computeVertexNormals();
-    { const na = fronds.attributes.normal as THREE.BufferAttribute; for (let i = 0; i < na.count; i++) { na.setY(i, Math.abs(na.getY(i)) + 0.6); } }   // soften: fronds read lit from above on both faces
-    fronds.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3 * 2), 2));
-    const trunk = mergeGeometries(trunkP.map((g) => { const ng = g.index ? g.toNonIndexed() : g; ng.deleteAttribute('uv'); return ng; }), false)!;
-    { const pa = trunk.attributes.position, uv = new Float32Array(pa.count * 2); for (let i = 0; i < pa.count; i++) { uv[i * 2] = Math.atan2(pa.getZ(i), pa.getX(i) - lean * 0.5) / 6.28 + 0.5; uv[i * 2 + 1] = pa.getY(i) / 2.2; } trunk.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); }
-    return { trunk, leaves: fronds };
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute('aFr', new THREE.Float32BufferAttribute(fr, 2)); geo.setIndex(idx);
+    geo.computeVertexNormals();
+    { const na = geo.attributes.normal as THREE.BufferAttribute; for (let i = 0; i < na.count; i++) na.setY(i, Math.abs(na.getY(i)) + 0.6); }   // fronds read lit from above on both faces
+    return geo;
+}
+function palmGeo(seed: number) {
+    let r = seed; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+    const trunkP: THREE.BufferGeometry[] = [];
+    const H = 7.2 + rnd() * 1.4, lean = 0.9 + rnd() * 0.7;
+    const at = (t: number) => new THREE.Vector3(lean * t * t * 1.15, H * t, 0.25 * Math.sin(t * 3.0));
+    // env-iter3 trunk: one smooth curved tube (was 11 stacked flared cylinders with a sawtooth silhouette), swollen bulb at the
+    // foot, gentle taper to the crown; the leaf-scar rings come from the ring texture (also its bump map).
+    trunkP.push(trunkTube({ H, rTop: 0.17, rBot: 0.27, hSeg: 14, rSeg: 8, flare: 0.55, lobes: 0.1, bend: 0, seed, path: at, radius: (t) => 0.27 - 0.1 * t + 0.02 * Math.sin(t * 9.0), vScale: 2.2 }).geo);
+    const top = at(1);
+    const plain = (g: THREE.BufferGeometry, k: number) => { const uv = g.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.5, 0.98); return withColor(g, k); };   // coconuts + crown boot: plain, no ring stripes
+    for (let k = 0; k < 3; k++) { const c = new THREE.SphereGeometry(0.17, 6, 4); const a = k * 2.1 + 0.4; c.translate(top.x + Math.cos(a) * 0.22, top.y - 0.25, top.z + Math.sin(a) * 0.22); trunkP.push(plain(c, 0.85)); }
+    { const c = new THREE.CylinderGeometry(0.14, 0.21, 0.55, 7, 1, true); c.translate(top.x, top.y - 0.1, top.z); trunkP.push(plain(c, 0.7)); }
+    // frond layout (golden-angle spiral; seeded so hi and lo LOD share it)
+    const live: Frond[] = [], dead: Frond[] = [], spear: Frond[] = [];
+    for (let f = 0; f < 18; f++) {
+        const tier = f / 17;   // 0 = top of the crown, 1 = lowest living frond
+        live.push({ ang: f * 2.39996 + rnd() * 0.25, up: 0.95 - 1.05 * tier + (rnd() - 0.5) * 0.18, L: 3.7 + rnd() * 1.1 - 0.4 * (1 - tier), droop: 0.55 + 0.5 * tier + rnd() * 0.15, W: 0.62 + rnd() * 0.12, fold: 0.42 + rnd() * 0.18, ph: rnd(), c: [0.92 + rnd() * 0.08, 0.95 + rnd() * 0.05, 0.85] });
+    }
+    for (let f = 0; f < 4; f++) dead.push({ ang: f * 1.571 + 0.6 + rnd() * 0.5, up: -0.75 - rnd() * 0.3, L: 2.6 + rnd() * 0.6, droop: 0.15, W: 0.42, fold: 0.95, ph: rnd(), c: [1.05, 0.7, 0.36] });
+    for (let f = 0; f < 2; f++) spear.push({ ang: f * 3.1 + rnd(), up: 1.35, L: 1.7 + rnd() * 0.4, droop: 0.1, W: 0.18, fold: 1.1, ph: rnd(), c: [0.95, 1.0, 0.72] });
+    const leaves = palmFrondStrips(top, [...live, ...dead, ...spear], 9);
+    const lo = palmFrondStrips(top, live.filter((_, i) => i % 3 !== 2), 5);
+    const trunk = mergeGeometries(trunkP, false)!;
+    return { trunk, leaves, lo };
 }
 // Cherry blossom recolour: same scanned leaf-card silhouettes, texel luminance remapped to a sakura pink ramp (refs: Wikimedia
 // Prunus serrulata 'Kanzan' / Yoshino cherry photos cited in the report).
@@ -382,7 +506,16 @@ const cherryLeafShader = (sh: any) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `vec4 sdc = texture2D(map, vMapUv); float lmc = dot(sdc.rgb, vec3(0.3, 0.59, 0.11));
     diffuseColor.rgb *= mix(vec3(0.62, 0.20, 0.33), vec3(1.0, 0.70, 0.82), smoothstep(0.02, 0.32, lmc)); diffuseColor.a *= sdc.a;`);
 };
-const palmLeafShader = (sh: any) => { leafWindShader(sh); sh.vertexShader = sh.vertexShader.replace('float flutter =', 'float flutter = 1.8 *'); };
+// Palm fronds: shared tree wind + a slow per-frond bob that grows toward the tip (aFr = [t along frond, frond phase]); the
+// alpha boost keeps thin leaflets from dissolving in smaller mips under alphaTest (coverage-preserving trick, Ben Golus 2017).
+const palmFrondShader = (sh: any) => {
+    leafWindShader(sh);
+    sh.vertexShader = 'attribute vec2 aFr;\n' + sh.vertexShader.replace('float flutter =', 'float flutter = 1.8 *').replace('transformed.z += windBend * 0.38;', `transformed.z += windBend * 0.38;
+    float frs = sin(uTreeWindTime * 1.35 + windPhase * 2.0 + aFr.y * 6.283) * 0.6 + sin(uTreeWindTime * 2.3 + aFr.y * 17.0) * 0.25;
+    transformed.y += frs * 0.16 * aFr.x * aFr.x; transformed.x += frs * 0.05 * aFr.x;`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <alphatest_fragment>', `{ vec2 tsz = vMapUv * vec2(${PALM_TEX_W}.0, ${PALM_TEX_H}.0); vec2 ddx = dFdx(tsz), ddy = dFdy(tsz); float plod = 0.5 * log2(max(max(dot(ddx, ddx), dot(ddy, ddy)), 1e-6)); diffuseColor.a *= 1.0 + max(plod, 0.0) * 0.3; }
+#include <alphatest_fragment>`);
+};
 // env-iter1: four species — 0 oak, 1/5 pine, 2 spruce (pine family, conical), 3 cherry blossom, 4 palm.
 const TREE_TYPES: { kind: TreeSpec['kind']; seed: number }[] = [{ kind: 'broad', seed: 11 }, { kind: 'pine', seed: 31 }, { kind: 'spruce', seed: 57 }, { kind: 'cherry', seed: 77 }, { kind: 'palm', seed: 1234 }, { kind: 'pine', seed: 99 }];
 const TREE_PATTERN = [0, 1, 2, 0, 5, 2, 1, 0, 2, 5, 0, 1, 2, 0, 3, 5, 1, 2, 0, 2];
@@ -406,13 +539,13 @@ const rayMat = new THREE.ShaderMaterial({
     fragmentShader: 'varying vec2 vU; uniform float uTime; void main(){ float width = mix(0.16,0.32,1.0-vU.y); float edge = 1.0-smoothstep(width*0.25,width,abs(vU.x-0.5)); float endFade = smoothstep(0.0,0.20,vU.y)*(1.0-smoothstep(0.82,1.0,vU.y)); float a = edge * endFade * pow(vU.y, 1.2) * (0.55 + 0.45 * sin(uTime * 0.8 + vU.y * 3.0 + vU.x * 5.0)); gl_FragColor = vec4(vec3(0.6, 0.95, 1.0) * a * 0.5, a * 0.5); }',
 });
 // Round bubble glints, same point count and size as before; no texture fetch.
-const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.09,sizeAttenuation:true,transparent:true,opacity:0.7,depthWrite:false});
+const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.09,sizeAttenuation:true,transparent:true,opacity:0.7,depthWrite:false,vertexColors:true});   // env-iter3: rgba vertex colour = per-bubble fade in/out
 bubbleMat.onBeforeCompile = (shader) => { shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', 'diffuseColor.a*=(1.0-smoothstep(0.32,0.5,br))*(0.32+0.68*smoothstep(0.22,0.40,br));\n#include <opaque_fragment>'); };
-bubbleMat.customProgramCacheKey = () => 'round-bubble-v1';
+bubbleMat.customProgramCacheKey = () => 'round-bubble-v2';
 function Underwater({ sim }: { sim: Sim }) {
     const kelp = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!);
     const kGeo = useMemo(() => { const g = new THREE.PlaneGeometry(0.5, 6, 1, 6); g.translate(0, 3, 0); return g; }, []);
-    const bGeo = useMemo(() => { const n = 140, p = new Float32Array(n * 3); let r = 5; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n * 3; i++) p[i] = rn(); const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); return g; }, []);
+    const bGeo = useMemo(() => { const n = 140, p = new Float32Array(n * 3); let r = 5; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n * 3; i++) p[i] = rn(); const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 4).fill(1), 4)); return g; }, []);
     useEffect(() => {
         let r = 3; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; const o = new THREE.Object3D();
         for (let i = 0; i < 1400; i++) { const cx = (rn() - 0.5) * 2 * (HALF - 20), cz = WATER_Z - 6 - rn() * 110, k = 0.6 + rn() * 1.1; o.position.set(cx, SEABED, cz); o.rotation.set(0, rn() * 3.14, 0); o.scale.set(k * (0.5 + rn() * 0.6), 0.45 + rn() * 1.0, k); o.updateMatrix(); kelp.current.setMatrixAt(i, o.matrix); }
@@ -421,13 +554,24 @@ function Underwater({ sim }: { sim: Sim }) {
     useFrame((st) => {
         const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2], inBay = hz < WATER_Z + 6, inLake = isLakeWater(hx, hz), inWater = inBay || inLake, surfaceY = inLake ? waterSurfaceAt(hx, hz, t) : WATER_Y, under = inWater && st.camera.position.y < surfaceY + 1.5 && sim.mode === 'play';
         kelpMat.uniforms.uTime.value = t; rayMat.uniforms.uTime.value = t;
-        kelp.current.visible = inBay; const cu = under && st.camera.position.y < surfaceY - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // shafts and bubbles only once the camera is really below either water surface
+        kelp.current.visible = inBay; const cu = under && st.camera.position.y < surfaceY - 0.05 && st.camera.position.y < waterRenderY(st.camera.position.x, st.camera.position.z, t) - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // env-iter3: also below the real (wave-displaced) sea surface, not just the flat sea level   // shafts and bubbles only once the camera is really below either water surface
         if (!inWater) return;
         if (under) {
-            const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, B = 7;   // bubbles: unit-box seeds wrapped around the hero, rising with a current drift
-            const cur = Math.sin(t * 0.3) * 0.5;
-            for (let i = 0; i < pa.count; i++) { const sx = (i * 0.618) % 1, sz = (i * 0.382 + 0.2) % 1, sp = 0.5 + ((i * 0.137) % 1) * 0.9; const ry = ((((i * 0.29) % 1) + t * 0.06 * sp) % 1); pa.setXYZ(i, hx + (sx - 0.5) * B * 2 + cur * ry * 4, surfaceY - 6 + ry * 6 + Math.min(0, hy + 4) * 0.0, hz + (sz - 0.5) * B * 2 + Math.sin(t * 0.8 + i) * 0.1); }
-            pa.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
+            // env-iter3 bubble fix (Shifat Oct 29 "ocean underwater has bubble related bug"). Before: the 140 bubbles sat in a 14 m box glued
+            // to the hero (the cloud swam along with you), rose to the FLAT sea level while the ocean surface swells +-1.3 m (so in every
+            // trough a band of bubbles hung in the air above the water, and the underwater look switched on above water), and wrapped from
+            // the top back to 6 m down with a hard pop. Now: world-anchored columns (a 14 m tile repeated around the hero, so you swim
+            // through them), each rising from the floor to just under the real wave surface at its own x/z, fading in and out at both ends.
+            const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, ca = bub.current.geometry.attributes.color as THREE.BufferAttribute, P = 14;
+            const cur = Math.sin(t * 0.3) * 0.5, floor = inLake ? PARK_POND_Y - 3.6 : SEABED + 0.4;
+            for (let i = 0; i < pa.count; i++) {
+                const sx = (i * 0.618) % 1, sz = (i * 0.382 + 0.2) % 1, sp = 0.5 + ((i * 0.137) % 1) * 0.9; const ry = ((((i * 0.29) % 1) + t * 0.045 * sp) % 1);
+                const ox = sx * P, oz = sz * P, bx = ox + P * Math.round((hx - ox) / P) + cur * ry * 3, bz = oz + P * Math.round((hz - oz) / P) + Math.sin(t * 0.8 + i) * 0.1;
+                const top = waterRenderY(bx, bz, t) - 0.12, by = floor + ry * Math.max(0.5, top - floor);
+                const edge = Math.max(Math.abs(bx - hx), Math.abs(bz - hz)) > P * 0.5 - 1.2 || (inLake && !isLakeWater(bx, bz)) ? 0 : 1;   // tile seam (about to wrap sideways) or outside the lake: hidden
+                pa.setXYZ(i, bx, by, bz); ca.setW(i, edge * Math.min(1, ry / 0.08) * Math.min(1, (1 - ry) / 0.1));
+            }
+            pa.needsUpdate = true; ca.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
             rays.current.position.set(hx, surfaceY + 0.1, hz); rays.current.rotation.y = 0;
         }
     });
@@ -461,7 +605,7 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
         return [mk('/spray145.png'), mk('/bark.jpg', true), mk(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
         const con = kind === 'pine' || kind === 'spruce';
-        if (kind === 'palm') { const p = palmGeo(seed); return { trunk: p.trunk, leaves: p.leaves, lo: p.leaves, con, kind }; }
+        if (kind === 'palm') { const p = palmGeo(seed); return { trunk: p.trunk, leaves: p.leaves, lo: p.lo, con, kind }; }
         const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1.12) : treeGeo(kind as any, seed, kind === 'broad' ? 460 : kind === 'cherry' ? 560 : 340, 1.45);
         const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, kind === 'cherry' ? 140 : 110, 2.2).leaves;
         return { trunk: hi.trunk, leaves: hi.leaves, lo: lw, con, kind };
@@ -488,6 +632,7 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
             if (sandWeight(x, z) < 0.9 || nearTrail(x, z, 5) || a.some((p) => Math.hypot(p.x - x, p.z - z) < 5.5)) continue;
             a.push({ x, z, s: 0.85 + rnd() * 0.3, c: rnd(), v: 4 }); nPalm++;
         }
+        if (DBG) (window as any).__trees = a.map((p) => [p.x, parkH(p.x, p.z), p.z, p.v, p.s]);
         return a; }, []);
     const bushTex = useMemo(()=>{const t=new THREE.TextureLoader().load('/shrub134.png');t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=QK.anisotropy;return t;},[]);
     const bushGeo = useMemo(()=>{
@@ -536,10 +681,10 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
         {renderGround && <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>}
         {renderGround && <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>}
         {geos.map((g, v) => <group key={v}>
-            <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.kind === 'palm' ? null : g.con ? pbarkTex : barkTex} color={g.kind === 'palm' ? '#8f7a5e' : g.kind === 'cherry' ? '#9a8a90' : '#ffffff'} emissive={g.kind === 'palm' ? '#3a3024' : '#4a3a2c'} side={THREE.DoubleSide} onBeforeCompile={trunkWindShader} /></instancedMesh>
+            <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.kind === 'palm' ? palmTrunkTex() : g.con ? pbarkTex : barkTex} bumpMap={g.kind === 'palm' ? palmTrunkTex() : g.con ? pbarkTex : barkTex} bumpScale={g.kind === 'palm' ? 1.6 : 2.2} vertexColors color={g.kind === 'palm' ? '#a89274' : g.kind === 'cherry' ? '#a5949a' : '#ffffff'} emissive={g.kind === 'palm' ? '#3a3024' : '#4a3a2c'} side={THREE.DoubleSide} onBeforeCompile={trunkWindShader} /></instancedMesh>
             {g.kind === 'palm' ? <>
-                <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial vertexColors emissive="#2a3a14" side={THREE.DoubleSide} onBeforeCompile={palmLeafShader} /></instancedMesh>
-                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial vertexColors emissive="#2a3a14" side={THREE.DoubleSide} onBeforeCompile={palmLeafShader} /></instancedMesh>
+                <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={palmFrondTex()} vertexColors emissive="#2a3a14" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={palmFrondShader} /></instancedMesh>
+                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={palmFrondTex()} vertexColors emissive="#2a3a14" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={palmFrondShader} /></instancedMesh>
             </> : <>
                 <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
                 <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
@@ -583,6 +728,8 @@ function tuftGeo() {
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
 }
+// env-iter3: meadow flowers share the grass outline class (alpha 0.25), so they are part of the one meadow silhouette
+const grassTag = (sh: any) => { sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a = 0.25;'); };
 const FL_COL = ['#8a5cf0', '#4f7cff', '#e03a4a', '#ff7fb8'];
 function Meadow({ sim }: { sim: Sim }) {
     const gr = useRef<THREE.InstancedMesh>(null!), fl = useRef<THREE.InstancedMesh>(null!), ff = useRef<THREE.Points>(null!), last = useRef([1e9, 1e9]), uni = useRef({ uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uCam: { value: new THREE.Vector3() } }), fu = useRef({ uTime: { value: 0 } });
@@ -602,10 +749,10 @@ function Meadow({ sim }: { sim: Sim }) {
     useFrame((st) => { uni.current.uTime.value = fu.current.uTime.value = st.clock.elapsedTime; const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 8) { last.current = [hx, hz]; place(hx, hz); } });
     const onGrass = (sh: any) => { sh.uniforms.uTime = uni.current.uTime; sh.uniforms.uHero = uni.current.uHero; sh.uniforms.uCam = uni.current.uCam; sh.vertexShader = 'uniform float uTime; uniform vec3 uHero; uniform vec3 uCam;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n float hh = position.y; transformed.y *= mix(0.4, 1.0, smoothstep(0.9, 3.8, length(instanceMatrix[3].xz - uHero.xz))) * mix(0.3, 1.0, smoothstep(1.5, 5.5, length(instanceMatrix[3].xz - uCam.xz))); float wv = sin(uTime * 0.9 + instanceMatrix[3].x * 0.07 + instanceMatrix[3].z * 0.045) * 0.5 + 0.5; transformed.x += (sin(uTime * 1.5 + instanceMatrix[3].x * 0.35 + instanceMatrix[3].z * 0.22) * 0.1 + wv * 0.38) * hh * hh; transformed.y -= wv * 0.12 * hh * hh; transformed.z += cos(uTime * 1.2 + instanceMatrix[3].z * 0.3) * 0.1 * hh * hh; vHt = clamp(position.y / 0.9, 0.0, 1.0);').replace('void main() {', 'varying float vHt;\nvoid main() {');
         // grass optics (ref: BotW grassland, blades dark at the root and sun-lit translucent yellow-green at the tips): base occlusion, bright backlit tips, soft sheen
-        sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.25, 0.32, 0.17), uDayG) * vHt * vHt * 0.32; diffuseColor.a = 0.5;\n#include <opaque_fragment>'); };   // alpha 0.5 is still fully visible in the opaque color pass but falls below the screen-outline mask threshold
+        sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.25, 0.32, 0.17), uDayG) * vHt * vHt * 0.32; diffuseColor.a = 0.5;\n#include <opaque_fragment>\ngl_FragColor.a = 0.25;'); };   // env-iter3: OPAQUE forced alpha back to 1.0 after the old 0.5, so blades were inked one by one; 0.25 = grass class for the outline pass
     return <group>
         <instancedMesh ref={gr} name="polyfork-curved-grass-blades" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geo, undefined, QK.grass]} frustumCulled={true}><meshLambertMaterial vertexColors emissive="#1c3410" side={THREE.DoubleSide} onBeforeCompile={onGrass} /></instancedMesh>
-        <instancedMesh ref={fl} args={[flGeo, undefined, 420]}><meshLambertMaterial emissive="#555555" side={THREE.DoubleSide} /></instancedMesh>
+        <instancedMesh ref={fl} args={[flGeo, undefined, 420]}><meshLambertMaterial emissive="#555555" side={THREE.DoubleSide} onBeforeCompile={grassTag} /></instancedMesh>
         <points ref={ff} geometry={ffGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} blending={THREE.AdditiveBlending} uniforms={fu.current} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying vec3 vOrbCol; void main(){ vOrbCol=0.58+0.42*cos(ph+vec3(0.0,2.1,4.2)); vec3 p = position; p.x += sin(uTime*0.4+ph*3.0)*2.5; p.z += cos(uTime*0.35+ph*2.0)*2.5; p.y += sin(uTime*0.7+ph)*0.8; vec4 mv = modelViewMatrix*vec4(p,1.0); gl_Position = projectionMatrix*mv; vA = 0.35+0.65*pow(0.5+0.5*sin(uTime*1.6+ph*5.0),2.0); gl_PointSize = clamp(38.0/(-mv.z), 2.0, 9.0); }`} fragmentShader={`varying float vA;varying vec3 vOrbCol;void main(){float d=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.0,d);gl_FragColor=vec4(vOrbCol*(0.7+0.3*a),a*a*vA);}`} /></points>
     </group>;
 }
@@ -1397,7 +1544,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
             const uw = document.getElementById('uw');
             const inBay = camera.position.z < WATER_Z + 2, inLake = isLakeWater(camera.position.x, camera.position.z), inWater = inBay || inLake;
-            const surfaceY = inLake ? waterSurfaceAt(camera.position.x, camera.position.z, sim.t) : WATER_Y; const dy = camera.position.y - surfaceY; const under = inWater && dy < 0; UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
+            const surfaceY = inLake ? waterSurfaceAt(camera.position.x, camera.position.z, sim.t) : waterRenderY(camera.position.x, camera.position.z, sim.t); const dy = camera.position.y - surfaceY; const under = inWater && dy < 0;   // env-iter3: ocean uses the real swell height (was the flat sea level, so troughs read as underwater) UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
             if (uw) {
                 if (inWater && dy < 1.2 && dy > -2.2) {
                     // project the waterline a little ahead of the camera to find where the surface cuts the screen

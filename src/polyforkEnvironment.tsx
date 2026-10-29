@@ -225,8 +225,10 @@ function sandShader(sh: any) {
             float grassEdge = sw * (1.0 - sw) * 4.0;
             diffuseColor.rgb = mix(diffuseColor.rgb * (1.0 - 0.18 * grassEdge), sandC, sw);
         }
-    }`);
+    }`).replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a = 0.375;');   // env-iter3: park-ground class for the outline pass (grass blades do not ink against it)
 }
+// env-iter3: the trail joins the park-ground outline class too, so blades standing in front of it are not inked one by one
+function landTag(sh: any) { sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a = 0.375;'); }
 
 export function ParkGround() {
     const cx = (PARK.x0 + PARK.x1) * 0.5, cz = (PARK.z0 + PARK.z1) * 0.5;
@@ -266,7 +268,7 @@ export function ParkGround() {
             <meshLambertMaterial color="#ffffff" vertexColors onBeforeCompile={sandShader} />
         </mesh>
         <mesh position={[cx, 0.09, cz]} geometry={terrain.path} frustumCulled={false}>
-            <meshLambertMaterial color="#b89865" />
+            <meshLambertMaterial color="#b89865" onBeforeCompile={landTag} />
         </mesh>
     </group>;
 }

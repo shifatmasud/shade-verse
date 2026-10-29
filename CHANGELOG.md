@@ -2,6 +2,18 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - env-iter3: palm fronds, natural trunks, near-field sharpen, one-piece meadow outline, underwater bubble fix
+### Changed
+- Palm fronds: each frond is now one arched, drooping strip folded into a shallow inverted V along its rib, textured with a procedural pinnate leaflet alpha map (pale midrib + ~60 thin leaflet pairs) and alpha-tested (no blending). 18 living fronds in a golden-angle spiral, 4 browning hangers and 2 young spears, plus a slow per-frond bob on top of the shared tree wind. An alpha mip-boost keeps thin leaflets from dissolving at distance. ~860 tris per palm (was 720), 240 on the far LOD; same draw calls.
+- Tree trunks (oak, pine/spruce, cherry, palm): seeded natural tubes instead of straight open cylinders — power-curve taper, gentle bend, root flare with buttress lobes, slight bark irregularity, darker root-end vertex colour and the bark texture reused as a bump map. Branch limbs taper, curve up into the canopy and have a collar at the trunk. Palm trunk is one smooth curved tube with a swollen foot and a leaf-scar ring texture. Canopies/foliage are byte-identical (separate RNG for trunk detail).
+- Near-field sharpen: the world's final FXAA pass now applies a clamped, contrast-adaptive unsharp mask whose strength comes from depth (full within ~6 m, none beyond ~28 m, never on the sky, backed off on hard edges). Distant scenery and the locked hero HD pass are unchanged.
+- Grass outline: blades no longer get ink outlines one by one (three's OPAQUE define had been overwriting the grass alpha mask back to 1.0). Grass/flowers (alpha class 0.25) and the park ground/trail (0.375) now form one class in the outline pass, so only the meadow's outer silhouette is inked.
+- Underwater bubbles (ocean + lake): bubbles were glued to a box around the hero, rose to the flat sea level while the ocean swells about ±1.3 m (so in troughs they floated in the air), and wrapped with a hard pop. They are now world-anchored columns from the floor to just under the real wave surface, with fade in/out. The underwater look (fog/background) also follows the real swell height instead of the flat sea level.
+### Locked
+- Heroes (Shadow + Ghost, incl. heroHD) are locked in lock.md per Shifat (Oct 29). No hero file was touched.
+### Verification
+- `npx tsc --noEmit` and `npm run build` pass. Headless Chromium WebGL2/SwiftShader before/after captures at 915x412@1.75 and 1366x768: palm, trunks, grass outline, near sharpen, underwater. Physical-device performance remains untested (estimates in the iteration report).
+
 ## [Released] - Restored lake/city district and Shadow swim orientation
 ### Changed
 - Restored the legacy procedural buildings as the central old city and placed Polyfork building families around it as the outer district; the shared city traversal/collision routes and rooftop boss arena remain intact. Removed above-ground subway building instances and placed four small entrances below soil level.
