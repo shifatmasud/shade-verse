@@ -603,14 +603,24 @@ const rayMat = new THREE.ShaderMaterial({
     vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'varying vec2 vU; uniform float uTime; void main(){ float width = mix(0.16,0.32,1.0-vU.y); float edge = 1.0-smoothstep(width*0.25,width,abs(vU.x-0.5)); float endFade = smoothstep(0.0,0.20,vU.y)*(1.0-smoothstep(0.82,1.0,vU.y)); float a = edge * endFade * pow(vU.y, 1.2) * (0.55 + 0.45 * sin(uTime * 0.8 + vU.y * 3.0 + vU.x * 5.0)); gl_FragColor = vec4(vec3(0.6, 0.95, 1.0) * a * 0.5, a * 0.5); }',
 });
-// Round bubble glints, same point count and size as before; no texture fetch.
-const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.09,sizeAttenuation:true,transparent:true,opacity:0.7,depthWrite:false,vertexColors:true});   // env-iter3: rgba vertex colour = per-bubble fade in/out
-bubbleMat.onBeforeCompile = (shader) => { shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', 'diffuseColor.a*=(1.0-smoothstep(0.32,0.5,br))*(0.32+0.68*smoothstep(0.22,0.40,br));\n#include <opaque_fragment>'); };
-bubbleMat.customProgramCacheKey = () => 'round-bubble-v2';
+// Shifat Oct 29 "water bubble must be randomized particle emission": round glints with a per-particle size (aSize) and rgba fade.
+const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.11,sizeAttenuation:true,transparent:true,opacity:0.75,depthWrite:false,vertexColors:true});
+bubbleMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = 'attribute float aSize;\n' + shader.vertexShader.replace('gl_PointSize = size;', 'gl_PointSize = size * aSize;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', 'diffuseColor.a*=(1.0-smoothstep(0.32,0.5,br))*(0.32+0.68*smoothstep(0.22,0.40,br));\n#include <opaque_fragment>');
+};
+bubbleMat.customProgramCacheKey = () => 'round-bubble-emitter-v3';
+// Pooled randomized bubble emitter: one Points draw, fixed typed arrays, no per-frame allocation. Each particle gets a random
+// size, rise speed, wobble (amplitude/frequency/phase), sideways drift and lifetime; it fades in, rises (speeding up slightly as it
+// grows, like a real bubble), and pops/fades just under the real wave-displaced surface at its own x/z. Emitters: seabed vents at
+// random spots around the camera, plus a stream off the hero while moving/diving (rate scales with speed).
+const BUB_N = QUALITY.coarse || QUALITY.weakGpu ? 110 : 220;
 function Underwater({ sim }: { sim: Sim }) {
     const kelp = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!);
     const kGeo = useMemo(() => { const g = new THREE.PlaneGeometry(0.5, 6, 1, 6); g.translate(0, 3, 0); return g; }, []);
-    const bGeo = useMemo(() => { const n = 140, p = new Float32Array(n * 3); let r = 5; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n * 3; i++) p[i] = rn(); const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 4).fill(1), 4)); return g; }, []);
+    const bGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BUB_N * 3).fill(-9999), 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(BUB_N * 4).fill(1), 4)); g.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(BUB_N).fill(1), 1)); return g; }, []);
+    // particle state (pooled): base x/z, y, rise speed, age, life, wobble amp/freq/phase, drift x/z, size; alive when age < life
+    const B = useMemo(() => ({ x: new Float32Array(BUB_N), y: new Float32Array(BUB_N), z: new Float32Array(BUB_N), v: new Float32Array(BUB_N), age: new Float32Array(BUB_N).fill(1), life: new Float32Array(BUB_N).fill(0), wa: new Float32Array(BUB_N), wf: new Float32Array(BUB_N), wp: new Float32Array(BUB_N), dx: new Float32Array(BUB_N), dz: new Float32Array(BUB_N), sz: new Float32Array(BUB_N), acc: 0, heroAcc: 0, next: 0, lastT: -1 }), []);
     useEffect(() => {
         let r = 3; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; const o = new THREE.Object3D();
         for (let i = 0; i < 1400; i++) { const cx = (rn() - 0.5) * 2 * (HALF - 20), cz = WATER_Z - 6 - rn() * 110, k = 0.6 + rn() * 1.1; o.position.set(cx, SEABED, cz); o.rotation.set(0, rn() * 3.14, 0); o.scale.set(k * (0.5 + rn() * 0.6), 0.45 + rn() * 1.0, k); o.updateMatrix(); kelp.current.setMatrixAt(i, o.matrix); }
@@ -622,20 +632,35 @@ function Underwater({ sim }: { sim: Sim }) {
         kelp.current.visible = inBay; const cu = under && st.camera.position.y < surfaceY - 0.05 && st.camera.position.y < waterRenderY(st.camera.position.x, st.camera.position.z, t) - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // env-iter3: also below the real (wave-displaced) sea surface, not just the flat sea level   // shafts and bubbles only once the camera is really below either water surface
         if (!inWater) return;
         if (under) {
-            // env-iter3 bubble fix (Shifat Oct 29 "ocean underwater has bubble related bug"). Before: the 140 bubbles sat in a 14 m box glued
-            // to the hero (the cloud swam along with you), rose to the FLAT sea level while the ocean surface swells +-1.3 m (so in every
-            // trough a band of bubbles hung in the air above the water, and the underwater look switched on above water), and wrapped from
-            // the top back to 6 m down with a hard pop. Now: world-anchored columns (a 14 m tile repeated around the hero, so you swim
-            // through them), each rising from the floor to just under the real wave surface at its own x/z, fading in and out at both ends.
-            const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, ca = bub.current.geometry.attributes.color as THREE.BufferAttribute, P = 14;
-            const cur = Math.sin(t * 0.3) * 0.5, floor = inLake ? PARK_POND_Y - 3.6 : SEABED + 0.4;
-            for (let i = 0; i < pa.count; i++) {
-                const sx = (i * 0.618) % 1, sz = (i * 0.382 + 0.2) % 1, sp = 0.5 + ((i * 0.137) % 1) * 0.9; const ry = ((((i * 0.29) % 1) + t * 0.045 * sp) % 1);
-                const ox = sx * P, oz = sz * P, bx = ox + P * Math.round((hx - ox) / P) + cur * ry * 3, bz = oz + P * Math.round((hz - oz) / P) + Math.sin(t * 0.8 + i) * 0.1;
-                const top = waterRenderY(bx, bz, t) - 0.12, by = floor + ry * Math.max(0.5, top - floor);
-                const edge = Math.max(Math.abs(bx - hx), Math.abs(bz - hz)) > P * 0.5 - 1.2 || (inLake && !isLakeWater(bx, bz)) ? 0 : 1;   // tile seam (about to wrap sideways) or outside the lake: hidden
-                pa.setXYZ(i, bx, by, bz); ca.setW(i, edge * Math.min(1, ry / 0.08) * Math.min(1, (1 - ry) / 0.1));
+            const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, ca = bub.current.geometry.attributes.color as THREE.BufferAttribute, za = bub.current.geometry.attributes.aSize as THREE.BufferAttribute;
+            const dt = B.lastT < 0 ? 0.016 : Math.min(0.1, Math.max(0, t - B.lastT)); B.lastT = t;
+            const floor = inLake ? PARK_POND_Y - 3.6 : SEABED + 0.4, cx = st.camera.position.x, cz = st.camera.position.z, cur = Math.sin(t * 0.3) * 0.25;
+            const spawn = (x: number, y: number, z: number, small: boolean) => {
+                if (inLake && !isLakeWater(x, z)) return;
+                let k = -1; for (let j = 0; j < BUB_N; j++) { const q = (B.next + j) % BUB_N; if (B.age[q] >= B.life[q]) { k = q; break; } }
+                if (k < 0) return; B.next = (k + 1) % BUB_N;
+                const r = Math.random();
+                B.x[k] = x; B.y[k] = y; B.z[k] = z; B.age[k] = 0; B.life[k] = 2.5 + Math.random() * 5.5;
+                B.sz[k] = small ? 0.35 + r * 0.6 : 0.45 + r * r * 1.6; B.v[k] = 0.35 + B.sz[k] * 0.45 + Math.random() * 0.35;
+                B.wa[k] = 0.03 + Math.random() * 0.12; B.wf[k] = 2 + Math.random() * 5; B.wp[k] = Math.random() * 6.283;
+                B.dx[k] = (Math.random() - 0.5) * 0.25; B.dz[k] = (Math.random() - 0.5) * 0.25;
+            };
+            // seabed vents: Poisson-ish random emission in a 13 m disc around the camera, sometimes in little bursts
+            B.acc += dt * (BUB_N * 0.11);
+            while (B.acc >= 1) { B.acc -= 1; const a = Math.random() * 6.283, rr = 1.5 + Math.sqrt(Math.random()) * 11.5, x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr, burst = Math.random() < 0.18 ? 2 + Math.floor(Math.random() * 4) : 1; for (let q = 0; q < burst; q++) spawn(x + (Math.random() - 0.5) * 0.3, floor + Math.random() * 0.4, z + (Math.random() - 0.5) * 0.3, burst > 1); }
+            // hero stream: more bubbles the faster you swim, extra on a dive
+            const hv = Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]);
+            if (hy < surfaceY - 0.3) { B.heroAcc += dt * (hv * 2.2 + (sim.dive ? 10 : 0) + 0.6); while (B.heroAcc >= 1) { B.heroAcc -= 1; spawn(hx + (Math.random() - 0.5) * 0.6, hy + 0.6 + Math.random() * 0.8, hz + (Math.random() - 0.5) * 0.6, true); } }
+            for (let i = 0; i < BUB_N; i++) {
+                if (B.age[i] >= B.life[i]) { pa.setXYZ(i, 0, -9999, 0); ca.setW(i, 0); continue; }
+                B.age[i] += dt; B.v[i] = Math.min(B.v[i] + dt * 0.08, 1.6); B.y[i] += B.v[i] * dt; B.x[i] += (B.dx[i] + cur) * dt; B.z[i] += B.dz[i] * dt;
+                const w = Math.sin(B.age[i] * B.wf[i] + B.wp[i]) * B.wa[i], bx = B.x[i] + w, bz = B.z[i] + Math.cos(B.age[i] * B.wf[i] * 0.8 + B.wp[i]) * B.wa[i] * 0.7;
+                const top = waterRenderY(bx, bz, t) - 0.1;
+                if (B.y[i] >= top) { B.age[i] = B.life[i]; pa.setXYZ(i, 0, -9999, 0); ca.setW(i, 0); continue; }   // pop just under the real swell
+                const fin = Math.min(1, B.age[i] / 0.35), fout = Math.min(1, (B.life[i] - B.age[i]) / 0.6, (top - B.y[i]) / 0.35);
+                pa.setXYZ(i, bx, B.y[i], bz); ca.setW(i, fin * Math.max(0, fout)); za.setX(i, B.sz[i] * (1 + 0.15 * Math.min(1, B.age[i] / 3)));
             }
+            za.needsUpdate = true;
             pa.needsUpdate = true; ca.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
             rays.current.position.set(hx, surfaceY + 0.1, hz); rays.current.rotation.y = 0;
         }
@@ -671,8 +696,8 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
         const con = kind === 'pine' || kind === 'spruce';
         if (kind === 'palm') { const p = palmGeo(seed); return { trunk: p.trunk, leaves: p.leaves, lo: p.lo, con, kind }; }
-        const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1.12) : treeGeo(kind as any, seed, kind === 'broad' ? 460 : kind === 'cherry' ? 560 : 340, 1.45);
-        const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, kind === 'cherry' ? 140 : 110, 2.2).leaves;
+        const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1.12) : treeGeo(kind as any, seed, Math.round((kind === 'broad' ? 460 : kind === 'cherry' ? 560 : 340) * QK.foliage), 1.45);
+        const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, Math.round((kind === 'cherry' ? 140 : 110) * (0.5 + 0.5 * QK.foliage)), 2.2).leaves;
         return { trunk: hi.trunk, leaves: hi.leaves, lo: lw, con, kind };
     }), []);
     const pts = useMemo(() => { let r = 7; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const a: { x: number; z: number; s: number; c: number; v: number }[] = []; for (let i = 0; i < 600 && a.length < 130; i++) { const px = PARK.x0 + 6 + rnd() * (PARK.x1 - PARK.x0 - 12), pz = PARK.z0 + 6 + rnd() * (PARK.z1 - PARK.z0 - 12), cxm = (PARK.x0 + PARK.x1) / 2, czm = (PARK.z0 + PARK.z1) / 2; if (Math.hypot(px - cxm, pz - czm) < 54 || Math.abs((px - cxm) - (pz - czm) * 0.6) < 6) continue; if (rnd() < 0.2) continue; a.push({ x: px, z: pz, s: 0.8 + rnd() * 0.5, c: rnd(), v: TREE_PATTERN[a.length % TREE_PATTERN.length] }); }

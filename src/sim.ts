@@ -661,44 +661,60 @@ function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
     return true;
 }
 function bossRoofClamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
+// Shifat Oct 29 "Boss should follow heroes & keep attacking": the boss is no longer leashed to the arena roof. When the hero is
+// off the boss's current surface (another roof, the street, the park, mid-swing) it hover-dashes after them: short take-off, a
+// propel that re-aims at the hero every frame (fast enough to keep up with a swing), and a landing on whatever is under the target
+// (roof top, street, park slope; never the water). On the same surface it walks after the hero and melees; volleys and the chest
+// beam keep firing on their usual cooldowns throughout. No pathfinding: it flies over buildings.
+function bossLandY(x: number, z: number): { y: number; roof?: { x0: number; x1: number; z0: number; z1: number } } {
+    for (const b of blds) if (x > b.x0 + 0.4 && x < b.x1 - 0.4 && z > b.z0 + 0.4 && z < b.z1 - 0.4) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } };
+    for (const b of blds) if (x > b.x0 - 1.2 && x < b.x1 + 1.2 && z > b.z0 - 1.2 && z < b.z1 + 1.2) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } };   // hugging a wall: stand on that roof instead of clipping into it
+    return { y: (inPk(x, z) ? parkH(x, z) : 0) + 1 };
+}
+function bossChaseTarget(e: Enemy, p: V3) {
+    const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1, stand = 4.5;
+    let tx = p[0] - dx / d * stand, tz = p[2] - dz / d * stand;
+    if (isLakeWater(tx, tz)) { tx = p[0] - dx / d * 9; tz = p[2] - dz / d * 9; }
+    tz = Math.max(tz, WATER_Z + 4);
+    return { tx: Math.max(-HALF + 4, Math.min(HALF - 4, tx)), tz };
+}
 function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
     const flight = e.flight; if (!flight) return;
-    const roof = e.roof ?? BOSS_ARENA.roof;
-    const marginX = Math.min(1.5, Math.max(0, (roof.x1 - roof.x0) * 0.1));
-    const marginZ = Math.min(1.5, Math.max(0, (roof.z1 - roof.z0) * 0.1));
-    const minX = roof.x0 + marginX, maxX = roof.x1 - marginX, minZ = roof.z0 + marginZ, maxZ = roof.z1 - marginZ;
     const ease = (t: number) => t * t * (3 - 2 * t);
+    const fa = flight as any;
+    const dH = Math.hypot(p[0] - e.x, p[2] - e.z), dV = p[1] - e.y;
+    const heroOff = (() => { if (dH > 16 || Math.abs(dV) > 3.2) return true; if (e.roof) { const r = e.roof; return !(p[0] > r.x0 - 0.5 && p[0] < r.x1 + 0.5 && p[2] > r.z0 - 0.5 && p[2] < r.z1 + 0.5); } return false; })();
     if (flight.phase === 'grounded') {
         e.y = flight.baseY; flight.phaseT += dt;
-        if (flight.phaseT >= BOSS_FLIGHT.groundWait && engaged && e.hit <= 0 && e.atk <= 0) {
-            const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1;
-            const ux = dx / d, uz = dz / d, side = flight.cycle % 2 === 0 ? 1 : -1;
-            flight.startX = e.x; flight.startZ = e.z;
-            flight.targetX = bossRoofClamp(e.x + ux * BOSS_FLIGHT.forward - uz * BOSS_FLIGHT.lateral * side, minX, maxX);
-            flight.targetZ = bossRoofClamp(e.z + uz * BOSS_FLIGHT.forward + ux * BOSS_FLIGHT.lateral * side, minZ, maxZ);
-            flight.cycle++; flight.phase = 'takeoff'; flight.phaseT = 0;
+        if (s.mode === 'play' && e.hit <= 0 && e.atk <= 0 && !fa.uniBusy && heroOff && flight.phaseT >= 0.7 && p[2] > WATER_Z - 2) {
+            const c = bossChaseTarget(e, p);
+            flight.startX = e.x; flight.startZ = e.z; flight.targetX = c.tx; flight.targetZ = c.tz;
+            fa.cruise = Math.max(flight.baseY, bossLandY(c.tx, c.tz).y, p[1]) + BOSS_FLIGHT.altitude * 0.8;
+            flight.cycle++; flight.phase = 'takeoff'; flight.phaseT = 0; fa.fromY = e.y;
         }
         return;
     }
     flight.phaseT += dt;
+    const cruise = fa.cruise ?? (flight.baseY + BOSS_FLIGHT.altitude), fromY = fa.fromY ?? flight.baseY;
     if (flight.phase === 'takeoff') {
-        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.takeoff);
-        e.y = flight.baseY + BOSS_FLIGHT.altitude * ease(t);
+        const t = Math.min(1, flight.phaseT / 0.55);
+        e.y = fromY + (cruise - fromY) * ease(t);
         if (t >= 1) { flight.phase = 'hover'; flight.phaseT = 0; }
     } else if (flight.phase === 'hover') {
-        e.y = flight.baseY + BOSS_FLIGHT.altitude + Math.sin(flight.phaseT * 2.6) * 0.16;
-        if (flight.phaseT >= BOSS_FLIGHT.hover) { flight.phase = 'propel'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; }
+        e.y = cruise + Math.sin(flight.phaseT * 2.6) * 0.16;
+        if (flight.phaseT >= 0.25) { flight.phase = 'propel'; flight.phaseT = 0; }
     } else if (flight.phase === 'propel') {
-        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.propel), k = ease(t);
-        e.x = flight.startX + (flight.targetX - flight.startX) * k;
-        e.z = flight.startZ + (flight.targetZ - flight.startZ) * k;
-        e.y = flight.baseY + BOSS_FLIGHT.altitude + Math.sin(flight.phaseT * 2.6) * 0.12;
-        if (t < 1) e.ang = Math.atan2(flight.targetX - flight.startX, flight.targetZ - flight.startZ);
-        if (t >= 1) { flight.phase = 'landing'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; }
+        // re-aim at the hero every frame and close in; fast when far so a swinging hero can't simply outrun it
+        const c = bossChaseTarget(e, p); flight.targetX = c.tx; flight.targetZ = c.tz;
+        const tx = c.tx - e.x, tz = c.tz - e.z, td = Math.hypot(tx, tz), sp = Math.min(34, 9 + td * 0.6) * dt;
+        if (td > 1e-3) { const k = Math.min(1, sp / td); e.x += tx * k; e.z += tz * k; e.ang = Math.atan2(p[0] - e.x, p[2] - e.z); }
+        const want = Math.max(bossLandY(e.x, e.z).y + 2.5, Math.min(cruise + 10, Math.max(bossLandY(c.tx, c.tz).y, p[1]) + BOSS_FLIGHT.altitude * 0.8));
+        fa.cruise = want; e.y += Math.max(-14 * dt, Math.min(14 * dt, want - e.y)) + Math.sin(flight.phaseT * 2.6) * 0.004;
+        if (td < 1.2 || flight.phaseT > 9) { flight.phase = 'landing'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; const L = bossLandY(e.x, e.z); fa.landY = L.y; fa.landRoof = L.roof; fa.fromY = e.y; }
     } else if (flight.phase === 'landing') {
-        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.landing);
-        e.y = flight.baseY + BOSS_FLIGHT.altitude * (1 - ease(t));
-        if (t >= 1) { e.y = flight.baseY; flight.phase = 'grounded'; flight.phaseT = 0; }
+        const t = Math.min(1, flight.phaseT / 0.6), ly = fa.landY ?? flight.baseY;
+        e.y = (fa.fromY ?? e.y) + (ly - (fa.fromY ?? e.y)) * ease(t);
+        if (t >= 1) { e.y = ly; flight.baseY = ly; e.roof = fa.landRoof; flight.phase = 'grounded'; flight.phaseT = 0; }
     }
 }
 function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
@@ -753,17 +769,17 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         if (snareBound) { e.atk = 0; e.kb[0] = 0; e.kb[1] = 0; continue; }
         e.hit = Math.max(0, e.hit - dt);
         if (airb) { const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz)) { e.x += kx; e.z += kz; } e.kb[0] *= 0.92; e.kb[1] *= 0.92; e.atk = 0; continue; }
-        if (e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = e.boss ? spawnBoss(s) : spawnEnemy(s); continue; }   // preserve boss type when re-placing far actors near the hero
+        if (!e.boss && e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = spawnEnemy(s); continue; }   // bosses are never re-placed: they chase the hero instead   // preserve boss type when re-placing far actors near the hero
         const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
         let dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
         if (isBoss) {
-            stepBossFlight(s, e, dt, p, d < 54 && dy < 18 && e.hit <= 0);
+            stepBossFlight(s, e, dt, p, e.hit <= 0);
             dx = p[0] - e.x; dz = p[2] - e.z; d = Math.hypot(dx, dz); dy = Math.abs(p[1] - e.y);
         }
-        if (d < (e.air ? 32 : isBoss ? 54 : 26) && (e.air || dy < (isBoss ? 18 : 5)) && e.hit <= 0) {
+        if ((isBoss || d < (e.air ? 32 : 26)) && (e.air || isBoss || dy < 5) && e.hit <= 0) {
             e.ang = Math.atan2(dx, dz);
             if (e.air) e.y += Math.max(-5 * dt, Math.min(5 * dt, Math.max(2, p[1]) - e.y));   // drones descend/climb to the hero's height
-            if (d > (isBoss ? 5.0 : 2.0) && e.atk <= 0 && (!isBoss || e.flight?.phase === 'grounded')) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = (isBoss ? 1.65 : 4.2) * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
+            if (d > (isBoss ? 5.0 : 2.0) && e.atk <= 0 && (!isBoss || e.flight?.phase === 'grounded')) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = (isBoss ? 3.4 : 4.2) * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
             if (d <= (isBoss ? 5.3 : 2.4) && e.atk <= 0 && (!e.air || dy < 3) && (!isBoss || dy < 16) && atkN < (e.air ? 1 : 2) && ((s as any).windT ?? 0) <= s.t) { e.atk = isBoss ? 1.3 : 0.7 + (i % 3) * 0.12; atkN++; (s as any).windT = s.t + 0.45; } // telegraph; at most 2 enemies wind up at once (staggered, not one synchronized burst), drones wait to be at the hero's height
         }
         enemyRanged(s, e, i, isBoss, d, dt, ev);
@@ -852,7 +868,7 @@ function enemyRanged(s: Sim, e: Enemy, i: number, isBoss: boolean, d: number, dt
         ea.rpT -= dt;
         if (ea.rpT <= 0) {
             fireBolt(s, e, isBoss, ev); ea.rpN = (ea.rpN || 1) - 1;
-            if (ea.rpN > 0) ea.rpT = 0.18; else { ea.rpT = 0; ea.rpCd = isBoss ? 3.2 + Math.random() * 1.2 : 2 + Math.random(); }
+            if (ea.rpN > 0) ea.rpT = 0.18; else { ea.rpT = 0; ea.rpCd = isBoss ? 2.4 + Math.random() * 1.0 : 2 + Math.random(); }
         }
         return;
     }

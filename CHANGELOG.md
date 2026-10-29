@@ -2,6 +2,11 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## env-iter4 (Oct 29) — Shifat: more foliage, randomized bubble emitter, boss follows & keeps attacking
+- Leafy trees (broadleaf/cherry/umbrella/poplar): leaf cards x1.65 (desktop high x1.9, weak GPU/phone x1.45, low x1.25) via QK.foliage; palms/conifers/trunks untouched.
+- Underwater bubbles: old fixed 140-point column system removed; pooled randomized emitter (one Points draw, 220 / 110 on phone) with seabed vents + bursts around the camera and a hero stream scaled by swim speed / dive; per-particle random size, rise speed, wobble, drift, life; fade in/out; pops under the real wave surface.
+- Boss: no longer leashed to the arena roof. Hover-dashes after the hero (re-aims every frame, up to 34 m/s), lands on whatever is under the target (roof/street/park, never water), walks after the hero on the same surface (3.4 m/s), never re-placed at the arena when far. Volley cooldown 2.4-3.4 s (was 3.2-4.4); damage unchanged. Heroes untouched.
+
 ## [Released] - Cinematic sound pass (merged with env-iter3 F)
 ### Added
 - `src/audio/engine.ts`: one WebAudio context with world-SFX, ambience and music buses. It unlocks on the first gesture (or at load where the browser's autoplay policy already allows it), keeps the existing mute toggles (now remembered across visits), ducks to silence and suspends while the tab is hidden, caps simultaneous one-shots (8 on phones, 14 on desktop) with priority stealing, and pans positional sounds with a PannerNode on desktop or a plain StereoPanner plus distance gain on phones. There is no compressor on phones.
