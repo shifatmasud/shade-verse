@@ -69,11 +69,8 @@ try {
     await page.evaluate(() => { window.__ts = 0; window.__camOv = [180, -7.0, 108, 180, -7.8, 100]; });
     await new Promise((resolve) => setTimeout(resolve, 500));
     await page.screenshot({ path: 'art/environment/shot-after-lake-underwater-mobile-landscape.png' });
-    await page.evaluate(() => { window.__camOv = [184, -5.5, 110, 180, -6.2, 110]; });
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    await page.screenshot({ path: 'art/environment/shot-after-shadow-swim-mobile-landscape.png' });
     assert.deepEqual(errors, [], `Browser/WebGL runtime errors: ${errors.join(' | ')}`);
-    console.log(JSON.stringify({ ok: true, viewport: '844x390 phone landscape', probe, errors, screenshots: ['art/environment/shot-after-lake-underwater-mobile-landscape.png', 'art/environment/shot-after-shadow-swim-mobile-landscape.png'] }, null, 2));
+    console.log(JSON.stringify({ ok: true, viewport: '844x390 phone landscape', probe, errors, screenshots: ['art/environment/shot-after-lake-underwater-mobile-landscape.png'] }, null, 2));
 } finally {
     await browser.close();
 }
