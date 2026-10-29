@@ -14,6 +14,7 @@ import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
+import { withPedestrianHands } from './pedestrianHands';
 import { GiantBoss } from './GiantBoss';
 import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
@@ -539,11 +540,11 @@ function Civilians({sim}:{sim:Sim}){
     const refs=useRef<THREE.InstancedMesh[]>([]);
     const time=useRef({value:0});
     const set=useMemo(()=>PED_TYPES.map((t:any)=>{
-        if(t.model==='shadow')return {geo:shadowGeo({shell:t.shell,accent:t.coat,eye:EYE_BLUE}),mat:shadowMat(time.current,7)};
+        if(t.model==='shadow')return {geo:withPedestrianHands(shadowGeo({shell:t.shell,accent:t.coat,eye:EYE_BLUE}),t.shell),mat:shadowMat(time.current,7,true)};
         const r=robotGeo({model:t.model,eye:EYE_BLUE,shell:t.shell,scale:t.model==='sdrone'?1.3:t.model==='survey'?1.0:t.model==='companion'?1.15:1,extras:t.coat?coatRobot(t.coat):undefined});
         return {geo:r.geo,mat:robotMat(r.parts,r.scale,time.current,t.model==='sdrone'?0:3.2)};
     }),[]);
-    if(DBG)(window as any).__pedInfo=set.map((p:any)=>{p.geo.computeBoundingBox();const b=p.geo.boundingBox;return{tris:(p.geo.index?p.geo.index.count:p.geo.attributes.position.count)/3,verts:p.geo.attributes.position.count,size:[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].map((x:number)=>+x.toFixed(2)),minY:+b.min.y.toFixed(2)}});
+    if(DBG)(window as any).__pedInfo=set.map((p:any)=>{p.geo.computeBoundingBox();const b=p.geo.boundingBox;return{tris:(p.geo.index?p.geo.index.count:p.geo.attributes.position.count)/3,verts:p.geo.attributes.position.count,size:[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].map((x:number)=>+x.toFixed(2)),minY:+b.min.y.toFixed(2),hands:p.geo.userData.pedestrianHands||null,materialKey:p.mat.customProgramCacheKey()}});
     // distant tier: a ~40-triangle box proxy per type (torso, head, blue visor band), used beyond PED_NEAR metres; the full 600-2700 triangle robots stay for the near field
     const far=useMemo(()=>PED_TYPES.map((t:any,ti:number)=>{
         const sh=new THREE.Color().setRGB(...(t.shell||[0.82,0.84,0.88]) as [number,number,number]),cc=new THREE.Color().setRGB(...(t.coat||t.shell||[0.82,0.84,0.88]) as [number,number,number]),blue=new THREE.Color().setRGB(...(EYE_BLUE as unknown as [number,number,number])),dark=sh.clone().multiplyScalar(0.55);

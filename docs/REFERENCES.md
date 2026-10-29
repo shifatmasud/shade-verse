@@ -64,6 +64,9 @@ Implementation direction: retain the multi-target web gather and short hold, the
 - Particle-spawn reference: [Gabriel Aguiar Prod. — Unity 5: Game Effects VFX, Teleport & Spawn](https://www.youtube.com/watch?v=iMcGkgP0P-M). The inspected chapter notes identify smoothed particle timing, vertical circles, smoke, and a light. This informed a short out/in particle morph; the pink-white palette, animation, geometry, and code are original. The chapter metadata was inspected, not represented as a frame-by-frame review of the full video.
 - The rooftop arena and large red beacon are original in-world navigation cues. No external model, texture, or visual asset is used. Phone-landscape evidence is stored at `art/boss/shot-after-boss-arena-mobile-landscape.png` and `art/ghost/shot-after-ghost-morph-mobile-landscape.png`; the baseline is `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`.
 
+## Pedestrian hand geometry (2026-10-29)
+- [three.js CapsuleGeometry](https://threejs.org/docs/pages/CapsuleGeometry.html) documents the configurable rounded-cap and radial segmentation used for the compact finger and thumb shapes. Palm forms, colors, wrist placement, and the merged pedestrian mesh are original project geometry; no external model, code, or texture was copied.
+
 ## Enemy KO fire VFX (2026-10-29)
 - [How to Program a Fire Fountain Particle System — Shane Brumback](https://www.shanebrumback.com/tutorials/how-to-program-a-fire-fountain-particle-system.html) — real-time world-space fire-particle motion and warm color layering informed the visual direction; the game's geometry, timing, and implementation are original.
 - [three.js InstancedMesh](https://threejs.org/docs/pages/InstancedMesh.html) — reference for batching repeated geometry into fixed-capacity instanced pools.

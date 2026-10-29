@@ -2,6 +2,16 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Pedestrian hand cleanup
+### Changed
+- Added mirrored low-poly palms, four rounded finger forms, and attached thumbs to NPC pedestrian instances. A pedestrian-only gait mask keeps wrist/hand vertices on the arm swing instead of the leg swing; the new 424 triangles per robot are merged into the existing instanced mesh.
+### Preserved
+- `src/hero.json`, the locked player Shadow model, default enemy robot material, NPC placement/AI, player controls, and HUD are unchanged.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `git diff --check`, `node test/pedestrian-hands.mjs http://localhost:4174/ art/pedestrian-hands/shot-after-hands-mobile-landscape.png`, `PORT=4174 node test/environment.mjs`, and `PORT=4174 node test/ghost-animation-sync.mjs` pass. The enemy fight check completes without browser errors.
+- Matched Chromium WebGL2/SwiftShader phone-landscape captures at 844×390: full view `art/pedestrian-hands/shot-before-hands-mobile-landscape.png` / `shot-after-hands-mobile-landscape.png`; close wrist view `shot-before-hands-detail-mobile-landscape.png` / `shot-after-hands-detail-mobile-landscape.png`. Physical-device appearance and target-GPU performance remain untested.
+- Scoped to the private mirror's `main`; the original repository remains untouched.
+
 ## [Released] - Ordinary swing ring cleanup
 ### Changed
 - Removed the ordinary-swing screen attach ring, swing-button ripple, and linked dashed halo. The existing button icon kick, flash, cyan linked highlight, controls, and HUD layout remain; the purple Shadow and hot-pink Ghost Shock Web rings still render only during their owners' separate special attacks.

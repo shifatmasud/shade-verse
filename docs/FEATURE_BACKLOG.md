@@ -1,8 +1,8 @@
 # Feature Backlog & Status Inventory
 
-Total requests extracted from project history: 69.
+Total requests extracted from project history: 70.
 
-## Group 1: Implemented in Export & Verified in Repository (65 items)
+## Group 1: Implemented in Export & Verified in Repository (66 items)
 1. Browser 3D game engine (React 18, Three.js, R3F, Framer Motion, GSAP, WebGL2, Vite)
 2. Version control via GitHub (shifatmasud/web-swinger-3d)
 3. Deployment on Vercel (https://web-swinger-3d-mirror.vercel.app/)
@@ -68,6 +68,7 @@ Total requests extracted from project history: 69.
 63. Second hero companion character: Ghost (feminine white-suited companion, hot-pink lenses, autonomous follow/traversal/combat from the first frame; now mirrors every applicable live Shadow clip/action pose—including melee, Snare, plasma, and dual-hand spring-shot—and morph-transports onto each ground landing or wall-crawl surface with the pink-white particle effect) - implemented in the private mirror's `main`; 26-action, surface-transition, and traversal phone-landscape tests pass; physical devices remain untested
 64. Giant boss (Shadow's existing human body at 3× scale, now covered in bulky bone-attached red armor with visible red eyes; ordinary melee locked, Shadow Snare allowed; fixed rooftop arena and red beacon preserved) - implemented in the private mirror's `main` with Git-triggered deployment; physical devices remain untested
 69. 3D fire KO effect (procedural world-space emissive burst on enemy-down; fixed pooled instances and focused 844×390 regression) - implemented in the private mirror's `main`; physical devices remain untested
+70. Pedestrian hand cleanup (mirrored palms/fingers on NPCs; hands follow the arm gait; player Shadow, enemy defaults, and crowd placement unchanged) - implemented in the private mirror's `main`; focused 844×390 regression passes; physical devices remain untested
 
 ## Group 2: Still Queued / In Progress (4 items)
 65. Detailed flying cars with collision pass and web anchor towing - queued

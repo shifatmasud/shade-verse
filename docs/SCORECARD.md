@@ -1,3 +1,11 @@
+## Pedestrian hand cleanup — provisional 84/100
+- Visuals: 17/20 (paired phone-landscape captures show compact palms/fingers attached at both wrists; software-rendered only)
+- Controls/behavior: 25/25 (NPC placement/type slot remains stable; player Shadow, controls, HUD, and default enemy path remain unchanged)
+- Performance (estimate): 16/20 (424 triangles added to each shared pedestrian geometry and merged into the existing instanced mesh, with no extra scene mesh/draw call; target-GPU FPS is not measured)
+- Stability: 14/15 (type-check, production build, focused hand regression, environment grounding, fight completion, and Shadow/Ghost animation parity pass; full suite not rerun)
+- Device compatibility (estimate): 12/20 (physical-device appearance and target-GPU performance remain untested)
+Evidence: `node test/pedestrian-hands.mjs http://localhost:4174/ art/pedestrian-hands/shot-after-hands-mobile-landscape.png` PASS at 844×390 in Chromium WebGL2/ANGLE SwiftShader. It checks mirrored wrist centers, five finger forms per hand, a bounded 4,175-triangle pedestrian mesh, unchanged deterministic placement, unchanged quad-drone geometry, and zero browser errors. Matched full and close captures: `art/pedestrian-hands/shot-before-hands-mobile-landscape.png`, `art/pedestrian-hands/shot-after-hands-mobile-landscape.png`, `art/pedestrian-hands/shot-before-hands-detail-mobile-landscape.png`, and `art/pedestrian-hands/shot-after-hands-detail-mobile-landscape.png`. Physical-device testing remains untested.
+
 ## Procedural 3D enemy fire KO — provisional 85/100
 - Visuals: 18/20 (the emissive orange core, tapered tongues, ground ring, and embers read as a 3D burst in the phone-landscape capture; software-rendered only)
 - Controls/behavior: 25/25 (the effect consumes the existing enemy-down state; the focused test confirms score, KO count, player health/position, and attack input are unchanged)
