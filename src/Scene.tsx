@@ -833,7 +833,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, clipState: Hero
             else cs.t += dt;
         }
     }
-    if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
+    if (cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
     if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
     if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
     if (sim.shotT > 0 || sim.spring > 0) { const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12); rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]); for (const side of ['L', 'R']) { aimBone(rig.b['uarm' + side], rig.b['farm' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + side], rig.b['hand' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); } }
@@ -1384,12 +1384,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const sa0 = sim as any; sa0.gB = (sa0.gB || 0) + ((sim.glideOn ? 1 : 0) - (sa0.gB || 0)) * Math.min(1, dt * 3.5);   // glide pose blend (slow in, quick out)
         const lean = (sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.32 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - sa0.gB * 0.8) + sa0.gB * 1.12;
         const shadowWrapper = h.children[0] as THREE.Object3D, shadowBody = rig.root.children[0] as THREE.Object3D;
-        if (sw2) { shadowWrapper.rotation.set(0, 0, 0); shadowBody.rotation.set(0, 0, 0); shadowBody.rotation.order = 'ZXY'; }
-        else { shadowWrapper.rotation.x = lean; shadowBody.rotation.set(0, 0, 0); }
+        h.children[0].rotation.x = lean;
         { const c0 = shadowWrapper, sb = sim as any; c0.rotation.order = 'ZXY'; const yr = sb.bYaw === undefined ? 0 : ((sim.yaw - sb.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3); sb.bYaw = sim.yaw; sb.bR = (sb.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * sa0.gB - (sb.bR || 0)) * Math.min(1, dt * 4); c0.rotation.z = sb.bR; }   // glide banking: roll into the turn, eased
         if (sa0.gB > 0.01) { const lc = 0.9 * sa0.gB; h.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; h.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; h.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
         const shadowAnimation = animateHeroBones(sim, rig, dt, clipSt.current, undefined, true);
-        if (sw2) { shadowWrapper.rotation.x = lean; shadowBody.rotation.set(0, 0, 0); }
         if (DBG) { (window as any).__shadowAnimation = shadowAnimation; (window as any).__shadowSwimOrientation = { wrapperPitch: shadowWrapper.rotation.x, bodyPitch: shadowBody.rotation.x, rootYaw: h.rotation.y, simYaw: sim.ang, lean, clipWeight: clipSt.current.w }; }
         if (!sim.swim && sim.ground && !wl && (clipSt.current.key === 'run' || clipSt.current.key === 'idle')) {   // plant the lowest foot vertex on the street (measured from the skinned mesh, replaces the fixed run drop)
             h.updateMatrixWorld(true);
