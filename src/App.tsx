@@ -7,6 +7,8 @@ import { GhostCompanion } from './Ghost';
 import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
 import { installDesktopInput, MAP_KB, MAP_PAD } from './desktopInput';
 import { QUALITY, QK, AA_MSAA } from './quality';
+import { audio } from './audio/engine';
+import { SoundDirector } from './audio/director';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks exist only in instrumented builds (VITE_DBG=1), never in the release build
 let GL2 = false;   // functional WebGL2 capability flag lives in module state, not on window
@@ -51,53 +53,44 @@ export function App() {
     const fx = useRef({ fov: 0, shake: 0 }).current;
     const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
     const perf = useRef({ scale: coarse ? 0.7 : 1, fps: 60, speed: 0 }).current;
-    const actx = useRef<AudioContext | null>(null);
+    const snd = useMemo(() => new SoundDirector(sim), [sim]);   // cinematic sound pass: beds, SFX and adaptive score (src/audio)
     const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0, sc: 0, gr: false, me: false, sh: false, sn: false, wb: false });
     const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
     const toastId = useRef(0);
-    const [muted, setMuted] = useState(false);
+    const [muted, setMuted] = useState(audio.muted);
     const [dbg, setDbg] = useState('');
-    const mutedRef = useRef(false);
-    const wind = useRef<{ g: GainNode; f: BiquadFilterNode } | null>(null);
-    const water = useRef<{ g: GainNode; f: BiquadFilterNode; buf: AudioBuffer } | null>(null);
+    const mutedRef = useRef(audio.muted);
     const wprev = useRef({ swim: false, dive: false });
     const buzz = (ms: number) => { try { if (!mutedRef.current) (navigator as any).vibrate?.(ms); } catch (e) { /* ignore */ } };
     const lastScore = useRef(0);
     const showToast = (_t: string, _ms = 1600) => { /* zero text in game UI */ };
-    const beep = (f: number, d = 0.12, type: OscillatorType = 'sine', v = 0.07) => {
-        try { const a = actx.current; if (!a || mutedRef.current) return; const o = a.createOscillator(), g = a.createGain(); o.type = type; o.frequency.value = f; g.gain.value = v; g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + d); o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + d); } catch (e) { /* ignore */ }
-    };
     const ev: Events = useMemo(() => ({
-        orb: () => { buzz(25); showToast('+' + (sim.score - lastScore.current), 700); lastScore.current = sim.score; beep(780 + Math.min(sim.score, 20) * 25, 0.15, 'sine', 0.09); gsap.fromTo(fx, { fov: 10 }, { fov: 0, duration: 0.5, ease: 'power2.out' }); },
-        fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Knocked out. Back to your last rooftop.', 2000); beep(120, 0.3, 'sawtooth', 0.08); },
-        attach: () => { impact('#8fe9ff', 1.8, 0, false); buzz(12); beep(520, 0.08, 'triangle'); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
-        release: () => { beep(300, 0.08, 'triangle'); },
-        hit: () => { impact('#ffffff', 2.6, 8); buzz(30); beep(160, 0.09, 'square', 0.08); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
-        blast: () => { impact('#aee6ff', 4.2, 14); buzz(60); beep(70, 0.3, 'sawtooth', 0.14); beep(140, 0.18, 'square', 0.07); gsap.fromTo(fx, { fov: 9 }, { fov: 0, duration: 0.45, ease: 'power3.out' }); gsap.fromTo(fx, { shake: 0.9 }, { shake: 0, duration: 0.3 }); },
-        hurt: () => { impact('#ff3a3a', 3.4, 14); buzz(70); beep(90, 0.18, 'sawtooth', 0.09); showToast('Ouch', 600); },
-        ko: () => { impact('#ffd24a', 5, 20); buzz(50); beep(240, 0.18, 'triangle', 0.09); showToast('KO +2', 700); },
-        land: (hard: boolean) => { buzz(hard ? 80 : 15); beep(hard ? 70 : 140, hard ? 0.25 : 0.08, 'sine', hard ? 0.12 : 0.05); if (hard) showToast('Hard landing', 700); },
-        jump: () => { beep(380, 0.1, 'square', 0.04); },
+        orb: () => { buzz(25); showToast('+' + (sim.score - lastScore.current), 700); lastScore.current = sim.score; snd.onOrb(); gsap.fromTo(fx, { fov: 10 }, { fov: 0, duration: 0.5, ease: 'power2.out' }); },
+        fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Knocked out. Back to your last rooftop.', 2000); snd.onFall(); },
+        attach: () => { impact('#8fe9ff', 1.8, 0, false); buzz(12); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
+        release: () => { /* release whoosh comes from the sound director */ },
+        hit: () => { impact('#ffffff', 2.6, 8); buzz(30); snd.onHit(); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
+        blast: (x: number, y: number, z: number) => { impact('#aee6ff', 4.2, 14); buzz(60); snd.onBlast(x, y, z); gsap.fromTo(fx, { fov: 9 }, { fov: 0, duration: 0.45, ease: 'power3.out' }); gsap.fromTo(fx, { shake: 0.9 }, { shake: 0, duration: 0.3 }); },
+        hurt: () => { impact('#ff3a3a', 3.4, 14); buzz(70); snd.onHurt(); showToast('Ouch', 600); },
+        ko: () => { impact('#ffd24a', 5, 20); buzz(50); showToast('KO +2', 700); },
+        land: (hard: boolean) => { buzz(hard ? 80 : 15); snd.onLand(hard); if (hard) showToast('Hard landing', 700); },
+        jump: () => { snd.onJump(); },
     }), []); // eslint-disable-line
 
+    useEffect(() => {   // sound: unlock on the first gesture anywhere (title music starts then), and drive the director every frame
+        const unlock = () => audio.unlock();
+        window.addEventListener('pointerdown', unlock, true); window.addEventListener('keydown', unlock, true); window.addEventListener('touchend', unlock, true);
+        let raf = 0, last = performance.now();
+        const loop = (t: number) => { raf = requestAnimationFrame(loop); const dt = (t - last) / 1000; last = t; snd.tick(dt); };
+        raf = requestAnimationFrame(loop);
+        try { if ((navigator as any).getAutoplayPolicy?.('audiocontext') === 'allowed') audio.unlock(); } catch (e) { /* only some browsers expose the policy; others wait for the first gesture */ }
+        if (DBG) (window as any).__audio = { engine: audio, director: snd, ctx: () => audio.ctx, muted: () => mutedRef.current };
+        return () => { cancelAnimationFrame(raf); window.removeEventListener('pointerdown', unlock, true); window.removeEventListener('keydown', unlock, true); window.removeEventListener('touchend', unlock, true); };
+    }, [snd]);
     useEffect(() => {
         const id = setInterval(() => {
             { const jb = document.querySelector('.ico.jump'); if (jb) jb.classList.toggle('inv', sim.mode === 'play' && sim.swim && !sim.dive); }
-            if (wind.current && actx.current) { const k = sim.mode === 'play' && !mutedRef.current ? Math.min(1, perf.speed / 45) : 0; wind.current.g.gain.setTargetAtTime(k * 0.22, actx.current.currentTime, 0.15); wind.current.f.frequency.setTargetAtTime(300 + k * 1800, actx.current.currentTime, 0.15); }
-            if (water.current && actx.current) {
-                const a = actx.current, w = water.current, on = sim.mode === 'play' && sim.swim && !mutedRef.current;
-                const under = sim.dive; // underwater: muffled, deeper; surface: bright laps
-                w.g.gain.setTargetAtTime(on ? (under ? 0.2 : 0.11) : 0, a.currentTime, 0.12);
-                w.f.frequency.setTargetAtTime(under ? 260 : 900, a.currentTime, 0.1);
-                if (wind.current && sim.swim) wind.current.g.gain.setTargetAtTime(under ? 0.005 : 0.03, a.currentTime, 0.1);
-                const pv = wprev.current;
-                if (!mutedRef.current && sim.mode === 'play' && ((sim.swim && !pv.swim) || (sim.dive !== pv.dive) || (!sim.swim && pv.swim))) {
-                    // splash: short noise burst, low-passed sweep down
-                    try { const src = a.createBufferSource(); src.buffer = w.buf; const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(3200, a.currentTime); f.frequency.exponentialRampToValueAtTime(300, a.currentTime + 0.5); const g = a.createGain(); g.gain.setValueAtTime(0.0001, a.currentTime); g.gain.exponentialRampToValueAtTime(0.35, a.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.55); src.connect(f); f.connect(g); g.connect(a.destination); src.start(); src.stop(a.currentTime + 0.6); } catch (e) { /* ignore */ }
-                    buzz(25);
-                }
-                pv.swim = sim.swim; pv.dive = sim.dive;
-            }
+            { const pv = wprev.current; if (!mutedRef.current && sim.mode === 'play' && ((sim.swim && !pv.swim) || (sim.dive !== pv.dive) || (!sim.swim && pv.swim))) buzz(25); pv.swim = sim.swim; pv.dive = sim.dive; }   // splash sound: src/audio/director.ts
             setDbg(Math.round(perf.fps) + ' fps · res ' + perf.scale.toFixed(2) + (isGl2() ? ' · WebGL2' : ' · WebGL1'));
             document.documentElement.style.setProperty('--spd', String(Math.min(1, Math.max(0, (perf.speed - 18) / 40))));
             setHud((h) => {
@@ -119,7 +112,7 @@ export function App() {
             input.keys[k] = true;
         };
         const up = (e: KeyboardEvent) => { const k = normKey(e); input.keys[k] = false; if (k === ' ' && !input.keys['@i']) { input.jumpHeld = false; input.jumpReleased = true; } };
-        const vis = () => { try { const c = actx.current; if (c) { if (document.hidden) c.suspend(); else c.resume(); } } catch (e) { /* ignore */ } if (document.hidden) { input.jumpHeld = false; input.jumpCancelled = true; input.keys[' '] = false; input.swing = false; input.mx = 0; input.my = 0; } };
+        const vis = () => { audio.setHidden(document.hidden); if (document.hidden) { input.jumpHeld = false; input.jumpCancelled = true; input.keys[' '] = false; input.swing = false; input.mx = 0; input.my = 0; } };
         document.addEventListener('visibilitychange', vis);
         const blur = () => { try { for (const k of Object.keys((input as any).keys || {})) (input as any).keys[k] = false; } catch (e) { /* ignore */ } input.swing = false; input.mx = 0; input.my = 0; try { for (const k of Object.keys(input as any)) if (typeof (input as any)[k] === 'boolean') (input as any)[k] = false; } catch (e) { /* ignore */ } };
         const flightBlur = () => { blur(); input.jumpCancelled = true; };
@@ -140,9 +133,7 @@ export function App() {
         if (coarse && !document.fullscreenElement && document.documentElement.requestFullscreen) {
             try { const f = document.documentElement.requestFullscreen({ navigationUI: 'hide' }); f?.catch(() => {}); } catch (e) { /* browser keeps its bar */ }
         }
-        try { const AC = (window as any).AudioContext || (window as any).webkitAudioContext; if (!actx.current && AC) actx.current = new AC(); try { const rp = actx.current && actx.current.state === 'suspended' ? actx.current.resume() : null; if (rp && rp.catch) rp.catch(() => { /* ignore */ }); } catch (e) { /* ignore */ } if (DBG) (window as any).__audio = { ctx: () => actx.current, wind: () => wind.current, muted: () => mutedRef.current }; } catch (e) { /* ignore */ }
-        if (actx.current && !wind.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); wind.current = { g, f }; } catch (e) { /* ignore */ } }
-        if (actx.current && !water.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = l * 0.97 + (Math.random() * 2 - 1) * 0.3; d[i] = l; } const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); water.current = { g, f, buf }; if (DBG) (window as any).__audio.water = () => water.current; } catch (e) { /* ignore */ } }
+        audio.unlock(); if (DBG) (window as any).__audio = { engine: audio, director: snd, ctx: () => audio.ctx, muted: () => mutedRef.current };
         gsap.fromTo(fx, { fov: 22 }, { fov: 0, duration: 1.4, ease: 'power3.out' });
         resetSim(sim); lastScore.current = 0; sim.mode = 'play';
         if (deskRef.current) { try { const c = document.querySelector('.stage canvas') as any; const p = c?.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-look fallback */ } if (!kbToastShown.current) { kbToastShown.current = true; setCtrlToast({ id: Date.now(), kind: 'kb' }); } }
@@ -189,7 +180,7 @@ export function App() {
         </Canvas>
 
         <div className="hud">
-            <div className="chip orbs" aria-label="orbs (tap to mute or unmute)" onPointerDown={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }}><IOrb /><Pips n={hud.score > 0 ? ((hud.score - 1) % 10) + 1 : 0} /><span className="tiers">{Array.from({ length: Math.min(6, Math.floor(Math.max(0, hud.score - 1) / 10)) }, (_, i) => <i key={i} />)}</span>{muted && <span className="mutedmark"><ISpeaker off /></span>}</div>
+            <div className="chip orbs" aria-label="orbs (tap to mute or unmute)" onPointerDown={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); audio.setMuted(mutedRef.current); }}><IOrb /><Pips n={hud.score > 0 ? ((hud.score - 1) % 10) + 1 : 0} /><span className="tiers">{Array.from({ length: Math.min(6, Math.floor(Math.max(0, hud.score - 1) / 10)) }, (_, i) => <i key={i} />)}</span>{muted && <span className="mutedmark"><ISpeaker off /></span>}</div>
             <div className={'chip hpchip' + (hud.hp < 100 ? ' show' : '') + (hud.hp < 35 ? ' low' : '')} aria-label="health"><IHeart /><span className="hpbar"><i style={{ width: Math.max(0, Math.min(100, hud.hp)) + '%' }} /></span></div>
         </div>
         {DEBUG && <div className="dbg">{dbg}</div>}
@@ -197,7 +188,7 @@ export function App() {
         <div className="vig" />
         <div className="flash" /><i className="impact" />
         <div className="speedlines" />
-        {hud.mode !== 'play' && <button className="mute" aria-label={muted ? 'Unmute' : 'Mute'} onClick={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); }}><ISpeaker off={muted} /></button>}
+        {hud.mode !== 'play' && <button className="mute" aria-label={muted ? 'Unmute' : 'Mute'} onClick={() => { audio.unlock(); mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); audio.setMuted(mutedRef.current); }}><ISpeaker off={muted} /></button>}
         <AnimatePresence>{hud.mode !== 'play' && <><motion.div className="bar top" initial={{ y: -60 }} animate={{ y: 0 }} exit={{ y: -60 }} /><motion.div className="bar bot" initial={{ y: 60 }} animate={{ y: 0 }} exit={{ y: 60 }} /></>}</AnimatePresence>
 
         {hud.mode === 'play' && <>
