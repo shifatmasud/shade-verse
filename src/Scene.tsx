@@ -1716,7 +1716,12 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
             const uw = document.getElementById('uw');
             const inBay = camera.position.z < WATER_Z + 2, inLake = isLakeWater(camera.position.x, camera.position.z), inWater = inBay || inLake;
-            const surfaceY = inLake ? waterSurfaceAt(camera.position.x, camera.position.z, sim.t) : waterRenderY(camera.position.x, camera.position.z, sim.t); const dy = camera.position.y - surfaceY; const under = inWater && dy < 0;   // env-iter3: ocean uses the real swell height (was the flat sea level, so troughs read as underwater) UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
+            const surfaceY = inLake ? waterSurfaceAt(camera.position.x, camera.position.z, sim.t) : waterRenderY(camera.position.x, camera.position.z, sim.t); const dy = camera.position.y - surfaceY; const under = inWater && dy < 0;   // env-iter3: ocean uses the real swell height (was the flat sea level, so troughs read as underwater)
+            // Shifat Oct 29 "use underwater fogs inside ocean": these statements had slipped into the comment above, so the underwater
+            // state never switched on. Now: underwater background + a scene fog that thickens with depth (deeper = darker, shorter view).
+            UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
+            if (!(state.scene.fog instanceof THREE.FogExp2)) state.scene.fog = new THREE.FogExp2(UWF.value.getHex(), 0);   // kept for the whole session (density 0 above water) so entering water causes no shader recompiles
+            { const fg = state.scene.fog as THREE.FogExp2; if (under) { const deep = Math.min(1, Math.max(0, -dy / 30)); fg.color.copy(UWF.value).multiplyScalar(1 - 0.55 * deep); fg.density = 0.035 + 0.04 * deep; (state.scene.background as THREE.Color).copy(fg.color); } else fg.density = 0; }
             if (uw) {
                 if (inWater && dy < 1.2 && dy > -2.2) {
                     // project the waterline a little ahead of the camera to find where the surface cuts the screen
