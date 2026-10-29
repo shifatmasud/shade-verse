@@ -176,12 +176,21 @@ export interface Sim {
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number; atkPend: number; shotE: Enemy | null; anchorReal: boolean; spring: number; shotT: number; shotTgt: V3; glideOn: boolean; airT: number;
     grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
     plasma: Plasma[]; blasts: Blast[]; aimE: Enemy | null;
+    eshots?: EShot[];
 }
 // plasma web shot: a visible bolt (plasma core wrapped in web strands) with gentle homing; blasts drive the shockwave VFX
 export interface Plasma { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; tgt: Enemy | null }
 export interface Blast { x: number; y: number; z: number; t: number; r: number }
+// env-iter3 F (Shifat Oct 29: "Let enemies & bosses fire shots like Iron Man"): repulsor bolts from an open palm (regular enemies:
+// 0.4 s palm-glow telegraph, then a fast bolt at the hero's predicted position, 2-3 s cooldown; bosses: 3-shot volleys) and the
+// boss chest unibeam (1 s visible charge, then a 1.5 s beam that sweeps after the hero slower than he can swing). Hits go through
+// the existing hurt path (hp, hurtT, lastHit, ev.hurt) and respect dodge i-frames; Web Shock pops bolts around the hero.
+export interface EShot { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; boss: boolean; dead: number }
+export const ESHOT = { SPEED: 30, BOSS_SPEED: 36, CHARGE: 0.4, DMG: 8, BOSS_DMG: 10, HIT_R: 0.95, LIFE: 2.2, MAX: 24, MIN_GAP: 0.35, RANGE_MIN: 6, RANGE: 30,
+    UNI_CHARGE: 1.0, UNI_FIRE: 1.5, UNI_LEN: 48, UNI_R: 1.1, UNI_DMG: 9, UNI_TURN: 0.75, UNI_CD: 9 };
+export interface Unibeam { phase: 'charge' | 'fire'; t: number; yaw: number; pitch: number; ox: number; oy: number; oz: number; tick: number }
 export interface Input { jumpHeld?: boolean; jumpReleased?: boolean; jumpCancelled?: boolean; attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean }
-export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void; blast?: (x: number, y: number, z: number) => void }
+export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void; blast?: (x: number, y: number, z: number) => void; shot?: (kind: 'charge' | 'bolt' | 'impact' | 'uniCharge' | 'uniStart' | 'uniMove' | 'uniStop', x: number, y: number, z: number) => void }
 
 export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
 let companionSim: Sim | null = null;
@@ -258,7 +267,7 @@ export function resetSim(s: Sim) {
     s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false; (s as any).flightTapCancel = false;
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
-    s.plasma = []; s.blasts = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = [];
+    s.plasma = []; s.blasts = []; s.eshots = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = [];
     s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s)); s.enemies.push(spawnBoss(s));
 }
 
@@ -739,6 +748,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         const e = s.enemies[i], isBoss = !!e.boss;
         const sa = s as any, snareBound = e.down <= 0 && sa.snareT > SNARE.IMPACT && sa.snareList?.includes(e);
         const airb = snareBound ? false : enemyAir(s, e, dt, ev);
+        if ((e as any).uni && (e.down > 0 || e.hit > 0.5)) { const u = (e as any).uni; if (u.phase === 'fire') ev.shot?.('uniStop', u.ox, u.oy, u.oz); (e as any).uni = undefined; (e as any).uniCd = ESHOT.UNI_CD; }   // env-iter3 F: a staggered or downed boss loses its beam
         if (e.down > 0) { e.down -= dt; if (e.down <= 0) { if (e.boss) { s.enemies.splice(i, 1); i--; } else s.enemies[i] = spawnEnemy(s); } continue; }
         if (snareBound) { e.atk = 0; e.kb[0] = 0; e.kb[1] = 0; continue; }
         e.hit = Math.max(0, e.hit - dt);
@@ -756,6 +766,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
             if (d > (isBoss ? 5.0 : 2.0) && e.atk <= 0 && (!isBoss || e.flight?.phase === 'grounded')) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = (isBoss ? 1.65 : 4.2) * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
             if (d <= (isBoss ? 5.3 : 2.4) && e.atk <= 0 && (!e.air || dy < 3) && (!isBoss || dy < 16) && atkN < (e.air ? 1 : 2) && ((s as any).windT ?? 0) <= s.t) { e.atk = isBoss ? 1.3 : 0.7 + (i % 3) * 0.12; atkN++; (s as any).windT = s.t + 0.45; } // telegraph; at most 2 enemies wind up at once (staggered, not one synchronized burst), drones wait to be at the hero's height
         }
+        enemyRanged(s, e, i, isBoss, d, dt, ev);
         if (e.atk > 0) {
             e.atk -= dt;
             if (e.atk <= 0) {
@@ -781,7 +792,96 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         if (!boom) { const gy = nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.85) boom = true; }
         if (boom) { detonate(s, nx, ny, nz, ev); s.plasma.splice(i, 1); } else { b.x = nx; b.y = ny; b.z = nz; }
     }
+    if (options.updateEnemies !== false) stepEnemyShots(s, dt, ev);
     for (let i = s.blasts.length - 1; i >= 0; i--) { s.blasts[i].t += dt; if (s.blasts[i].t > 0.85) s.blasts.splice(i, 1); }
+}
+
+// ---- env-iter3 F: Iron Man-style enemy fire (see ESHOT above) ----
+function chestOf(e: Enemy) { return e.y + enemyBodyOffset(e) + (e.boss ? 1.2 : 0.25); }
+/** Where the raised right palm is (world), from the enemy's facing. Regular robots ~0.55 m right/0.6 m forward; boss scaled up. */
+export function enemyPalm(e: Enemy): V3 {
+    const k = e.boss ? 3.2 : (e.kind === 3 ? 1.5 : 1), fx = Math.sin(e.ang), fz = Math.cos(e.ang);
+    return [e.x + fx * 0.6 * k - fz * 0.5 * k, e.y + enemyBodyOffset(e) + 0.45 * k, e.z + fz * 0.6 * k + fx * 0.5 * k];
+}
+function hurtHero(s: Sim, dmg: number, ev: Events) {
+    if (s.dodgeT > 0 || s.mode !== 'play') return false;
+    s.hp -= dmg; s.hurtT = 0.3; s.lastHit = s.t; ev.hurt(); return true;
+}
+function fireBolt(s: Sim, e: Enemy, boss: boolean, ev: Events) {
+    const sh = s.eshots || (s.eshots = []); if (sh.length >= ESHOT.MAX) return;
+    const o = enemyPalm(e), p = s.pos, v = s.vel, sp = boss ? ESHOT.BOSS_SPEED : ESHOT.SPEED;
+    const tgt: V3 = [p[0], p[1] + 0.9, p[2]];
+    const tf = Math.min(1.2, Math.hypot(tgt[0] - o[0], tgt[1] - o[1], tgt[2] - o[2]) / sp);   // lead the target by its current velocity (dodge by changing direction)
+    tgt[0] += v[0] * tf; tgt[1] += Math.max(-6, Math.min(6, v[1])) * tf * 0.5; tgt[2] += v[2] * tf;
+    const dx = tgt[0] - o[0], dy = tgt[1] - o[1], dz = tgt[2] - o[2], l = Math.hypot(dx, dy, dz) || 1;
+    sh.push({ x: o[0], y: o[1], z: o[2], vx: dx / l * sp, vy: dy / l * sp, vz: dz / l * sp, t: 0, boss, dead: 0 });
+    (s as any).eshotLast = s.t; ev.shot?.('bolt', o[0], o[1], o[2]);
+}
+function enemyRanged(s: Sim, e: Enemy, i: number, isBoss: boolean, d: number, dt: number, ev: Events) {
+    const ea = e as any, p = s.pos, sa = s as any;
+    ea.rpCd = Math.max(0, (ea.rpCd ?? (1.2 + (i % 7) * 0.45)) - dt);
+    if (isBoss) ea.uniCd = Math.max(0, (ea.uniCd ?? 5) - dt);
+    const busy = e.hit > 0 || e.atk > 0 || s.mode !== 'play' || sa.snareList?.includes(e);
+    // unibeam (boss only)
+    if (isBoss) {
+        const u: Unibeam | undefined = ea.uni;
+        if (u) {
+            u.t += dt; const cy = chestOf(e); u.ox = e.x + Math.sin(u.yaw) * 1.6; u.oy = cy; u.oz = e.z + Math.cos(u.yaw) * 1.6;
+            const wantYaw = Math.atan2(p[0] - e.x, p[2] - e.z), dh = Math.hypot(p[0] - e.x, p[2] - e.z), wantPitch = Math.atan2(p[1] + 0.9 - cy, Math.max(1, dh));
+            if (u.phase === 'charge') { u.yaw = wantYaw; u.pitch = wantPitch; e.ang = wantYaw; if (u.t >= ESHOT.UNI_CHARGE) { u.phase = 'fire'; u.t = 0; ev.shot?.('uniStart', u.ox, u.oy, u.oz); } }
+            else {
+                let dyaw = Math.atan2(Math.sin(wantYaw - u.yaw), Math.cos(wantYaw - u.yaw)); const mt = ESHOT.UNI_TURN * dt; dyaw = Math.max(-mt, Math.min(mt, dyaw)); u.yaw += dyaw; e.ang = u.yaw;   // sweeps after the hero, slower than a swing
+                u.pitch += Math.max(-mt, Math.min(mt, wantPitch - u.pitch));
+                u.tick -= dt;
+                const cx = Math.sin(u.yaw) * Math.cos(u.pitch), cyy = Math.sin(u.pitch), cz = Math.cos(u.yaw) * Math.cos(u.pitch);
+                const hx = p[0] - u.ox, hy = p[1] + 0.9 - u.oy, hz = p[2] - u.oz, along = hx * cx + hy * cyy + hz * cz;
+                { const a2 = Math.max(0, Math.min(ESHOT.UNI_LEN, along)); ev.shot?.('uniMove', u.ox + cx * a2, u.oy + cyy * a2, u.oz + cz * a2); }   // sound follows the nearest point of the sweeping beam
+                if (along > 0 && along < ESHOT.UNI_LEN && u.tick <= 0) { const px = hx - cx * along, py = hy - cyy * along, pz = hz - cz * along; if (Math.hypot(px, py, pz) < ESHOT.UNI_R && losClear(u.ox, u.oy, u.oz, p[0], p[1] + 0.9, p[2])) { if (hurtHero(s, ESHOT.UNI_DMG, ev)) u.tick = 0.4; } }
+                if (u.t >= ESHOT.UNI_FIRE) { ev.shot?.('uniStop', u.ox, u.oy, u.oz); ea.uni = undefined; ea.uniCd = ESHOT.UNI_CD + Math.random() * 3; ea.rpCd = Math.max(ea.rpCd, 1.5); }
+            }
+            return;
+        }
+        if (!busy && ea.uniCd <= 0 && d > 8 && d < 46 && e.flight?.phase !== 'propel' && losClear(e.x, chestOf(e), e.z, p[0], p[1] + 0.9, p[2])) {
+            ea.uni = { phase: 'charge', t: 0, yaw: Math.atan2(p[0] - e.x, p[2] - e.z), pitch: 0, ox: e.x, oy: chestOf(e), oz: e.z, tick: 0 } as Unibeam; ev.shot?.('uniCharge', e.x, chestOf(e), e.z); return;
+        }
+    }
+    // repulsor: charge (palm glow) -> fire; bosses fire a 3-shot volley
+    if (ea.rpT > 0) {
+        if (busy && !isBoss) { ea.rpT = 0; ea.rpN = 0; return; }   // staggered or knocked: the shot is lost
+        e.ang = Math.atan2(p[0] - e.x, p[2] - e.z);
+        ea.rpT -= dt;
+        if (ea.rpT <= 0) {
+            fireBolt(s, e, isBoss, ev); ea.rpN = (ea.rpN || 1) - 1;
+            if (ea.rpN > 0) ea.rpT = 0.18; else { ea.rpT = 0; ea.rpCd = isBoss ? 3.2 + Math.random() * 1.2 : 2 + Math.random(); }
+        }
+        return;
+    }
+    if (busy || ea.rpCd > 0 || s.dive) return;
+    if (d < (isBoss ? 9 : ESHOT.RANGE_MIN) || d > (isBoss ? 46 : ESHOT.RANGE)) return;
+    if (Math.abs(p[1] - e.y) > (isBoss ? 30 : 22)) return;
+    if (s.t - (sa.eshotLast ?? -9) < ESHOT.MIN_GAP) return;
+    let charging = 0; for (const o of s.enemies) if ((o as any).rpT > 0) charging++; if (charging >= 3) return;
+    const o = enemyPalm(e); if (!losClear(o[0], o[1], o[2], p[0], p[1] + 0.9, p[2])) { ea.rpCd = 0.6; return; }
+    ea.rpT = ESHOT.CHARGE; ea.rpN = isBoss ? 3 : 1; ev.shot?.('charge', o[0], o[1], o[2]);
+}
+function stepEnemyShots(s: Sim, dt: number, ev: Events) {
+    const sh = s.eshots; if (!sh || !sh.length) return;
+    const p = s.pos, sa = s as any, shockOn = sa.snareT > 0;
+    for (let i = sh.length - 1; i >= 0; i--) {
+        const b = sh[i];
+        if (b.dead > 0) { b.dead += dt; if (b.dead > 0.25) sh.splice(i, 1); continue; }   // short pop flash, then free the slot
+        b.t += dt;
+        const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt, nz = b.z + b.vz * dt;
+        let hit = false, stop = b.t > ESHOT.LIFE;
+        // Web Shock pops incoming bolts around the hero
+        if (!stop && shockOn && Math.hypot(nx - p[0], ny - (p[1] + 0.9), nz - p[2]) < 6.5) stop = true;
+        if (!stop) { const cx = p[0], cy = p[1] + 0.9, cz = p[2]; const ax = b.x - cx, ay = b.y - cy, az = b.z - cz, bx = nx - b.x, by = ny - b.y, bz = nz - b.z, bb = bx * bx + by * by + bz * bz || 1; const tt = Math.max(0, Math.min(1, -(ax * bx + ay * by + az * bz) / bb)); if (Math.hypot(ax + bx * tt, ay + by * tt, az + bz * tt) < ESHOT.HIT_R && s.dodgeT <= 0) { hit = true; stop = true; } }   // swept test: fast bolts cannot tunnel through
+        if (!stop) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { stop = true; break; } }
+        if (!stop) { const gy = nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.9) stop = true; }
+        if (hit) hurtHero(s, b.boss ? ESHOT.BOSS_DMG : ESHOT.DMG, ev);
+        if (stop && b.t <= ESHOT.LIFE) ev.shot?.('impact', nx, ny, nz);
+        if (stop) { b.dead = 0.0001; if (!hit) { b.x = nx; b.y = ny; b.z = nz; } } else { b.x = nx; b.y = ny; b.z = nz; }
+    }
 }
 export function stepBeacon(s: Sim, ev: Events) {
     const p = s.pos, b = s.beacon;

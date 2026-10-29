@@ -23,7 +23,7 @@ interface Prev { web: boolean; spring: number; shotT: number; atkT: number; snar
 export class SoundDirector {
     private p: Prev = { web: false, spring: 0, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
     private stepAcc = 0; private stepI = 0;
-    private sirenT = 14; private intensity = 0; private idleT = 0; private combatT = 0; private swingVol = 0; private lastLand = -9;
+    private intensity = 0; private idleT = 0; private combatT = 0; private swingVol = 0; private lastLand = -9;
     private glideV: any = null; private chargeV: any = null;
     debug: Record<string, number | string> = {};
     constructor(private sim: Sim) { }
@@ -134,8 +134,6 @@ export class SoundDirector {
                 if (e.down > 0 && !(pd > 0)) audio.play(e.boss ? 'boss_down' : 'enemy_down', { gain: e.boss ? 1 : 0.75, rate: 0.92 + Math.random() * 0.16, pos, prio: e.boss ? 5 : 3, ref: e.boss ? 20 : 10, maxDist: 200 });
                 p.hit[i] = e.hit; p.down[i] = e.down;
             }
-            // distant sirens in the city, placed around the listener so they pan and fade naturally
-            this.sirenT -= dt; if (this.sirenT <= 0) { this.sirenT = 22 + Math.random() * 35; if (cityW > 0.5 && !under) { const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 70; audio.play('siren', { gain: 0.38, pos: [x + Math.cos(a) * d, 0, z + Math.sin(a) * d], ref: 30, maxDist: 260, prio: 0, bus: 'amb' }); } }
 
             // ---------- adaptive score ----------
             this.combatT = Math.max(0, this.combatT - dt); if (near > 0 && (s.atkT > 0 || s.hurtT > 0)) this.combatT = Math.max(this.combatT, 4);

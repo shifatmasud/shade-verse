@@ -42,11 +42,10 @@ const b64 = await p.evaluate(async () => {
     muffle.frequency.setValueAtTime(20000, 35.15); muffle.frequency.setTargetAtTime(650, 35.2, 0.06); muffle.frequency.setValueAtTime(650, 38.8); muffle.frequency.setTargetAtTime(20000, 38.85, 0.15);
     // ---- title -> play hit
     one('start_hit', 6.8, { gain: 0.8 });
-    // ---- street: concrete footsteps + a passing siren
+    // ---- street: concrete footsteps
     const SP = { concrete: [0, 0.32, 0.64, 0.96], grass: [1.28, 1.6, 1.92, 2.24], sand: [2.56, 2.88, 3.2, 3.52] };
     const steps = (surf, t0, t1, dt, g) => { let i = 0; for (let t = t0; t < t1; t += dt) one('steps', t, { off: SP[surf][(i++ * 3) % 4], dur: 0.3, gain: g * (surf === 'concrete' ? 0.55 : 0.7), rate: 0.94 + ((i * 37) % 10) / 80 }); };
     steps('concrete', 8.2, 12.6, 0.36, 0.6);
-    { const s = c.createBufferSource(); s.buffer = B('siren'); const g = c.createGain(); g.gain.value = 0.13; const pn = c.createStereoPanner(); pn.pan.setValueAtTime(-0.8, 8.6); pn.pan.linearRampToValueAtTime(0.7, 15.6); s.connect(g); g.connect(pn); pn.connect(world); s.start(8.6); }   // distant siren crossing left to right
     // ---- swinging: three web lines with thwip + attach + whoosh, a release, a web spring, then the landing
     for (const t of [13.0, 15.6, 18.2]) { one('thwip', t, { gain: 0.6, rate: 0.9 }); one('attach', t + 0.1, { gain: 0.3, pan: 0.3 }); one('whoosh', t + 0.05, { gain: 0.6, rate: 0.95 + (t - 13) * 0.05 }); }
     one('whoosh', 20.3, { gain: 0.5, rate: 1.3 });

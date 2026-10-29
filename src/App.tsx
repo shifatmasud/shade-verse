@@ -72,6 +72,7 @@ export function App() {
         hit: () => { impact('#ffffff', 2.6, 8); buzz(30); snd.onHit(); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
         blast: (x: number, y: number, z: number) => { impact('#aee6ff', 4.2, 14); buzz(60); snd.onBlast(x, y, z); gsap.fromTo(fx, { fov: 9 }, { fov: 0, duration: 0.45, ease: 'power3.out' }); gsap.fromTo(fx, { shake: 0.9 }, { shake: 0, duration: 0.3 }); },
         hurt: () => { impact('#ff3a3a', 3.4, 14); buzz(70); snd.onHurt(); showToast('Ouch', 600); },
+        shot: (k, x, y, z) => { const p: [number, number, number] = [x, y, z]; if (k === 'charge') snd.repulsorCharge(p); else if (k === 'bolt') snd.repulsorBolt(p); else if (k === 'impact') snd.repulsorImpact(p); else if (k === 'uniCharge') snd.unibeamCharge(p); else if (k === 'uniStart') snd.unibeamStart(p); else if (k === 'uniMove') snd.unibeamMove(p); else snd.unibeamStop(); },   // env-iter3 F: enemy repulsors + boss unibeam
         ko: () => { impact('#ffd24a', 5, 20); buzz(50); showToast('KO +2', 700); },
         land: (hard: boolean) => { buzz(hard ? 80 : 15); snd.onLand(hard); if (hard) showToast('Hard landing', 700); },
         jump: () => { snd.onJump(); },

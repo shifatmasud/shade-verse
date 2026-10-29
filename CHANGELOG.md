@@ -2,17 +2,32 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
-## [Unreleased] - Cinematic sound pass (branch sound-pass)
+## [Released] - Cinematic sound pass (merged with env-iter3 F)
 ### Added
 - `src/audio/engine.ts`: one WebAudio context with world-SFX, ambience and music buses. It unlocks on the first gesture (or at load where the browser's autoplay policy already allows it), keeps the existing mute toggles (now remembered across visits), ducks to silence and suspends while the tab is hidden, caps simultaneous one-shots (8 on phones, 14 on desktop) with priority stealing, and pans positional sounds with a PannerNode on desktop or a plain StereoPanner plus distance gain on phones. There is no compressor on phones.
-- `src/audio/synth.ts`: 35 procedural recipes rendered once each through an OfflineAudioContext (one at a time, lazily). They cover the beds (city hum with traffic and horns, wind, ocean waves, lake lapping, leaves, crickets, underwater, glide, swing air, unibeam loop) and the one-shots (web thwip, attach, swing whoosh, web spring, Web Shock charge and zap, punches, swish, landings, jump, splash, orb, hurt, robot metal hit and KO, boss hit and KO, siren, title-to-play hit). It also adds the Iron Man-style repulsor charge and bolt and the unibeam charge, fire and beam.
-- `src/audio/director.ts`: reads the sim each frame without changing `sim.ts`. Beds cross-fade by zone and position: city, wind rising with height and speed, ocean waves toward the shore, lake toward the pond, birds by day and crickets by night near the park and lake trees, leaves in the cherry-blossom and palm ring, and an underwater 650 Hz muffle with bubbles. One-shots fire on sim edges, and footsteps play per stride on concrete, grass or sand. Enemy hits and KOs are positional, and distant sirens play in the city. The adaptive two-layer score swells with swinging and combat and calms when idle; the title theme plays on the title and game-over screens. The director also exposes hooks for the coming enemy weapons: `repulsorCharge`, `repulsorBolt`, `repulsorImpact`, `unibeamCharge`, `unibeamStart/Move/Stop`.
+- `src/audio/synth.ts`: 34 procedural recipes rendered once each through an OfflineAudioContext (one at a time, lazily). They cover the beds (city hum with traffic and horns, wind, ocean waves, lake lapping, leaves, crickets, underwater, glide, swing air, unibeam loop) and the one-shots (web thwip, attach, swing whoosh, web spring, Web Shock charge and zap, punches, swish, landings, jump, splash, orb, hurt, robot metal hit and KO, boss hit and KO, title-to-play hit). It also adds the Iron Man-style repulsor charge and bolt and the unibeam charge, fire and beam.
+- `src/audio/director.ts`: reads the sim each frame without changing `sim.ts`. Beds cross-fade by zone and position: city, wind rising with height and speed, ocean waves toward the shore, lake toward the pond, birds by day and crickets by night near the park and lake trees, leaves in the cherry-blossom and palm ring, and an underwater 650 Hz muffle with bubbles. One-shots fire on sim edges, and footsteps play per stride on concrete, grass or sand. Enemy hits and KOs are positional. No sirens (Shifat: "No sirens please"). The adaptive two-layer score swells with swinging and combat and calms when idle; the title theme plays on the title and game-over screens. The director also exposes hooks for the coming enemy weapons: `repulsorCharge`, `repulsorBolt`, `repulsorImpact`, `unibeamCharge`, `unibeamStart/Move/Stop`.
 - `public/audio/`: footstep sprite and bird loop (both cut from CC0 freesound recordings) and an original three-file score, as Ogg with MP3 fallbacks. Sources and licenses are in `public/audio/CREDITS.md`. `tools/audio/build_audio.py` is the offline build of those files.
 ### Changed
 - `App.tsx`: the old oscillator beeps, noise wind and water nodes are replaced by the director. The visual/haptic event code, controls, HUD and heroes are unchanged.
 ### Verification
 - `npx tsc --noEmit` and `npm run build` pass. `test/sound.mjs` and `test/audio.mjs` pass on a `VITE_DBG=1` build at 915x412 in headless Chromium with zero page errors. They check no context before the first gesture, the score layers loading, beds per zone (street, lakeshore, ocean, high rooftop), hero edge sounds firing, the voice cap holding at 8, mute and hidden-tab suspend/resume, and render cost: all 35 recipes, 100 s of audio, in about 0.5 s on the build box.
 - `test/sound-demo.mjs` renders a 42 s montage with the game's own buffers. Its mp4 is at `/home/user/tab/files/shadeverse/sound_demo.mp4`: -18 LUFS, -0.9 dBTP, no gaps. Physical-device CPU and sound remain untested.
+
+## [Released] - env-iter3 F: Iron Man-style enemy fire + sound pass merge
+### Added
+- Regular enemies fire repulsor blasts from an open palm: a 0.4 s palm-glow telegraph, then a fast glowing bolt (white-hot core + cyan light trail) aimed at the hero's predicted position (led by his current velocity, so changing direction or swinging dodges it). 2–3 s cooldown per enemy, at most 3 charging at once and 0.35 s between any two shots, range 6–30 m with line of sight. 8 damage per hit (melee is 12).
+- Bosses fire 3-shot repulsor volleys (10 damage each) and a chest unibeam: 1 s visible chest charge, then a 1.5 s beam (48 m) that sweeps after the hero at 0.75 rad/s — slower than a swing, so it can be escaped. 9 damage per 0.4 s tick. A staggered or downed boss loses its beam.
+- Hits use the existing hurt path (hp, hurt flash, toast, haptics, regen delay) and respect dodge i-frames. Web Shock pops incoming bolts within 6.5 m.
+- Render: pooled, instanced additive fresnel glows (bolts, trails, palm and chest charge) + an instanced beam: 2 draw calls, no lights on any tier, tagged for the existing selective bloom.
+- Sound: merged the cinematic sound pass (branch sound-pass, 4e33237) and wired the enemy-weapon hooks (repulsor charge/bolt/impact, unibeam charge/start/move/stop; the beam sound follows the nearest point of the sweep).
+### Changed
+- Sirens removed from the city ambience (Shifat: "No sirens please"): recipe, scheduler and demo usage deleted; hum, traffic and horns stay.
+- Palm trunk top narrows to a pointed tip where the fronds attach (Shifat on palm_ba.jpg).
+### Preserved
+- Hero models, materials and the hero HD pass are untouched (locked). The arm raise is shown by the palm glow; the instanced robot rig itself is unchanged.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `test/sound.mjs` and `test/audio.mjs` pass. Headless frame strip at /home/user/tab/files/shadeverse/enemy_shots.jpg. Physical-device performance remains untested.
 
 ## [Released] - env-iter3: palm fronds, natural trunks, near-field sharpen, one-piece meadow outline, underwater bubble fix
 ### Changed

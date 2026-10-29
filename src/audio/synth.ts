@@ -194,10 +194,7 @@ export const RECIPES: Record<string, Recipe> = {
         const sub = O(c, 'sine', 55, 0, 2.6), sg = hit(c, 0, 0.005, 2.4); E(sub.frequency, [[0, 60], [2.2, 24, 'e']]); chain(sub, sg, c.destination);
         for (let i = 0; i < 26; i++) { const t0 = 0.15 + r() * 2.0, ss = N(c, 'white', t0, 0.05, 382 + i), bp = F(c, 'bandpass', 1500 + r() * 4000, 2), cg = hit(c, t0, 0.001, 0.04), s3 = G(c, 0.3 * (1 - t0 / 2.4)); chain(ss, bp, cg, s3, c.destination); }   // debris
     } },
-    siren: { dur: 7, sr: 22050, build: (c) => {
-        const o = O(c, 'triangle', 700, 0, 7), o2 = O(c, 'sine', 1400, 0, 7), lfo = O(c, 'sine', 0.33, 0, 7), lg = G(c, 330); lfo.connect(lg); lg.connect(o.frequency); const l2 = G(c, 660); lfo.connect(l2); l2.connect(o2.frequency); o.frequency.value = 1000; o2.frequency.value = 2000;
-        const lp = F(c, 'lowpass', 1600), g = G(c, 0); E(g.gain, [[0, 0.0001], [1.5, 0.25, 'e'], [5.0, 0.25], [7, 0.0001, 'e']]); const g2 = G(c, 0.25); o.connect(lp); o2.connect(g2); g2.connect(lp); chain(lp, g, c.destination);
-    } },
+
     start_hit: { dur: 2.2, build: (c) => {   // title -> play cinematic hit
         const s = N(c, 'pink', 0, 0.8, 391), bp = F(c, 'bandpass', 600, 0.8), g = G(c, 0); E(bp.frequency, [[0, 300], [0.55, 3000, 'e']]); E(g.gain, [[0, 0.0001], [0.55, 0.6, 'e'], [0.6, 0.0001, 'e']]); chain(s, bp, g, c.destination);
         const b = O(c, 'sine', 60, 0.55, 2.2), bg = hit(c, 0.55, 0.005, 1.6); E(b.frequency, [[0.55, 70], [2.0, 30, 'e']]); chain(b, bg, c.destination);

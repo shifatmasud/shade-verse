@@ -20,7 +20,7 @@ import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, type Unibeam, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
@@ -238,6 +238,71 @@ function OutlinePass() {
         gl.setRenderTarget(st.rt); gl.render(scene, camera); gl.setRenderTarget(out); gl.render(st.qs, st.qc); gl.copyFramebufferToTexture(st.ft, _v0); gl.render(st.fs, st.qc);
     }, 1);
     return null;
+}
+
+
+// env-iter3 F: Iron Man-style enemy fire, render side. One instanced additive "glow" mesh carries every bolt core, bolt streak,
+// palm-charge glow and boss chest-charge glow (2 draw calls total with the beam), fresnel-faded so each reads as a soft light.
+// No real lights on any tier; tagged for the existing selective bloom.
+const GLOW_VS = `varying vec3 vN; varying vec3 vV; varying vec3 vC;
+void main(){ vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * mat3(instanceMatrix) * normal); vV = -mv.xyz;
+#ifdef USE_INSTANCING_COLOR
+vC = instanceColor;
+#else
+vC = vec3(1.0);
+#endif
+gl_Position = projectionMatrix * mv; }`;
+const GLOW_FS = `uniform float uT; varying vec3 vN; varying vec3 vV; varying vec3 vC;
+void main(){ float f = abs(dot(normalize(vN), normalize(vV))); float k = f * f * 1.5 + 0.12 * f; gl_FragColor = vec4(vC * k * (0.92 + 0.08 * sin(uT * 47.0 + gl_FragCoord.x * 0.05)), 1.0); }`;
+const ES_GLOW_N = ESHOT.MAX * 2 + 64, ES_BEAM_N = 4;
+function EnemyShotsFx({ sim }: { sim: Sim }) {
+    const glow = useRef<THREE.InstancedMesh>(null!), beam = useRef<THREE.InstancedMesh>(null!);
+    const mat = useMemo(() => new THREE.ShaderMaterial({ uniforms: { uT: { value: 0 } }, vertexShader: GLOW_VS, fragmentShader: GLOW_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }), []);
+    const sGeo = useMemo(() => new THREE.SphereGeometry(1, 10, 8), []);
+    const cGeo = useMemo(() => { const g = new THREE.CylinderGeometry(1, 1, 1, 12, 1, true); g.translate(0, 0.5, 0); return g; }, []);
+    const st = useMemo(() => ({ o: new THREE.Object3D(), c: new THREE.Color(), d: new THREE.Vector3(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0) }), []);
+    useEffect(() => { for (const m of [glow.current, beam.current]) { m.layers.enable(SELECTIVE_BLOOM_LAYER); m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.setColorAt(0, st.c.set(0, 0, 0)); m.count = 0; } }, []);
+    useFrame(() => {
+        const { o, c, d, q, Y } = st, g = glow.current, bm = beam.current; mat.uniforms.uT.value = sim.t; let n = 0, nb = 0;
+        const put = (x: number, y: number, z: number, sx: number, sy: number, sz: number, r: number, gg: number, b: number) => { if (n >= ES_GLOW_N) return; o.position.set(x, y, z); o.scale.set(sx, sy, sz); o.updateMatrix(); g.setMatrixAt(n, o.matrix); g.setColorAt(n++, c.setRGB(r, gg, b)); };
+        for (const b of sim.eshots || []) {
+            if (b.dead > 0) { const k = 1 - b.dead / 0.25; o.quaternion.identity(); put(b.x, b.y, b.z, 0.5 + (1 - k) * 0.9, 0.5 + (1 - k) * 0.9, 0.5 + (1 - k) * 0.9, 0.9 * k, 0.95 * k, 1.0 * k); continue; }   // pop flash
+            const sp = Math.hypot(b.vx, b.vy, b.vz) || 1; d.set(b.vx / sp, b.vy / sp, b.vz / sp);
+            o.quaternion.identity(); put(b.x, b.y, b.z, b.boss ? 0.4 : 0.32, b.boss ? 0.4 : 0.32, b.boss ? 0.4 : 0.32, 1.0, 1.0, 1.0);   // white-hot core
+            const L = Math.min(2.4, 0.25 + b.t * 16) * (b.boss ? 1.3 : 1);   // streak grows out of the palm, then a fixed light trail
+            q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d); o.quaternion.copy(q);
+            put(b.x - d.x * L * 0.5, b.y - d.y * L * 0.5, b.z - d.z * L * 0.5, 0.21, 0.21, L * 0.5, 0.35, 0.75, 1.0);
+        }
+        o.quaternion.identity();
+        for (const e of sim.enemies) {
+            if (e.down > 0) continue; const ea = e as any;
+            if (ea.rpT > 0) {   // telegraph: the raised palm glows up over the charge
+                const k = 1 - Math.min(1, ea.rpT / ESHOT.CHARGE), pal = enemyPalm(e), s0 = (e.boss ? 0.55 : 0.22) * (0.5 + k) * (1 + 0.15 * Math.sin(sim.t * 40));
+                put(pal[0], pal[1], pal[2], s0, s0, s0, 0.9, 0.97, 1.0);
+                put(pal[0], pal[1], pal[2], s0 * 2.4, s0 * 2.4, s0 * 2.4, 0.12 * k, 0.32 * k, 0.5 * k);
+            }
+            const u: Unibeam | undefined = ea.uni;
+            if (u) {
+                const k = u.phase === 'charge' ? Math.min(1, u.t / ESHOT.UNI_CHARGE) : 1, s0 = (0.5 + 1.1 * k) * (1 + 0.1 * Math.sin(sim.t * 33));
+                put(u.ox, u.oy, u.oz, s0, s0, s0, 0.9, 0.97, 1.0); put(u.ox, u.oy, u.oz, s0 * 2.2, s0 * 2.2, s0 * 2.2, 0.15 * k, 0.35 * k, 0.6 * k);   // chest arc reactor charging
+                if (u.phase === 'fire' && nb < ES_BEAM_N - 1) {
+                    d.set(Math.sin(u.yaw) * Math.cos(u.pitch), Math.sin(u.pitch), Math.cos(u.yaw) * Math.cos(u.pitch)); q.setFromUnitVectors(Y, d);
+                    const fade = Math.min(1, u.t / 0.12) * Math.min(1, (ESHOT.UNI_FIRE - u.t) / 0.2), w = 1 + 0.12 * Math.sin(sim.t * 60);
+                    o.quaternion.copy(q); o.position.set(u.ox, u.oy, u.oz);
+                    o.scale.set(ESHOT.UNI_R * 0.9 * w, ESHOT.UNI_LEN, ESHOT.UNI_R * 0.9 * w); o.updateMatrix(); bm.setMatrixAt(nb, o.matrix); bm.setColorAt(nb++, c.setRGB(0.25 * fade, 0.6 * fade, 1.0 * fade));
+                    o.scale.set(ESHOT.UNI_R * 0.38, ESHOT.UNI_LEN, ESHOT.UNI_R * 0.38); o.updateMatrix(); bm.setMatrixAt(nb, o.matrix); bm.setColorAt(nb++, c.setRGB(0.95 * fade, 0.98 * fade, 1.0 * fade));
+                    o.quaternion.identity();
+                }
+            }
+        }
+        g.count = n; bm.count = nb;
+        g.instanceMatrix.needsUpdate = true; bm.instanceMatrix.needsUpdate = true; if (g.instanceColor) g.instanceColor.needsUpdate = true; if (bm.instanceColor) bm.instanceColor.needsUpdate = true;
+        if (DBG) (window as any).__eshots = { bolts: (sim.eshots || []).length, glows: n, beams: nb };
+    });
+    return <group>
+        <instancedMesh ref={glow} args={[sGeo, mat, ES_GLOW_N]} frustumCulled={false} renderOrder={5} />
+        <instancedMesh ref={beam} args={[cGeo, mat, ES_BEAM_N]} frustumCulled={false} renderOrder={5} />
+    </group>;
 }
 
 function City() {
@@ -481,11 +546,11 @@ function palmGeo(seed: number) {
     const at = (t: number) => new THREE.Vector3(lean * t * t * 1.15, H * t, 0.25 * Math.sin(t * 3.0));
     // env-iter3 trunk: one smooth curved tube (was 11 stacked flared cylinders with a sawtooth silhouette), swollen bulb at the
     // foot, gentle taper to the crown; the leaf-scar rings come from the ring texture (also its bump map).
-    trunkP.push(trunkTube({ H, rTop: 0.17, rBot: 0.27, hSeg: 14, rSeg: 8, flare: 0.55, lobes: 0.1, bend: 0, seed, path: at, radius: (t) => 0.27 - 0.1 * t + 0.02 * Math.sin(t * 9.0), vScale: 2.2 }).geo);
+    trunkP.push(trunkTube({ H, rTop: 0.17, rBot: 0.27, hSeg: 14, rSeg: 8, flare: 0.55, lobes: 0.1, bend: 0, seed, path: at, radius: (t) => (0.27 - 0.1 * t + 0.02 * Math.sin(t * 9.0)) * (1 - 0.35 * Math.max(0, (t - 0.8) / 0.2) ** 1.5), vScale: 2.2 }).geo);
     const top = at(1);
     const plain = (g: THREE.BufferGeometry, k: number) => { const uv = g.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.5, 0.98); return withColor(g, k); };   // coconuts + crown boot: plain, no ring stripes
     for (let k = 0; k < 3; k++) { const c = new THREE.SphereGeometry(0.17, 6, 4); const a = k * 2.1 + 0.4; c.translate(top.x + Math.cos(a) * 0.22, top.y - 0.25, top.z + Math.sin(a) * 0.22); trunkP.push(plain(c, 0.85)); }
-    { const c = new THREE.CylinderGeometry(0.14, 0.21, 0.55, 7, 1, true); c.translate(top.x, top.y - 0.1, top.z); trunkP.push(plain(c, 0.7)); }
+    { const c = new THREE.CylinderGeometry(0.0, 0.12, 1.1, 7, 3, true); c.translate(top.x + lean * 0.08, top.y + 0.5, top.z); trunkP.push(plain(c, 0.78)); }   // Shifat Oct 29: the trunk's top narrows to a pointed tip (the spear the fronds grow from), not a blunt end
     // frond layout (golden-angle spiral; seeded so hi and lo LOD share it)
     const live: Frond[] = [], dead: Frond[] = [], spear: Frond[] = [];
     for (let f = 0; f < 18; f++) {
@@ -1727,7 +1792,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <FlyingCars />
         {/* Rebuild park and city trees with authored forms and foliage; never overlay Polyfork tree canopies. */}
         <Forest sim={sim} renderGround={false} />
-        <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} />
+        <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} /><EnemyShotsFx sim={sim} />
         <primitive object={rig.root} ref={hero} />
         <BossArenaMarker />
         <GiantBoss sim={sim} />
