@@ -359,3 +359,8 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 - Ocean is one camera-following sheet with a warped grid (dense under the camera, coarse at the horizon) folded onto the shoreline in the vertex shader.
 - Real seabed depth profile shared by render and sim (`seabedAt`): -10 m shelf, slope to -26, trench to -50, far shelf at -28, with dunes/ridges; swim floor, kelp, underwater camera floor follow it.
 - Swell grows offshore (x2.3 by 750 m out) and deep water reads darker blue.
+
+## South Sea step 1b: sea life + boats (Oct 29)
+- Underwater fog: the underwater state never switched on (statements were inside a comment); now on, with depth-scaled scene fog (kept allocated so entering water causes no shader recompiles).
+- 6 sailboats looping offshore (`sim.boatAt`): stand on the deck and ride, hull pushes you out, mast top is a web/spring anchor that moves with the boat.
+- 22 gulls circling over the sea, 5 fish schools (70 on weak GPUs / 130) that stay near the swimmer, a whale looping ~800 m out that surfaces now and then.

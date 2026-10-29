@@ -308,6 +308,39 @@ function collideCars(s: Sim, prevY: number, dt: number) {
         else if (m === f) { p[2] -= f; v[2] = Math.min(v[2], c.vz) - 2; } else { p[2] += k; v[2] = Math.max(v[2], c.vz) + 2; }   // shoved by the car
     }
 }
+
+// Drifting boats (South Sea step 1b): slow loops offshore; solid (stand on the deck and ride, bump the hull) and their mast top is a web anchor.
+export const BOATS = [
+    { cx: -120, cz: -330, r: 55, w: 0.045, ph: 0.0, kind: 0 }, { cx: 140, cz: -380, r: 70, w: -0.035, ph: 2.0, kind: 1 },
+    { cx: -40, cz: -520, r: 90, w: 0.028, ph: 4.1, kind: 0 }, { cx: 230, cz: -640, r: 80, w: -0.03, ph: 1.2, kind: 1 },
+    { cx: -260, cz: -720, r: 100, w: 0.022, ph: 3.3, kind: 0 }, { cx: 60, cz: -880, r: 120, w: -0.02, ph: 5.0, kind: 1 },
+];
+export const BOAT_HX = 2.3, BOAT_HZ = 6.2, BOAT_DECK = 1.5, BOAT_MAST = 11;
+export function boatAt(i: number, t: number) {
+    const b = BOATS[i], a = b.ph + t * b.w, x = b.cx + Math.cos(a) * b.r, z = b.cz + Math.sin(a) * b.r;
+    const sp = b.w * b.r, vx = -Math.sin(a) * sp, vz = Math.cos(a) * sp, yaw = Math.atan2(vx, vz);
+    return { x, z, y: WATER_Y + Math.sin(t * 0.9 + i * 1.7) * 0.25, vx, vz, yaw, roll: Math.sin(t * 0.7 + i) * 0.05 };
+}
+function collideBoats(s: Sim, prevY: number, dt: number) {
+    const p = s.pos, v = s.vel, hw = 0.5, hh = 1.0;
+    for (let i = 0; i < BOATS.length; i++) {
+        const b = boatAt(i, s.t), dx = p[0] - b.x, dz = p[2] - b.z; if (dx * dx + dz * dz > 100) continue;
+        const cs = Math.cos(b.yaw), sn = Math.sin(b.yaw), lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;   // into the boat frame (+z = bow)
+        const top = b.y + BOAT_DECK, bot = b.y - 1.4, taper = 1 - 0.55 * Math.max(0, lz / BOAT_HZ);   // pointed bow
+        if (Math.abs(lx) >= BOAT_HX * taper + hw || Math.abs(lz) >= BOAT_HZ + hw || p[1] - hh > top + 0.05 || p[1] + hh <= bot) continue;
+        if (prevY - hh >= top - 0.8 && v[1] <= 0.5) { p[1] = top + hh; if (v[1] < 0) v[1] = 0; s.ground = true; s.swim = false; p[0] += b.vx * dt; p[2] += b.vz * dt; (s as any).onBoat = i; continue; }
+        // push out sideways (or off the bow/stern), in the boat frame, then back to world
+        const ox = (BOAT_HX * taper + hw) - Math.abs(lx), oz = (BOAT_HZ + hw) - Math.abs(lz);
+        let nlx = lx, nlz = lz; if (ox < oz) nlx = Math.sign(lx || 1) * (BOAT_HX * taper + hw); else nlz = Math.sign(lz || 1) * (BOAT_HZ + hw);
+        p[0] = b.x + nlx * cs + nlz * sn; p[2] = b.z - nlx * sn + nlz * cs;
+        const nx = p[0] - b.x - dx, nz = p[2] - b.z - dz, nl = Math.hypot(nx, nz) || 1, vn = v[0] * nx / nl + v[2] * nz / nl; if (vn < 0) { v[0] -= vn * nx / nl; v[2] -= vn * nz / nl; }
+    }
+}
+/** Moving web anchor point by id: 0..CAR_N-1 = under a flying car, 100+i = boat i's mast top. Null when it is gone (car wrapped). */
+export function movingAnchor(id: number, t: number): V3 | null {
+    if (id >= 100) { const b = boatAt(id - 100, t); return [b.x, b.y + BOAT_MAST, b.z]; }
+    const c = carAt(id, t); return c.wrap ? null : [c.x, c.y + CAR_BOT, c.z];
+}
 /** Web anchor under the nearest suitable car ahead (or null). Same distance/aim rules as building anchors. */
 function findCarAnchor(s: Sim, bestScore: number): { a: V3; sc: number; i: number } | null {
     const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let out: { a: V3; sc: number; i: number } | null = null;
@@ -318,6 +351,13 @@ function findCarAnchor(s: Sim, bestScore: number): { a: V3; sc: number; i: numbe
         const dot = (dx * fx + dz * fz) / dh; if (dot < 0.3 && dh > 8) continue;
         const sc = Math.abs(dist - 40) + (1 - Math.max(dot, 0)) * 50 - 6;   // slight preference: cars are a deliberate target when close to the aim
         if (sc < bestScore && (!out || sc < out.sc)) out = { a: [c.x, c.y + CAR_BOT, c.z], sc, i };
+    }
+    for (let i = 0; i < BOATS.length; i++) {
+        const b = boatAt(i, s.t), dx = b.x - p[0], dz = b.z - p[2], dh = Math.hypot(dx, dz) || 1, dy = b.y + BOAT_MAST - p[1];
+        if (dy < 4) continue; const dist = Math.hypot(dh, dy); if (dist < 8 || dist > 70) continue;
+        const dot = (dx * fx + dz * fz) / dh; if (dot < 0.3 && dh > 6) continue;
+        const sc = Math.abs(dist - 30) + (1 - Math.max(dot, 0)) * 50 - 8;
+        if (sc < bestScore && (!out || sc < out.sc)) out = { a: [b.x, b.y + BOAT_MAST, b.z], sc, i: 100 + i };
     }
     return out;
 }
@@ -428,7 +468,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     const input = controls;
     if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
-    { const ac = (s as any).anchorCar; if (ac >= 0 && (s.web || s.grappleFlight)) { const c = carAt(ac, s.t); if (c.wrap) { (s as any).anchorCar = -1; if (s.web) { s.web = false; ev.release(); } } else { s.anchor[0] = c.x; s.anchor[1] = c.y + CAR_BOT; s.anchor[2] = c.z; } } else if (!s.web && !s.grappleFlight) (s as any).anchorCar = -1; }   // a web on a flying car rides with the car
+    { const ac = (s as any).anchorCar; if (ac >= 0 && (s.web || s.grappleFlight)) { const m = movingAnchor(ac, s.t); if (!m) { (s as any).anchorCar = -1; if (s.web) { s.web = false; ev.release(); } } else { s.anchor[0] = m[0]; s.anchor[1] = m[1]; s.anchor[2] = m[2]; } } else if (!s.web && !s.grappleFlight) (s as any).anchorCar = -1; }   // a web on a flying car rides with the car
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
     const turn = (k['arrowleft'] ? 1 : 0) - (k['arrowright'] ? 1 : 0);
@@ -543,6 +583,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 
     collide(s, prevY);
     (s as any).onCar = -1; collideCars(s, prevY, dt);
+    (s as any).onBoat = -1; collideBoats(s, prevY, dt);
     if (s.webDepartB !== undefined) { const b = blds[s.webDepartB]; if (!s.web || !b || p[0] < b.x0 - 1.2 || p[0] > b.x1 + 1.2 || p[2] < b.z0 - 1.2 || p[2] > b.z1 + 1.2 || p[1] - 1 > b.h + 0.2) s.webDepartB = undefined; }
     // Hero side-wall contact ends web travel and enters wall-running mode.
     // A distant anchor attaching is not contact; roofs remain normal landings.
