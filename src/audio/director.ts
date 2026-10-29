@@ -1,7 +1,7 @@
 // Sound director: reads the simulation every frame (no changes to sim.ts) and turns state changes into sound.
 // Ambient beds cross-fade by zone and position; hero / enemy one-shots fire on state edges; the score follows the action.
-import { audio, STEP_SPRITE, type Vec3 } from './engine';
-import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, type Sim } from '../sim';
+import { audio, STEP_SPRITE, VO_N, type Vec3 } from './engine';
+import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, PED_VOICE, type Sim } from '../sim';
 
 const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -25,6 +25,14 @@ export class SoundDirector {
     private stepAcc = 0; private stepI = 0;
     private intensity = 0; private idleT = 0; private combatT = 0; private swingVol = 0; private lastLand = -9;
     private glideV: any = null; private chargeV: any = null;
+    // ---- character voices: one line at a time world-wide, per-kind cooldowns, so the world chatters without spamming ----
+    private voGap = 0; private voCd: Record<string, number> = { shadow: 0, ghost: 0, robot: 0, boss: 0, ped: 0 }; private bossAggro = false; private tauntI = 0;
+    vo(kind: string, pick?: number[], o: { pos?: Vec3; gain?: number; cd?: number; force?: boolean } = {}) {
+        if (!o.force && (this.voGap > 0 || this.voCd[kind] > 0)) return;
+        const n = VO_N[kind], i = pick ? pick[Math.floor(Math.random() * pick.length)] : Math.floor(Math.random() * n);
+        audio.playSoon(`vo_${kind}_${i}`, { gain: o.gain ?? 0.85, pos: o.pos ?? null, prio: 4, ref: 10, maxDist: 90 }, 1.2);
+        this.voGap = 2.2; this.voCd[kind] = o.cd ?? 6;
+    }
     debug: Record<string, number | string> = {};
     constructor(private sim: Sim) { }
 
@@ -37,7 +45,7 @@ export class SoundDirector {
     }
     onHit() { audio.play('punch', { gain: 0.7, rate: 0.85 + Math.random() * 0.3, prio: 3 }); this.combatT = 6; }
     onBlast(x: number, y: number, z: number) { audio.play('punch_heavy', { gain: 0.9, rate: 0.9 + Math.random() * 0.15, pos: [x, y, z], prio: 3 }); this.combatT = 6; }
-    onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; }
+    onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
     onOrb() { audio.play('orb', { gain: 0.45, rate: 1 + Math.min(this.sim.score, 20) * 0.012, prio: 2 }); }
     onFall() { audio.play('whoosh', { gain: 0.6, rate: 0.55, prio: 3 }); }
     onStart() { audio.playSoon('start_hit', { gain: 0.8, prio: 5 }); }
@@ -131,9 +139,27 @@ export class SoundDirector {
                 const e = E[i], ph = p.hit[i] ?? 0, pd = p.down[i] ?? 0, pos: Vec3 = [e.x, e.y + enemyBodyOffset(e), e.z];
                 if (e.down <= 0 && Math.hypot(e.x - x, e.z - z) < 30) near++;
                 if (e.hit > ph + 0.25 && e.down <= 0) audio.play(e.boss ? 'boss_hit' : 'metal', { gain: e.boss ? 0.9 : 0.55, rate: 0.9 + Math.random() * 0.2, pos, prio: 2, ref: e.boss ? 14 : 8 });
+                if (e.hit > ph + 0.25 && e.down <= 0 && Math.random() < (e.boss ? 0.35 : 0.2)) this.vo(e.boss ? 'boss' : 'robot', e.boss ? [5] : [4], { pos, cd: 4 });
+                if (e.down > 0 && !(pd > 0)) { this.vo(e.boss ? 'boss' : 'robot', e.boss ? [6] : [6], { pos, force: e.boss, cd: 5 }); if (!e.boss && Math.random() < 0.5) setTimeout(() => this.vo('shadow', [0, 2, 9, 14], { cd: 6 }), 1300); else if (!e.boss && Math.random() < 0.3) setTimeout(() => this.vo('ghost', undefined, { cd: 12 }), 1500); }
                 if (e.down > 0 && !(pd > 0)) audio.play(e.boss ? 'boss_down' : 'enemy_down', { gain: e.boss ? 1 : 0.75, rate: 0.92 + Math.random() * 0.16, pos, prio: e.boss ? 5 : 3, ref: e.boss ? 20 : 10, maxDist: 200 });
                 p.hit[i] = e.hit; p.down[i] = e.down;
             }
+
+            // ---------- character voices ----------
+            this.voGap = Math.max(0, this.voGap - dt); for (const k in this.voCd) this.voCd[k] = Math.max(0, this.voCd[k] - dt);
+            if (s.web && !p.web && Math.random() < 0.18) this.vo('shadow', [0, 1, 2, 4, 10, 15], { cd: 9 });
+            for (let i = 0; i < E.length; i++) {
+                const e = E[i], pos: Vec3 = [e.x, e.y + enemyBodyOffset(e), e.z], d = Math.hypot(e.x - x, e.z - z);
+                if (e.boss) {
+                    const ag = !!(e as any).aggro;
+                    if (ag && !this.bossAggro && e.down <= 0) this.vo('boss', [0, 4], { pos, gain: 1, cd: 10, force: true });
+                    this.bossAggro = ag;
+                    if (e.down > 0 && (p.down[i] ?? 0) <= 0) {}
+                    if (ag && e.down <= 0 && d < 70) this.vo('boss', [1, 2, 3], { pos, gain: 1, cd: 11 });
+                } else if (e.down <= 0 && d < 22) this.vo('robot', [0, 1, 2, 3, 5, 7], { pos, cd: 7 });
+            }
+            if (near === 0 && !s.swim && s.pos[1] < 26 && sp > 9 && PED_VOICE.d < 20 && performance.now() - PED_VOICE.t < 500) this.vo('ped', undefined, { pos: [PED_VOICE.x, PED_VOICE.y + 1.5, PED_VOICE.z], gain: 0.8, cd: 8 });
+            if (this.idleT > 12 && this.idleT - dt <= 12) this.vo('shadow', [3, 5, 11, 13], { cd: 20 });
 
             // ---------- adaptive score ----------
             this.combatT = Math.max(0, this.combatT - dt); if (near > 0 && (s.atkT > 0 || s.hurtT > 0)) this.combatT = Math.max(this.combatT, 4);

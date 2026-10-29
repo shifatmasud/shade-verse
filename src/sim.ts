@@ -286,6 +286,8 @@ export function resetSim(s: Sim) {
 // the renderer and the sim: cars run along street lanes at fixed altitudes; the hero collides with them (stands on the roof and rides
 // along, bumps off the sides and underside) and web swings / spring shots can attach under a car and ride with it.
 export const CAR_N = 36, CAR_SCALE = 2.4;
+/** Nearest street ped to the hero, published by the renderer each frame (for ped voice lines). */
+export const PED_VOICE = { x: 0, y: 0, z: 0, d: 1e9, t: 0 };
 export const CARS = Array.from({ length: CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 }));
 const CAR_HX = 1.0 * CAR_SCALE, CAR_HZ = 2.2 * CAR_SCALE, CAR_BOT = -0.5 * CAR_SCALE, CAR_TOP = 1.01 * CAR_SCALE;
 /** World position, velocity and half extents of car i at sim time t. */

@@ -364,3 +364,8 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 - Underwater fog: the underwater state never switched on (statements were inside a comment); now on, with depth-scaled scene fog (kept allocated so entering water causes no shader recompiles).
 - 6 sailboats looping offshore (`sim.boatAt`): stand on the deck and ride, hull pushes you out, mast top is a web/spring anchor that moves with the boat.
 - 22 gulls circling over the sea, 5 fish schools (70 on weak GPUs / 130) that stay near the swimmer, a whale looping ~800 m out that surfaces now and then.
+
+## Character voices (Oct 29)
+- 49 meme-flavoured, family-friendly voice lines (generated TTS, original delivery; no ripped clips): Shadow 16, Ghost 6, robots 8 (robot FX), boss 7 (deep + echo), street peds 12 (6 voices). Lazy-loaded from public/audio/vo (1.5 MB total).
+- Director triggers: Shadow on some web attaches / KOs / hurt / idle; robots taunt when near, yelp on hits, sign off on KO; boss greets on boss-zone aggro, taunts, reacts to hits and KO; peds react when you zip past them low and fast; Ghost quips after some KOs. One line at a time, per-kind cooldowns.
+- Underwater fog far-only; centre dot crosshair hidden.
