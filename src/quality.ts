@@ -41,3 +41,6 @@ export const QK = {
     lakeCopyScale: HQ ? 0.5 : 0.25,
     lakeSteps: HQ ? 16 : 7,
 };
+// Anti-aliasing: MSAA only where it is cheap (not touch, not integrated/mobile GPUs — Shifat's UHD 600 flags MSAA slow); FXAA elsewhere.
+export const AA_MSAA = !QUALITY.coarse && !QUALITY.weakGpu && !LOWQ;
+export const AA_FXAA = !AA_MSAA;

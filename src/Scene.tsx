@@ -22,7 +22,7 @@ import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
 import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
-import { QUALITY, QK, HQ } from './quality';
+import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -445,7 +445,7 @@ const trunkWindShader = treeWind(false), leafWindShader = treeWind(true);
 function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean }) {
     const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
-    const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; };
+    const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; };
         return [mk('/spray145.png'), mk('/bark.jpg', true), mk(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
         const con = kind === 'pine' || kind === 'spruce';
@@ -477,7 +477,7 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
             a.push({ x, z, s: 0.85 + rnd() * 0.3, c: rnd(), v: 4 }); nPalm++;
         }
         return a; }, []);
-    const bushTex = useMemo(()=>{const t=new THREE.TextureLoader().load('/shrub134.png');t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;},[]);
+    const bushTex = useMemo(()=>{const t=new THREE.TextureLoader().load('/shrub134.png');t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=QK.anisotropy;return t;},[]);
     const bushGeo = useMemo(()=>{
         const gs:THREE.BufferGeometry[]=[];let r=73;const rnd=()=>(r=r*16807%2147483647)/2147483647;
         // Isolate scanned leaf silhouettes, excluding packed stem/bark atlas triangles.
@@ -1554,7 +1554,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
         <DayNight />
-        {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={coarse} />}
+        {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={AA_FXAA} />}
         <SelectiveBloomPass />
         <Sky />
         <City /><TenementBlock />

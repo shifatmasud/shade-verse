@@ -88,3 +88,29 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 .impact{position:absolute;left:50%;top:50%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:5px solid currentColor;box-shadow:0 0 30px currentColor,inset 0 0 20px currentColor;opacity:0;pointer-events:none}
 .ico.swing.linked{color:#8fe9ff;filter:drop-shadow(0 0 12px #8fe9ff) drop-shadow(0 0 3px #000);transform:scale(1.15)}
 .hud .chip.orbs{pointer-events:auto}.mutedmark{display:flex;opacity:.9}
+
+/* desktop pass: no gameplay icon buttons on mouse/keyboard/gamepad devices */
+.stage.desk .ico,.stage.desk .padzone,.stage.desk .dpad{display:none!important}
+.xhair{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;z-index:4}
+.xhair i{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.9)}
+.xhair::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(201,167,255,.95);transform:scale(.35);opacity:0;box-shadow:0 0 8px rgba(160,120,255,.8)}
+.xhair.charge::after{animation:xcharge .22s linear forwards}
+@keyframes xcharge{from{transform:scale(.35);opacity:.2}to{transform:scale(1);opacity:1}}
+.ctoast{position:absolute;top:calc(14px + env(safe-area-inset-top));left:0;right:0;margin:0 auto;width:max-content;z-index:6;pointer-events:none;padding:10px 16px 12px;border-radius:14px;background:rgba(14,10,30,.62);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.18);font-size:12.5px;min-width:280px}
+.ctoast b{display:block;font-size:13.5px;margin-bottom:6px;letter-spacing:.02em}
+.ctoast ul,.tmaps ul{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+.ctoast li,.tmaps li{display:flex;gap:10px;align-items:baseline}
+kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;color:#e9dcff;opacity:.95}
+/* title screen (refs: Hollow Knight, Journey, Ori title screens — big mark, minimal type, world alive behind) */
+.overlay.title{justify-content:center!important;gap:6px;cursor:pointer;background:radial-gradient(120% 90% at 50% 45%,rgba(8,6,22,.05),rgba(8,6,22,.55) 70%,rgba(4,3,12,.82))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.tmark{width:clamp(54px,12vh,96px);height:clamp(54px,12vh,96px);color:#fff;filter:drop-shadow(0 0 18px rgba(170,140,255,.55)) drop-shadow(0 4px 14px rgba(0,0,0,.6));animation:tglow 4s ease-in-out infinite}
+.tmark svg{width:100%;height:100%;display:block}
+@keyframes tglow{0%,100%{filter:drop-shadow(0 0 14px rgba(170,140,255,.4)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}50%{filter:drop-shadow(0 0 26px rgba(190,160,255,.8)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}}
+.otitle.tname{margin:4px 0 0;font-size:clamp(26px,9vh,58px);font-weight:800;text-transform:uppercase;letter-spacing:.18em;text-shadow:0 2px 24px rgba(0,0,0,.65),0 0 2px rgba(0,0,0,.6);max-width:none}
+.tprompt{font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;animation:tpulse 2.2s ease-in-out infinite}
+@keyframes tpulse{0%,100%{opacity:.45}50%{opacity:1}}
+.tmaps{display:flex;gap:28px;margin-top:8px;font-size:11.5px;text-align:left;opacity:.9;background:rgba(10,8,26,.45);padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12)}
+.tmaps b{display:block;font-size:12px;margin-bottom:5px;opacity:.95}
+.tby{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.55}
+@media (max-height:500px){.tmaps{display:none}.overlay.title .go{margin-top:4px;height:52px;width:72px}}
+.stage.desk .overlay.title .go{display:none}

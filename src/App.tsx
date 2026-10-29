@@ -5,6 +5,8 @@ import gsap from 'gsap';
 import { Scene } from './Scene';
 import { GhostCompanion } from './Ghost';
 import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
+import { installDesktopInput, MAP_KB, MAP_PAD } from './desktopInput';
+import { QUALITY, QK, AA_MSAA } from './quality';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks exist only in instrumented builds (VITE_DBG=1), never in the release build
 let GL2 = false;   // functional WebGL2 capability flag lives in module state, not on window
@@ -107,11 +109,11 @@ export function App() {
         const down = (e: KeyboardEvent) => {
             const k = e.key.toLowerCase();
             if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
-            if (k === ' ' && !input.keys[' ']) { input.jumpQ = true; input.jumpHeld = true; }
-            if ((k === 'j' || k === 'e') && !input.keys[k]) input.attackQ = true;
-            if ((k === 'c' || k === 'q') && !input.keys[k]) input.dodgeQ = true;
-            if ((k === 'shift' || k === 'f') && !input.keys[k]) input.swingQ = true;
-            if (k === 'enter' && sim.mode !== 'play') start();
+            if (k === 'control') e.preventDefault();
+            if (sim.mode !== 'play') { if (!e.repeat && !['escape', 'tab', 'meta', 'alt', 'control', 'shift', 'capslock'].includes(k)) start(); input.keys[k] = true; return; }   // title screen: any key starts
+            if (!coarse) { deskRef.current = true; setDesk(true); }
+            if (k === ' ' && !input.keys[' ']) { input.jumpQ = true; input.jumpHeld = true; }   // identical flags/timing to the mobile jump button
+            if ((k === 'k' || k === 'm' || k === '.' || k === 'control') && !input.keys[k]) { input.meleeQ = true; input.attackQ = true; }
             input.keys[k] = true;
         };
         const up = (e: KeyboardEvent) => { const k = e.key.toLowerCase(); input.keys[k] = false; if (k === ' ') { input.jumpHeld = false; input.jumpReleased = true; } };
@@ -121,8 +123,14 @@ export function App() {
         const flightBlur = () => { blur(); input.jumpCancelled = true; };
         window.addEventListener('blur', flightBlur);
         window.addEventListener('keydown', down); window.addEventListener('keyup', up);
-        if (DBG) (window as any).__game = { sim, input, perf, fx, buildings, events: ev, start: () => start() };
-        return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', flightBlur); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+        const offTouch = () => { deskRef.current = false; setDesk(false); };   // a touch on a touchscreen laptop brings the buttons back
+        window.addEventListener('touchstart', offTouch, { passive: true });
+        const undesk = installDesktopInput(sim, () => deskRef.current, {
+            onGamepad: (on) => { if (on) { deskRef.current = true; setDesk(true); setCtrlToast({ id: Date.now(), kind: 'pad' }); } },
+            onCharge: (on) => setCharge(on), onLock: (on) => setLocked(on), start: () => start(),
+        });
+        if (DBG) (window as any).__game = { sim, input, perf, fx, buildings, events: ev, start: () => start(), quality: QUALITY };
+        return () => { undesk(); window.removeEventListener('touchstart', offTouch); document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', flightBlur); clearInterval(id); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
     }, []); // eslint-disable-line
 
     function start() {
@@ -134,7 +142,8 @@ export function App() {
         if (actx.current && !wind.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 400; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); wind.current = { g, f }; } catch (e) { /* ignore */ } }
         if (actx.current && !water.current) { try { const c = actx.current, buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = l * 0.97 + (Math.random() * 2 - 1) * 0.3; d[i] = l; } const src = c.createBufferSource(); src.buffer = buf; src.loop = true; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; const g = c.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(c.destination); src.start(); water.current = { g, f, buf }; if (DBG) (window as any).__audio.water = () => water.current; } catch (e) { /* ignore */ } }
         gsap.fromTo(fx, { fov: 22 }, { fov: 0, duration: 1.4, ease: 'power3.out' });
-        resetSim(sim); lastScore.current = 0; sim.mode = 'play'; 
+        resetSim(sim); lastScore.current = 0; sim.mode = 'play';
+        if (deskRef.current) { try { const c = document.querySelector('.stage canvas') as any; const p = c?.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-look fallback */ } if (!kbToastShown.current) { kbToastShown.current = true; setCtrlToast({ id: Date.now(), kind: 'kb' }); } }
     }
 
     // controls
@@ -149,16 +158,22 @@ export function App() {
     const padStart = (e: React.PointerEvent) => { if (stickId.current !== -1 && stickId.current !== null && stickId.current !== undefined) return; stickId.current = e.pointerId; (e.target as HTMLElement).setPointerCapture(e.pointerId); padC.current = { x: e.clientX, y: e.clientY }; const p = padRef.current!; p.style.left = e.clientX - 60 + 'px'; p.style.top = e.clientY - 60 + 'px'; p.style.opacity = '1'; padMove(e); };
     const stickEnd = (e: React.PointerEvent) => { if (e.pointerId === stickId.current) { stickId.current = -1; input.mx = 0; input.my = 0; knobRef.current!.style.transform = 'translate(0,0)'; padRef.current!.style.opacity = '0'; } };
     const drag = useRef({ id: -1, x: 0, y: 0 });
+    // desktop: no gameplay icon buttons (Shifat, Oct 28 11:24 PM); mouse/keyboard/gamepad instead
+    const [desk, setDesk] = useState(!coarse); const deskRef = useRef(!coarse);
+    const [ctrlToast, setCtrlToast] = useState<{ id: number; kind: 'kb' | 'pad' } | null>(null);
+    const kbToastShown = useRef(false);
+    const [charge, setCharge] = useState(false), [locked, setLocked] = useState(false);
+    useEffect(() => { if (!ctrlToast) return; const id = setTimeout(() => setCtrlToast(null), 4200); return () => clearTimeout(id); }, [ctrlToast]);
     const [swingOn, setSwingOn] = useState(false);
 
-    return <div className={hud.mode === 'play' ? 'stage' : 'stage menu'} onContextMenu={(e) => e.preventDefault()}>
+    return <div className={(hud.mode === 'play' ? 'stage' : 'stage menu') + (desk ? ' desk' : '')} onContextMenu={(e) => e.preventDefault()}>
         <div id="uw" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, opacity: 0, transition: 'opacity .15s', background: 'linear-gradient(180deg, rgba(110,215,235,.24), rgba(30,140,175,.30) 45%, rgba(8,70,105,.5))' }} />
         <Canvas
-            dpr={[1, coarse ? 1.5 : 2]}
-            gl={{ antialias: !coarse, powerPreference: 'high-performance', alpha: false, stencil: false }}
+            dpr={[1, coarse ? 1.5 : QK.dprCap]}
+            gl={{ antialias: AA_MSAA, powerPreference: 'high-performance', alpha: false, stencil: false }}
             camera={{ fov: 62, near: 0.5, far: 700, position: [0, 40, -10] }}
-            onCreated={({ gl }) => { gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2) * perf.scale); GL2 = gl.capabilities.isWebGL2; }}
-            onPointerDown={(e) => { if (drag.current.id !== -1) return; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; sim.camHeld = true; sim.lastDrag = sim.t; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
+            onCreated={({ gl }) => { gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * perf.scale); GL2 = gl.capabilities.isWebGL2; }}
+            onPointerDown={(e) => { if (drag.current.id !== -1 || document.pointerLockElement) return; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; sim.camHeld = true; sim.lastDrag = sim.t; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
             onPointerMove={(e) => {
                 if (e.pointerId !== drag.current.id) return;
                 sim.yaw -= (e.clientX - drag.current.x) * 0.006; sim.pitch = Math.max(-1.15, Math.min(1.35, sim.pitch + (e.clientY - drag.current.y) * 0.004));
@@ -191,17 +206,33 @@ export function App() {
                 onPointerUp={() => { input.swing = false; setSwingOn(false); }} onPointerCancel={() => { input.swing = false; setSwingOn(false); }}><ISwing /></button>
             <button className={'ico grab' + (hud.gr ? '' : ' off')} aria-label="web grab" onPointerDown={(e) => { burst(e, '#ffffff', 20); input.grabQ = true; }}><IGrab /></button>
             <button className={'ico shot' + (hud.sh ? '' : ' off')} aria-label="web shot" onPointerDown={(e) => { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; }}><IShot /></button>
-            <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn ? '' : ' off')} aria-label="shadow snare" onPointerDown={(e) => { burst(e, '#c9a7ff', 180); input.specialQ = true; }}><IShock /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
+            <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn ? '' : ' off')} aria-label="Web Shock" onPointerDown={(e) => { burst(e, '#c9a7ff', 180); input.specialQ = true; }}><IShock /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
             <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); input.meleeQ = true; input.attackQ = true; }}><IFist /></button>
             <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
         </>}
 
+        {hud.mode === 'play' && desk && locked && <div className={'xhair' + (charge ? ' charge' : '')} aria-hidden><i /></div>}
         <AnimatePresence>
-            {hud.mode !== 'play' && <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }}>
-                <motion.div className="otitle" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>Shadow: The Soul of Darkness</motion.div>
+            {hud.mode === 'play' && ctrlToast && <motion.div key={ctrlToast.id} className="ctoast" role="status" initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.35 }}>
+                <b>{ctrlToast.kind === 'pad' ? 'Gamepad connected' : 'Keyboard & mouse detected'}</b>
+                <ul>{(ctrlToast.kind === 'pad' ? MAP_PAD : MAP_KB).map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul>
+            </motion.div>}
+        </AnimatePresence>
+        <AnimatePresence>
+            {hud.mode !== 'play' && <motion.div className="overlay title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }} onClick={start}>
+                <motion.div className="tmark" initial={{ scale: 0.6, opacity: 0, rotate: -8 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ delay: 0.05, duration: 0.9, ease: [0.2, 1.4, 0.4, 1] }}>
+                    {/* Shifat's mark, taken as-is from shifatmasud/surface-tension-case-study (site/index.html .wordmark__mark) */}
+                    <svg viewBox="0 0 200 200" fill="currentColor" aria-hidden="true"><path d="M100 0H200L100 100H0Z M100 100H200L100 200H0Z" /></svg>
+                </motion.div>
+                <motion.h1 className="otitle tname" initial={{ y: 16, opacity: 0, letterSpacing: '0.6em' }} animate={{ y: 0, opacity: 1, letterSpacing: '0.18em' }} transition={{ delay: 0.25, duration: 1.1, ease: 'easeOut' }}>Shade Verse</motion.h1>
                 {hud.mode === 'over' && <div className="otext"><IOrb /><Pips n={Math.min(10, hud.score)} /></div>}
-                <div className="legend"><span><IStick /></span><span><IWeb /></span><span><IJump /></span><span><IFist /></span><span><IDash /></span></div>
-                <motion.button className="go" aria-label="play" whileTap={{ scale: 0.95 }} onClick={start}><IPlay /></motion.button>
+                <motion.button className="go" aria-label="play" whileTap={{ scale: 0.95 }} onClick={(e) => { e.stopPropagation(); start(); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}><IPlay /></motion.button>
+                <div className="tprompt">{desk ? 'Click or press any key to start' : 'Tap to start'}</div>
+                {desk && <div className="tmaps">
+                    <div><b>Mouse + keyboard</b><ul>{MAP_KB.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
+                    <div><b>Gamepad</b><ul>{MAP_PAD.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
+                </div>}
+                <div className="tby">by Shifat Masud</div>
             </motion.div>}
         </AnimatePresence>
     </div>;

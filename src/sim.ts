@@ -372,7 +372,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     const turn = (k['arrowleft'] ? 1 : 0) - (k['arrowright'] ? 1 : 0);
     if (turn) { s.yaw += turn * 2.0 * dt; s.lastDrag = s.t; }
     if (k['arrowup'] || k['arrowdown']) { s.pitch = Math.max(-1.15, Math.min(1.35, s.pitch + ((k['arrowdown'] ? 1 : 0) - (k['arrowup'] ? 1 : 0)) * dt)); s.lastDrag = s.t; }
-    const swingHeld = input.swing || k['shift'] || k['f'];
+    const swingHeld = input.swing;   // desktop pass: swing is held through input.swing only (right mouse hold / LT / touch button)
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx;
     const stunned = s.landHard > 0;
     const wx = stunned ? 0 : fx * my + rx * mx, wz = stunned ? 0 : fz * my + rz * mx;
