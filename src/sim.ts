@@ -294,7 +294,7 @@ const CAR_HX = 1.0 * CAR_SCALE, CAR_HZ = 2.2 * CAR_SCALE, CAR_BOT = -0.5 * CAR_S
 /** World position, velocity and half extents of car i at sim time t. */
 /** The car the player is flying (Shifat Oct 29: "let us ride flying cars", "Enter when close to vehicle to ride"). i = -1: none.
  *  parked: the hero hopped out; the car hovers where it was left until another car is taken. */
-export const PILOT = { i: -1, x: 0, y: 0, z: 0, yaw: 0, vx: 0, vy: 0, vz: 0, parked: false };
+export const PILOT = { i: -1, x: 0, y: 0, z: 0, yaw: 0, vx: 0, vy: 0, vz: 0, parked: false, turn: 0 };   // i >= 100: boat (i - 100)
 export const RIDE_RANGE = 9;
 export function carAt(i: number, t: number) {
     if (PILOT.i === i) { const hx = Math.abs(Math.sin(PILOT.yaw)) > 0.7 ? CAR_HZ : CAR_HX, hz = hx === CAR_HZ ? CAR_HX : CAR_HZ; return { x: PILOT.x, y: PILOT.y, z: PILOT.z, vx: PILOT.vx, vy: PILOT.vy, vz: PILOT.vz, hx, hz, wrap: false, yaw: PILOT.yaw }; }
@@ -326,6 +326,7 @@ export const BOATS = [
 ];
 export const BOAT_HX = 2.3, BOAT_HZ = 6.2, BOAT_DECK = 1.5, BOAT_MAST = 11;
 export function boatAt(i: number, t: number) {
+    if (PILOT.i === 100 + i) return { x: PILOT.x, z: PILOT.z, y: WATER_Y + Math.sin(t * 0.9 + i * 1.7) * 0.25, vx: PILOT.vx, vz: PILOT.vz, yaw: PILOT.yaw, roll: Math.sin(t * 0.7 + i) * 0.05 - Math.max(-0.12, Math.min(0.12, PILOT.turn * 0.12)) };
     const b = BOATS[i], a = b.ph + t * b.w, x = b.cx + Math.cos(a) * b.r, z = b.cz + Math.sin(a) * b.r;
     const sp = b.w * b.r, vx = -Math.sin(a) * sp, vz = Math.cos(a) * sp, yaw = Math.atan2(vx, vz);
     return { x, z, y: WATER_Y + Math.sin(t * 0.9 + i * 1.7) * 0.25, vx, vz, yaw, roll: Math.sin(t * 0.7 + i) * 0.05 };
@@ -333,6 +334,7 @@ export function boatAt(i: number, t: number) {
 function collideBoats(s: Sim, prevY: number, dt: number) {
     const p = s.pos, v = s.vel, hw = 0.5, hh = 1.0;
     for (let i = 0; i < BOATS.length; i++) {
+        if (PILOT.i === 100 + i && !PILOT.parked) continue;
         const b = boatAt(i, s.t), dx = p[0] - b.x, dz = p[2] - b.z; if (dx * dx + dz * dz > 100) continue;
         const cs = Math.cos(b.yaw), sn = Math.sin(b.yaw), lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;   // into the boat frame (+z = bow)
         const top = b.y + BOAT_DECK, bot = b.y - 1.4, taper = 1 - 0.55 * Math.max(0, lz / BOAT_HZ);   // pointed bow
@@ -356,6 +358,7 @@ export function rideTarget(s: Sim): number {
     if (PILOT.i >= 0 && !PILOT.parked) return PILOT.i;
     let best = -1, bd = RIDE_RANGE;
     for (let i = 0; i < CAR_N; i++) { const c = carAt(i, s.t); if (c.wrap) continue; const d = Math.hypot(c.x - s.pos[0], (c.y + 0.6) - s.pos[1], c.z - s.pos[2]); if (d < bd) { bd = d; best = i; } }
+    for (let i = 0; i < BOATS.length; i++) { const b = boatAt(i, s.t), d = Math.hypot(b.x - s.pos[0], b.z - s.pos[2]) - 3; if (Math.abs(b.y + 1 - s.pos[1]) < 5 && d < bd) { bd = d; best = 100 + i; } }   // boats too (Shifat: "boat can be entered too?")
     return best;
 }
 function stepRide(s: Sim, dt: number, input: Input, ev: Events): boolean {
@@ -363,16 +366,27 @@ function stepRide(s: Sim, dt: number, input: Input, ev: Events): boolean {
         input.rideQ = false;
         if (PILOT.i >= 0 && !PILOT.parked) {   // hop out onto the roof; the car hovers where you left it
             PILOT.parked = true; PILOT.vx = PILOT.vy = PILOT.vz = 0;
-            s.pos[0] = PILOT.x; s.pos[1] = PILOT.y + CAR_TOP + 1.1; s.pos[2] = PILOT.z; s.vel = [0, 0, 0]; s.ground = true; (s as any).riding = false; ev.jump();
+            s.pos[0] = PILOT.x; s.pos[1] = PILOT.i >= 100 ? WATER_Y + BOAT_DECK + 1.1 : PILOT.y + CAR_TOP + 1.1; s.pos[2] = PILOT.z; s.vel = [0, 0, 0]; s.ground = true; (s as any).riding = false; ev.jump();
             return false;
         }
         const i = rideTarget(s);
-        if (i >= 0) { const c = carAt(i, s.t); Object.assign(PILOT, { i, x: c.x, y: c.y, z: c.z, yaw: c.yaw, vx: c.vx, vy: 0, vz: c.vz, parked: false }); s.web = false; s.glideOn = false; s.wall = null; s.swim = false; s.dive = false; (s as any).riding = true; ev.attach(); }
+        if (i >= 0) { const c: any = i >= 100 ? boatAt(i - 100, s.t) : carAt(i, s.t); Object.assign(PILOT, { i, x: c.x, y: c.y, z: c.z, yaw: c.yaw, vx: c.vx, vy: 0, vz: c.vz, parked: false, turn: 0 }); s.web = false; s.glideOn = false; s.wall = null; s.swim = false; s.dive = false; (s as any).riding = true; ev.attach(); }
     }
     if (!(PILOT.i >= 0 && !PILOT.parked)) { (s as any).riding = false; return false; }
     // flying: throttle along the camera heading, climb/dive with the camera pitch, Space/jump to climb straight up, strafe to slide sideways
     const k = input.keys; let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
+    if (PILOT.i >= 100) {   // boat: throttle along the camera heading on the water surface, banks into turns, stays out at sea
+        const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx, MAX = 24, a = Math.min(1, dt * 1.1);
+        PILOT.vx += ((fx * my + rx * mx) * MAX - PILOT.vx) * a; PILOT.vz += ((fz * my + rz * mx) * MAX - PILOT.vz) * a;
+        PILOT.x += PILOT.vx * dt; PILOT.z += PILOT.vz * dt; PILOT.y = WATER_Y; PILOT.vy = 0;
+        const hs = Math.hypot(PILOT.vx, PILOT.vz); let dy2 = 0; if (hs > 1.5) { dy2 = Math.atan2(PILOT.vx, PILOT.vz) - PILOT.yaw; dy2 = Math.atan2(Math.sin(dy2), Math.cos(dy2)); PILOT.yaw += dy2 * Math.min(1, dt * 2.2); }
+        PILOT.turn += (Math.max(-1, Math.min(1, dy2 * 2)) * Math.min(1, hs / 10) - PILOT.turn) * Math.min(1, dt * 3);
+        if (PILOT.z > WATER_Z - 9) { PILOT.z = WATER_Z - 9; PILOT.vz = Math.min(0, PILOT.vz); }
+        PILOT.x = Math.max(-SEA.xMax + 6, Math.min(SEA.xMax - 6, PILOT.x)); PILOT.z = Math.max(SEA.zMin + 6, PILOT.z);
+        s.pos[0] = PILOT.x; s.pos[1] = WATER_Y + BOAT_DECK + 1.0; s.pos[2] = PILOT.z; s.vel = [PILOT.vx, 0, PILOT.vz]; s.ground = true; s.web = false; s.swim = false; s.safe = [PILOT.x, WATER_Y + BOAT_DECK + 1.0, PILOT.z];
+        return true;
+    }
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx, MAX = 42;
     const tx = (fx * my + rx * mx) * MAX, tz = (fz * my + rz * mx) * MAX, ty = (input.jumpHeld ? 14 : 0) + (-Math.sin(s.pitch - 0.25)) * Math.abs(my) * 22;
     const a = Math.min(1, dt * 1.6);
@@ -516,7 +530,7 @@ const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 22, FLY_GLIDE_AC
 export interface StepOptions { updateEnemies?: boolean; }
 export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
     stepSimInner(s, dt, ev, controls, options);
-    if (controls === input && (s as any).riding && PILOT.i >= 0 && !PILOT.parked) { s.pos[0] = PILOT.x; s.pos[1] = PILOT.y + 1.6; s.pos[2] = PILOT.z; s.vel = [PILOT.vx, PILOT.vy, PILOT.vz]; s.ground = false; s.swim = false; s.dive = false; s.web = false; s.glideOn = false; s.wall = null; }
+    if (controls === input && (s as any).riding && PILOT.i >= 0 && !PILOT.parked) { s.pos[0] = PILOT.x; s.pos[1] = PILOT.i >= 100 ? WATER_Y + BOAT_DECK + 1.0 : PILOT.y + 1.6; s.pos[2] = PILOT.z; s.vel = [PILOT.vx, PILOT.vy, PILOT.vz]; s.ground = false; s.swim = false; s.dive = false; s.web = false; s.glideOn = false; s.wall = null; }
 }
 function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
     const input = controls;
