@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
-import { animateHeroBones, buildRig, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, writeSnareRing, type CombatPoseState, type HeroClipState } from './Scene';
+import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, writeSnareRing, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
@@ -157,24 +157,13 @@ function hasLiveShadowAction(sim: Sim) {
 }
 
 function animateHuman(actor: Sim, rig: ReturnType<typeof buildRig>, dt: number, state: any, driver: Sim = actor) {
-    const root = rig.root, body = root.children[0], sa = driver as any;
-    root.position.set(actor.pos[0], actor.pos[1] - 1, actor.pos[2]);
-    root.rotation.set(0, driver.ang, 0);
-    root.scale.setScalar(HERO_SCALE);
-    const wall = !!driver.wall, swim = driver.swim;
-    if (wall) { root.position.x += Math.sin(driver.ang) * 0.2; root.position.z += Math.cos(driver.ang) * 0.2; }
-    if (swim) { root.position.y = actor.pos[1] - 1.7 + (sa.swW || 0); root.position.x -= Math.sin(driver.ang) * (driver.dive ? 0.6 : 1.3); root.position.z -= Math.cos(driver.ang) * (driver.dive ? 0.6 : 1.3); }
-    state.gB += ((driver.glideOn ? 1 : 0) - state.gB) * Math.min(1, dt * 3.5);
-    const lean = (swim ? (driver.dive ? 1.9 : 1.45) : wall ? 0.32 : driver.web ? 0.5 : driver.ground ? 0.12 : 0.3) * (1 - state.gB * 0.8) + state.gB * 1.12;
-    body.rotation.set(lean, 0, 0); body.rotation.order = 'ZXY';
-    const yr = state.bYaw === undefined ? 0 : ((driver.yaw - state.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3);
-    state.bYaw = driver.yaw; state.bR += (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * state.gB - state.bR) * Math.min(1, dt * 4); body.rotation.z = state.bR;
-    if (state.gB > 0.01) { const lc = 0.9 * state.gB; root.position.x -= Math.sin(driver.ang) * Math.sin(lean) * lc; root.position.z -= Math.cos(driver.ang) * Math.sin(lean) * lc; root.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
-    root.position.y -= driver.land * 0.5; body.rotation.x += driver.land * 0.5 + (driver.dodgeT > 0 && !sa.flip ? 0.6 : 0);
+    const root = rig.root;
+    const shadowRootPose = driver !== actor ? (driver as any).__heroRootPoseState as HeroRootPoseState | undefined : undefined;
+    const rootPose = applyHeroRootPose(driver, rig, dt, state, actor.pos, HERO_SCALE, shadowRootPose, driver === actor);
     const shadowClipState = driver !== actor ? (driver as any).__heroClipState as HeroClipState | undefined : undefined;
     const shadowPoseState = driver !== actor ? (driver as any).__heroPoseState as CombatPoseState | undefined : undefined;
     if (shadowPoseState) { state.pose.w = shadowPoseState.w; state.pose.c.set(shadowPoseState.c); state.pose.t.set(shadowPoseState.t); }
-    const animation = animateHeroBones(driver, rig, dt, state.anim as HeroClipState, state.pose as CombatPoseState, driver !== actor, shadowClipState, shadowClipState ? 0 : dt);
+    const animation = animateHeroBones(driver, rig, dt, { clipState: state.anim as HeroClipState, poseState: state.pose as CombatPoseState, sourceClipState: shadowClipState, poseDt: shadowClipState ? 0 : dt, glideBlend: rootPose.glideBlend, publishState: driver === actor });
     root.updateMatrixWorld(true);
     rig.skel.update();
     return { ...animation, source: driver === actor ? 'ghost' : 'shadow' };
@@ -241,7 +230,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     const morphMatRef = useRef<THREE.PointsMaterial>(null!);
     const state = useRef({ ready: false, wallSyncB: -1, leaderSurfaceSeen: false, leaderGround: false, leaderWallB: -1, leaderWall: null as [number, number] | null, lastVaulted: 0, vaultUntil: -1, gB: 0, bYaw: undefined as number | undefined, bR: 0, floorY: 0, floorX: 1e9, floorZ: 1e9, floorT: -1, attackAt: 0, shotAt: 0, jumpAt: 0, swingAt: 0, specialAt: 0, dodgeAt: 0,
         morph: { active: false, phase: 'out' as 'out' | 'in', t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0, 0] as [number, number, number], seed: 0, reason: '' },
-        anim: { key: '', t: 0, w: 0 }, pose: { w: 0, c: new Float32Array(36), t: new Float32Array(36) } });
+        anim: createHeroClipState(), pose: createCombatPoseState() });
 
     useFrame((_, rawDt) => {
         const dt = Math.min(0.05, rawDt), st = state.current, root = model.root;

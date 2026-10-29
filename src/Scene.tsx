@@ -681,7 +681,8 @@ const POSES: Record<number, [number, PoseK][]> = {
     7: [[0, P({ uarmR: [-1.75, 0, -0.1], farmR: [-0.05, 0, 0], uarmL: [-1.7, 0, 0.1], farmL: [-0.05, 0, 0], spine: [0.15, 0, 0] })], [0.25, P({ uarmR: [-1.9, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.85, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.42, P({ uarmR: [0.45, 0, 0.15], farmR: [-1.4, 0, 0], uarmL: [0.45, 0, -0.15], farmL: [-1.4, 0, 0], spine: [-0.38, 0, 0], hips: [0, -0.2, 0], thighL: [-0.6, 0, 0], shinL: [0.6, 0, 0], thighR: [0.45, 0, 0], shinR: [0.4, 0, 0], head: [0.2, 0, 0] })], [0.75, P({ uarmR: [0.2, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.15, 0, 0] })], [1, GUARD]],
 };
 export type CombatPoseState = { w: number; c: Float32Array; t: Float32Array };
-const _cp: CombatPoseState = { w: 0, c: new Float32Array(CP_BONES.length * 3), t: new Float32Array(CP_BONES.length * 3) };
+export function createCombatPoseState(): CombatPoseState { return { w: 0, c: new Float32Array(CP_BONES.length * 3), t: new Float32Array(CP_BONES.length * 3) }; }
+const _cp: CombatPoseState = createCombatPoseState();
 const cstep = (x: number) => x * x * (3 - 2 * x);
 function samplePose(keys: [number, PoseK][], u: number, out: Float32Array) {
     let k = 0; while (k < keys.length - 2 && u > keys[k + 1][0]) k++;
@@ -794,8 +795,39 @@ function aimBone(bone: THREE.Bone, child: THREE.Object3D, target: THREE.Vector3,
 }
 const _id = new THREE.Quaternion(), _tg = new THREE.Vector3();
 export type HeroClipState = { key: string; t: number; w: number };
-export function animateHeroBones(sim: any, rig: any, dt: number, clipState: HeroClipState, poseState?: CombatPoseState, preserveClipState = false, sourceClipState?: HeroClipState, poseDt = dt) {
-    const h = rig.root, sa = sim as any, v = sim.vel;
+export function createHeroClipState(): HeroClipState { return { key: '', t: 0, w: 0 }; }
+export type HeroRootPoseState = { lean: number; glideBlend: number; bank: number; yaw: number; swimWave: number };
+export type HeroAnimationFrame = { clipState: HeroClipState; poseState?: CombatPoseState; sourceClipState?: HeroClipState; poseDt?: number; glideBlend: number; publishState?: boolean };
+export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, position: ArrayLike<number>, scale: number, sourcePose?: HeroRootPoseState, publishState = true) {
+    const root = rig.root as THREE.Group, sa = sim as any;
+    root.position.set(position[0], position[1] - 1, position[2]);
+    root.scale.setScalar(scale);
+    if (sim.wall) { root.position.x += Math.sin(sim.ang) * 0.2; root.position.z += Math.cos(sim.ang) * 0.2; }
+    if (sourcePose) state.swW = sourcePose.swimWave;
+    if (sim.swim) {
+        if (!sourcePose) { const baseY = waterRenderY(position[0], position[2], sim.t) - waveAtWater(position[0], position[2], sim.t), kw = Math.max(0, Math.min(1, (position[1] - baseY + 2) / 2.3)), wv = waveAtWater(position[0], position[2], sim.t) * kw; state.swW = state.swW === undefined ? wv : state.swW + (wv - state.swW) * Math.min(1, dt * 10); }
+        root.position.y = position[1] - 1.7 + (state.swW || 0); root.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); root.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3);
+    }
+    const oldBlend = state.gB || 0;
+    state.gB = sourcePose?.glideBlend ?? oldBlend + ((sim.glideOn ? 1 : 0) - oldBlend) * Math.min(1, dt * 3.5);
+    const lean = sourcePose?.lean ?? ((sim.swim ? (sim.dive ? 1.9 : 1.45) : sim.wall ? 0.32 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - state.gB * 0.8) + state.gB * 1.12);
+    root.rotation.set(lean, sim.ang, 0); root.rotation.order = 'ZXY';
+    let bank = sourcePose?.bank;
+    if (bank === undefined) {
+        const yr = state.bYaw === undefined ? 0 : ((sim.yaw - state.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3);
+        state.bYaw = sim.yaw; state.bR = (state.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * state.gB - (state.bR || 0)) * Math.min(1, dt * 4); bank = state.bR;
+    } else { state.bYaw = sourcePose!.yaw; state.bR = bank; }
+    root.rotation.z = bank;
+    if (state.gB > 0.01) { const lc = 0.9 * state.gB; root.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; root.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; root.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
+    root.position.y -= sim.land * 0.5;
+    root.rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 && !sa.flip ? 0.6 : 0);
+    const rootPose = { lean, glideBlend: state.gB, bank, yaw: sim.yaw, swimWave: state.swW || 0 };
+    if (publishState) sa.__heroRootPoseState = rootPose;
+    return rootPose;
+}
+export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnimationFrame) {
+    const { clipState, poseState, sourceClipState, poseDt = dt, glideBlend, publishState = true } = frame;
+    const h = rig.root, poseRoot = rig.root as THREE.Group, sa = sim as any, v = sim.vel;
     rig.bones.forEach((b: THREE.Bone) => b.rotation.set(0, 0, 0));
     const speed = Math.hypot(v[0], v[1], v[2]), hs = Math.hypot(v[0], v[2]);
     const legR = rig.b.thighR as THREE.Bone, legL = rig.b.thighL as THREE.Bone;
@@ -813,15 +845,12 @@ export function animateHeroBones(sim: any, rig: any, dt: number, clipState: Hero
         if (sn > SNARE.GATHER_END) { armR.rotation.x = -1.35; armL.rotation.x = -1.35; legR.rotation.x = -0.2; legL.rotation.x = 0.1; }
         else { const charge = sn <= SNARE.SHOCK_START ? Math.sin((SNARE.SHOCK_START - sn) * 18) * 0.035 : 0; armR.rotation.x = -1.22 - charge; armL.rotation.x = -1.22 - charge; armR.rotation.z = -0.2; armL.rotation.z = 0.2; legR.rotation.x = -0.2; legL.rotation.x = 0.1; }
     }
-    { const tR = legR.rotation.x, tL = legL.rotation.x, tuck = sim.ground || sim.glideOn || sim.wall ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armR.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armL.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
-    const ck = (sa.mv || sa.flip || sn > 0 || (sim.glideOn && (sa.gB ?? 0) > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? (sa.kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
+    { const tR = legR.rotation.x, tL = legL.rotation.x, tuck = sim.ground || sim.glideOn || sim.wall ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armR.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armL.rotation.x + 1.2) * 0.2; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
+    const ck = (sa.mv || sa.flip || sn > 0 || (sim.glideOn && glideBlend > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? (sa.kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
     const cs = clipState;
     if (sourceClipState) { cs.key = sourceClipState.key; cs.t = sourceClipState.t; cs.w = sourceClipState.w; }
     else {
-        if (ck !== cs.key) {
-            if (preserveClipState) cs.key = ck || cs.key;
-            else { cs.key = ck; cs.t = 0; }
-        }
+        if (ck !== cs.key) cs.key = ck || cs.key;
         cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
         if (ck) {
             const c = CLIPS[ck];
@@ -833,13 +862,14 @@ export function animateHeroBones(sim: any, rig: any, dt: number, clipState: Hero
             else cs.t += dt;
         }
     }
-    if (cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
+    if (cs.key === 'swim' || cs.key === 'wall') poseRoot.rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') poseRoot.rotation.x *= 1 - cs.w * 0.7;
+    rig.b.head.rotation.x = -poseRoot.rotation.x * 0.5;
     if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
     if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
     if (sim.shotT > 0 || sim.spring > 0) { const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12); rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]); for (const side of ['L', 'R']) { aimBone(rig.b['uarm' + side], rig.b['farm' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + side], rig.b['hand' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); } }
     const activePoseState = poseState ?? _cp;
     combatPose(sim, rig, h, poseDt, activePoseState);
-    if (preserveClipState && !sourceClipState) {
+    if (publishState && !sourceClipState) {
         sa.__heroClipState = { key: cs.key, t: cs.t, w: cs.w };
         const sharedPose = sa.__heroPoseState ?? (sa.__heroPoseState = { w: 0, c: new Float32Array(activePoseState.c.length), t: new Float32Array(activePoseState.t.length) });
         sharedPose.w = activePoseState.w; sharedPose.c.set(activePoseState.c); sharedPose.t.set(activePoseState.t);
@@ -1255,7 +1285,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         legR.current = r.b.thighR as any; legL.current = r.b.thighL as any; armR.current = r.b.uarmR as any; armL.current = r.b.uarmL as any; cape.current = t1 as any;
         if (DBG) (window as any).__rig = r; return r;
     }, []);
-    const clipSt = useRef({ key: '', t: 0, w: 0 });
+    const clipSt = useRef(createHeroClipState()), poseSt = useRef(createCombatPoseState());
     const lastWall = useRef<{ n: number[]; b: number } | null>(null), wallCorr = useRef(0), groundCorr = useRef(0), groundMin = useRef({ key: '', v: 1e9 }), tp0 = useMemo(() => new THREE.Vector3(), []);
     const enemyTime = useRef({ value: 0 });
     const enemySet = useMemo(() => [0, 1, 2, 3].map((k) => buildEnemy(k, enemyTime.current)), []);
@@ -1355,12 +1385,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         // hero
         const h = hero.current;
-        for (const bn of rig.bones) bn.rotation.set(0, 0, 0);
-        h.position.set(p[0], p[1] - 1.0, p[2]);
-        h.rotation.set(0, sim.ang, 0); h.scale.setScalar(HERO_SC);
         const wl = !!sim.wall;
-        if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
-        const sw2 = sim.swim;
         { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > waterSurfaceAt(p[0], p[2], sim.t) - 2.0) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
         { // original curved two-arm wake: short position history keeps the trail behind a turning swimmer
             const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surfaceY = waterSurfaceAt(p[0],p[2],sim.t), surface = sim.swim && !sim.dive && p[1] > surfaceY - 1.1;
@@ -1380,15 +1405,11 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current*THREE.MathUtils.smoothstep(sim.t-wakeBorn.current,0.1,0.65);}}
         }
         { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (rg) { const surfaceY=waterSurfaceAt(p[0],p[2],sim.t), on = sim.swim && p[1] > surfaceY - 1.6; rg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
-        if (sw2) { { const baseY=waterRenderY(p[0],p[2],sim.t)-waveAtWater(p[0],p[2],sim.t), kw = Math.max(0, Math.min(1, (p[1] - baseY + 2) / 2.3)), wv = waveAtWater(p[0], p[2], sim.t) * kw, sa2 = sim as any; sa2.swW = (sa2.swW === undefined ? wv : sa2.swW + (wv - sa2.swW) * Math.min(1, dt * 10)); h.position.y = p[1] - 1.7 + sa2.swW; } h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
-        const sa0 = sim as any; sa0.gB = (sa0.gB || 0) + ((sim.glideOn ? 1 : 0) - (sa0.gB || 0)) * Math.min(1, dt * 3.5);   // glide pose blend (slow in, quick out)
-        const lean = (sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.32 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - sa0.gB * 0.8) + sa0.gB * 1.12;
-        const shadowWrapper = h.children[0] as THREE.Object3D, shadowBody = rig.root.children[0] as THREE.Object3D;
-        h.children[0].rotation.x = lean;
-        { const c0 = shadowWrapper, sb = sim as any; c0.rotation.order = 'ZXY'; const yr = sb.bYaw === undefined ? 0 : ((sim.yaw - sb.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3); sb.bYaw = sim.yaw; sb.bR = (sb.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * sa0.gB - (sb.bR || 0)) * Math.min(1, dt * 4); c0.rotation.z = sb.bR; }   // glide banking: roll into the turn, eased
-        if (sa0.gB > 0.01) { const lc = 0.9 * sa0.gB; h.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; h.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; h.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
-        const shadowAnimation = animateHeroBones(sim, rig, dt, clipSt.current, undefined, true);
-        if (DBG) { (window as any).__shadowAnimation = shadowAnimation; (window as any).__shadowSwimOrientation = { wrapperPitch: shadowWrapper.rotation.x, bodyPitch: shadowBody.rotation.x, rootYaw: h.rotation.y, simYaw: sim.ang, lean, clipWeight: clipSt.current.w }; }
+        const sa0 = sim as any;
+        const rootPose = applyHeroRootPose(sim, rig, dt, sa0, p, HERO_SC);
+        const lean = rootPose.lean, shadowBody = rig.root.children[0] as THREE.Object3D;
+        const shadowAnimation = animateHeroBones(sim, rig, dt, { clipState: clipSt.current, poseState: poseSt.current, glideBlend: rootPose.glideBlend, publishState: true });
+        if (DBG) { (window as any).__shadowAnimation = shadowAnimation; (window as any).__shadowSwimOrientation = { wrapperPitch: h.rotation.x, bodyPitch: shadowBody.rotation.x, rootYaw: h.rotation.y, simYaw: sim.ang, lean, clipWeight: clipSt.current.w }; }
         if (!sim.swim && sim.ground && !wl && (clipSt.current.key === 'run' || clipSt.current.key === 'idle')) {   // plant the lowest foot vertex on the street (measured from the skinned mesh, replaces the fixed run drop)
             h.updateMatrixWorld(true);
             let mn = 1e9;
@@ -1406,7 +1427,6 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (DBG && (window as any).__dbgGround) (window as any).__gc = { mn, corr: groundCorr.current };
         } else { groundMin.current.key = ''; groundCorr.current += (0 - groundCorr.current) * Math.min(1, dt * 10); }
         h.position.y += groundCorr.current;
-        h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 && !(sim as any).flip ? 0.6 : 0);
         if (!sim.swim && sim.ground && !wl) {   // Guard the skinned contact hull (including hands/feet) against the actual street, valley or rooftop support. Raise only.
             h.updateMatrixWorld(true);
             let mn2 = 1e9;
@@ -1535,11 +1555,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         </React.Suspense>
         <FlyingCars />
         <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} />
-        <group ref={hero}>
-            <group>
-                <primitive object={rig.root} />
-            </group>
-        </group>
+        <primitive object={rig.root} ref={hero} />
         <BossArenaMarker />
         <GiantBoss sim={sim} />
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
