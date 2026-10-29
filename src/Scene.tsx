@@ -606,10 +606,25 @@ const kelpMat = new THREE.ShaderMaterial({
     void main(){ vec3 col = mix(vec3(0.12, 0.30, 0.16), vec3(0.42, 0.62, 0.22), vH); float d = length(vW - cameraPosition); col = col * exp(-vec3(0.45, 0.07, 0.02) * d * 0.12) + ${UW_FOG} * (1.0 - exp(-d * 0.028)); gl_FragColor = vec4(col, 1.0); }`,
     side: THREE.DoubleSide,
 });
+// God rays (Shifat Oct 29 "godrays can be better, ref real images"): long soft shafts from the surface, slanted along the sun,
+// several stripes per sheet flickering with the waves above, brightest just under the surface and fading with depth.
+// Sheets are cylindrical billboards placed around the camera, so the fan converges in perspective like real underwater light.
+const _rayAx = new THREE.Vector3();
+const RAY_N = QUALITY.coarse || QUALITY.weakGpu ? 14 : 26, RAY_LEN = 42;
 const rayMat = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'varying vec2 vU; uniform float uTime; void main(){ float width = mix(0.16,0.32,1.0-vU.y); float edge = 1.0-smoothstep(width*0.25,width,abs(vU.x-0.5)); float endFade = smoothstep(0.0,0.20,vU.y)*(1.0-smoothstep(0.82,1.0,vU.y)); float a = edge * endFade * pow(vU.y, 1.2) * (0.55 + 0.45 * sin(uTime * 0.8 + vU.y * 3.0 + vU.x * 5.0)); gl_FragColor = vec4(vec3(0.6, 0.95, 1.0) * a * 0.5, a * 0.5); }',
+    uniforms: { uTime: { value: 0 }, uSurf: { value: -1 }, uDay: TOD.day }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    vertexShader: 'varying vec2 vU; varying float vY; void main(){ vU = uv; vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0); vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `varying vec2 vU; varying float vY; uniform float uTime, uSurf, uDay;
+      float h(float x){ return fract(sin(x * 127.1) * 43758.5453); }
+      void main(){
+        float x = vU.x, t = uTime;
+        float s = 0.0; for (int k = 0; k < 4; k++) { float fk = float(k), c = 0.15 + 0.7 * h(fk + floor(t * 0.05 + fk) * 3.1); float w = 0.035 + 0.06 * h(fk * 7.0 + 1.0);
+          s += (1.0 - smoothstep(w * 0.3, w, abs(x - c - 0.04 * sin(t * 0.35 + fk * 2.1)))) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }
+        float edge = smoothstep(0.0, 0.12, x) * (1.0 - smoothstep(0.88, 1.0, x));
+        float depth = uSurf - vY; float fade = exp(-max(depth, 0.0) * 0.055) * smoothstep(0.0, 1.2, depth);
+        float a = s * edge * fade * (0.25 + 0.75 * uDay) * 0.42;
+        gl_FragColor = vec4(vec3(0.62, 0.93, 1.0) * a, a);
+      }`,
 });
 // Shifat Oct 29 "water bubble must be randomized particle emission": round glints with a per-particle size (aSize) and rgba fade.
 const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.11,sizeAttenuation:true,transparent:true,opacity:0.75,depthWrite:false,vertexColors:true});
@@ -624,7 +639,9 @@ bubbleMat.customProgramCacheKey = () => 'round-bubble-emitter-v3';
 // random spots around the camera, plus a stream off the hero while moving/diving (rate scales with speed).
 const BUB_N = QUALITY.coarse || QUALITY.weakGpu ? 110 : 220;
 function Underwater({ sim }: { sim: Sim }) {
-    const kelp = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!);
+    const kelp = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!), rayInst = useRef<THREE.InstancedMesh>(null!);
+    const rayGeo = useMemo(() => { const g = new THREE.PlaneGeometry(1, RAY_LEN, 1, 1); g.translate(0, -RAY_LEN / 2, 0); return g; }, []);
+    const rayS = useMemo(() => Array.from({ length: 26 }, (_, i) => ({ a: i * 2.399, r: 3 + ((i * 37) % 26), w: 2.5 + ((i * 13) % 6), ph: i * 1.7 })), []), rayO = useMemo(() => new THREE.Object3D(), []);
     const kGeo = useMemo(() => { const g = new THREE.PlaneGeometry(0.5, 6, 1, 6); g.translate(0, 3, 0); return g; }, []);
     const bGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BUB_N * 3).fill(-9999), 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(BUB_N * 4).fill(1), 4)); g.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(BUB_N).fill(1), 1)); return g; }, []);
     // particle state (pooled): base x/z, y, rise speed, age, life, wobble amp/freq/phase, drift x/z, size; alive when age < life
@@ -670,13 +687,17 @@ function Underwater({ sim }: { sim: Sim }) {
             }
             za.needsUpdate = true;
             pa.needsUpdate = true; ca.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
-            rays.current.position.set(hx, surfaceY + 0.1, hz); rays.current.rotation.y = 0;
+            rays.current.position.set(0, 0, 0); rays.current.rotation.y = 0; rayMat.uniforms.uSurf.value = surfaceY;
+            { const cam = st.camera, cx = cam.position.x, cz = cam.position.z, sun = TOD.sunU.value as THREE.Vector3, tilt = Math.min(0.5, Math.hypot(sun.x, sun.z) * 0.45), sa = Math.atan2(sun.x, sun.z), m = rayInst.current;
+              for (let i = 0; i < RAY_N; i++) { const q = rayS[i], a = q.a + Math.sin(t * 0.03 + q.ph) * 0.3, x = cx + Math.cos(a) * q.r, z = cz + Math.sin(a) * q.r;
+                rayO.position.set(x, surfaceY + 0.05, z); rayO.rotation.set(0, 0, 0); rayO.rotateY(Math.atan2(cx - x, cz - z)); rayO.rotateOnWorldAxis(_rayAx.set(Math.cos(sa), 0, -Math.sin(sa)), -tilt); rayO.scale.set(q.w * (0.8 + 0.2 * Math.sin(t * 0.4 + q.ph)), 1, 1); rayO.updateMatrix(); m.setMatrixAt(i, rayO.matrix); }
+              m.instanceMatrix.needsUpdate = true; }
         }
     });
     return <group>
         <instancedMesh ref={kelp} args={[kGeo, kelpMat, 1400]} frustumCulled={false} />
         <points ref={bub} geometry={bGeo} frustumCulled={false}><primitive object={bubbleMat} attach="material" /></points>
-        <group ref={rays}>{Array.from({ length: 8 }, (_, i) => <mesh key={i} position={[(i - 3.5) * 3.2, -6, ((i * 7) % 5) * 2 - 4]} rotation={[0, i * 0.4, 0.22]} material={rayMat}><planeGeometry args={[2.4 + (i % 3), 12]} /></mesh>)}</group>
+        <group ref={rays}><instancedMesh ref={rayInst} args={[rayGeo, rayMat, RAY_N]} frustumCulled={false} /></group>
     </group>;
 }
 
@@ -1253,11 +1274,17 @@ const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uFog: UWF },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `varying vec3 vW; uniform float uTime; uniform vec3 uFog;
-    float cau(vec2 p){ vec2 q = p; float v = 0.0; for (int i = 0; i < 3; i++) { q += vec2(sin(q.y * 1.3 + uTime * 0.7), cos(q.x * 1.1 + uTime * 0.6)) * 0.55; v += 1.0 - abs(sin(q.x * 0.9) + sin(q.y * 0.9)) * 0.5; } return pow(clamp(v / 3.0, 0.0, 1.0), 5.0); }
+    // Shifat Oct 29 "caustics can be better, ref real images": sharp, bright, web-like light network (iterated warp, after the
+    // well-known tileable water-caustic construction), sampled 3x with tiny offsets per colour channel for the chromatic fringe seen in photos.
+    float cauN(vec2 uv, float tm){ vec2 p = mod(uv * 6.28318, 6.28318) - 250.0; vec2 i = p; float c = 1.0; float inten = 0.005;
+      for (int n = 0; n < 4; n++) { float t = tm * (1.0 - (3.5 / float(n + 1))); i = p + vec2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x)); c += 1.0 / length(vec2(p.x / (sin(i.x + t) / inten), p.y / (cos(i.y + t) / inten))); }
+      c /= 4.0; c = 1.17 - pow(c, 1.4); return clamp(pow(abs(c), 8.0), 0.0, 2.0); }
+    float cau(vec2 p){ return cauN(p * 0.09, uTime * 0.45 + 23.0); }
+    vec3 cau3(vec2 p){ vec2 q = p * 0.09; float tm = uTime * 0.45 + 23.0; return vec3(cauN(q + vec2(0.0035, 0.0), tm), cauN(q, tm), cauN(q - vec2(0.0035, 0.0), tm)); }
     float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-    void main(){ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y))); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float c = cau(p) + 0.6 * cau(p * 1.7 + 3.0);
+    void main(){ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y))); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float depthK = mix(1.0, 0.3, smoothstep(-10.0, -48.0, vW.y)); vec3 c3 = (cau3(p) + 0.45 * cau3(p * 1.9 + 7.0)) * depthK; float c = dot(c3, vec3(0.333));
       vec3 sand = mix(vec3(0.46, 0.62, 0.58), vec3(0.58, 0.70, 0.62), h(floor(${xy ? 'vW.xy' : 'vW.xz'} * 3.0)) * 0.6);
-      vec3 col = sand * 0.7 + vec3(0.75, 0.95, 0.9) * c * 0.55;
+      vec3 col = sand * 0.7 + vec3(0.85, 1.0, 0.95) * c3 * 0.75;
       float d = length(vW - cameraPosition); vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.12); col = col * Tb; float fg = smoothstep(45.0, 190.0, d);   /* far-only underwater fog (Shifat Oct 29) */ ${xy ? 'fg = fg * 0.8;' : ''} col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
       ${xy ? `// Match grazing rays at the wall/surface junction without changing the deeper sand wall.
       vec3 ray=normalize(cameraPosition-vW);vec3 junction=fogUsed*(1.0+0.9*pow(1.0-clamp(abs(ray.y),0.0,1.0),2.5));
