@@ -682,6 +682,18 @@ function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
     const flight = e.flight; if (!flight) return;
     const ease = (t: number) => t * t * (3 - 2 * t);
     const fa = flight as any;
+    // Shifat Oct 29: "Boss should only follow when we walk to boss zone". Aggro starts when the hero steps into the arena zone
+    // (the arena roof plus 6 m, at roof height or above); it ends if the hero gets 90 m away, and the boss flies home to its roof.
+    const A = BOSS_ARENA.roof, inZone = p[0] > A.x0 - 6 && p[0] < A.x1 + 6 && p[2] > A.z0 - 6 && p[2] < A.z1 + 6 && p[1] > BOSS_ARENA.y - 5;
+    const ea = e as any; if (inZone) ea.aggro = true; else if (ea.aggro && Math.hypot(p[0] - e.x, p[2] - e.z) > 90) ea.aggro = false;
+    if (!ea.aggro) {
+        const home = Math.hypot(e.x - BOSS_ARENA.x, e.z - BOSS_ARENA.z) < 4 && Math.abs(e.y - BOSS_ARENA.y) < 1;
+        if (flight.phase === 'grounded') {
+            e.y = flight.baseY; flight.phaseT += dt;
+            if (!home && flight.phaseT >= 0.7 && e.hit <= 0 && e.atk <= 0) { flight.startX = e.x; flight.startZ = e.z; flight.targetX = BOSS_ARENA.x; flight.targetZ = BOSS_ARENA.z; fa.cruise = Math.max(flight.baseY, BOSS_ARENA.y) + BOSS_FLIGHT.altitude; fa.fromY = e.y; fa.homing = true; flight.phase = 'takeoff'; flight.phaseT = 0; }
+            return;
+        }
+    } else fa.homing = false;
     const dH = Math.hypot(p[0] - e.x, p[2] - e.z), dV = p[1] - e.y;
     const heroOff = (() => { if (dH > 16 || Math.abs(dV) > 3.2) return true; if (e.roof) { const r = e.roof; return !(p[0] > r.x0 - 0.5 && p[0] < r.x1 + 0.5 && p[2] > r.z0 - 0.5 && p[2] < r.z1 + 0.5); } return false; })();
     if (flight.phase === 'grounded') {
@@ -704,11 +716,11 @@ function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
         e.y = cruise + Math.sin(flight.phaseT * 2.6) * 0.16;
         if (flight.phaseT >= 0.25) { flight.phase = 'propel'; flight.phaseT = 0; }
     } else if (flight.phase === 'propel') {
-        // re-aim at the hero every frame and close in; fast when far so a swinging hero can't simply outrun it
-        const c = bossChaseTarget(e, p); flight.targetX = c.tx; flight.targetZ = c.tz;
+        // re-aim at the hero every frame and close in (or head home when not aggro); fast when far so a swinging hero can't simply outrun it
+        const c = fa.homing ? { tx: BOSS_ARENA.x, tz: BOSS_ARENA.z } : bossChaseTarget(e, p); flight.targetX = c.tx; flight.targetZ = c.tz;
         const tx = c.tx - e.x, tz = c.tz - e.z, td = Math.hypot(tx, tz), sp = Math.min(34, 9 + td * 0.6) * dt;
         if (td > 1e-3) { const k = Math.min(1, sp / td); e.x += tx * k; e.z += tz * k; e.ang = Math.atan2(p[0] - e.x, p[2] - e.z); }
-        const want = Math.max(bossLandY(e.x, e.z).y + 2.5, Math.min(cruise + 10, Math.max(bossLandY(c.tx, c.tz).y, p[1]) + BOSS_FLIGHT.altitude * 0.8));
+        const want = Math.max(bossLandY(e.x, e.z).y + 2.5, Math.min(cruise + 10, Math.max(bossLandY(c.tx, c.tz).y, fa.homing ? 0 : p[1]) + BOSS_FLIGHT.altitude * 0.8));
         fa.cruise = want; e.y += Math.max(-14 * dt, Math.min(14 * dt, want - e.y)) + Math.sin(flight.phaseT * 2.6) * 0.004;
         if (td < 1.2 || flight.phaseT > 9) { flight.phase = 'landing'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; const L = bossLandY(e.x, e.z); fa.landY = L.y; fa.landRoof = L.roof; fa.fromY = e.y; }
     } else if (flight.phase === 'landing') {
@@ -776,7 +788,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
             stepBossFlight(s, e, dt, p, e.hit <= 0);
             dx = p[0] - e.x; dz = p[2] - e.z; d = Math.hypot(dx, dz); dy = Math.abs(p[1] - e.y);
         }
-        if ((isBoss || d < (e.air ? 32 : 26)) && (e.air || isBoss || dy < 5) && e.hit <= 0) {
+        if ((isBoss ? ((e as any).aggro || (d < 54 && dy < 18)) : d < (e.air ? 32 : 26)) && (e.air || isBoss || dy < 5) && e.hit <= 0) {
             e.ang = Math.atan2(dx, dz);
             if (e.air) e.y += Math.max(-5 * dt, Math.min(5 * dt, Math.max(2, p[1]) - e.y));   // drones descend/climb to the hero's height
             if (d > (isBoss ? 5.0 : 2.0) && e.atk <= 0 && (!isBoss || e.flight?.phase === 'grounded')) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = (isBoss ? 3.4 : 4.2) * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
