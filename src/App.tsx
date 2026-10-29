@@ -106,17 +106,19 @@ export function App() {
                 return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.hp === n.hp && h.ko === n.ko && h.gr === n.gr && h.me === n.me && h.sh === n.sh && h.sn === n.sn && h.wb === n.wb && h.sc === n.sc && h.bd === n.bd ? h : n;
             });
         }, 100);
+        // Shift / Alt (now web buttons) can rewrite e.key (Shift+"." = ">", Mac Option+W = "∑"); map such characters back to the physical key so WASD / "." keep working while they are held
+        const normKey = (e: KeyboardEvent) => { const k = e.key.toLowerCase(); if ((e.altKey || e.shiftKey) && ((k.length === 1 && !/[a-z0-9 .]/.test(k)) || k === 'dead')) { if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3).toLowerCase(); if (e.code === 'Period') return '.'; if (/^Digit[0-9]$/.test(e.code)) return e.code.slice(5); } return k; };
         const down = (e: KeyboardEvent) => {
-            const k = e.key.toLowerCase();
+            const k = normKey(e);
             if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
             if (k === 'control') e.preventDefault();
             if (sim.mode !== 'play') { if (!e.repeat && !['escape', 'tab', 'meta', 'alt', 'control', 'shift', 'capslock'].includes(k)) start(); input.keys[k] = true; return; }   // title screen: any key starts
             if (!coarse) { deskRef.current = true; setDesk(true); }
-            if (k === ' ' && !input.keys[' ']) { input.jumpQ = true; input.jumpHeld = true; }   // identical flags/timing to the mobile jump button
+            if (k === ' ' && !input.keys[' '] && !input.keys['@i']) { input.jumpQ = true; input.jumpHeld = true; }   // identical flags/timing to the mobile jump button
             if ((k === 'k' || k === 'm' || k === '.' || k === 'control') && !input.keys[k]) { input.meleeQ = true; input.attackQ = true; }
             input.keys[k] = true;
         };
-        const up = (e: KeyboardEvent) => { const k = e.key.toLowerCase(); input.keys[k] = false; if (k === ' ') { input.jumpHeld = false; input.jumpReleased = true; } };
+        const up = (e: KeyboardEvent) => { const k = normKey(e); input.keys[k] = false; if (k === ' ' && !input.keys['@i']) { input.jumpHeld = false; input.jumpReleased = true; } };
         const vis = () => { try { const c = actx.current; if (c) { if (document.hidden) c.suspend(); else c.resume(); } } catch (e) { /* ignore */ } if (document.hidden) { input.jumpHeld = false; input.jumpCancelled = true; input.keys[' '] = false; input.swing = false; input.mx = 0; input.my = 0; } };
         document.addEventListener('visibilitychange', vis);
         const blur = () => { try { for (const k of Object.keys((input as any).keys || {})) (input as any).keys[k] = false; } catch (e) { /* ignore */ } input.swing = false; input.mx = 0; input.my = 0; try { for (const k of Object.keys(input as any)) if (typeof (input as any)[k] === 'boolean') (input as any)[k] = false; } catch (e) { /* ignore */ } };

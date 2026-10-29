@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
+import { worldBufferSize, worldTarget } from './heroHD';
 
 const BLOOM_FS = `uniform sampler2D tBase; uniform sampler2D tGlow; uniform vec2 uBloomRes; varying vec2 vUv;
 void main(){
@@ -51,7 +52,8 @@ export function SelectiveBloomPass() {
         const oldBackground = scene.background;
         const oldTarget = gl.getRenderTarget();
         try {
-            gl.getDrawingBufferSize(state.size);
+            worldBufferSize(gl, state.size);
+            const out = worldTarget(gl);   // hero HD pass: bloom works on the world RT at the world's own size
             const width = Math.max(2, Math.floor(state.size.x / 4));
             const height = Math.max(2, Math.floor(state.size.y / 4));
             if (state.base.image.width !== state.size.x || state.base.image.height !== state.size.y) {
@@ -64,14 +66,14 @@ export function SelectiveBloomPass() {
             }
 
             // Preserve the already-rendered outline/FXAA frame and render only explicitly tagged lights.
-            gl.setRenderTarget(null);
+            gl.setRenderTarget(out);
             gl.copyFramebufferToTexture(state.base, state.origin);
             scene.background = null;
             camera.layers.set(SELECTIVE_BLOOM_LAYER);
             gl.setRenderTarget(state.target);
             gl.clear(true, true, true);
             gl.render(scene, camera);
-            gl.setRenderTarget(null);
+            gl.setRenderTarget(out);
             camera.layers.mask = oldMask;
             scene.background = oldBackground;
             gl.render(state.overlay, state.camera);

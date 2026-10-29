@@ -1,3 +1,4 @@
+import { worldBufferSize } from './heroHD';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -636,7 +637,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         const wantCopy = !!copyTarget && visible && !struggling && (!everyOther || copyFrame.current % 2 === 0);
         if (copyTarget && visible && !struggling) {
             if (wantCopy) {
-                gl.getDrawingBufferSize(bufSize);
+                worldBufferSize(gl, bufSize);   // world size (hero HD pass keeps the canvas at native)
                 const w = Math.max(160, Math.round(bufSize.x * QK.lakeCopyScale)), h = Math.max(90, Math.round(bufSize.y * QK.lakeCopyScale));
                 if (copyTarget.width !== w || copyTarget.height !== h) copyTarget.setSize(w, h);
                 const previousTarget = gl.getRenderTarget(), previousAutoClear = gl.autoClear, previousShadows = gl.shadowMap.autoUpdate;

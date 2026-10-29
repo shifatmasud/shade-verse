@@ -1,4 +1,5 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { registerHero } from './heroHD';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import heroData from './hero.json';
@@ -69,11 +70,11 @@ function recoloredSuitMaterial() {
         }
         ctx.putImageData(pixels, 0, 0);
         const painted = new THREE.CanvasTexture(canvas);
-        painted.flipY = false; painted.colorSpace = THREE.SRGBColorSpace; painted.anisotropy = 2;
+        painted.flipY = false; painted.colorSpace = THREE.SRGBColorSpace; painted.anisotropy = 16;
         mat.map = painted; mat.emissiveMap = painted; mat.needsUpdate = true;
         source.dispose();
     });
-    tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 2;
+    tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 16;   // hero texture: full anisotropy (three clamps to the GPU max)
     mat = new THREE.MeshLambertMaterial({ map: tex, emissive: new THREE.Color('#ffffff'), emissiveMap: tex, emissiveIntensity: 0.45 });
     return mat;
 }
@@ -215,6 +216,7 @@ function updateMorphParticles(geometry: THREE.BufferGeometry, material: THREE.Po
 
 export function GhostCompanion({ sim }: { sim: Sim }) {
     const model = useMemo(makeGhostRig, []);
+    useEffect(() => registerHero(model.root), [model]);   // Ghost joins the hero HD pass
     const actorRef = useRef<Sim | null>(null);
     const controls = useMemo(makeControls, []);
     const lineGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(72 * 3), 3)); return g; }, []);

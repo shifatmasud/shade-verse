@@ -24,6 +24,7 @@ import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSu
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
+import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 // time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
@@ -179,6 +180,16 @@ void main(){
   gl_FragColor = vec4(mix(c, vec3(0.04, 0.05, 0.10), k * 0.85), 1.0);
 }`;
 export const OUTLINE_STATE = { on: true };
+if (!OUTLINE_STATE.on) HD.enabled = false;   // the hero HD pass reuses the outline pass's world depth
+
+// Heroes at native resolution over the world (see heroHD.ts); runs after outline (1) and bloom (2).
+function HeroHDPass() {
+    const { gl, scene, camera } = useThree();
+    const c = useMemo(() => createHeroComposite(), []);
+    useEffect(() => () => c.dispose(), [c]);
+    useFrame(() => c.render(gl, scene, camera), 3);
+    return null;
+}
 function OutlinePass() {
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => {
@@ -193,13 +204,14 @@ function OutlinePass() {
         return { rt, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), sz: new THREE.Vector2(), ft, fm, fs };
     }, []);
     useFrame(() => {
-        gl.getDrawingBufferSize(st.sz);
+        worldBufferSize(gl, st.sz);
         if (st.rt.width !== st.sz.x || st.rt.height !== st.sz.y) { st.rt.setSize(st.sz.x, st.sz.y); st.mat.uniforms.uRes.value.copy(st.sz); }
         const cam = camera as THREE.PerspectiveCamera; st.mat.uniforms.uNear.value = cam.near; st.mat.uniforms.uFar.value = cam.far;
         st.mat.uniforms.uTh.value = 1.0;
         st.mat.uniforms.uOn.value = (DBG && (window as any).__noOutline) ? 0 : 1;
         if (st.ft.image.width !== st.sz.x || st.ft.image.height !== st.sz.y) { st.ft.dispose(); st.ft.image = { width: st.sz.x, height: st.sz.y } as any; st.fm.uniforms.uRes.value.copy(st.sz); }
-        gl.setRenderTarget(st.rt); gl.render(scene, camera); gl.setRenderTarget(null); gl.render(st.qs, st.qc); gl.copyFramebufferToTexture(st.ft, _v0); gl.render(st.fs, st.qc);
+        const out = worldTarget(gl); HD.depth = st.rt.depthTexture;   // hero HD pass: the world's final frame goes to the world RT, same size as before
+        gl.setRenderTarget(st.rt); gl.render(scene, camera); gl.setRenderTarget(out); gl.render(st.qs, st.qc); gl.copyFramebufferToTexture(st.ft, _v0); gl.render(st.fs, st.qc);
     }, 1);
     return null;
 }
@@ -928,7 +940,7 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
     let mat: THREE.MeshLambertMaterial;
     if (materialOverride) mat = materialOverride;
     else if (d.uv) {
-        const tex = new THREE.TextureLoader().load(baseTexUrl); tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 2;
+        const tex = new THREE.TextureLoader().load(baseTexUrl); tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 16;   // hero-only path (bots/boss build their own); three clamps to the GPU max
         mat = new THREE.MeshLambertMaterial({ map: tex, emissive: new THREE.Color('#ffffff'), emissiveMap: tex, emissiveIntensity: 0.45 });
     } else mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1a2a66'), emissiveIntensity: 0.18 });
     // procedural suit weave in the fragment shader (object-space lattice, screen-AA'd), so fine detail doesn't depend on vertex density
@@ -1296,6 +1308,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         legR.current = r.b.thighR as any; legL.current = r.b.thighL as any; armR.current = r.b.uarmR as any; armL.current = r.b.uarmL as any; cape.current = t1 as any;
         if (DBG) (window as any).__rig = r; return r;
     }, []);
+    useEffect(() => registerHero(rig.root), [rig]);   // Shadow joins the hero HD pass
     const clipSt = useRef(createHeroClipState()), poseSt = useRef(createCombatPoseState());
     const lastWall = useRef<{ n: number[]; b: number } | null>(null), wallCorr = useRef(0), groundCorr = useRef(0), groundMin = useRef({ key: '', v: 1e9 }), tp0 = useMemo(() => new THREE.Vector3(), []);
     const enemyTime = useRef({ value: 0 });
@@ -1311,12 +1324,12 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
-        { const want = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * curScale.current; if (Math.abs(gl.getPixelRatio() - want) > 0.01) gl.setPixelRatio(want); }
+        { const want = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * curScale.current; applyRatio(gl, want); }   // world ratio unchanged; the canvas runs at native for the hero HD pass
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
             if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current > 16 && ns > 1) ns = Math.max(1, ns - 0.05); else if (ema.current < 12.5 && ns >= 1 && ns < QK.maxScale && (coarse || HQ)) ns += 0.05; else if (ema.current < 18 && ns < 1) ns += 0.05;   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * ns); }
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * ns); }
         }
         if (sim.mode === 'play') {
             for (let i = 0; i < 2; i++) stepSim(sim, dt / 2, ev);
@@ -1556,6 +1569,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <DayNight />
         {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={AA_FXAA} />}
         <SelectiveBloomPass />
+        {OUTLINE_STATE.on && HD.enabled ? <HeroHDPass /> : null}
         <Sky />
         <City /><TenementBlock />
         <ParkGround />

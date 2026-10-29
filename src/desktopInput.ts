@@ -1,6 +1,7 @@
 // Desktop input (Shifat's final desktop map, Oct 29 00:55): mouse + keyboard and gamepad, routed onto the EXISTING input flags only.
 // Mouse: pointer-lock look; left tap = web shot, left hold = Web Shock (specialQ); right tap = web spring (grabQ), right hold = swing.
 // Keys (in App): WASD move, Space = the mobile jump button 1:1, K / Ctrl / M / "." melee.
+// Extra keys (here, env-iter2): I = Space, L / Alt = left button, J / Shift = right button (same tap/hold code path).
 // Gamepad (standard mapping): left stick move, right stick camera, A = Space, RB tap shot / hold Web Shock, LT tap spring / hold swing, X melee.
 import { input, type Sim } from './sim';
 
@@ -12,23 +13,56 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
     const canvas = () => document.querySelector('.stage canvas') as HTMLCanvasElement | null;
     const locked = () => !!document.pointerLockElement;
     const playing = () => sim.mode === 'play';
+    // Keyboard twins of the mouse buttons (env-iter2, Shifat Oct 29): L / Alt = left button, J / Shift = right button, I = Space.
+    // Every source shares the one lmb/rmb state, so taps, holds, HOLD_MS and the fired flags are the mouse's own code path.
+    const lSrc = new Set<string>(), rSrc = new Set<string>();
+    const pressL = (src: string) => { if (lSrc.has(src)) return; if (lSrc.size === 0) { lmb = { down: true, t: performance.now(), fired: false }; ev.onCharge(true); } lSrc.add(src); };
+    const releaseL = (src: string) => {
+        if (!lSrc.delete(src) || lSrc.size) return;
+        if (lmb.down) { lmb.down = false; ev.onCharge(false); if (!lmb.fired && playing()) { input.shotQ = true; input.attackQ = true; } }
+    };
+    const pressR = (src: string) => { if (rSrc.has(src)) return; if (rSrc.size === 0) rmb = { down: true, t: performance.now(), swinging: false }; rSrc.add(src); };
+    const releaseR = (src: string) => {
+        if (!rSrc.delete(src) || rSrc.size) return;
+        if (rmb.down) { rmb.down = false; if (rmb.swinging) input.swing = false; else if (playing()) input.grabQ = true; }
+    };
+    const cancelAll = () => { lSrc.clear(); rSrc.clear(); if (rmb.swinging) input.swing = false; if (lmb.down) ev.onCharge(false); lmb.down = rmb.down = false; };
     const onDown = (e: MouseEvent) => {
         if (!isDesk() || !playing()) return;
         const c = canvas(); if (!c || e.target !== c) return;
         if (!locked()) { try { const p = (c as any).requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); } catch { /* drag-look fallback stays */ } return; }
-        if (e.button === 0) { lmb = { down: true, t: performance.now(), fired: false }; ev.onCharge(true); }
-        if (e.button === 2) { rmb = { down: true, t: performance.now(), swinging: false }; }
+        if (e.button === 0) pressL('mouse');
+        if (e.button === 2) pressR('mouse');
         if (e.button === 1) e.preventDefault();
     };
     const onUp = (e: MouseEvent) => {
-        if (e.button === 0 && lmb.down) { lmb.down = false; ev.onCharge(false); if (!lmb.fired && playing()) { input.shotQ = true; input.attackQ = true; } }
-        if (e.button === 2 && rmb.down) { rmb.down = false; if (rmb.swinging) input.swing = false; else if (playing()) input.grabQ = true; }
+        if (e.button === 0) releaseL('mouse');
+        if (e.button === 2) releaseR('mouse');
     };
+    const L_KEYS: Record<string, 1> = { KeyL: 1, AltLeft: 1, AltRight: 1 }, R_KEYS: Record<string, 1> = { KeyJ: 1, ShiftLeft: 1, ShiftRight: 1 };
+    let iHeld = false;   // I = Space 1:1 (same flags as the Space key / mobile jump button); input.keys['@i'] lets Space and I share one press
+    const pressJump = () => { if (iHeld) return; iHeld = true; input.keys['@i'] = true; if (!input.keys[' ']) { input.jumpQ = true; input.jumpHeld = true; } };
+    const releaseJump = () => { if (!iHeld) return; iHeld = false; input.keys['@i'] = false; if (!input.keys[' ']) { input.jumpHeld = false; input.jumpReleased = true; } };
+    const onKeyDown = (e: KeyboardEvent) => {
+        const c = e.code;
+        if (c === 'AltLeft' || c === 'AltRight') e.preventDefault();   // keep the browser menu bar / focus from taking Alt
+        if (!playing() || e.repeat) return;   // title screen: App's "any key starts" stays as it was
+        if (L_KEYS[c]) pressL(c); else if (R_KEYS[c]) pressR(c); else if (c === 'KeyI') pressJump();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+        const c = e.code;
+        if (c === 'AltLeft' || c === 'AltRight') e.preventDefault();
+        if (L_KEYS[c]) releaseL(c); else if (R_KEYS[c]) releaseR(c); else if (c === 'KeyI') releaseJump();
+    };
+    const onBlur = () => { cancelAll(); if (iHeld) { iHeld = false; input.keys['@i'] = false; } };
+    const onVis = () => { if (document.hidden) onBlur(); };
+    window.addEventListener('keydown', onKeyDown, true); window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onVis);
     const onMove = (e: MouseEvent) => {
         if (!locked() || !playing()) return;
         sim.yaw -= e.movementX * 0.0026; sim.pitch = Math.max(-1.15, Math.min(1.35, sim.pitch + e.movementY * 0.0019)); sim.lastDrag = sim.t;
     };
-    const onLockChange = () => { ev.onLock(locked()); if (!locked()) { if (rmb.swinging) input.swing = false; lmb.down = rmb.down = false; ev.onCharge(false); } };
+    const onLockChange = () => { ev.onLock(locked()); if (!locked()) { if (rmb.swinging) input.swing = false; lmb.down = rmb.down = false; lSrc.clear(); rSrc.clear(); ev.onCharge(false); } };
     const ctx = (e: MouseEvent) => { if (isDesk()) e.preventDefault(); };
     window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp); window.addEventListener('mousemove', onMove);
     window.addEventListener('contextmenu', ctx); document.addEventListener('pointerlockchange', onLockChange);
@@ -75,12 +109,14 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
         window.removeEventListener('mousedown', onDown); window.removeEventListener('mouseup', onUp); window.removeEventListener('mousemove', onMove);
         window.removeEventListener('contextmenu', ctx); document.removeEventListener('pointerlockchange', onLockChange);
         window.removeEventListener('gamepadconnected', onConn); window.removeEventListener('gamepaddisconnected', onDisc);
+        window.removeEventListener('keydown', onKeyDown, true); window.removeEventListener('keyup', onKeyUp, true);
+        window.removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVis);
     };
 }
 
 export const MAP_KB: [string, string][] = [
-    ['WASD', 'Move'], ['Mouse', 'Camera (click to lock, Esc frees)'], ['Space', 'Jump · glide · fly'],
-    ['Left click', 'Tap web shot · hold Web Shock'], ['Right click', 'Tap web spring · hold swing'], ['K / Ctrl / M / .', 'Melee'],
+    ['WASD', 'Move'], ['Mouse', 'Camera (click to lock, Esc frees)'], ['Space / I', 'Jump · glide · fly'],
+    ['Left click / L / Alt', 'Tap web shot · hold Web Shock'], ['Right click / J / Shift', 'Tap web spring · hold swing'], ['K / Ctrl / M / .', 'Melee'],
 ];
 export const MAP_PAD: [string, string][] = [
     ['L-stick', 'Move'], ['R-stick', 'Camera'], ['A', 'Jump · glide · fly'],
