@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { useFrame, useLoader } from '@react-three/fiber';
+import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import {
     buildings, world, PARK, parkH, PARK_POND, PARK_POND_Y, PARK_BRIDGE,
-    bridgeSurfaceAt,
+    bridgeSurfaceAt, isLegacyCityCore, type Sim,
 } from './sim';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
@@ -134,7 +135,7 @@ function chooseBuildingAsset(b: (typeof buildings)[number], index: number): Asse
     ].includes(a.id));
     const low = CITY_ASSETS.filter((a) => [
         'brownstone-row-house-e58392', 'corner-shop-db18e2', 'street-diner-bb174e',
-        'fire-station-a7346f', 'subway-entrance-c05ada', 'narrow-walk-up-71d077',
+        'fire-station-a7346f', 'narrow-walk-up-71d077',
         'brick-church-6cf1af', 'movie-theater-8c710a',
     ].includes(a.id));
     const pool = b.h > 49 ? tall : b.h > 31 ? mid : low;
@@ -151,6 +152,7 @@ export function PolyforkBuildings() {
         const rendered = buildings.filter((b) => {
             if (b.host !== undefined) return false;
             const x = (b.x0 + b.x1) * 0.5, z = (b.z0 + b.z1) * 0.5;
+            if (isLegacyCityCore(x, z)) return false;
             // This 6-home outer block is already the authored Polyfork tenement prototype.
             return !(x >= -251 && x <= -229 && z >= 69 && z <= 92);
         });
@@ -163,7 +165,13 @@ export function PolyforkBuildings() {
             const x = (b.x0 + b.x1) * 0.5, z = (b.z0 + b.z1) * 0.5;
             result.get(asset.id)!.push({ x, y: 0, z, sx, sy, sz, yaw: hash01(x, z) > 0.5 ? Math.PI : 0 });
         });
-        return { groups: result, count: rendered.length };
+        const subway = [
+            { x: 140, y: -4.1, z: -100, sx: 0.82, sy: 0.9, sz: 0.82, yaw: 0 },
+            { x: -140, y: -4.1, z: 100, sx: 0.82, sy: 0.9, sz: 0.82, yaw: Math.PI },
+            { x: 220, y: -4.1, z: -180, sx: 0.82, sy: 0.9, sz: 0.82, yaw: Math.PI / 2 },
+            { x: -220, y: -4.1, z: -100, sx: 0.82, sy: 0.9, sz: 0.82, yaw: -Math.PI / 2 },
+        ];
+        return { groups: result, count: rendered.length, subway };
     }, [byId]);
 
     useEffect(() => {
@@ -171,6 +179,8 @@ export function PolyforkBuildings() {
             count: buckets.count,
             models: CITY_ASSETS.map((a) => a.id),
             instancesByModel: Object.fromEntries([...buckets.groups].map(([id, ps]) => [id, ps.length])),
+            legacyCore: 'procedural center, Polyfork outer district',
+            undergroundEntrances: buckets.subway.map((p) => ({ x: p.x, y: p.y, z: p.z })),
         };
     }, [buckets]);
 
@@ -180,6 +190,7 @@ export function PolyforkBuildings() {
             const placements = buckets.groups.get(asset.id)!;
             return <InstancedAsset key={asset.id} prefix="polyfork-building" model={model} placements={placements} />;
         })}
+        <InstancedAsset prefix="polyfork-underground-subway" model={byId.get('subway-entrance-c05ada')!} placements={buckets.subway} />
     </group>;
 }
 
@@ -226,7 +237,7 @@ export function ParkGround() {
     </group>;
 }
 
-function createVegetationPlacements() {
+export function createVegetationPlacements() {
     const trees: Record<string, Placement[]> = Object.fromEntries(TREE_ASSETS.slice(0, -1).map((a) => [a.id, []]));
     const bushes: Placement[] = [];
     const cx = (PARK.x0 + PARK.x1) * 0.5, cz = (PARK.z0 + PARK.z1) * 0.5;
@@ -415,10 +426,16 @@ function rampGeometry(sign: -1 | 1) {
     return geometry;
 }
 
-const LAKE_VS = `uniform float uTime; varying vec3 vWorld; varying float vHeight;
-void main(){ vec4 w=modelMatrix*vec4(position,1.0); float h=0.115*sin(w.x*0.034+w.z*0.018+uTime*0.48)+0.058*sin(w.x*0.061-w.z*0.043-uTime*0.62)+0.022*sin(w.x*0.13+w.z*0.09+uTime*0.9); w.y+=h; vWorld=w.xyz; vHeight=h; gl_Position=projectionMatrix*viewMatrix*w; }`;
-const LAKE_FS = `uniform float uTime; varying vec3 vWorld; varying float vHeight;
-void main(){ vec3 V=normalize(cameraPosition-vWorld); vec2 grad=vec2(cos(vWorld.x*0.034+vWorld.z*0.018+uTime*0.48)*0.0039+cos(vWorld.x*0.061-vWorld.z*0.043-uTime*0.62)*0.0035,cos(vWorld.x*0.034+vWorld.z*0.018+uTime*0.48)*0.0021-cos(vWorld.x*0.061-vWorld.z*0.043-uTime*0.62)*0.0025); vec3 N=normalize(vec3(-grad.x,1.0,-grad.y)); float fres=pow(1.0-max(dot(N,V),0.0),4.0); float ripple=0.5+0.5*sin(vWorld.x*0.23+vWorld.z*0.15+uTime*0.72); vec3 deep=vec3(0.045,0.27,0.31); vec3 shallow=vec3(0.15,0.49,0.50); vec3 sky=vec3(0.48,0.69,0.69); vec3 c=mix(deep,shallow,0.45+0.22*ripple); c=mix(c,sky,fres*0.62); float crest=smoothstep(0.11,0.16,vHeight)*0.18; c=mix(c,vec3(0.86,0.96,0.92),crest); gl_FragColor=vec4(c,0.94); }`;
+const LAKE_VS = `uniform float uTime; uniform mat4 textureMatrix; varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vProjective; varying vec4 vScreen;
+float wh(vec2 p,float t){return 0.09*sin(p.x*0.11+p.y*0.08+t*0.42)+0.035*sin(p.x*0.21-p.y*0.16-t*0.31);}
+void main(){vec4 w=modelMatrix*vec4(position,1.0);float h=wh(w.xz,uTime);vec2 g=vec2(0.0099*cos(w.x*0.11+w.z*0.08+uTime*0.42)+0.00735*cos(w.x*0.21-w.z*0.16-uTime*0.31),0.0072*cos(w.x*0.11+w.z*0.08+uTime*0.42)-0.0056*cos(w.x*0.21-w.z*0.16-uTime*0.31));w.y+=h;vWorld=w.xyz;vHeight=h;vNormal=normalize(vec3(-g.x,1.0,-g.y));vProjective=textureMatrix*vec4(position,1.0);vScreen=projectionMatrix*viewMatrix*w;gl_Position=vScreen;}`;
+const LAKE_FS = `uniform float uTime; uniform float uDebugReflect; uniform sampler2D tDiffuse; uniform sampler2D uRefraction; uniform vec3 color; uniform vec2 uPondCenter; uniform vec2 uPondRadii; varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vProjective; varying vec4 vScreen;
+void main(){vec3 V=normalize(cameraPosition-vWorld);vec3 N=normalize(vNormal);bool below=!gl_FrontFacing;if(below)N=-N;float ci=clamp(abs(dot(N,V)),0.0,1.0);float fres=0.14+0.84*pow(1.0-ci,5.0);vec3 td=refract(-V,N,below?1.333:0.75019);vec2 screenUv=vScreen.xy/max(vScreen.w,0.0001)*0.5+0.5;vec2 bend=(N.xz+td.xz*0.08)*0.012;vec3 behind=texture2D(uRefraction,clamp(screenUv+bend,vec2(0.002),vec2(0.998))).rgb;vec4 ruv=vProjective;ruv.xy+=N.xz*0.012*ruv.w;vec3 reflected=texture2DProj(tDiffuse,ruv).rgb;if(uDebugReflect>0.5){gl_FragColor=vec4(reflected,1.0);return;}float radial=length((vWorld.xz-uPondCenter)/uPondRadii);float shallow=1.0-smoothstep(0.42,0.98,radial);float path=mix(3.7,0.28,shallow)/max(abs(td.y),0.22);vec3 transmittance=exp(-vec3(0.42,0.095,0.035)*path);vec3 bedTint=mix(vec3(0.045,0.16,0.19),vec3(0.34,0.43,0.35),shallow);vec3 transmitted=behind*transmittance+bedTint*(1.0-transmittance)*0.72;vec3 baseWater=mix(vec3(0.055,0.27,0.34),vec3(0.18,0.48,0.46),shallow);transmitted=mix(baseWater,transmitted,0.36);float broad=0.5+0.5*sin(vWorld.x*0.17+vWorld.z*0.11+uTime*0.38);transmitted+=vec3(0.025,0.075,0.065)*broad*(1.0-shallow);float f=below?max(fres,0.12):fres;vec3 col=mix(transmitted,reflected,f);vec3 R=reflect(-V,N);col+=vec3(1.0,0.89,0.67)*(pow(max(dot(R,normalize(vec3(-0.36,0.82,0.44))),0.0),96.0)*0.34+pow(max(dot(R,normalize(vec3(-0.36,0.82,0.44))),0.0),24.0)*0.05);if(below){float haze=1.0-exp(-length(cameraPosition-vWorld)*0.045);col=mix(col,vec3(0.035,0.23,0.30),haze*0.72);}float crest=smoothstep(0.12,0.18,vHeight)*0.12;col=mix(col,vec3(0.86,0.96,0.92),crest);gl_FragColor=vec4(col,1.0);
+#include <tonemapping_fragment>
+#include <colorspace_fragment>
+}`;
+const LAKE_CAUSTICS_VS = `varying vec2 vUv; varying vec3 vWorld; void main(){vUv=uv;vec4 w=modelMatrix*vec4(position,1.0);vWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
+const LAKE_CAUSTICS_FS = `uniform float uTime; uniform float uWaterY; varying vec2 vUv; varying vec3 vWorld;float c(vec2 p){vec2 q=p;float v=0.0;for(int i=0;i<3;i++){q+=vec2(sin(q.y*1.3+uTime*0.55),cos(q.x*1.15-uTime*0.48))*0.42;v+=1.0-abs(sin(q.x)+sin(q.y))*0.5;}return pow(clamp(v/3.0,0.0,1.0),5.0);}void main(){vec2 p=vWorld.xz*0.78;float k=c(p)+0.55*c(p*1.63+2.1);float edge=1.0-smoothstep(0.68,1.0,length((vUv-0.5)*2.0));float under=1.0-smoothstep(uWaterY-0.35,uWaterY+0.15,cameraPosition.y);float a=edge*under*clamp(k*0.42,0.0,0.58);vec3 sand=mix(vec3(0.34,0.46,0.37),vec3(0.77,0.87,0.65),clamp(k,0.0,1.0));gl_FragColor=vec4(sand,a);}`;
 
 const FOAM_VS = `uniform float uTime; varying vec2 vUv; void main(){ vUv=uv; vec3 p=position; p.y+=0.016*sin(uv.x*35.0+uTime*1.3); gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0); }`;
 const FOAM_FS = `uniform float uTime; varying vec2 vUv; float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} void main(){ float n=sin(vUv.x*151.0+uTime*1.8)*0.42+sin(vUv.x*67.0-uTime*1.1)*0.33+sin(vUv.x*311.0+vUv.y*6.0+uTime*2.7)*0.25; float fleck=smoothstep(-0.18,0.52,n+h(vec2(floor(vUv.x*85.0),floor(uTime*2.0)))*0.28); float edge=smoothstep(0.02,0.28,vUv.y)*(1.0-smoothstep(0.74,1.0,vUv.y)); float a=fleck*edge*(0.18+0.68*(0.5+0.5*sin(vUv.x*31.0-uTime*1.4))); gl_FragColor=vec4(vec3(0.83,0.95,0.92),a); }`;
@@ -442,13 +459,47 @@ function buildContactMatrices() {
     return matrices;
 }
 
-export function PolyforkLakeBridge() {
+export function PolyforkLakeBridge({ sim }: { sim: Sim }) {
     const [waterGLTF, bridgeGLTF] = useLoader(GLTFLoader, [WATER_ASSET.url, BRIDGE_ASSET.url]) as GLTF[];
     const waterModel = useMemo(() => prepareModel(WATER_ASSET.id, waterGLTF), [waterGLTF]);
     const bridgeModel = useMemo(() => prepareModel(BRIDGE_ASSET.id, bridgeGLTF), [bridgeGLTF]);
     const waterGeometry = useMemo(() => subdividePositions(waterModel.parts[0].geometry, 2), [waterModel]);
-    const waterMaterial = useMemo(() => new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } }, vertexShader: LAKE_VS, fragmentShader: LAKE_FS,
+    const waterScale = useMemo<[number, number, number]>(() => [
+        (PARK_POND.rx * 2) / Math.max(0.01, waterModel.dimensions.x),
+        1,
+        (PARK_POND.rz * 2) / Math.max(0.01, waterModel.dimensions.z),
+    ], [waterModel]);
+    const { gl, scene, camera } = useThree();
+    const captureFrame = useRef(0), lakeClock = useRef(0), lastRefractionTime = useRef(-100), lastRefractionFrame = useRef(-100), lastReflectionTime = useRef(-100), lastReflectionFrame = useRef(-100);
+    const refractionTarget = useMemo(() => new THREE.WebGLRenderTarget(256, 128, { depthBuffer: true, stencilBuffer: false, samples: 0 }), []);
+    const reflector = useMemo(() => {
+        const geometry = waterGeometry.clone();
+        geometry.rotateX(Math.PI / 2); // Reflector's local normal is +Z; this rotation restores the original horizontal XZ sheet.
+        const mirror = new Reflector(geometry, { textureWidth: 256, textureHeight: 128, clipBias: 0.003, multisample: 0, color: 0x799a98 });
+        mirror.name = 'polyfork-water-blob-lake';
+        mirror.position.set(PARK_POND.cx, PARK_POND_Y, PARK_POND.cz);
+        mirror.rotation.x = -Math.PI / 2;
+        mirror.scale.set(waterScale[0], waterScale[2], 1);
+        mirror.userData.polyforkId = WATER_ASSET.id;
+        const material = mirror.material as THREE.ShaderMaterial;
+        material.vertexShader = LAKE_VS; material.fragmentShader = LAKE_FS;
+        material.uniforms.uTime = { value: 0 }; material.uniforms.uDebugReflect = { value: 0 };
+        material.uniforms.uRefraction = { value: refractionTarget.texture };
+        material.uniforms.uPondCenter = { value: new THREE.Vector2(PARK_POND.cx, PARK_POND.cz) };
+        material.uniforms.uPondRadii = { value: new THREE.Vector2(PARK_POND.rx, PARK_POND.rz) };
+        material.side = THREE.DoubleSide; material.transparent = false; material.depthWrite = true; material.toneMapped = false; material.needsUpdate = true;
+        const renderReflection = mirror.onBeforeRender;
+        mirror.onBeforeRender = (renderer, renderScene, renderCamera, geometryArg, materialArg, group) => {
+            if (lakeClock.current - lastReflectionTime.current < 0.5) return;
+            renderReflection.call(mirror, renderer, renderScene, renderCamera, geometryArg, materialArg, group);
+            lastReflectionTime.current = lakeClock.current; lastReflectionFrame.current = captureFrame.current;
+        };
+        return mirror;
+    }, [waterGeometry, waterScale, refractionTarget]);
+    const causticsGeometry = useMemo(() => new THREE.CircleGeometry(1, 64), []);
+    const causticsMaterial = useMemo(() => new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uWaterY: { value: PARK_POND_Y } },
+        vertexShader: LAKE_CAUSTICS_VS, fragmentShader: LAKE_CAUSTICS_FS,
         transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }), []);
     const shoreGeo = useMemo(() => shorelineFoamGeometry(PARK_POND.rx * 0.99, PARK_POND.rz * 0.99), []);
@@ -477,11 +528,25 @@ export function PolyforkLakeBridge() {
     }, []);
     const contacts = useMemo(buildContactMatrices, []);
     const contactRef = useRef<THREE.InstancedMesh>(null!);
-    useFrame((state) => {
-        const t = state.clock.elapsedTime;
-        waterMaterial.uniforms.uTime.value = t;
+    useFrame(() => {
+        const t = sim.t;
+        captureFrame.current++; lakeClock.current = t;
+        (reflector.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
         shoreMaterial.uniforms.uTime.value = t;
         contactMaterial.uniforms.uTime.value = t;
+        causticsMaterial.uniforms.uTime.value = t;
+        if (Math.hypot(camera.position.x - PARK_POND.cx, camera.position.z - PARK_POND.cz) < 90 && t - lastRefractionTime.current >= 0.5) {
+            const previousTarget = gl.getRenderTarget(), previousAutoClear = gl.autoClear;
+            const previousXr = gl.xr.enabled, previousShadows = gl.shadowMap.autoUpdate, wasVisible = reflector.visible;
+            try {
+                reflector.visible = false; gl.xr.enabled = false; gl.shadowMap.autoUpdate = false; gl.autoClear = true;
+                gl.setRenderTarget(refractionTarget); gl.clear(true, true, true); gl.render(scene, camera);
+            } finally {
+                gl.setRenderTarget(previousTarget); gl.autoClear = previousAutoClear;
+                gl.xr.enabled = previousXr; gl.shadowMap.autoUpdate = previousShadows; reflector.visible = wasVisible;
+            }
+            lastRefractionTime.current = t; lastRefractionFrame.current = captureFrame.current;
+        }
         if (contactRef.current && !contactRef.current.userData.matricesReady) {
             contacts.forEach((matrix, i) => contactRef.current.setMatrixAt(i, matrix));
             contactRef.current.count = contacts.length;
@@ -492,7 +557,7 @@ export function PolyforkLakeBridge() {
     });
     useEffect(() => {
         if (DBG) (window as any).__polyforkLake = {
-            water: WATER_ASSET.id, bridge: BRIDGE_ASSET.id,
+            water: WATER_ASSET.id, bridge: BRIDGE_ASSET.id, reflection: '256x128 throttled planar scene capture', refraction: '256x128 distorted screen-space scene capture', caustics: 'animated lakebed shader', lakeDepth: 3.8,
             subdividedWaterTriangles: (waterGeometry.getAttribute('position').count / 3),
             bridgeModules: bridgePlacements.length,
             contactFoamPatches: contacts.length,
@@ -504,21 +569,21 @@ export function PolyforkLakeBridge() {
             bridgeRampLength: PARK_BRIDGE.rampLength,
         };
         if (DBG) (window as any).__bridgeSurfaceAt = bridgeSurfaceAt;
+        if (DBG) (window as any).__polyforkLakeSurface = reflector;
+        if (DBG) (window as any).__polyforkLakeTargets = { renderer: gl, refraction: refractionTarget, reflection: reflector.getRenderTarget(), frame: captureFrame, reflectionFrame: lastReflectionFrame };
     }, [bridgePlacements.length, contacts.length, waterGeometry]);
 
-    const waterScale: [number, number, number] = [
-        (PARK_POND.rx * 2) / Math.max(0.01, waterModel.dimensions.x),
-        1,
-        (PARK_POND.rz * 2) / Math.max(0.01, waterModel.dimensions.z),
-    ];
+
 
     return <group name="polyfork-lake-and-bridge">
+        <primitive object={reflector} dispose={null} />
         <mesh
-            name="polyfork-water-blob-lake"
-            position={[PARK_POND.cx, PARK_POND_Y, PARK_POND.cz]}
-            scale={waterScale}
-            geometry={waterGeometry}
-            material={waterMaterial}
+            name="polyfork-lakebed-caustics"
+            position={[PARK_POND.cx, parkH(PARK_POND.cx, PARK_POND.cz) + 0.08, PARK_POND.cz]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            scale={[PARK_POND.rx * 0.94, PARK_POND.rz * 0.94, 1]}
+            geometry={causticsGeometry}
+            material={causticsMaterial}
             frustumCulled={false}
         />
         <mesh

@@ -20,8 +20,8 @@ import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, bridgeSurfaceAt, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
-import { ParkGround, PolyforkBuildings, PolyforkForest, PolyforkLakeBridge } from './polyforkEnvironment';
+import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
+import { ParkGround, PolyforkBuildings, PolyforkForest, PolyforkLakeBridge, createVegetationPlacements } from './polyforkEnvironment';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -351,16 +351,16 @@ function Underwater({ sim }: { sim: Sim }) {
         kelp.current.instanceMatrix.needsUpdate = true;
     }, []);
     useFrame((st) => {
-        const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2], inBay = hz < WATER_Z + 6, under = inBay && st.camera.position.y < WATER_Y + 1.5 && sim.mode === 'play';
+        const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2], inBay = hz < WATER_Z + 6, inLake = isLakeWater(hx, hz), inWater = inBay || inLake, surfaceY = inLake ? waterSurfaceAt(hx, hz, t) : WATER_Y, under = inWater && st.camera.position.y < surfaceY + 1.5 && sim.mode === 'play';
         kelpMat.uniforms.uTime.value = t; rayMat.uniforms.uTime.value = t;
-        kelp.current.visible = inBay; const cu = under && st.camera.position.y < WATER_Y - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // shafts and bubbles only once the camera is really below the surface (they showed as thin dark dashes at the horizon just above water)
-        if (!inBay) return;
+        kelp.current.visible = inBay; const cu = under && st.camera.position.y < surfaceY - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // shafts and bubbles only once the camera is really below either water surface
+        if (!inWater) return;
         if (under) {
             const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, B = 7;   // bubbles: unit-box seeds wrapped around the hero, rising with a current drift
             const cur = Math.sin(t * 0.3) * 0.5;
-            for (let i = 0; i < pa.count; i++) { const sx = (i * 0.618) % 1, sz = (i * 0.382 + 0.2) % 1, sp = 0.5 + ((i * 0.137) % 1) * 0.9; const ry = ((((i * 0.29) % 1) + t * 0.06 * sp) % 1); pa.setXYZ(i, hx + (sx - 0.5) * B * 2 + cur * ry * 4, WATER_Y - 6 + ry * 6 + Math.min(0, hy + 4) * 0.0, hz + (sz - 0.5) * B * 2 + Math.sin(t * 0.8 + i) * 0.1); }
+            for (let i = 0; i < pa.count; i++) { const sx = (i * 0.618) % 1, sz = (i * 0.382 + 0.2) % 1, sp = 0.5 + ((i * 0.137) % 1) * 0.9; const ry = ((((i * 0.29) % 1) + t * 0.06 * sp) % 1); pa.setXYZ(i, hx + (sx - 0.5) * B * 2 + cur * ry * 4, surfaceY - 6 + ry * 6 + Math.min(0, hy + 4) * 0.0, hz + (sz - 0.5) * B * 2 + Math.sin(t * 0.8 + i) * 0.1); }
             pa.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
-            rays.current.position.set(hx, WATER_Y + 0.1, hz); rays.current.rotation.y = 0;
+            rays.current.position.set(hx, surfaceY + 0.1, hz); rays.current.rotation.y = 0;
         }
     });
     return <group>
@@ -450,6 +450,80 @@ function Forest({ sim }: { sim: Sim }) {
             <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
         </group>)}
         <instancedMesh ref={bush} args={[undefined, undefined, 70]} frustumCulled={false}><primitive object={bushGeo} attach="geometry" /><meshLambertMaterial map={bushTex} color="#dce1cd" emissive="#182510" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
+    </group>;
+}
+
+function PolyforkDetailedFoliage() {
+    const placements = useMemo(createVegetationPlacements, []);
+    const [leafTex, pineTex, bushTex] = useMemo(() => {
+        const loader = new THREE.TextureLoader();
+        const mk = (url: string) => { const t = loader.load(url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+        return [mk('/spray145.png'), mk(PINE_URL), mk('/shrub134.png')];
+    }, []);
+    const groups = useMemo(() => [
+        { key: 'oak', ids: ['broadleaf-oak-997c22'], geometry: treeGeo('broad', 11, 250, 1.5).leaves, fit: [0.88, 0.58, 0.88], color: '#ffffff', conifer: false },
+        { key: 'birch', ids: ['birch-tree-181b33'], geometry: treeGeo('poplar', 1234, 220, 1.45).leaves, fit: [0.48, 0.74, 0.48], color: '#ffffff', conifer: false },
+        { key: 'tall-pine', ids: ['tall-pine-tree-ab4108'], geometry: coniferGeo('pine', 31, 5, 3, 1.12).leaves, fit: [0.68, 0.78, 0.68], color: '#f2ffe9', conifer: true },
+        { key: 'young-pine', ids: ['young-pine-0d7695'], geometry: coniferGeo('spruce', 57, 4, 2, 1.12).leaves, fit: [0.62, 0.43, 0.62], color: '#f2ffe9', conifer: true },
+        { key: 'maple', ids: ['maple-tree-65fa12'], geometry: treeGeo('umbrella', 77, 230, 1.45).leaves, fit: [0.82, 0.58, 0.82], color: '#ffffff', conifer: false },
+        { key: 'cherry', ids: ['cherry-tree-a710a9'], geometry: treeGeo('broad', 19, 230, 1.45).leaves, fit: [0.70, 0.52, 0.70], color: '#ffffff', conifer: false },
+        { key: 'palm', ids: ['palm-tree-a307da'], geometry: treeGeo('umbrella', 77, 170, 0.9).leaves, fit: [0.52, 0.48, 0.52], color: '#efffe8', conifer: false },
+        { key: 'street-tree', ids: ['street-tree-0d33f3'], geometry: treeGeo('broad', 31, 200, 1.45).leaves, fit: [0.72, 0.55, 0.72], color: '#ffffff', conifer: false },
+        { key: 'cherry-blossom', ids: ['cherry-blossom-tree-3f7ab7'], geometry: treeGeo('broad', 73, 250, 1.5).leaves, fit: [0.78, 0.52, 0.78], color: '#f3a2bf', conifer: false },
+    ], []);
+    const materials = useMemo(() => groups.map((g) => {
+        const m = new THREE.MeshLambertMaterial({ map: g.conifer ? pineTex : leafTex, color: g.color, vertexColors: true, emissive: '#426439', alphaTest: 0.5, side: THREE.DoubleSide });
+        m.onBeforeCompile = leafWindShader;
+        return m;
+    }), [groups, leafTex, pineTex]);
+    const bushGeo = useMemo(() => {
+        const gs: THREE.BufferGeometry[] = []; let r = 73; const rnd = () => (r = r * 16807 % 2147483647) / 2147483647;
+        const boxes = [[224, 0, 357, 184], [102, 205, 248, 396], [360, 195, 482, 372], [371, 59, 459, 181]];
+        for (let i = 0; i < 48; i++) {
+            const bx = boxes[i % boxes.length], w = (bx[2] - bx[0]) / 512, h = (bx[3] - bx[1]) / 512, len = 0.5 + rnd() * 0.5;
+            const g = new THREE.PlaneGeometry(len * w / h, len); g.translate(0, len / 2, 0);
+            const uv = g.attributes.uv; for (let k = 0; k < 4; k++) uv.setXY(k, bx[0] / 512 + uv.getX(k) * w, 1 - bx[3] / 512 + uv.getY(k) * h);
+            const a = i * 2.39996, rad = 0.1 + 0.6 * Math.sqrt(rnd()); g.rotateZ((rnd() - 0.5) * 1.3); g.rotateY(a); g.translate(Math.cos(a) * rad, 0.02 + rnd() * 0.65, Math.sin(a) * rad); gs.push(g);
+        }
+        return mergeGeometries(gs, false)!;
+    }, []);
+    const bushMaterial = useMemo(() => {
+        const m = new THREE.MeshLambertMaterial({ map: bushTex, color: '#dce1cd', emissive: '#182510', alphaTest: 0.5, side: THREE.DoubleSide });
+        m.onBeforeCompile = leafWindShader;
+        return m;
+    }, [bushTex]);
+    const refs = useRef<Record<string, THREE.InstancedMesh | null>>({});
+    useEffect(() => {
+        const object = new THREE.Object3D();
+        groups.forEach((g) => {
+            const mesh = refs.current[g.key]; if (!mesh) return;
+            const list = g.ids.flatMap((id) => placements.trees[id] || []);
+            list.forEach((p, i) => { object.position.set(p.x, p.y, p.z); object.rotation.set(0, p.yaw, 0); object.scale.set(p.sx * g.fit[0], p.sy * g.fit[1], p.sz * g.fit[2]); object.updateMatrix(); mesh.setMatrixAt(i, object.matrix); });
+            mesh.count = list.length; mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
+            mesh.userData.polyforkFoliageSpecies = g.key; mesh.userData.detailedLeafInstances = list.length;
+        });
+        const bush = refs.current.bush;
+        if (bush) {
+            placements.bushes.forEach((p, i) => { object.position.set(p.x, p.y, p.z); object.rotation.set(0, p.yaw, 0); object.scale.set(p.sx, p.sy, p.sz); object.updateMatrix(); bush.setMatrixAt(i, object.matrix); });
+            bush.count = placements.bushes.length; bush.instanceMatrix.needsUpdate = true; bush.computeBoundingSphere();
+        }
+    }, [groups, placements]);
+    useFrame((state) => {
+        treeWindTime.value = state.clock.elapsedTime;
+        materials.forEach((m) => m.emissive.set('#426439').multiplyScalar(0.12 + 0.88 * TOD.day.value));
+        bushMaterial.emissive.set('#182510').multiplyScalar(0.12 + 0.88 * TOD.day.value);
+    });
+    useEffect(() => {
+        if (DBG) (window as any).__polyforkDetailedFoliage = {
+            legacyStyleLeafMeshes: groups.length,
+            leavesBySpecies: Object.fromEntries(groups.map((g) => [g.key, (placements.trees[g.ids[0]] || []).length])),
+            shrubLeafCards: 48, bushes: placements.bushes.length,
+            cherryBlossomTint: '#f3a2bf', windSway: true,
+        };
+    }, [groups, placements]);
+    return <group name="polyfork-detailed-foliage">
+        {groups.map((g, i) => <instancedMesh key={g.key} name={`polyfork-detail-leaves-${g.key}`} ref={(m) => { refs.current[g.key] = m; }} args={[g.geometry, materials[i], g.ids.reduce((n, id) => n + (placements.trees[id] || []).length, 0)]} frustumCulled={false} />)}
+        <instancedMesh name="polyfork-detail-shrub-leaves" ref={(m) => { refs.current.bush = m; }} args={[bushGeo, bushMaterial, placements.bushes.length]} frustumCulled={false} />
     </group>;
 }
 
@@ -916,6 +990,8 @@ vec2 wg(vec2 p, float t){
 function waveH(x: number, z: number, t: number) {
     return Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035;
 }
+function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
+function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
@@ -1257,7 +1333,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const cp = camera as THREE.PerspectiveCamera;
         // Near-clip-aware waterline: retain the nearby underside instead of cutting a hole through it.
         // Restore the ordinary land frustum away from the bay surface to preserve depth precision.
-        const nearWater = camera.position.z < WATER_Z + 2 && Math.abs(camera.position.y - WATER_Y) < 1.5;
+        const nearWater = (camera.position.z < WATER_Z + 2 && Math.abs(camera.position.y - WATER_Y) < 1.5) || (isLakeWater(camera.position.x, camera.position.z) && Math.abs(camera.position.y - waterSurfaceAt(camera.position.x, camera.position.z, sim.t)) < 1.5);
         const nearTarget = nearWater ? 0.05 : 0.5;
         if (cp.near !== nearTarget) { cp.near = nearTarget; cp.updateProjectionMatrix(); }
         const targetFov = 62 + Math.min(14, speed * 0.25) + fx.fov;
@@ -1265,13 +1341,13 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         {   // water: animate, and split view (waterline across the screen when the camera is at the surface)
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
             const uw = document.getElementById('uw');
-            const inBay = camera.position.z < WATER_Z + 2;
-            const dy = camera.position.y - WATER_Y; const under = inBay && dy < 0; UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
+            const inBay = camera.position.z < WATER_Z + 2, inLake = isLakeWater(camera.position.x, camera.position.z), inWater = inBay || inLake;
+            const surfaceY = inLake ? waterSurfaceAt(camera.position.x, camera.position.z, sim.t) : WATER_Y; const dy = camera.position.y - surfaceY; const under = inWater && dy < 0; UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
             if (uw) {
-                if (inBay && dy < 1.2 && dy > -2.2) {
+                if (inWater && dy < 1.2 && dy > -2.2) {
                     // project the waterline a little ahead of the camera to find where the surface cuts the screen
                     camera.getWorldDirection(_wd); const hx = _wd.x, hz = _wd.z, hl = Math.hypot(hx, hz) || 1;
-                    const ax = camera.position.x + hx / hl * 11, az = camera.position.z + hz / hl * 11; _wp.set(ax, WATER_Y + waveH(ax, az, sim.t), az).project(camera);
+                    const ax = camera.position.x + hx / hl * 11, az = camera.position.z + hz / hl * 11; _wp.set(ax, waterRenderY(ax, az, sim.t), az).project(camera);
                     const yPct = Math.max(0, Math.min(100, (1 - (_wp.y * 0.5 + 0.5)) * 100));
                     { const mk = `linear-gradient(180deg, transparent ${Math.max(0, yPct - 3)}%, #000 ${Math.min(100, yPct + 7)}%)`; uw.style.maskImage = mk; (uw.style as any).webkitMaskImage = mk; } uw.style.opacity = '1'; uw.dataset.split = '1';   // waterline tint edge fades over about 10% of the screen instead of a hard clip
                 } else { uw.style.maskImage = 'none'; (uw.style as any).webkitMaskImage = 'none'; uw.style.opacity = under ? '1' : '0'; uw.dataset.split = '0'; }
@@ -1285,9 +1361,9 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const wl = !!sim.wall;
         if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
         const sw2 = sim.swim;
-        { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > -3) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
+        { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > waterSurfaceAt(p[0], p[2], sim.t) - 2.0) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
         { // original curved two-arm wake: short position history keeps the trail behind a turning swimmer
-            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surface = sim.swim && !sim.dive && p[1]>-2.1;
+            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surfaceY = waterSurfaceAt(p[0],p[2],sim.t), surface = sim.swim && !sim.dive && p[1] > surfaceY - 1.1;
             const target = surface && sp>0.6 ? Math.min(0.58,sp*0.10) : 0;
             wakeStrength.current += (target-wakeStrength.current)*Math.min(1,dt*(target>0?6:3));
             const trail = wakeTrail.current;
@@ -1300,18 +1376,21 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 for(let side=0;side<2;side++)for(let j=0;j<=24;j++){const t=j/24,sgn=side?1:-1,fi=t*(trail.length-1),ii=Math.floor(fi),ff=fi-ii,a=trail[ii],b=trail[Math.min(ii+1,trail.length-1)],prev=trail[Math.max(0,ii-1)],next=trail[Math.min(trail.length-1,ii+1)];
                     let dx=prev.x-next.x,dz=prev.z-next.z;const ln=Math.hypot(dx,dz);if(ln>0.02){dx/=ln;dz/=ln;}else{dx=Math.sin(sim.ang);dz=Math.cos(sim.ang);}
                     const cx=a.x+(b.x-a.x)*ff-dx*0.8,cz=a.z+(b.z-a.z)*ff-dz*0.8,spread=0.55+t*1.7,width=0.06+t*0.16;
-                    for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,WATER_Y+waveH(x,z,sim.t)+0.055,z);}}
+                    for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,waterRenderY(x,z,sim.t)+0.055,z);}}
                 pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current*THREE.MathUtils.smoothstep(sim.t-wakeBorn.current,0.1,0.65);}}
         }
-        { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (rg) { const on = sim.swim && p[1] > -2.6; rg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
-        if (sw2) { { const kw = Math.max(0, Math.min(1, (p[1] + 3) / 2.3)), wv = waveH(p[0], p[2], sim.t) * kw, sa2 = sim as any; sa2.swW = (sa2.swW === undefined ? wv : sa2.swW + (wv - sa2.swW) * Math.min(1, dt * 10)); h.position.y = p[1] - 1.7 + sa2.swW; } h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
+        { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (rg) { const surfaceY=waterSurfaceAt(p[0],p[2],sim.t), on = sim.swim && p[1] > surfaceY - 1.6; rg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
+        if (sw2) { { const baseY=waterRenderY(p[0],p[2],sim.t)-waveAtWater(p[0],p[2],sim.t), kw = Math.max(0, Math.min(1, (p[1] - baseY + 2) / 2.3)), wv = waveAtWater(p[0], p[2], sim.t) * kw, sa2 = sim as any; sa2.swW = (sa2.swW === undefined ? wv : sa2.swW + (wv - sa2.swW) * Math.min(1, dt * 10)); h.position.y = p[1] - 1.7 + sa2.swW; } h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
         const sa0 = sim as any; sa0.gB = (sa0.gB || 0) + ((sim.glideOn ? 1 : 0) - (sa0.gB || 0)) * Math.min(1, dt * 3.5);   // glide pose blend (slow in, quick out)
         const lean = (sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.32 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - sa0.gB * 0.8) + sa0.gB * 1.12;
-        h.children[0].rotation.x = lean;
-        { const c0 = h.children[0], sb = sim as any; c0.rotation.order = 'ZXY'; const yr = sb.bYaw === undefined ? 0 : ((sim.yaw - sb.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3); sb.bYaw = sim.yaw; sb.bR = (sb.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * sa0.gB - (sb.bR || 0)) * Math.min(1, dt * 4); c0.rotation.z = sb.bR; }   // glide banking: roll into the turn, eased
+        const shadowWrapper = h.children[0] as THREE.Object3D, shadowBody = rig.root.children[0] as THREE.Object3D;
+        if (sw2) { shadowWrapper.rotation.set(0, 0, 0); shadowBody.rotation.set(0, 0, 0); shadowBody.rotation.order = 'ZXY'; }
+        else { shadowWrapper.rotation.x = lean; shadowBody.rotation.set(0, 0, 0); }
+        { const c0 = shadowWrapper, sb = sim as any; c0.rotation.order = 'ZXY'; const yr = sb.bYaw === undefined ? 0 : ((sim.yaw - sb.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3); sb.bYaw = sim.yaw; sb.bR = (sb.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * sa0.gB - (sb.bR || 0)) * Math.min(1, dt * 4); c0.rotation.z = sb.bR; }   // glide banking: roll into the turn, eased
         if (sa0.gB > 0.01) { const lc = 0.9 * sa0.gB; h.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; h.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; h.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
         const shadowAnimation = animateHeroBones(sim, rig, dt, clipSt.current, undefined, true);
-        if (DBG) (window as any).__shadowAnimation = shadowAnimation;
+        if (sw2) { shadowWrapper.rotation.x = lean; shadowBody.rotation.set(0, 0, 0); }
+        if (DBG) { (window as any).__shadowAnimation = shadowAnimation; (window as any).__shadowSwimOrientation = { wrapperPitch: shadowWrapper.rotation.x, bodyPitch: shadowBody.rotation.x, rootYaw: h.rotation.y, simYaw: sim.ang, lean, clipWeight: clipSt.current.w }; }
         if (!sim.swim && sim.ground && !wl && (clipSt.current.key === 'run' || clipSt.current.key === 'idle')) {   // plant the lowest foot vertex on the street (measured from the skinned mesh, replaces the fixed run drop)
             h.updateMatrixWorld(true);
             let mn = 1e9;
@@ -1453,7 +1532,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <React.Suspense fallback={null}>
             <PolyforkBuildings />
             <PolyforkForest />
-            <PolyforkLakeBridge />
+            <PolyforkDetailedFoliage />
+            <PolyforkLakeBridge sim={sim} />
         </React.Suspense>
         <FlyingCars />
         <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} />

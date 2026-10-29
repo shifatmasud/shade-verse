@@ -2,6 +2,20 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## [Released] - Restored lake/city district and Shadow swim orientation
+### Changed
+- Restored the legacy procedural buildings as the central old city and placed Polyfork building families around it as the outer district; the shared city traversal/collision routes and rooftop boss arena remain intact. Removed above-ground subway building instances and placed four small entrances below soil level.
+- Kept Polyfork tree and shrub silhouettes while restoring full layered legacy-style foliage across nine recognizable tree species and bushes: 266 trees, 54 bushes, nine species-specific leaf overlays, and 48 layered shrub cards. The old lake and bridge crossing remain the only restored legacy environment area.
+- Rebuilt the lake as a 3.8 m basin under the existing bridge and ramps. Its broad calm wave displacement uses the same simulation clock and wave function as buoyancy; swimmers retain buoyancy, drag, shallow dive/floor limits, and waterline transitions. The mobile water shader uses Schlick Fresnel reflection, screen-space Snell-direction refraction with depth absorption, animated caustics, God rays, and shoreline/object-contact foam through throttled 256×128 scene captures.
+- Fixed Shadow's swimming orientation by applying the swim lean to the rig wrapper after swim-clip sampling. The locked Shadow model, controls, HUD, ordinary melee, landscape-only mode, and Ghost swim implementation remain unchanged.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `PORT=4174 node test/environment.mjs`, `PORT=4174 node test/lake-swim-shadow.mjs`, and `PORT=4174 node test/water.mjs` pass. The phone-landscape WebGL2/ANGLE SwiftShader checks load 27/27 Polyfork GLBs, confirm 132 outer-district building placements, legacy center, four underground entrances, all 266 trees/54 bushes and detailed foliage overlays, lake reflection/refraction targets, and grounded bridge deck/ramps with zero browser errors; the existing ocean swim/exit regression still passes.
+- The lake swim regression verifies entry, buoyancy (starting Y −6.0 to about −5.04), drag (horizontal speed 6 to about 2.90), a live Shadow swim clip, wrapper pitch 1.45 with neutral skinned-body pitch, unchanged Ghost source against starting commit `4696dca`, underwater tint, and an updating reflection target.
+- Matched 844×390 landscape captures: `art/environment/shot-before-lake-city-water-mobile-landscape.png`, `art/environment/shot-after-lake-bridge-polyfork-mobile-landscape.png`, `art/environment/shot-after-lake-underwater-mobile-landscape.png`, and `art/environment/shot-after-shadow-swim-mobile-landscape.png`. Physical-device appearance/performance remains untested.
+- Scoped to the private mirror's `main`; the original repository remains untouched. The push is intended to trigger the existing mirror Vercel deployment.
+### References
+- The user-provided lake/bridge visual targets, Polyfork asset/license notes, and water shader/physics references are recorded in `docs/REFERENCES.md`; no third-party shader code or game assets were copied.
+
 ## [Released] - Pedestrian hand cleanup
 ### Changed
 - Added mirrored low-poly palms, four rounded finger forms, and attached thumbs to NPC pedestrian instances. A pedestrian-only gait mask keeps wrist/hand vertices on the arm swing instead of the leg swing; the new 424 triangles per robot are merged into the existing instanced mesh.
@@ -293,3 +307,4 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 ### Added
 - Core WebGL2 / Three.js / R3F game engine with Vite.
 - Rooftop pendulum swinging physics, collectibles, daytime/sunset palette, and headless assertion harness.
+- The user-provided lake/bridge visual targets, Polyfork asset/license notes, and water shader/physics references are recorded in `docs/REFERENCES.md`; Polyfork models are used under its license, and no third-party water or shader code was copied.

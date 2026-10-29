@@ -8,10 +8,14 @@ export const FOG: V3 = [0.84, 0.77, 0.74];
 const G = 27;
 export const JUMP_V = 16;
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
-// valley: the park floor sinks into a gentle rolling bowl; zero at the park edge so it meets street level, about -5 m in the middle
-export function parkH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
 export const PARK_POND = { cx: 180, cz: 100, rx: 16, rz: 11 };
-export const PARK_POND_Y = parkH(PARK_POND.cx, PARK_POND.cz) + 0.55;
+// Valley topography remains unchanged outside the pond; the pond itself is a deeper bowl for swimming and underwater light.
+function parkBaseH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
+function pondBowlWeight(x: number, z: number) { const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz, r = Math.sqrt(dx * dx + dz * dz); const t = Math.max(0, Math.min(1, (1 - r) / 0.34)); return t * t * (3 - 2 * t); }
+export function parkH(x: number, z: number): number { return parkBaseH(x, z) - 3.8 * pondBowlWeight(x, z); }
+export function isLegacyCityCore(x: number, z: number) { return Math.abs(x) <= 120 && Math.abs(z) <= 120; }
+// Keep the old waterline and bridge elevation; only the lake bed is lowered.
+export const PARK_POND_Y = parkBaseH(PARK_POND.cx, PARK_POND.cz) + 0.55;
 const bridgeYaw = -Math.atan2(0.857, 0.514); // follows the existing diagonal park trail
 export const PARK_BRIDGE = {
     x: PARK_POND.cx, z: PARK_POND.cz, yaw: bridgeYaw,
@@ -30,6 +34,12 @@ export function bridgeSurfaceAt(x: number, z: number): number | null {
     const t = end / PARK_BRIDGE.rampLength;
     return PARK_BRIDGE.deckY * (1 - t) + parkH(x, z) * t;
 }
+export function isLakeWater(x: number, z: number) {
+    const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz;
+    return dx * dx + dz * dz < 0.92 && bridgeSurfaceAt(x, z) === null;
+}
+export function lakeWaveH(x: number, z: number, t: number) { return Math.sin(x * 0.11 + z * 0.08 + t * 0.42) * 0.09 + Math.sin(x * 0.21 - z * 0.16 - t * 0.31) * 0.035; }
+export function waterSurfaceAt(x: number, z: number, t = 0) { return isLakeWater(x, z) ? PARK_POND_Y + lakeWaveH(x, z, t) : WATER_Y; }
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 
 let seedv = 1337;
@@ -62,7 +72,7 @@ function buildWorld() {
     for (let i = 0; i < N; i++) for (let j = 2; j < N; j++) {
         const cx = (i - mi) * CELL, cz = (j - mi) * CELL;
         if (cx > PARK.x0 && cx < PARK.x1 && cz > PARK.z0 && cz < PARK.z1) continue; // forest park block
-        hideProceduralBuildingVisuals = true;
+        hideProceduralBuildingVisuals = !isLegacyCityCore(cx, cz);
         const blockStart=[data.length,idx.length,blds.length];
         const dc = Math.hypot(cx, cz) / HALF;
         const w = 20 + rnd() * 8, d = 20 + rnd() * 8;
@@ -401,15 +411,17 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
     s.wallT = Math.max(0, s.wallT - dt);
-    if (!s.web) { const zone = p[2] < WATER_Z; (s as any).leapT = Math.max(0, ((s as any).leapT || 0) - dt); if (zone && p[1] < WATER_Y + 0.9 && !((s as any).leapT > 0)) s.swim = true; else if (!zone || p[1] > WATER_Y + 1.4) { s.swim = false; s.dive = false; } } else { s.swim = false; s.dive = false; }
+    if (!s.web) { const ocean = p[2] < WATER_Z, lake = isLakeWater(p[0], p[2]), zone = ocean || lake, surface = waterSurfaceAt(p[0], p[2], s.t); (s as any).leapT = Math.max(0, ((s as any).leapT || 0) - dt); if (zone && p[1] < surface + 0.9 && !((s as any).leapT > 0)) s.swim = true; else if (!zone || p[1] > surface + 1.4) { s.swim = false; s.dive = false; } } else { s.swim = false; s.dive = false; }
     if (s.swim) { s.wall = null; s.ground = false; if (input.dodgeQ) { input.dodgeQ = false; s.dive = !s.dive; } }
     // Manual pitch is retained on walls; no forced leveling.
     if (s.swim) {
-        const sp = s.dive ? 7 : 9.5, a = Math.min(1, dt * 4);
+        const inLake = isLakeWater(p[0], p[2]), surface = waterSurfaceAt(p[0], p[2], s.t);
+        const lakeDepth = inLake ? Math.max(1.2, surface - parkH(p[0], p[2]) - 1.05) : 5;
+        const sp = s.dive ? (inLake ? 5.8 : 7) : (inLake ? 7.2 : 9.5), a = Math.min(1, dt * (inLake ? 3.2 : 4));
         const cur = s.dive ? Math.sin(s.t * 0.3) * 0.9 : 0;   // underwater current: gentle sideways drift while diving (same phase as the bubble drift)
         v[0] += (wx * sp + cur - v[0]) * a; v[2] += (wz * sp - v[2]) * a;
-        const target = s.dive ? -5 : WATER_Y + 0.25;
-        v[1] += ((target - p[1]) * 3 - v[1]) * Math.min(1, dt * 5);
+        const target = s.dive ? (inLake ? Math.max(parkH(p[0], p[2]) + 1.05, surface - lakeDepth) : -5) : surface + 0.25;
+        v[1] += ((target - p[1]) * 3 - v[1]) * Math.min(1, dt * (inLake ? 5.5 : 5));
         s.runPhase += Math.hypot(v[0], v[2]) * dt * 0.8;
         if (p[2] > WATER_Z - 1.2 && wz > 0.3 && p[1] > WATER_Y - 2.5) { p[1] = 1; p[2] = WATER_Z + 1.3; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; }
     } else if (s.wall && !s.web) {
@@ -468,7 +480,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
-    if (s.swim && p[1] < SEABED + 1) { p[1] = SEABED + 1; if (v[1] < 0) v[1] = 0; }
+    if (s.swim) { const floor = isLakeWater(p[0], p[2]) ? parkH(p[0], p[2]) + 1.05 : SEABED + 1; if (p[1] < floor) { p[1] = floor; if (v[1] < 0) v[1] = 0; } }
     const parkFloor = parkH(p[0], p[2]), bridgeFloor = bridgeSurfaceAt(p[0], p[2]);
     const gy = 1.0 + Math.max(parkFloor, bridgeFloor ?? -Infinity);
     if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes

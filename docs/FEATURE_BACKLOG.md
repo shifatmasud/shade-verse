@@ -1,8 +1,8 @@
 # Feature Backlog & Status Inventory
 
-Total requests extracted from project history: 70.
+Total requests extracted from project history: 71.
 
-## Group 1: Implemented in Export & Verified in Repository (66 items)
+## Group 1: Implemented in Export & Verified in Repository (67 items)
 1. Browser 3D game engine (React 18, Three.js, R3F, Framer Motion, GSAP, WebGL2, Vite)
 2. Version control via GitHub (shifatmasud/web-swinger-3d)
 3. Deployment on Vercel (https://web-swinger-3d-mirror.vercel.app/)
@@ -69,6 +69,7 @@ Total requests extracted from project history: 70.
 64. Giant boss (Shadow's existing human body at 3× scale, now covered in bulky bone-attached red armor with visible red eyes; ordinary melee locked, Shadow Snare allowed; fixed rooftop arena and red beacon preserved) - implemented in the private mirror's `main` with Git-triggered deployment; physical devices remain untested
 69. 3D fire KO effect (procedural world-space emissive burst on enemy-down; fixed pooled instances and focused 844×390 regression) - implemented in the private mirror's `main`; physical devices remain untested
 70. Pedestrian hand cleanup (mirrored palms/fingers on NPCs; hands follow the arm gait; player Shadow, enemy defaults, and crowd placement unchanged) - implemented in the private mirror's `main`; focused 844×390 regression passes; physical devices remain untested
+71. Restore the legacy lake/central city with a surrounding Polyfork district; add layered detailed leaves to every tree/bush; place subway entrances below soil; implement mobile-scale transparent lake optics and lake swimming; fix Shadow-only swim orientation - implemented in the private mirror's `main`; focused 844×390 WebGL2 checks pass; physical devices remain untested
 
 ## Group 2: Still Queued / In Progress (4 items)
 65. Detailed flying cars with collision pass and web anchor towing - queued

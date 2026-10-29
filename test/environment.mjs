@@ -18,13 +18,15 @@ try {
     await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
     await new Promise((resolve) => setTimeout(resolve, 900));
     await page.evaluate(() => window.__game.start());
-    await page.waitForFunction(() => window.__polyforkBuildings && window.__polyforkVegetation && window.__polyforkLake && window.__polyforkGrass && window.__bridgeSurfaceAt, { timeout: 30000 });
+    await page.waitForFunction(() => window.__polyforkBuildings && window.__polyforkVegetation && window.__polyforkDetailedFoliage && window.__polyforkLake && window.__polyforkLakeTargets && window.__bridgeSurfaceAt, { timeout: 30000 });
 
     const placementEvidence = await page.evaluate(() => {
         const lake = window.__polyforkLake;
         const vegetation = window.__polyforkVegetation;
         const buildings = window.__polyforkBuildings;
         const grass = window.__polyforkGrass;
+        const foliage = window.__polyforkDetailedFoliage;
+        const targets = window.__polyforkLakeTargets;
         const bridgeSurfaceAt = window.__bridgeSurfaceAt;
         const [cx, cz] = lake.bridgeCenter;
         const [ax, az] = lake.bridgeAxis;
@@ -32,16 +34,26 @@ try {
         const rampZ = cz + az * (lake.bridgeHalfLength + lake.bridgeRampLength * 0.5);
         const rampEndX = cx + ax * (lake.bridgeHalfLength + lake.bridgeRampLength);
         const rampEndZ = cz + az * (lake.bridgeHalfLength + lake.bridgeRampLength);
-        const sceneCamera = [cx - 24, 12, cz + 26, cx, -4.5, cz];
+        const sceneCamera = [cx - 4, 22, cz + 10, cx, -4.5, cz];
         window.__camOv = sceneCamera;
+        const lakeOptics = {
+            foliage,
+            reflectionTarget: [targets.reflection.width, targets.reflection.height],
+            refractionTarget: [targets.refraction.width, targets.refraction.height],
+            reflectionUpdated: targets.reflectionFrame.current > 0,
+            transparentOptics: ['tDiffuse', 'uRefraction', 'uPondRadii'].every((key) => Object.hasOwn(window.__polyforkLakeSurface.material.uniforms, key)),
+            debugReflectOff: window.__polyforkLakeSurface.material.uniforms.uDebugReflect.value === 0,
+        };
         return {
-            buildings, vegetation, lake, grass,
+            buildings, vegetation, lake, grass, lakeOptics,
             deckProbe: bridgeSurfaceAt(cx, cz),
             rampMidProbe: bridgeSurfaceAt(rampX, rampZ),
             rampEndProbe: bridgeSurfaceAt(rampEndX, rampEndZ),
             sceneCamera,
         };
     });
+    await page.waitForFunction(() => window.__polyforkLakeTargets.reflectionFrame.current > 0, { timeout: 30000 });
+    placementEvidence.lakeOptics.reflectionUpdated = true;
 
     const requiredAssetIds = [
         'brick-tenement-5257e9', 'brownstone-row-house-e58392', 'narrow-walk-up-71d077', 'cast-iron-loft-d05908',
@@ -57,6 +69,9 @@ try {
     assert(placementEvidence.lake.subdividedWaterTriangles >= 1000, 'Lake water mesh was not subdivided for smooth waves');
     assert(placementEvidence.lake.bridgeModules >= 4, 'Footbridge does not contain enough connected Polyfork modules');
     assert(placementEvidence.lake.contactFoamPatches >= 8, 'Shoreline/bridge contact foam is missing');
+    assert(placementEvidence.lakeOptics.foliage.legacyStyleLeafMeshes === 9 && placementEvidence.lakeOptics.foliage.bushes >= 40, 'Legacy detailed leaf/shrub overlays are missing');
+    assert(placementEvidence.lakeOptics.reflectionTarget[0] <= 256 && placementEvidence.lakeOptics.refractionTarget[0] <= 256 && placementEvidence.lakeOptics.reflectionUpdated, 'Mobile lake optics are not updating at low resolution');
+    assert(placementEvidence.lakeOptics.transparentOptics && placementEvidence.lakeOptics.debugReflectOff, 'Fresnel/refraction water optics are not enabled for normal gameplay');
     assert(Math.abs(placementEvidence.deckProbe - placementEvidence.lake.bridgeDeckY) < 1e-6, 'Bridge deck collision height differs from its rendered deck surface');
     assert(Number.isFinite(placementEvidence.rampMidProbe) && placementEvidence.rampMidProbe < placementEvidence.deckProbe, 'Approach ramp does not slope down from the bridge');
     assert(Number.isFinite(placementEvidence.rampEndProbe), 'Approach ramp does not connect to the park floor');
