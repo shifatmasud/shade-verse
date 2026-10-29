@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { QUALITY, QK, LOWQ } from './quality';
 import {
     buildings, world, PARK, parkH, PARK_POND, PARK_POND_Y, PARK_BRIDGE,
-    bridgeSurfaceAt, isLegacyCityCore, type Sim,
+    bridgeSurfaceAt, isLegacyCityCore, LAKE_SHORE, BEACH_DIR, type Sim,
 } from './sim';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
@@ -194,10 +194,43 @@ export function PolyforkBuildings() {
     </group>;
 }
 
+
+// env-iter1 sand zone: grass -> dry sand -> wet sand -> lakebed, computed per pixel from the same shape as sim.sandWeight
+// (crisp, noisy edge independent of the terrain grid; no textures). Refs: real lake beaches (Lake Tahoe Sand Harbor,
+// Lake Wanaka) and stylised beaches (Zelda: BotW Lurelin, Genshin Liyue coast) cited in the iteration report.
+const SAND_GLSL = `
+float sHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float sNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(sHash(i),sHash(i+vec2(1,0)),f.x),mix(sHash(i+vec2(0,1)),sHash(i+vec2(1,1)),f.x),f.y);}
+`;
+function sandShader(sh: any) {
+    sh.vertexShader = 'varying vec3 vSandW;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvSandW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = 'varying vec3 vSandW;\n' + SAND_GLSL + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    {
+        vec2 dp = vSandW.xz - vec2(${PARK_POND.cx.toFixed(2)}, ${PARK_POND.cz.toFixed(2)}); float d = length(dp);
+        if (d < 46.0) {
+            float da = atan(dp.y, dp.x) - (${BEACH_DIR.toFixed(5)}); da = atan(sin(da), cos(da));
+            float wide = 1.0 - smoothstep(0.0, 1.15, abs(da));
+            float shoreR = ${(PARK_POND.rx * LAKE_SHORE).toFixed(3)};
+            float edge = shoreR + 2.4 + 11.0 * wide + 0.9 * sin(vSandW.x * 0.37 + vSandW.z * 0.21) + 0.6 * sin(vSandW.x * 0.83 - vSandW.z * 0.67);
+            float n1 = sNoise(vSandW.xz * 0.9), n2 = sNoise(vSandW.xz * 3.7), n3 = sNoise(vSandW.xz * 17.0);
+            float sw = 1.0 - smoothstep(edge - 1.4, edge + 0.4, d + (n1 - 0.5) * 1.6);
+            float wetk = 1.0 - smoothstep(shoreR + 0.1, shoreR + 2.0 + n1, d);
+            float ripple = 0.5 + 0.5 * sin(d * 2.4 + n2 * 2.5 + n1 * 3.0);
+            vec3 dry = mix(vec3(0.70, 0.56, 0.34), vec3(0.82, 0.68, 0.44), n1) * (0.93 + 0.1 * ripple * wide);
+            vec3 wet = vec3(0.42, 0.35, 0.23);
+            vec3 sandC = mix(dry, wet, wetk);
+            sandC = mix(sandC, vec3(0.36, 0.34, 0.22), 1.0 - smoothstep(shoreR - 4.0, shoreR - 0.2, d));
+            sandC *= 0.9 + 0.12 * n2 + 0.1 * (n3 - 0.5);
+            float grassEdge = sw * (1.0 - sw) * 4.0;
+            diffuseColor.rgb = mix(diffuseColor.rgb * (1.0 - 0.18 * grassEdge), sandC, sw);
+        }
+    }`);
+}
+
 export function ParkGround() {
     const cx = (PARK.x0 + PARK.x1) * 0.5, cz = (PARK.z0 + PARK.z1) * 0.5;
     const terrain = useMemo(() => {
-        const floor = new THREE.PlaneGeometry(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 80, 80);
+        const floor = new THREE.PlaneGeometry(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 144, 144);
         floor.rotateX(-Math.PI / 2);
         const pa = floor.attributes.position;
         const colours = new Float32Array(pa.count * 3);
@@ -229,7 +262,7 @@ export function ParkGround() {
     }, [cx, cz]);
     return <group name="park-ground">
         <mesh position={[cx, 0.05, cz]} geometry={terrain.floor} frustumCulled={false}>
-            <meshLambertMaterial color="#ffffff" vertexColors />
+            <meshLambertMaterial color="#ffffff" vertexColors onBeforeCompile={sandShader} />
         </mesh>
         <mesh position={[cx, 0.09, cz]} geometry={terrain.path} frustumCulled={false}>
             <meshLambertMaterial color="#b89865" />
@@ -426,11 +459,63 @@ function rampGeometry(sign: -1 | 1) {
     return geometry;
 }
 
-const LAKE_VS = `uniform float uTime; uniform mat4 textureMatrix; varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vProjective; varying vec4 vScreen;
-float wh(vec2 p,float t){return 0.09*sin(p.x*0.11+p.y*0.08+t*0.42)+0.035*sin(p.x*0.21-p.y*0.16-t*0.31);}
-void main(){vec4 w=modelMatrix*vec4(position,1.0);float h=wh(w.xz,uTime);vec2 g=vec2(0.0099*cos(w.x*0.11+w.z*0.08+uTime*0.42)+0.00735*cos(w.x*0.21-w.z*0.16-uTime*0.31),0.0072*cos(w.x*0.11+w.z*0.08+uTime*0.42)-0.0056*cos(w.x*0.21-w.z*0.16-uTime*0.31));w.y+=h;vWorld=w.xyz;vHeight=h;vNormal=normalize(vec3(-g.x,1.0,-g.y));vProjective=textureMatrix*vec4(position,1.0);vScreen=projectionMatrix*viewMatrix*w;gl_Position=vScreen;}`;
-const LAKE_FS = `uniform float uTime; uniform float uDebugReflect; uniform sampler2D tDiffuse; uniform sampler2D uRefraction; uniform vec3 color; uniform vec2 uPondCenter; uniform vec2 uPondRadii; varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vProjective; varying vec4 vScreen;
-void main(){vec3 V=normalize(cameraPosition-vWorld);vec3 N=normalize(vNormal);bool below=!gl_FrontFacing;if(below)N=-N;float ci=clamp(abs(dot(N,V)),0.0,1.0);float fres=0.14+0.84*pow(1.0-ci,5.0);vec3 td=refract(-V,N,below?1.333:0.75019);vec2 screenUv=vScreen.xy/max(vScreen.w,0.0001)*0.5+0.5;vec2 bend=(N.xz+td.xz*0.08)*0.012;vec3 behind=texture2D(uRefraction,clamp(screenUv+bend,vec2(0.002),vec2(0.998))).rgb;vec4 ruv=vProjective;ruv.xy+=N.xz*0.012*ruv.w;vec3 reflected=texture2DProj(tDiffuse,ruv).rgb;if(uDebugReflect>0.5){gl_FragColor=vec4(reflected,1.0);return;}float radial=length((vWorld.xz-uPondCenter)/uPondRadii);float shallow=1.0-smoothstep(0.42,0.98,radial);float path=mix(3.7,0.28,shallow)/max(abs(td.y),0.22);vec3 transmittance=exp(-vec3(0.42,0.095,0.035)*path);vec3 bedTint=mix(vec3(0.045,0.16,0.19),vec3(0.34,0.43,0.35),shallow);vec3 transmitted=behind*transmittance+bedTint*(1.0-transmittance)*0.72;vec3 baseWater=mix(vec3(0.055,0.27,0.34),vec3(0.18,0.48,0.46),shallow);transmitted=mix(baseWater,transmitted,0.36);float broad=0.5+0.5*sin(vWorld.x*0.17+vWorld.z*0.11+uTime*0.38);transmitted+=vec3(0.025,0.075,0.065)*broad*(1.0-shallow);float f=below?max(fres,0.12):fres;vec3 col=mix(transmitted,reflected,f);vec3 R=reflect(-V,N);col+=vec3(1.0,0.89,0.67)*(pow(max(dot(R,normalize(vec3(-0.36,0.82,0.44))),0.0),96.0)*0.34+pow(max(dot(R,normalize(vec3(-0.36,0.82,0.44))),0.0),24.0)*0.05);if(below){float haze=1.0-exp(-length(cameraPosition-vWorld)*0.045);col=mix(col,vec3(0.035,0.23,0.30),haze*0.72);}float crest=smoothstep(0.12,0.18,vHeight)*0.12;col=mix(col,vec3(0.86,0.96,0.92),crest);gl_FragColor=vec4(col,1.0);
+// env-iter1 lake (Shifat's direction, Oct 29): hybrid reflections/refraction.
+// - Hero: analytic ray trace of a 3-sphere proxy against the reflected and refracted view rays (no extra pass).
+// - Everything else: short screen-space reflection march + one distorted screen-space refraction sample, read from a low-res
+//   opaque scene copy (colour + depth) that is only re-rendered while the lake is on screen. Quarter-res / 7 steps on auto,
+//   half-res / 16 steps on high, none on ?q=low or when the adaptive scaler is struggling (then: analytic sky reflection +
+//   depth-based absorption with alpha so the real lakebed shows through).
+// - Always: Schlick Fresnel with F0 = ((1.33-1)/(1.33+1))^2 ~ 0.02, refract(v, n, 1/1.33), animated ripple normals,
+//   depth colour gradient, shoreline blend (transmission -> 1 as depth -> 0).
+// Refs: three.js transmission pass approach; Morgan McGuire & Mara, "Efficient GPU Screen-Space Ray Tracing" (JCGT 2014);
+//   Inigo Quilez sphere intersection; Schlick 1994.
+const LAKE_VS = `uniform float uTime; varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;
+void main(){vec4 w=modelMatrix*vec4(position,1.0);float a1=w.x*0.11+w.z*0.08+uTime*0.42,a2=w.x*0.21-w.z*0.16-uTime*0.31;float h=0.09*sin(a1)+0.035*sin(a2);
+vec2 g=vec2(0.0099*cos(a1)+0.00735*cos(a2),0.0072*cos(a1)-0.0056*cos(a2));w.y+=h;vWorld=w.xyz;vHeight=h;vNormal=normalize(vec3(-g.x,1.0,-g.y));
+vec4 mv=viewMatrix*w;vView=mv.xyz;vScreen=projectionMatrix*mv;gl_Position=vScreen;}`;
+const LAKE_FS = `#include <packing>
+uniform float uTime; uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene; uniform float uSteps; uniform float uNear; uniform float uFar;
+uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay;
+varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;
+float sceneZ(vec2 uv){return perspectiveDepthToViewZ(texture2D(tDepth,uv).x,uNear,uFar);}
+float sph(vec3 ro,vec3 rd,vec4 s){vec3 oc=ro-s.xyz;float b=dot(oc,rd);float h=b*b-dot(oc,oc)+s.w*s.w;if(h<0.0)return 1e5;float t=-b-sqrt(h);return t>0.0?t:1e5;}
+float hero(vec3 ro,vec3 rd,out vec3 n){vec4 s0=vec4(uHero+vec3(0.0,0.1,0.0),0.36),s1=vec4(uHero+vec3(0.0,0.66,0.0),0.19),s2=vec4(uHero+vec3(0.0,-0.5,0.0),0.27);
+float t0=sph(ro,rd,s0),t1=sph(ro,rd,s1),t2=sph(ro,rd,s2);float t=min(t0,min(t1,t2));vec4 s=t==t0?s0:(t==t1?s1:s2);n=normalize(ro+rd*t-s.xyz);return t;}
+vec3 heroCol(vec3 n){return vec3(0.025,0.022,0.04)+vec3(0.10,0.09,0.16)*max(n.y,0.0)*uDay+vec3(0.18,0.10,0.32)*pow(1.0-abs(n.y),3.0)*0.35;}
+vec3 sky(vec3 R){float h=max(R.y,0.0);vec3 c=mix(uHor,uZen,pow(h,0.5));c=mix(c,vec3(0.06,0.11,0.07)*(0.2+0.8*uDay),(1.0-smoothstep(0.02,0.16,h))*0.85);float s=max(dot(R,uSun),0.0);return c+vec3(1.0,0.88,0.66)*(pow(s,600.0)*3.5+pow(s,10.0)*0.12)*uDay;}
+vec2 rip(vec2 p,vec2 d,float f,float sp,float a){float ph=dot(p,d)*f+uTime*sp;return d*(cos(ph)*a*f);}
+void main(){
+ vec3 V=normalize(cameraPosition-vWorld);bool below=!gl_FrontFacing;float dist=length(cameraPosition-vWorld);
+ float rf=1.0-smoothstep(22.0,75.0,dist);vec2 p=vWorld.xz;
+ vec2 g=rip(p,vec2(0.80,0.60),1.9,1.35,0.020)+rip(p,vec2(-0.55,0.83),2.7,-1.7,0.013)+rip(p,vec2(0.97,-0.24),4.3,2.3,0.006)+rip(p,vec2(-0.2,-0.98),6.1,-2.9,0.0035);
+ vec3 N=normalize(vNormal+vec3(-g.x,0.0,-g.y)*rf);if(below)N=-N;
+ float ci=clamp(dot(N,V),0.0,1.0);float F=0.02+0.98*pow(1.0-ci,5.0);
+ vec3 R=reflect(-V,N);vec3 Td=refract(-V,N,below?1.33:1.0/1.33);
+ float radial=length(vWorld.xz-uPondCenter)/uPondR;float bedDepth=3.25*(1.0-smoothstep(uShore-0.32,uShore,radial))+0.02*(1.0-smoothstep(uShore-0.04,uShore,radial));
+ float shallow=1.0-smoothstep(0.15,2.2,bedDepth);
+ vec2 suv=vScreen.xy/vScreen.w*0.5+0.5;float wz=vView.z;
+ // reflection
+ vec3 refl=sky(R);float reflDist=1e5;
+  if(uUseScene>0.5&&!below){vec3 Rv=normalize((viewMatrix*vec4(R,0.0)).xyz);float tp=0.0;
+  for(int i=0;i<16;i++){if(float(i)>=uSteps)break;float k=(float(i)+1.0)/uSteps;float t=90.0*k*k;vec3 Q=vView+Rv*t;vec4 c=uProj*vec4(Q,1.0);if(c.w<=0.0)break;vec2 uv=c.xy/c.w*0.5+0.5;
+   if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0)break;float sz=sceneZ(uv);if(Q.z<sz&&Q.z>sz-(t-tp)*1.2-0.6&&sz>-uFar*0.98){
+    if(uSteps>12.0){float a0=tp,a1=t;for(int j=0;j<4;j++){float m=0.5*(a0+a1);vec3 M=vView+Rv*m;vec4 cm=uProj*vec4(M,1.0);vec2 um=cm.xy/cm.w*0.5+0.5;if(M.z<sceneZ(um)){a1=m;uv=um;}else a0=m;}}
+    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);refl=mix(refl,texture2D(tScene,uv).rgb,e);reflDist=t;break;}
+   tp=t;}}
+ vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0))refl=heroCol(hn);
+ // refraction / transmission
+ vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.80,0.30,0.20);
+ vec3 trans;float alpha=1.0;
+ if(uUseScene>0.5&&!below){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
+  float sz2=sceneZ(uv2);if(sz2>wz){uv2=suv;sz2=sceneZ(suv);}float th=clamp(wz-sz2,0.0,12.0)*1.15;vec3 T=exp(-absorb*th);
+  vec3 behind=texture2D(tScene,uv2).rgb;vec3 hn2;if(hero(vWorld,Td,hn2)<th+0.5)behind=mix(behind,heroCol(hn2),0.85);trans=behind*T+deepCol*(1.0-T);}
+ else{float th=bedDepth/max(abs(Td.y),0.25);vec3 T=exp(-absorb*th);float Ts=clamp(dot(T,vec3(0.2,0.4,0.4)),0.0,1.0);
+  vec3 hn2;float hk=hero(vWorld,Td,hn2)<th+0.5?0.85:0.0;trans=mix(deepCol*(1.0-T)/max(1.0-Ts,0.05),heroCol(hn2),hk);alpha=max(1.0-Ts*(1.0-hk),0.0);}
+ float f=below?max(F,0.12):F;vec3 col=mix(trans,refl,f);
+ if(alpha<1.0){col=(refl*f+trans*(1.0-f)*alpha)/max(f+(1.0-f)*alpha,0.001);alpha=f+(1.0-f)*alpha;}
+ if(below){float haze=1.0-exp(-dist*0.045);col=mix(col,vec3(0.035,0.23,0.30),haze*0.72);alpha=1.0;}
+ col=mix(col,vec3(0.86,0.96,0.92),smoothstep(0.12,0.18,vHeight)*0.10);
+ gl_FragColor=vec4(col,alpha);
 #include <tonemapping_fragment>
 #include <colorspace_fragment>
 }`;
@@ -459,51 +544,51 @@ function buildContactMatrices() {
     return matrices;
 }
 
-export function PolyforkLakeBridge({ sim }: { sim: Sim }) {
-    const [waterGLTF, bridgeGLTF] = useLoader(GLTFLoader, [WATER_ASSET.url, BRIDGE_ASSET.url]) as GLTF[];
-    const waterModel = useMemo(() => prepareModel(WATER_ASSET.id, waterGLTF), [waterGLTF]);
+const _skyBlue = new THREE.Color(0.42, 0.6, 0.78);
+export type LakeTod = { fog: THREE.Color; sky: THREE.Color; sun: THREE.Vector3; day: { value: number } };
+export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scale: number }; tod?: LakeTod }) {
+    const [bridgeGLTF] = useLoader(GLTFLoader, [BRIDGE_ASSET.url]) as GLTF[];
     const bridgeModel = useMemo(() => prepareModel(BRIDGE_ASSET.id, bridgeGLTF), [bridgeGLTF]);
-    // env-iter1: circular lake sheet (polar grid so vertex waves have interior detail), unit diameter in XZ.
-    const waterGeometry = useMemo(() => { const g = new THREE.RingGeometry(0.0001, 0.5, 96, 14); g.rotateX(-Math.PI / 2); return g.toNonIndexed(); }, []);
-    const waterScale = useMemo<[number, number, number]>(() => [
-        PARK_POND.rx * 2,
-        1,
-        PARK_POND.rz * 2,
-    ], []);
+    // circular lake sheet (polar grid so vertex waves have interior detail), unit diameter in XZ; its rim sits under the sandy bank.
+    const waterGeometry = useMemo(() => { const g = new THREE.RingGeometry(0.0001, 0.5, 96, 14); g.rotateX(-Math.PI / 2); return g; }, []);
     const { gl, scene, camera } = useThree();
-    const captureFrame = useRef(0), lakeClock = useRef(0), lastRefractionTime = useRef(-100), lastRefractionFrame = useRef(-100), lastReflectionTime = useRef(-100), lastReflectionFrame = useRef(-100);
-    const refractionTarget = useMemo(() => new THREE.WebGLRenderTarget(256, 128, { depthBuffer: true, stencilBuffer: false, samples: 0 }), []);
-    const reflector = useMemo(() => {
-        const geometry = waterGeometry.clone();
-        geometry.rotateX(Math.PI / 2); // Reflector's local normal is +Z; this rotation restores the original horizontal XZ sheet.
-        const mirror = new Reflector(geometry, { textureWidth: 256, textureHeight: 128, clipBias: 0.003, multisample: 0, color: 0x799a98 });
-        mirror.name = 'polyfork-water-blob-lake';
-        mirror.position.set(PARK_POND.cx, PARK_POND_Y, PARK_POND.cz);
-        mirror.rotation.x = -Math.PI / 2;
-        mirror.scale.set(waterScale[0], waterScale[2], 1);
-        mirror.userData.polyforkId = WATER_ASSET.id;
-        const material = mirror.material as THREE.ShaderMaterial;
-        material.vertexShader = LAKE_VS; material.fragmentShader = LAKE_FS;
-        material.uniforms.uTime = { value: 0 }; material.uniforms.uDebugReflect = { value: 0 };
-        material.uniforms.uRefraction = { value: refractionTarget.texture };
-        material.uniforms.uPondCenter = { value: new THREE.Vector2(PARK_POND.cx, PARK_POND.cz) };
-        material.uniforms.uPondRadii = { value: new THREE.Vector2(PARK_POND.rx, PARK_POND.rz) };
-        material.side = THREE.DoubleSide; material.transparent = false; material.depthWrite = true; material.toneMapped = false; material.needsUpdate = true;
-        const renderReflection = mirror.onBeforeRender;
-        mirror.onBeforeRender = (renderer, renderScene, renderCamera, geometryArg, materialArg, group) => {
-            if (lakeClock.current - lastReflectionTime.current < 0.5) return;
-            renderReflection.call(mirror, renderer, renderScene, renderCamera, geometryArg, materialArg, group);
-            lastReflectionTime.current = lakeClock.current; lastReflectionFrame.current = captureFrame.current;
-        };
-        return mirror;
-    }, [waterGeometry, waterScale, refractionTarget]);
+    const copyFrame = useRef(0), copies = useRef(0);
+    // low-res opaque scene copy (colour + depth) for SSR + screen-space refraction; never allocated on ?q=low.
+    const copyTarget = useMemo(() => {
+        if (LOWQ) return null;
+        const t = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: true, stencilBuffer: false, samples: 0, type: THREE.UnsignedByteType });
+        t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType;
+        t.texture.minFilter = t.texture.magFilter = THREE.LinearFilter; t.texture.generateMipmaps = false;
+        return t;
+    }, []);
+    const water = useMemo(() => {
+        const material = new THREE.ShaderMaterial({
+            vertexShader: LAKE_VS, fragmentShader: LAKE_FS,
+            uniforms: {
+                uTime: { value: 0 }, tScene: { value: copyTarget ? copyTarget.texture : null }, tDepth: { value: copyTarget ? copyTarget.depthTexture : null },
+                uUseScene: { value: 0 }, uSteps: { value: QK.lakeSteps }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() },
+                uPondCenter: { value: new THREE.Vector2(PARK_POND.cx, PARK_POND.cz) }, uPondR: { value: PARK_POND.rx }, uShore: { value: LAKE_SHORE },
+                uHero: { value: new THREE.Vector3(0, -999, 0) }, uHor: { value: new THREE.Color('#bcd3df') }, uZen: { value: new THREE.Color('#5b8fc4') },
+                uSun: { value: new THREE.Vector3(-0.36, 0.82, 0.44).normalize() }, uDay: { value: 1 },
+            },
+            side: THREE.DoubleSide, transparent: true, depthWrite: true, toneMapped: false,
+        });
+        const mesh = new THREE.Mesh(waterGeometry, material);
+        mesh.name = 'polyfork-water-blob-lake'; mesh.renderOrder = 2; mesh.frustumCulled = false;
+        mesh.position.set(PARK_POND.cx, PARK_POND_Y, PARK_POND.cz); mesh.scale.set(PARK_POND.rx * 2, 1, PARK_POND.rz * 2);
+        mesh.userData.polyforkId = WATER_ASSET.id;
+        return mesh;
+    }, [waterGeometry, copyTarget]);
+    const frustum = useMemo(() => new THREE.Frustum(), []), projView = useMemo(() => new THREE.Matrix4(), []);
+    const lakeSphere = useMemo(() => new THREE.Sphere(new THREE.Vector3(PARK_POND.cx, PARK_POND_Y, PARK_POND.cz), PARK_POND.rx + 1), []);
+    const bufSize = useMemo(() => new THREE.Vector2(), []);
     const causticsGeometry = useMemo(() => new THREE.CircleGeometry(1, 64), []);
     const causticsMaterial = useMemo(() => new THREE.ShaderMaterial({
         uniforms: { uTime: { value: 0 }, uWaterY: { value: PARK_POND_Y } },
         vertexShader: LAKE_CAUSTICS_VS, fragmentShader: LAKE_CAUSTICS_FS,
         transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }), []);
-    const shoreGeo = useMemo(() => shorelineFoamGeometry(PARK_POND.rx * 0.99, PARK_POND.rz * 0.99), []);
+    const shoreGeo = useMemo(() => shorelineFoamGeometry(PARK_POND.rx * LAKE_SHORE, PARK_POND.rz * LAKE_SHORE), []);
     const shoreMaterial = useMemo(() => new THREE.ShaderMaterial({
         uniforms: { uTime: { value: 0 } }, vertexShader: FOAM_VS, fragmentShader: FOAM_FS,
         transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
@@ -530,24 +615,41 @@ export function PolyforkLakeBridge({ sim }: { sim: Sim }) {
     const contacts = useMemo(buildContactMatrices, []);
     const contactRef = useRef<THREE.InstancedMesh>(null!);
     useFrame(() => {
-        const t = sim.t;
-        captureFrame.current++; lakeClock.current = t;
-        (reflector.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+        const t = sim.t, u = water.material.uniforms;
+        u.uTime.value = t;
         shoreMaterial.uniforms.uTime.value = t;
         contactMaterial.uniforms.uTime.value = t;
         causticsMaterial.uniforms.uTime.value = t;
-        if (Math.hypot(camera.position.x - PARK_POND.cx, camera.position.z - PARK_POND.cz) < 90 && t - lastRefractionTime.current >= 0.5) {
-            const previousTarget = gl.getRenderTarget(), previousAutoClear = gl.autoClear;
-            const previousXr = gl.xr.enabled, previousShadows = gl.shadowMap.autoUpdate, wasVisible = reflector.visible;
-            try {
-                reflector.visible = false; gl.xr.enabled = false; gl.shadowMap.autoUpdate = false; gl.autoClear = true;
-                gl.setRenderTarget(refractionTarget); gl.clear(true, true, true); gl.render(scene, camera);
-            } finally {
-                gl.setRenderTarget(previousTarget); gl.autoClear = previousAutoClear;
-                gl.xr.enabled = previousXr; gl.shadowMap.autoUpdate = previousShadows; reflector.visible = wasVisible;
-            }
-            lastRefractionTime.current = t; lastRefractionFrame.current = captureFrame.current;
+        u.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]);
+        if (tod) {
+            const d = tod.day.value; u.uDay.value = d; u.uHor.value.copy(tod.fog).lerp(_skyBlue, 0.45).multiplyScalar(0.92);
+            u.uZen.value.setRGB(0.30, 0.50, 0.78).multiplyScalar(0.12 + 0.88 * d).lerp(tod.sky, 0.25 * d); u.uSun.value.copy(tod.sun);
         }
+        const cam = camera as THREE.PerspectiveCamera;
+        u.uProj.value.copy(cam.projectionMatrix); u.uNear.value = cam.near; u.uFar.value = cam.far;
+        // scene copy: only while the lake is on screen and close enough to matter; adaptive when the frame budget is tight.
+        const scale = perf ? perf.scale : 1;
+        projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(projView);
+        const visible = frustum.intersectsSphere(lakeSphere) && cam.position.distanceTo(lakeSphere.center) < 170;
+        const struggling = scale <= 0.5, everyOther = scale <= 0.6;
+        copyFrame.current++;
+        const wantCopy = !!copyTarget && visible && !struggling && (!everyOther || copyFrame.current % 2 === 0);
+        if (copyTarget && visible && !struggling) {
+            if (wantCopy) {
+                gl.getDrawingBufferSize(bufSize);
+                const w = Math.max(160, Math.round(bufSize.x * QK.lakeCopyScale)), h = Math.max(90, Math.round(bufSize.y * QK.lakeCopyScale));
+                if (copyTarget.width !== w || copyTarget.height !== h) copyTarget.setSize(w, h);
+                const previousTarget = gl.getRenderTarget(), previousAutoClear = gl.autoClear, previousShadows = gl.shadowMap.autoUpdate;
+                try {
+                    water.visible = false; gl.shadowMap.autoUpdate = false; gl.autoClear = true;
+                    gl.setRenderTarget(copyTarget); gl.clear(true, true, true); gl.render(scene, camera);
+                } finally {
+                    gl.setRenderTarget(previousTarget); gl.autoClear = previousAutoClear; gl.shadowMap.autoUpdate = previousShadows; water.visible = true;
+                }
+                copies.current++;
+            }
+            u.uUseScene.value = 1;
+        } else u.uUseScene.value = 0;
         if (contactRef.current && !contactRef.current.userData.matricesReady) {
             contacts.forEach((matrix, i) => contactRef.current.setMatrixAt(i, matrix));
             contactRef.current.count = contacts.length;
@@ -558,26 +660,18 @@ export function PolyforkLakeBridge({ sim }: { sim: Sim }) {
     });
     useEffect(() => {
         if (DBG) (window as any).__polyforkLake = {
-            water: WATER_ASSET.id, bridge: BRIDGE_ASSET.id, reflection: '256x128 throttled planar scene capture', refraction: '256x128 distorted screen-space scene capture', caustics: 'animated lakebed shader', lakeDepth: 3.8,
-            subdividedWaterTriangles: (waterGeometry.getAttribute('position').count / 3),
-            bridgeModules: bridgePlacements.length,
-            contactFoamPatches: contacts.length,
-            bridgeDeckY: PARK_BRIDGE.deckY,
-            bridgeCenter: [PARK_BRIDGE.x, PARK_BRIDGE.z],
-            bridgeAxis: [PARK_BRIDGE.axisX, PARK_BRIDGE.axisZ],
-            bridgeHalfLength: PARK_BRIDGE.halfLength,
-            bridgeHalfWidth: PARK_BRIDGE.halfWidth,
-            bridgeRampLength: PARK_BRIDGE.rampLength,
+            tier: QUALITY.tier, gpu: QUALITY.gpu, copyScale: QK.lakeCopyScale, ssrSteps: QK.lakeSteps, copies, water,
+            reflection: copyTarget ? 'SSR from low-res scene copy + analytic hero + sky' : 'analytic sky + analytic hero', refraction: copyTarget ? 'screen-space single sample' : 'depth absorption + alpha',
+            waterTriangles: waterGeometry.index ? waterGeometry.index.count / 3 : waterGeometry.getAttribute('position').count / 3,
+            bridgeModules: bridgePlacements.length, contactFoamPatches: contacts.length, bridgeDeckY: PARK_BRIDGE.deckY,
+            bridgeCenter: [PARK_BRIDGE.x, PARK_BRIDGE.z], bridgeAxis: [PARK_BRIDGE.axisX, PARK_BRIDGE.axisZ],
+            bridgeHalfLength: PARK_BRIDGE.halfLength, bridgeHalfWidth: PARK_BRIDGE.halfWidth, bridgeRampLength: PARK_BRIDGE.rampLength,
         };
         if (DBG) (window as any).__bridgeSurfaceAt = bridgeSurfaceAt;
-        if (DBG) (window as any).__polyforkLakeSurface = reflector;
-        if (DBG) (window as any).__polyforkLakeTargets = { renderer: gl, refraction: refractionTarget, reflection: reflector.getRenderTarget(), frame: captureFrame, reflectionFrame: lastReflectionFrame };
-    }, [bridgePlacements.length, contacts.length, waterGeometry]);
-
-
+    }, [bridgePlacements.length, contacts.length, waterGeometry, copyTarget, water]);
 
     return <group name="polyfork-lake-and-bridge">
-        <primitive object={reflector} dispose={null} />
+        <primitive object={water} dispose={null} />
         <mesh
             name="polyfork-lakebed-caustics"
             position={[PARK_POND.cx, parkH(PARK_POND.cx, PARK_POND.cz) + 0.08, PARK_POND.cz]}

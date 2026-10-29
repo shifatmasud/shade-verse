@@ -11,8 +11,27 @@ export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
 export const PARK_POND = { cx: 180, cz: 100, rx: 14, rz: 14 }; // circular lake (env-iter1)
 // Valley topography remains unchanged outside the pond; the pond itself is a deeper bowl for swimming and underwater light.
 function parkBaseH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
-function pondBowlWeight(x: number, z: number) { const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz, r = Math.sqrt(dx * dx + dz * dz); const t = Math.max(0, Math.min(1, (1 - r) / 0.34)); return t * t * (3 - 2 * t); }
-export function parkH(x: number, z: number): number { return parkBaseH(x, z) - 3.8 * pondBowlWeight(x, z); }
+// env-iter1 lake profile: a real shelving shore. Water line at r=LAKE_SHORE (fraction of the radius), sandy bank rising above
+// the water out to ~1.25r, then the valley takes over again. Keeps the old waterline height and the deep swimming bowl.
+export const LAKE_SHORE = 0.93;
+const sm = (a: number, b: number, v: number) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+const POND_BASE = parkBaseH(PARK_POND.cx, PARK_POND.cz);
+function pondProfile(r: number) { return 0.55 - 3.25 * sm(LAKE_SHORE, LAKE_SHORE - 0.32, r) + 0.4 * sm(LAKE_SHORE - 0.02, LAKE_SHORE + 0.42, r); }
+export function parkH(x: number, z: number): number {
+    const base = parkBaseH(x, z), r = Math.hypot((x - PARK_POND.cx) / PARK_POND.rx, (z - PARK_POND.cz) / PARK_POND.rz);
+    if (r > 2.3) return base;
+    const f = 1 - sm(1.25, 2.3, r);
+    return base * (1 - f) + (POND_BASE + pondProfile(r)) * f;
+}
+// Beach: a sand fringe all round the lake, widening into a proper beach on the side facing away from the trail (shared with the ground shader).
+export const BEACH_DIR = Math.atan2(-0.514, 0.857);
+export function sandWeight(x: number, z: number) {
+    const dx = x - PARK_POND.cx, dz = z - PARK_POND.cz, d = Math.hypot(dx, dz);
+    let da = Math.atan2(dz, dx) - BEACH_DIR; da = Math.atan2(Math.sin(da), Math.cos(da));
+    const wide = sm(1.15, 0.0, Math.abs(da));
+    const edge = PARK_POND.rx * LAKE_SHORE + 2.4 + 11.0 * wide + 0.9 * Math.sin(x * 0.37 + z * 0.21) + 0.6 * Math.sin(x * 0.83 - z * 0.67);
+    return 1 - sm(edge - 1.6, edge + 0.6, d);
+}
 export function isLegacyCityCore(x: number, z: number) { return Math.abs(x) <= 120 && Math.abs(z) <= 120; }
 // Keep the old waterline and bridge elevation; only the lake bed is lowered.
 export const PARK_POND_Y = parkBaseH(PARK_POND.cx, PARK_POND.cz) + 0.55;
@@ -36,7 +55,7 @@ export function bridgeSurfaceAt(x: number, z: number): number | null {
 }
 export function isLakeWater(x: number, z: number) {
     const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz;
-    return dx * dx + dz * dz < 0.92 && bridgeSurfaceAt(x, z) === null;
+    return dx * dx + dz * dz < LAKE_SHORE * LAKE_SHORE && bridgeSurfaceAt(x, z) === null;
 }
 export function lakeWaveH(x: number, z: number, t: number) { return Math.sin(x * 0.11 + z * 0.08 + t * 0.42) * 0.09 + Math.sin(x * 0.21 - z * 0.16 - t * 0.31) * 0.035; }
 export function waterSurfaceAt(x: number, z: number, t = 0) { return isLakeWater(x, z) ? PARK_POND_Y + lakeWaveH(x, z, t) : WATER_Y; }

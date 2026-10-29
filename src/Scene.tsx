@@ -20,8 +20,9 @@ import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
+import { QUALITY, QK, HQ } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -256,17 +257,17 @@ const tmp = new THREE.Object3D();
 
 // forest park: leafy trees. Reference study: Poly Haven CC0 scanned trees (island_tree_01 leaf atlas, jacaranda bark) - AAA-style alpha-cut leaf cards on a branching trunk; geometry here is my own, low card count for weak devices
 const LEAF_BOX = [[14,18,151,526],[166,18,348,404],[708,18,838,426],[367,30,497,373],[527,48,667,374],[219,588,366,1024],[430,615,578,1024],[15,642,189,1024]];
-type TreeSpec = { kind: 'broad' | 'umbrella' | 'poplar' | 'pine' | 'spruce'; seed: number };
+type TreeSpec = { kind: 'broad' | 'umbrella' | 'poplar' | 'pine' | 'spruce' | 'cherry' | 'palm'; seed: number };
 const PINE_BOX = [[30, 40, 230, 460]];
 // broadleaf families share the scanned leaf atlas; each has its own trunk/branch structure and crown shape
-function treeGeo(kind: 'broad' | 'umbrella' | 'poplar', seed: number, leafN: number, scaleMul = 1) {
+function treeGeo(kind: 'broad' | 'umbrella' | 'poplar' | 'cherry', seed: number, leafN: number, scaleMul = 1) {
     let r = seed; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
     const trunkP: THREE.BufferGeometry[] = [], leafP: THREE.BufferGeometry[] = [];
-    const shape = { broad: { H: 7.5, R: 4.4, sx: 1, sy: 0.85, sz: 1, nb: 6, cyk: 0.35, ls: 1 }, umbrella: { H: 5.2, R: 5.2, sx: 1.5, sy: 0.32, sz: 1.5, nb: 7, cyk: 0.2, ls: 0.62 }, poplar: { H: 5.5, R: 6.2, sx: 0.34, sy: 1, sz: 0.34, nb: 4, cyk: 0.55, ls: 0.8 } }[kind];
+    const shape = { broad: { H: 7.5, R: 4.4, sx: 1, sy: 0.85, sz: 1, nb: 6, cyk: 0.35, ls: 1 }, umbrella: { H: 5.2, R: 5.2, sx: 1.5, sy: 0.32, sz: 1.5, nb: 7, cyk: 0.2, ls: 0.62 }, poplar: { H: 5.5, R: 6.2, sx: 0.34, sy: 1, sz: 0.34, nb: 4, cyk: 0.55, ls: 0.8 }, cherry: { H: 3.9, R: 5.4, sx: 1.3, sy: 0.62, sz: 1.3, nb: 8, cyk: 0.28, ls: 0.46 } }[kind];
     const H = shape.H * (0.9 + rnd() * 0.25), R = shape.R * (0.9 + rnd() * 0.2);
-    const tg = new THREE.CylinderGeometry(kind === 'poplar' ? 0.22 : 0.28, kind === 'poplar' ? 0.4 : 0.5, H, 7, 1, true); tg.translate(0, H / 2, 0); trunkP.push(tg);
+    const tg = new THREE.CylinderGeometry(kind === 'poplar' ? 0.22 : kind === 'broad' ? 0.42 : 0.28, kind === 'poplar' ? 0.4 : kind === 'broad' ? 0.78 : kind === 'cherry' ? 0.42 : 0.5, H, 8, 1, true); tg.translate(0, H / 2, 0); trunkP.push(tg);   // env-iter1: oak gets a thick flared trunk
     const cy = H + R * shape.cyk * (kind === 'poplar' ? 0.7 : 1); const ctr: THREE.Vector3[] = [];
-    for (let i = 0; i < shape.nb; i++) { const ang = rnd() * 6.28; const len = R * (0.7 + rnd() * 0.4) * (kind === 'poplar' ? 0.25 : 1); const bg = new THREE.CylinderGeometry(0.06, 0.16, len, 5, 1, true); bg.translate(0, len / 2, 0); bg.rotateZ(kind === 'umbrella' ? 1.0 + rnd() * 0.3 : 0.7 + rnd() * 0.5); bg.rotateY(ang); bg.translate(0, H * (0.55 + rnd() * 0.3), 0); trunkP.push(bg); ctr.push(new THREE.Vector3(Math.cos(ang) * R * 0.55 * shape.sx, cy + (rnd() - 0.4) * R * 0.5 * shape.sy, Math.sin(ang) * R * 0.55 * shape.sz)); }
+    for (let i = 0; i < shape.nb; i++) { const ang = rnd() * 6.28; const len = R * (0.7 + rnd() * 0.4) * (kind === 'poplar' ? 0.25 : 1); const bg = new THREE.CylinderGeometry(kind === 'broad' ? 0.1 : 0.06, kind === 'broad' ? 0.26 : 0.16, len, 5, 1, true); bg.translate(0, len / 2, 0); bg.rotateZ(kind === 'umbrella' || kind === 'cherry' ? 0.95 + rnd() * 0.35 : 0.7 + rnd() * 0.5); bg.rotateY(ang); bg.translate(0, H * (0.55 + rnd() * 0.3), 0); trunkP.push(bg); ctr.push(new THREE.Vector3(Math.cos(ang) * R * 0.55 * shape.sx, cy + (rnd() - 0.4) * R * 0.5 * shape.sy, Math.sin(ang) * R * 0.55 * shape.sz)); }
     ctr.push(new THREE.Vector3(0, cy + R * 0.3 * shape.sy, 0));
     for (let i = 0; i < leafN; i++) {
         const c = ctr[Math.floor(rnd() * ctr.length)]; const bx = LEAF_BOX[Math.floor(rnd() * 8)];
@@ -316,8 +317,63 @@ function coniferGeo(kind: 'pine' | 'spruce', seed: number, bpw: number, cpb: num
     for (let k = 0; k < 3; k++) card(new THREE.Vector3(0, H * 0.96, 0), new THREE.Vector3((rnd() - 0.5) * 0.3, 1, (rnd() - 0.5) * 0.3).normalize(), 2.0 * cardMul, 0.95);
     return { trunk: mergeGeometries(trunkP, false)!, leaves: mergeGeometries(leafP, false)! };
 }
-const TREE_TYPES: { kind: TreeSpec['kind']; seed: number }[] = [{ kind: 'broad', seed: 11 }, { kind: 'pine', seed: 31 }, { kind: 'spruce', seed: 57 }, { kind: 'umbrella', seed: 77 }, { kind: 'poplar', seed: 1234 }, { kind: 'pine', seed: 99 }];
-const TREE_PATTERN = [0, 1, 2, 0, 5, 3, 1, 2, 4, 0, 1, 5, 2, 3, 0, 4, 1, 2, 5, 0];
+
+// env-iter1 palm (coconut palm refs: Wikimedia Cocos nucifera photos cited in the report): curved ringed trunk from flared
+// segments + a fan of drooping pinnate fronds as solid vertex-coloured geometry (no alpha cards), and three coconuts.
+function palmGeo(seed: number) {
+    let r = seed; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+    const trunkP: THREE.BufferGeometry[] = [], leafP: THREE.BufferGeometry[] = [];
+    const H = 7.2 + rnd() * 1.4, lean = 0.9 + rnd() * 0.7, segs = 11;
+    const at = (t: number) => new THREE.Vector3(lean * t * t * 1.15, H * t, 0.25 * Math.sin(t * 3.0));
+    for (let i = 0; i < segs; i++) {
+        const a = at(i / segs), b = at((i + 1) / segs), d = b.clone().sub(a), len = d.length();
+        const r0 = 0.27 - 0.1 * (i / segs), r1 = r0 * 0.88;
+        const g = new THREE.CylinderGeometry(r1, r0, len * 1.02, 7, 1, true); g.translate(0, len / 2, 0);
+        _q.setFromUnitVectors(_Y, d.normalize()); g.applyQuaternion(_q); g.translate(a.x, a.y, a.z); trunkP.push(g);
+    }
+    const top = at(1);
+    for (let k = 0; k < 3; k++) { const c = new THREE.SphereGeometry(0.17, 6, 4); const a = k * 2.1 + 0.4; c.translate(top.x + Math.cos(a) * 0.22, top.y - 0.25, top.z + Math.sin(a) * 0.22); trunkP.push(c); }
+    const nF = 10, pos: number[] = [], col: number[] = [], nrm: number[] = [];
+    const push = (v: THREE.Vector3, c: number[]) => { pos.push(v.x, v.y, v.z); col.push(c[0], c[1], c[2]); nrm.push(0, 1, 0); };
+    for (let f = 0; f < nF; f++) {
+        const ang = (f / nF) * Math.PI * 2 + rnd() * 0.4, up = f % 3 === 0 ? 0.75 : 0.35 + rnd() * 0.25, L = 3.6 + rnd() * 1.2;
+        const dir = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang)), side = new THREE.Vector3(-dir.z, 0, dir.x);
+        const rib = (t: number) => top.clone().addScaledVector(dir, L * t * Math.cos(up * (1 - t))).add(new THREE.Vector3(0, L * (Math.sin(up) * t - 0.85 * t * t), 0));
+        const n = 12;
+        for (let i = 0; i < n; i++) {
+            const t0 = i / n, t1 = (i + 1) / n, p0 = rib(t0), p1 = rib(t1);
+            const w = Math.sin(Math.PI * Math.min(1, t0 * 1.15 + 0.08)) * 0.95 + 0.05, droop = 0.35 + 0.4 * t0;
+            const base = [0.13 + 0.1 * t0, 0.29 + 0.12 * t0 + 0.04 * rnd(), 0.07 + 0.03 * t0], tip = [0.32, 0.45, 0.12];
+            for (const s of [-1, 1]) {   // a leaflet pair: narrow quads hanging out and down from the rib
+                const o0 = p0.clone().addScaledVector(side, s * w).add(new THREE.Vector3(0, -droop * w, 0)).addScaledVector(dir, 0.18);
+                const o1 = p1.clone().addScaledVector(side, s * w * 0.9).add(new THREE.Vector3(0, -droop * w * 0.9, 0)).addScaledVector(dir, 0.18);
+                const m0 = p0.clone().lerp(p1, 0.35);
+                push(p0, base); push(o0, tip); push(m0, base);
+                push(m0, base); push(o0, tip); push(o1, tip);
+                push(m0, base); push(o1, tip); push(p1, base);
+            }
+        }
+    }
+    const fronds = new THREE.BufferGeometry();
+    fronds.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); fronds.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    fronds.computeVertexNormals();
+    { const na = fronds.attributes.normal as THREE.BufferAttribute; for (let i = 0; i < na.count; i++) { na.setY(i, Math.abs(na.getY(i)) + 0.6); } }   // soften: fronds read lit from above on both faces
+    fronds.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3 * 2), 2));
+    const trunk = mergeGeometries(trunkP.map((g) => { const ng = g.index ? g.toNonIndexed() : g; ng.deleteAttribute('uv'); return ng; }), false)!;
+    { const pa = trunk.attributes.position, uv = new Float32Array(pa.count * 2); for (let i = 0; i < pa.count; i++) { uv[i * 2] = Math.atan2(pa.getZ(i), pa.getX(i) - lean * 0.5) / 6.28 + 0.5; uv[i * 2 + 1] = pa.getY(i) / 2.2; } trunk.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); }
+    return { trunk, leaves: fronds };
+}
+// Cherry blossom recolour: same scanned leaf-card silhouettes, texel luminance remapped to a sakura pink ramp (refs: Wikimedia
+// Prunus serrulata 'Kanzan' / Yoshino cherry photos cited in the report).
+const cherryLeafShader = (sh: any) => {
+    leafWindShader(sh);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `vec4 sdc = texture2D(map, vMapUv); float lmc = dot(sdc.rgb, vec3(0.3, 0.59, 0.11));
+    diffuseColor.rgb *= mix(vec3(0.62, 0.20, 0.33), vec3(1.0, 0.70, 0.82), smoothstep(0.02, 0.32, lmc)); diffuseColor.a *= sdc.a;`);
+};
+const palmLeafShader = (sh: any) => { leafWindShader(sh); sh.vertexShader = sh.vertexShader.replace('float flutter =', 'float flutter = 1.8 *'); };
+// env-iter1: four species — 0 oak, 1/5 pine, 2 spruce (pine family, conical), 3 cherry blossom, 4 palm.
+const TREE_TYPES: { kind: TreeSpec['kind']; seed: number }[] = [{ kind: 'broad', seed: 11 }, { kind: 'pine', seed: 31 }, { kind: 'spruce', seed: 57 }, { kind: 'cherry', seed: 77 }, { kind: 'palm', seed: 1234 }, { kind: 'pine', seed: 99 }];
+const TREE_PATTERN = [0, 1, 2, 0, 5, 2, 1, 0, 2, 5, 0, 1, 2, 0, 3, 5, 1, 2, 0, 2];
 
 // Underwater life (user must-haves 10:29): kelp forest, jellyfish, tiny bubbles, god rays, current drift. Reference cues (viewed underwater shots): cyan light band near the surface, light shafts, sandy floor, haze to teal. All procedural approximations, small instance counts.
 const UW_FOG = 'vec3(0.09, 0.43, 0.55)';
@@ -393,9 +449,10 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
         return [mk('/spray145.png'), mk('/bark.jpg', true), mk(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
         const con = kind === 'pine' || kind === 'spruce';
-        const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1.12) : treeGeo(kind as any, seed, kind === 'broad' ? 420 : 340, 1.45);
-        const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, 110, 2.2).leaves;
-        return { trunk: hi.trunk, leaves: hi.leaves, lo: lw, con };
+        if (kind === 'palm') { const p = palmGeo(seed); return { trunk: p.trunk, leaves: p.leaves, lo: p.leaves, con, kind }; }
+        const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1.12) : treeGeo(kind as any, seed, kind === 'broad' ? 460 : kind === 'cherry' ? 560 : 340, 1.45);
+        const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, kind === 'cherry' ? 140 : 110, 2.2).leaves;
+        return { trunk: hi.trunk, leaves: hi.leaves, lo: lw, con, kind };
     }), []);
     const pts = useMemo(() => { let r = 7; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const a: { x: number; z: number; s: number; c: number; v: number }[] = []; for (let i = 0; i < 600 && a.length < 130; i++) { const px = PARK.x0 + 6 + rnd() * (PARK.x1 - PARK.x0 - 12), pz = PARK.z0 + 6 + rnd() * (PARK.z1 - PARK.z0 - 12), cxm = (PARK.x0 + PARK.x1) / 2, czm = (PARK.z0 + PARK.z1) / 2; if (Math.hypot(px - cxm, pz - czm) < 54 || Math.abs((px - cxm) - (pz - czm) * 0.6) < 6) continue; if (rnd() < 0.2) continue; a.push({ x: px, z: pz, s: 0.8 + rnd() * 0.5, c: rnd(), v: TREE_PATTERN[a.length % TREE_PATTERN.length] }); }
         // Small street-side clusters use the same families and LOD, clear of buildings and intersections.
@@ -404,7 +461,20 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
             const b = street[i].b;
             const x = b.x1 + 2.5, z = (b.z0 + b.z1) / 2 + (Math.floor(i / 3) % 2 ? 4 : -4);
             if (z < WATER_Z + 8 || x > HALF - 4 || buildings.some(q => x > q.x0 - 1.3 && x < q.x1 + 1.3 && z > q.z0 - 1.3 && z < q.z1 + 1.3)) continue;
-            a.push({ x, z, s: 0.62 + rnd() * 0.14, c: rnd(), v: [0, 3, 4][Math.floor(i / 3) % 3] });
+            a.push({ x, z, s: 0.62 + rnd() * 0.14, c: rnd(), v: [0, 3, 5][Math.floor(i / 3) % 3] });
+        }
+        // env-iter1 lakeside: cherry blossoms ring the lake on the trail-facing banks, palms stand on the beach sand.
+        const nearTrail = (x: number, z: number, m: number) => Math.abs((x - PARK_POND.cx) - (z - PARK_POND.cz) * 0.6) < m || bridgeSurfaceAt(x, z) !== null;
+        let nCh = 0, nPalm = 0;
+        for (let i = 0; i < 500 && nCh < 18; i++) {
+            const ang = rnd() * 6.283, rad = PARK_POND.rx + 4.5 + rnd() * 10, x = PARK_POND.cx + Math.cos(ang) * rad, z = PARK_POND.cz + Math.sin(ang) * rad;
+            if (sandWeight(x, z) > 0.05 || nearTrail(x, z, 6.5) || a.some((p) => Math.hypot(p.x - x, p.z - z) < 5.2)) continue;
+            a.push({ x, z, s: 0.82 + rnd() * 0.3, c: rnd(), v: 3 }); nCh++;
+        }
+        for (let i = 0; i < 500 && nPalm < 9; i++) {
+            const ang = BEACH_DIR + (rnd() - 0.5) * 2.0, rad = PARK_POND.rx * LAKE_SHORE + 3 + rnd() * 11, x = PARK_POND.cx + Math.cos(ang) * rad, z = PARK_POND.cz + Math.sin(ang) * rad;
+            if (sandWeight(x, z) < 0.9 || nearTrail(x, z, 5) || a.some((p) => Math.hypot(p.x - x, p.z - z) < 5.5)) continue;
+            a.push({ x, z, s: 0.85 + rnd() * 0.3, c: rnd(), v: 4 }); nPalm++;
         }
         return a; }, []);
     const bushTex = useMemo(()=>{const t=new THREE.TextureLoader().load('/shrub134.png');t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t;},[]);
@@ -417,13 +487,22 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
             const a=i*2.39996,rad=0.1+0.6*Math.sqrt(rnd());g.rotateZ((rnd()-0.5)*1.3);g.rotateY(a);g.translate(Math.cos(a)*rad,0.02+rnd()*0.65,Math.sin(a)*rad);gs.push(g);
         }return mergeGeometries(gs,false)!;
     },[]);
+    // falling cherry petals: one Points draw, positions looped in the vertex shader around the lakeside cherries.
+    const petalU = useMemo(() => ({ uTime: { value: 0 }, uDayP: TOD.day }), []);
+    const petalGeo = useMemo(() => {
+        const ch = pts.filter((p) => p.v === 3 && Math.hypot(p.x - PARK_POND.cx, p.z - PARK_POND.cz) < 40), n = Math.min(26, ch.length) * 9;
+        const P = new Float32Array(n * 3), ph = new Float32Array(n); let r = 31; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+        for (let i = 0; i < n; i++) { const t = ch[i % ch.length], a = rnd() * 6.28, d = rnd() * 4.5 * t.s; P[i * 3] = t.x + Math.cos(a) * d; P[i * 3 + 2] = t.z + Math.sin(a) * d; P[i * 3 + 1] = parkH(t.x, t.z) + 0.05; ph[i] = rnd(); }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g;
+    }, [pts]);
+    if (DBG) (window as any).__treePts = pts;
     const NT = TREE_TYPES.length;
     const place = (hx: number, hz: number) => {
         const o = new THREE.Object3D(), col = new THREE.Color(); const ct = Array(NT).fill(0), ch = Array(NT).fill(0), cl = Array(NT).fill(0);
-        pts.forEach((p) => { const d = Math.hypot(p.x - hx, p.z - hz); if (d > (p.x > PARK.x0 && p.x < PARK.x1 && p.z > PARK.z0 && p.z < PARK.z1 ? 230 : 140) || ct[p.v] >= 70) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const M = d < 45 ? lf.current[v] : lo.current[v], k = d < 45 ? ch : cl; M.setMatrixAt(k[v], o.matrix); M.setColorAt(k[v]++, col); });
+        pts.forEach((p) => { const d = Math.hypot(p.x - hx, p.z - hz); if (d > (p.x > PARK.x0 && p.x < PARK.x1 && p.z > PARK.z0 && p.z < PARK.z1 ? 230 : 140) || ct[p.v] >= 70) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; if (geos[v].kind === 'cherry' || geos[v].kind === 'palm') col.setRGB(1, 1, 1).multiplyScalar(0.86 + w * 0.22); else col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const M = d < QK.leafLodDist ? lf.current[v] : lo.current[v], k = d < QK.leafLodDist ? ch : cl; M.setMatrixAt(k[v], o.matrix); M.setColorAt(k[v]++, col); });
         for (let v = 0; v < NT; v++) { tr.current[v].count = ct[v]; lf.current[v].count = ch[v]; lo.current[v].count = cl[v]; [tr.current[v], lf.current[v], lo.current[v]].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); if(m.boundingSphere) m.boundingSphere.radius += 0.7; }); }
     };
-    useFrame((st) => { treeWindTime.value = DBG && (window as any).__windT !== undefined ? (window as any).__windT : st.clock.elapsedTime; if(bush.current) (bush.current.material as THREE.MeshLambertMaterial).emissive.set('#263c1c').multiplyScalar(0.12+0.88*TOD.day.value); for (let v = 0; v < NT; v++) { const a = lf.current[v], b = lo.current[v]; if(a) (a.material as THREE.MeshLambertMaterial).emissive.set('#426439').multiplyScalar(0.12 + 0.88 * TOD.day.value); if(b) (b.material as THREE.MeshLambertMaterial).emissive.set('#426439').multiplyScalar(0.12 + 0.88 * TOD.day.value); } const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 6) { last.current = [hx, hz]; place(hx, hz); } });
+    useFrame((st) => { treeWindTime.value = DBG && (window as any).__windT !== undefined ? (window as any).__windT : st.clock.elapsedTime; if(bush.current) (bush.current.material as THREE.MeshLambertMaterial).emissive.set('#263c1c').multiplyScalar(0.12+0.88*TOD.day.value); for (let v = 0; v < NT; v++) { const a = lf.current[v], b = lo.current[v]; const em = geos[v].kind === 'cherry' ? '#6e3f50' : geos[v].kind === 'palm' ? '#2a3a14' : '#426439'; if(a) (a.material as THREE.MeshLambertMaterial).emissive.set(em).multiplyScalar(0.12 + 0.88 * TOD.day.value); if(b) (b.material as THREE.MeshLambertMaterial).emissive.set(em).multiplyScalar(0.12 + 0.88 * TOD.day.value); } petalU.uTime.value = st.clock.elapsedTime; const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 6) { last.current = [hx, hz]; place(hx, hz); } });
     useEffect(() => {
         const o = new THREE.Object3D(), col = new THREE.Color(); place(1e5, 1e5); last.current = [1e9, 1e9];
         for (let i = 0; i < 70; i++) { const p = pts[i < 45 ? i % pts.length : Math.min(pts.length - 1, 130 + i - 45)], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + (i < 45 ? 3 + (i % 5) : 0), 0.02 + parkH(p.x + (i < 45 ? 3 + (i % 5) : 0), p.z + (i < 45 ? 2 : 0)), p.z + (i < 45 ? 2 : 0)); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.22 + ((p.c * 5.7) % 1) * 0.08, 0.18 + ((p.c * 2.3) % 1) * 0.12, 0.55 + ((p.c * 9.1) % 1) * 0.20)); }
@@ -445,10 +524,16 @@ function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean
         {renderGround && <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>}
         {renderGround && <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>}
         {geos.map((g, v) => <group key={v}>
-            <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.con ? pbarkTex : barkTex} emissive="#4a3a2c" side={THREE.DoubleSide} onBeforeCompile={trunkWindShader} /></instancedMesh>
-            <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
-            <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
+            <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.kind === 'palm' ? null : g.con ? pbarkTex : barkTex} color={g.kind === 'palm' ? '#8f7a5e' : g.kind === 'cherry' ? '#9a8a90' : '#ffffff'} emissive={g.kind === 'palm' ? '#3a3024' : '#4a3a2c'} side={THREE.DoubleSide} onBeforeCompile={trunkWindShader} /></instancedMesh>
+            {g.kind === 'palm' ? <>
+                <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial vertexColors emissive="#2a3a14" side={THREE.DoubleSide} onBeforeCompile={palmLeafShader} /></instancedMesh>
+                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial vertexColors emissive="#2a3a14" side={THREE.DoubleSide} onBeforeCompile={palmLeafShader} /></instancedMesh>
+            </> : <>
+                <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
+                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
+            </>}
         </group>)}
+        <points geometry={petalGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} uniforms={petalU} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying float vR; void main(){ float life = fract(uTime * 0.055 + ph); vec3 p = position; p.y += 4.6 * (1.0 - life); p.x += sin(uTime * 0.9 + ph * 40.0) * 0.6 + life * 2.2; p.z += cos(uTime * 0.7 + ph * 23.0) * 0.5; vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vA = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.85, 1.0, life)); vR = uTime * 2.0 + ph * 30.0; gl_PointSize = clamp(55.0 / -mv.z, 1.5, 7.0); }`} fragmentShader={`uniform float uDayP; varying float vA; varying float vR; void main(){ vec2 q = gl_PointCoord - 0.5; float c = cos(vR), s = sin(vR); q = mat2(c, -s, s, c) * q; float e = length(q * vec2(1.0, 1.9)); if (e > 0.48) discard; gl_FragColor = vec4(mix(vec3(0.5, 0.33, 0.42), vec3(1.0, 0.78, 0.86), uDayP), vA * 0.95); }`} /></points>
         <instancedMesh ref={bush} args={[undefined, undefined, 70]} frustumCulled={false}><primitive object={bushGeo} attach="geometry" /><meshLambertMaterial map={bushTex} color="#dce1cd" emissive="#182510" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
     </group>;
 }
@@ -460,7 +545,7 @@ const floorGrass = (sh: any) => {
 };
 // meadow: long grass tufts + subtle flowers + fireflies. Reference study: instanced blade-cluster grass with wind sway in the vertex shader (common real-time approach, e.g. GDC "Ghost of Tsushima" grass talk, three.js instanced grass guides); blade shapes, colours and placement are mine
 const INK_R = 2;
-const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2; const a: number[] = []; for (let i = 0; i < 39000; i++) { const x = PARK.x0 + 3 + rnd() * (PARK.x1 - PARK.x0 - 6), z = PARK.z0 + 3 + rnd() * (PARK.z1 - PARK.z0 - 6); const pond = ((x - PARK_POND.cx) / (PARK_POND.rx + 1.5)) ** 2 + ((z - PARK_POND.cz) / (PARK_POND.rz + 1.5)) ** 2; if (Math.abs((x - cx) - (z - cz) * 0.6) < 6.5 || Math.hypot(x - cx, z - cz) < 4 || pond < 1.0 || bridgeSurfaceAt(x, z) !== null) continue; a.push(x, z, rnd(), rnd()); } return a; })();
+const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2; const a: number[] = []; for (let i = 0; i < 39000; i++) { const x = PARK.x0 + 3 + rnd() * (PARK.x1 - PARK.x0 - 6), z = PARK.z0 + 3 + rnd() * (PARK.z1 - PARK.z0 - 6); const pond = ((x - PARK_POND.cx) / (PARK_POND.rx + 1.5)) ** 2 + ((z - PARK_POND.cz) / (PARK_POND.rz + 1.5)) ** 2; if (Math.abs((x - cx) - (z - cz) * 0.6) < 6.5 || Math.hypot(x - cx, z - cz) < 4 || pond < 1.0 || bridgeSurfaceAt(x, z) !== null || sandWeight(x, z) > 0.35) continue; a.push(x, z, rnd(), rnd()); } return a; })();
 function tuftGeo() {
     const pos: number[] = [], col: number[] = []; let r = 5; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
     for (let b = 0; b < 7; b++) {
@@ -495,8 +580,8 @@ function Meadow({ sim }: { sim: Sim }) {
     const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5 + parkH(p[i * 3], p[i * 3 + 2]); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
     const place = (hx: number, hz: number) => {
         const o = new THREE.Object3D(), col = new THREE.Color(); let gi = 0, fi = 0;
-        for (let i = 0; i < GR_POOL.length && gi < 6500; i += 4) {
-            const x = GR_POOL[i], z = GR_POOL[i + 1]; if (Math.hypot(x - hx, z - hz) > 57 || bridgeSurfaceAt(x, z) !== null) continue;
+        for (let i = 0; i < GR_POOL.length && gi < QK.grass; i += 4) {
+            const x = GR_POOL[i], z = GR_POOL[i + 1]; if (Math.hypot(x - hx, z - hz) > QK.grassRadius || bridgeSurfaceAt(x, z) !== null) continue;
             o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl) * (1 + 0.04 * Math.max(0, -parkH(x, z)));   o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.30 + 0.06 * cl, 0.34 + GR_POOL[i + 2] * 0.10 + 0.065 * cl));
             if (GR_POOL[i + 2] < 0.12 && fi < 420) { o.position.set(x + 0.2, 0.05 + parkH(x + 0.2, z), z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
         }
@@ -507,7 +592,7 @@ function Meadow({ sim }: { sim: Sim }) {
         // grass optics (ref: BotW grassland, blades dark at the root and sun-lit translucent yellow-green at the tips): base occlusion, bright backlit tips, soft sheen
         sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.25, 0.32, 0.17), uDayG) * vHt * vHt * 0.32; diffuseColor.a = 0.5;\n#include <opaque_fragment>'); };   // alpha 0.5 is still fully visible in the opaque color pass but falls below the screen-outline mask threshold
     return <group>
-        <instancedMesh ref={gr} name="polyfork-curved-grass-blades" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geo, undefined, 6500]} frustumCulled={true}><meshLambertMaterial vertexColors emissive="#1c3410" side={THREE.DoubleSide} onBeforeCompile={onGrass} /></instancedMesh>
+        <instancedMesh ref={gr} name="polyfork-curved-grass-blades" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geo, undefined, QK.grass]} frustumCulled={true}><meshLambertMaterial vertexColors emissive="#1c3410" side={THREE.DoubleSide} onBeforeCompile={onGrass} /></instancedMesh>
         <instancedMesh ref={fl} args={[flGeo, undefined, 420]}><meshLambertMaterial emissive="#555555" side={THREE.DoubleSide} /></instancedMesh>
         <points ref={ff} geometry={ffGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} blending={THREE.AdditiveBlending} uniforms={fu.current} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying vec3 vOrbCol; void main(){ vOrbCol=0.58+0.42*cos(ph+vec3(0.0,2.1,4.2)); vec3 p = position; p.x += sin(uTime*0.4+ph*3.0)*2.5; p.z += cos(uTime*0.35+ph*2.0)*2.5; p.y += sin(uTime*0.7+ph)*0.8; vec4 mv = modelViewMatrix*vec4(p,1.0); gl_Position = projectionMatrix*mv; vA = 0.35+0.65*pow(0.5+0.5*sin(uTime*1.6+ph*5.0),2.0); gl_PointSize = clamp(38.0/(-mv.z), 2.0, 9.0); }`} fragmentShader={`varying float vA;varying vec3 vOrbCol;void main(){float d=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.0,d);gl_FragColor=vec4(vOrbCol*(0.7+0.3*a),a*a*vA);}`} /></points>
     </group>;
@@ -1226,11 +1311,12 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
-        { const want = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2) * curScale.current; if (Math.abs(gl.getPixelRatio() - want) > 0.01) gl.setPixelRatio(want); }
+        { const want = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * curScale.current; if (Math.abs(gl.getPixelRatio() - want) > 0.01) gl.setPixelRatio(want); }
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
-            if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current > 16 && ns > 1) ns = Math.max(1, ns - 0.05); else if (ema.current < 12.5 && ns >= 1 && ns < 1.34 && coarse) ns += 0.05; else if (ema.current < 18 && ns < 1) ns += 0.05;   // high tier: only on touch devices running well under budget (<12.5 ms), reversible by the same >24 ms downshift
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2) * ns); }
+            if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current > 16 && ns > 1) ns = Math.max(1, ns - 0.05); else if (ema.current < 12.5 && ns >= 1 && ns < QK.maxScale && (coarse || HQ)) ns += 0.05; else if (ema.current < 18 && ns < 1) ns += 0.05;   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
+            if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * ns); }
         }
         if (sim.mode === 'play') {
             for (let i = 0; i < 2; i++) stepSim(sim, dt / 2, ev);
@@ -1475,7 +1561,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <ParkGround />
         <React.Suspense fallback={null}>
             <PolyforkBuildings />
-            <PolyforkLakeBridge sim={sim} />
+            <PolyforkLakeBridge sim={sim} perf={perf} tod={TOD} />
         </React.Suspense>
         <FlyingCars />
         {/* Rebuild park and city trees with authored forms and foliage; never overlay Polyfork tree canopies. */}
