@@ -537,7 +537,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
     { const ac = (s as any).anchorCar; if (ac >= 0 && (s.web || s.grappleFlight)) { const m = movingAnchor(ac, s.t); if (!m) { (s as any).anchorCar = -1; if (s.web) { s.web = false; ev.release(); } } else { s.anchor[0] = m[0]; s.anchor[1] = m[1]; s.anchor[2] = m[2]; } } else if (!s.web && !s.grappleFlight) (s as any).anchorCar = -1; }   // a web on a flying car rides with the car
-    if (s.mode === 'play' && controls === (globalThis as any).__svMainInput && stepRide(s, dt, input, ev)) { input.jumpQ = false; input.swingQ = false; input.grabQ = false; input.swing = false; }
+    // vehicle entering removed (Shifat Oct 29, 4:32 PM: "Remove car & boat entering"); standing on / riding roofs and decks stays
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
     const turn = (k['arrowleft'] ? 1 : 0) - (k['arrowright'] ? 1 : 0);
