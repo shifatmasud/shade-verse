@@ -271,6 +271,46 @@ export function resetSim(s: Sim) {
     s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s)); s.enemies.push(spawnBoss(s));
 }
 
+
+// Flying cars (Shifat Oct 29: "flying cars must have collision & web must work on them"). One deterministic traffic model shared by
+// the renderer and the sim: cars run along street lanes at fixed altitudes; the hero collides with them (stands on the roof and rides
+// along, bumps off the sides and underside) and web swings / spring shots can attach under a car and ride with it.
+export const CAR_N = 36, CAR_SCALE = 2.4;
+export const CARS = Array.from({ length: CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 }));
+const CAR_HX = 1.0 * CAR_SCALE, CAR_HZ = 2.2 * CAR_SCALE, CAR_BOT = -0.5 * CAR_SCALE, CAR_TOP = 1.01 * CAR_SCALE;
+/** World position, velocity and half extents of car i at sim time t. */
+export function carAt(i: number, t: number) {
+    const c = CARS[i], u = ((c.off + t * c.sp) % 640 + 640) % 640 - 320, l = c.lane * CELL + CELL / 2, y = c.y + Math.sin(t + i) * 0.6, vy = Math.cos(t + i) * 0.6;
+    return c.axis === 0 ? { x: l, y, z: u, vx: 0, vy, vz: c.sp, hx: CAR_HX, hz: CAR_HZ, wrap: Math.abs(u) > 316 } : { x: u, y, z: l, vx: c.sp, vy, vz: 0, hx: CAR_HZ, hz: CAR_HX, wrap: Math.abs(u) > 316 };
+}
+function collideCars(s: Sim, prevY: number, dt: number) {
+    const p = s.pos, v = s.vel, hw = 0.5, hh = 1.0;
+    for (let i = 0; i < CAR_N; i++) {
+        const c = carAt(i, s.t); if (c.wrap) continue;
+        const top = c.y + CAR_TOP, bot = c.y + CAR_BOT;
+        if (p[0] + hw <= c.x - c.hx || p[0] - hw >= c.x + c.hx || p[2] + hw <= c.z - c.hz || p[2] - hw >= c.z + c.hz || p[1] - hh > top + 0.05 || p[1] + hh <= bot) continue;
+        if (prevY - hh >= top - 0.8 && v[1] <= 0.5 + c.vy) {   // land on the roof and ride along
+            p[1] = top + hh; if (v[1] < c.vy) v[1] = c.vy; s.ground = true; p[0] += c.vx * dt; p[2] += c.vz * dt; (s as any).onCar = i; continue;
+        }
+        if (prevY + hh <= bot + 0.5 && v[1] > 0) { p[1] = bot - hh; v[1] = Math.min(v[1], 0); continue; }   // bonk the underside
+        const l = p[0] + hw - (c.x - c.hx), r = (c.x + c.hx) - (p[0] - hw), f = p[2] + hw - (c.z - c.hz), k = (c.z + c.hz) - (p[2] - hw), m = Math.min(l, r, f, k);
+        if (m === l) { p[0] -= l; v[0] = Math.min(v[0], c.vx) - 2; } else if (m === r) { p[0] += r; v[0] = Math.max(v[0], c.vx) + 2; }
+        else if (m === f) { p[2] -= f; v[2] = Math.min(v[2], c.vz) - 2; } else { p[2] += k; v[2] = Math.max(v[2], c.vz) + 2; }   // shoved by the car
+    }
+}
+/** Web anchor under the nearest suitable car ahead (or null). Same distance/aim rules as building anchors. */
+function findCarAnchor(s: Sim, bestScore: number): { a: V3; sc: number; i: number } | null {
+    const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let out: { a: V3; sc: number; i: number } | null = null;
+    for (let i = 0; i < CAR_N; i++) {
+        const c = carAt(i, s.t); if (c.wrap) continue;
+        const dx = c.x - p[0], dz = c.z - p[2], dh = Math.hypot(dx, dz) || 1, dy = c.y + CAR_BOT - p[1];
+        if (dy < 6) continue; const dist = Math.hypot(dh, dy); if (dist < 12 || dist > 85) continue;
+        const dot = (dx * fx + dz * fz) / dh; if (dot < 0.3 && dh > 8) continue;
+        const sc = Math.abs(dist - 40) + (1 - Math.max(dot, 0)) * 50 - 6;   // slight preference: cars are a deliberate target when close to the aim
+        if (sc < bestScore && (!out || sc < out.sc)) out = { a: [c.x, c.y + CAR_BOT, c.z], sc, i };
+    }
+    return out;
+}
 function findAnchor(s: Sim, strict = false): V3 {
     const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
     let best: V3 | null = null, bs = 1e9;
@@ -285,6 +325,8 @@ function findAnchor(s: Sim, strict = false): V3 {
         const sc = Math.abs(dist - 40) + (1 - dot) * 50 + (dy > 75 ? 25 : 0);
         if (sc < bs) { bs = sc; const ox = -dx / dh, oz = -dz / dh; best = [qx + ox * 10, b.h + 3, qz + oz * 10]; }
     }
+    const car = findCarAnchor(s, bs);
+    if (car) { const a = car.a as any; a.car = car.i; return a; }
     if (strict && !best) return null as any; // spring-shot needs a real building anchor, never empty air
     return best || [p[0] + fx * 24, p[1] + 26, p[2] + fz * 24];
 }
@@ -376,6 +418,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     const input = controls;
     if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
+    { const ac = (s as any).anchorCar; if (ac >= 0 && (s.web || s.grappleFlight)) { const c = carAt(ac, s.t); if (c.wrap) { (s as any).anchorCar = -1; if (s.web) { s.web = false; ev.release(); } } else { s.anchor[0] = c.x; s.anchor[1] = c.y + CAR_BOT; s.anchor[2] = c.z; } } else if (!s.web && !s.grappleFlight) (s as any).anchorCar = -1; }   // a web on a flying car rides with the car
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
     const turn = (k['arrowleft'] ? 1 : 0) - (k['arrowright'] ? 1 : 0);
@@ -388,7 +431,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 
     if (input.swingQ && !s.web) {
         s.grappleFlight = false; s.webDepartB = s.wall ? s.wallB : undefined;
-        { const sa = findAnchor(s, true); s.anchorReal = !!sa; s.anchor = sa || findAnchor(s); } s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); s.swings++;
+        { const sa = findAnchor(s, true); s.anchorReal = !!sa; s.anchor = sa || findAnchor(s); (s as any).anchorCar = (sa as any)?.car ?? -1; } s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); s.swings++;
         const d = norm(sub(s.anchor, p)); v[0] += d[0] * 6; v[1] += d[1] * 4; v[2] += d[2] * 6; s.ground = false; s.wall = null; ev.attach();
     }
     input.swingQ = false;
@@ -400,7 +443,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     if (springAnchor) {
         // PROTOTYPE spring-shot jump (both hands): JUMP while the web is out, or JUMP while holding SWING in the air, springs toward the anchor
         input.jumpQ = false;
-        s.anchor = springAnchor; s.grappleFlight = true;
+        (s as any).anchorCar = (springAnchor as any).car ?? ((springAnchor === s.anchor) ? (s as any).anchorCar ?? -1 : -1); s.anchor = springAnchor; s.grappleFlight = true;
         const d = norm(sub(s.anchor, p)); s.web = false; s.spring = 0.4; s.ground = false;
         v[0] = v[0] * 0.3 + d[0] * 24; v[1] = Math.max(v[1], 0) * 0.3 + d[1] * 24 + 7; v[2] = v[2] * 0.3 + d[2] * 24; ev.jump(); ev.attach();
     }
@@ -489,6 +532,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     if (s.glideOn) { const hs = Math.hypot(v[0], v[2]); if (hs < FLY_GLIDE_CAP) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * FLY_GLIDE_ACC * dt; v[2] += fz2 * FLY_GLIDE_ACC * dt; } }
 
     collide(s, prevY);
+    (s as any).onCar = -1; collideCars(s, prevY, dt);
     if (s.webDepartB !== undefined) { const b = blds[s.webDepartB]; if (!s.web || !b || p[0] < b.x0 - 1.2 || p[0] > b.x1 + 1.2 || p[2] < b.z0 - 1.2 || p[2] > b.z1 + 1.2 || p[1] - 1 > b.h + 0.2) s.webDepartB = undefined; }
     // Hero side-wall contact ends web travel and enters wall-running mode.
     // A distant anchor attaching is not contact; roofs remain normal landings.

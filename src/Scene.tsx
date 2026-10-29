@@ -20,7 +20,7 @@ import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, type Unibeam, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, type Unibeam, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
@@ -1020,8 +1020,7 @@ export function SnareLines({ sim }: { sim: Sim }) {
         <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false}><lineBasicMaterial ref={shockMat} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} /></lineSegments>
     </>;
 }
-// flying cars: instanced, lane traffic above the streets (decor only, no collision)
-const CAR_N = 36;
+// flying cars: instanced lane traffic above the streets; motion comes from sim.carAt so collision and web anchors match what you see
 function carGeo() {
     const parts: THREE.BufferGeometry[] = [];
     const add = (g: THREE.BufferGeometry, c: number[], x: number, y: number, z: number, al = 1) => { g.translate(x, y, z); const n = g.attributes.position.count, a = new Float32Array(n * 4); for (let i = 0; i < n; i++) { a[i * 4] = c[0]; a[i * 4 + 1] = c[1]; a[i * 4 + 2] = c[2]; a[i * 4 + 3] = al; } g.setAttribute('color', new THREE.BufferAttribute(a, 4)); parts.push(g.index ? g.toNonIndexed() : g); };
@@ -1032,18 +1031,17 @@ function carGeo() {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 8), [0.15, 0.15, 0.18], sx * 1.0, -0.4, sz * 1.4), add(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8), [0.3, 2.0, 2.6], sx * 1.0, -0.5, sz * 1.4, 0.5);
     return mergeGeometries(parts, false)!;
 }
-function FlyingCars() {
+function FlyingCars({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.InstancedMesh>(null!);
     const geo = useMemo(carGeo, []);
-    const cars = useMemo(() => Array.from({ length: CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 })), []);
-    useFrame((st) => {
-        const t = st.clock.elapsedTime, m = ref.current; if (!m) return;
-        cars.forEach((c, i) => {
-            const u = ((c.off + t * c.sp) % 640 + 640) % 640 - 320, l = c.lane * CELL + CELL / 2;
-            if (c.axis === 0) { tmp.position.set(l, c.y + Math.sin(t + i) * 0.6, u); tmp.rotation.set(0, c.sp > 0 ? 0 : Math.PI, 0); }
-            else { tmp.position.set(u, c.y + Math.sin(t + i) * 0.6, l); tmp.rotation.set(0, c.sp > 0 ? Math.PI / 2 : -Math.PI / 2, 0); }
-            tmp.scale.setScalar(2.4); tmp.updateMatrix(); m.setMatrixAt(i, tmp.matrix); if (DBG && i === 0) (window as any).__car0 = [tmp.position.x, tmp.position.y, tmp.position.z, c.axis, c.sp];
-        });
+    const cars = CARS; if (DBG) (window as any).__carAt = carAt;
+    useFrame(() => {
+        const t = sim.t, m = ref.current; if (!m) return;
+        for (let i = 0; i < CAR_N; i++) {
+            const c = carAt(i, t);
+            tmp.position.set(c.x, c.y, c.z); tmp.rotation.set(0, CARS[i].axis === 0 ? (CARS[i].sp > 0 ? 0 : Math.PI) : (CARS[i].sp > 0 ? Math.PI / 2 : -Math.PI / 2), 0);
+            tmp.scale.setScalar(CAR_SCALE); tmp.updateMatrix(); m.setMatrixAt(i, tmp.matrix); if (DBG && i === 0) (window as any).__car0 = [c.x, c.y, c.z, CARS[i].axis, CARS[i].sp];
+        }
         m.instanceMatrix.needsUpdate = true;
     });
     useEffect(() => { const pal = ['#e5483a', '#f2b632', '#3aa66a', '#3f6fd8', '#f07a2a', '#8e5bd6']; cars.forEach((_, i) => ref.current.setColorAt(i, new THREE.Color(pal[i % 6]))); ref.current.instanceColor!.needsUpdate = true; }, [cars]);
@@ -1822,7 +1820,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             <PolyforkBuildings />
             <PolyforkLakeBridge sim={sim} perf={perf} tod={TOD} />
         </React.Suspense>
-        <FlyingCars />
+        <FlyingCars sim={sim} />
         {/* Rebuild park and city trees with authored forms and foliage; never overlay Polyfork tree canopies. */}
         <Forest sim={sim} renderGround={false} />
         <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} /><EnemyShotsFx sim={sim} />
