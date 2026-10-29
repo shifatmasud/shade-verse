@@ -114,3 +114,7 @@ kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;c
 .tby{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.55}
 @media (max-height:500px){.tmaps{display:none}.overlay.title .go{margin-top:4px;height:52px;width:72px}}
 .stage.desk .overlay.title .go{display:none}
+
+.ico.ride{right:calc(96px + env(safe-area-inset-right));bottom:calc(200px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.35)!important}
+.ico.ride.on{background:rgba(255,209,102,.45)!important}
+.ridehint{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);color:#fff;font:600 14px system-ui;padding:6px 12px;border-radius:14px;background:rgba(0,0,0,.45);pointer-events:none}

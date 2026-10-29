@@ -199,10 +199,11 @@ export interface EShot { x: number; y: number; z: number; vx: number; vy: number
 export const ESHOT = { SPEED: 30, BOSS_SPEED: 36, CHARGE: 0.4, DMG: 8, BOSS_DMG: 10, HIT_R: 0.95, LIFE: 2.2, MAX: 24, MIN_GAP: 0.35, RANGE_MIN: 6, RANGE: 30,
     UNI_CHARGE: 1.0, UNI_FIRE: 1.5, UNI_LEN: 48, UNI_R: 1.1, UNI_DMG: 9, UNI_TURN: 0.75, UNI_CD: 9 };
 export interface Unibeam { phase: 'charge' | 'fire'; t: number; yaw: number; pitch: number; ox: number; oy: number; oz: number; tick: number }
-export interface Input { jumpHeld?: boolean; jumpReleased?: boolean; jumpCancelled?: boolean; attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean }
+export interface Input { jumpHeld?: boolean; jumpReleased?: boolean; jumpCancelled?: boolean; attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean; rideQ?: boolean }
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void; blast?: (x: number, y: number, z: number) => void; shot?: (kind: 'charge' | 'bolt' | 'impact' | 'uniCharge' | 'uniStart' | 'uniMove' | 'uniStop', x: number, y: number, z: number) => void }
 
-export const input: Input = { attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
+export const input: Input = { rideQ: false, attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
+(globalThis as any).__svMainInput = input;
 let companionSim: Sim | null = null;
 export function setCompanionSim(s: Sim | null) { companionSim = s; }
 
@@ -291,13 +292,19 @@ export const PED_VOICE = { x: 0, y: 0, z: 0, d: 1e9, t: 0 };
 export const CARS = Array.from({ length: CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 }));
 const CAR_HX = 1.0 * CAR_SCALE, CAR_HZ = 2.2 * CAR_SCALE, CAR_BOT = -0.5 * CAR_SCALE, CAR_TOP = 1.01 * CAR_SCALE;
 /** World position, velocity and half extents of car i at sim time t. */
+/** The car the player is flying (Shifat Oct 29: "let us ride flying cars", "Enter when close to vehicle to ride"). i = -1: none.
+ *  parked: the hero hopped out; the car hovers where it was left until another car is taken. */
+export const PILOT = { i: -1, x: 0, y: 0, z: 0, yaw: 0, vx: 0, vy: 0, vz: 0, parked: false };
+export const RIDE_RANGE = 9;
 export function carAt(i: number, t: number) {
+    if (PILOT.i === i) { const hx = Math.abs(Math.sin(PILOT.yaw)) > 0.7 ? CAR_HZ : CAR_HX, hz = hx === CAR_HZ ? CAR_HX : CAR_HZ; return { x: PILOT.x, y: PILOT.y, z: PILOT.z, vx: PILOT.vx, vy: PILOT.vy, vz: PILOT.vz, hx, hz, wrap: false, yaw: PILOT.yaw }; }
     const c = CARS[i], u = ((c.off + t * c.sp) % 640 + 640) % 640 - 320, l = c.lane * CELL + CELL / 2, y = c.y + Math.sin(t + i) * 0.6, vy = Math.cos(t + i) * 0.6;
-    return c.axis === 0 ? { x: l, y, z: u, vx: 0, vy, vz: c.sp, hx: CAR_HX, hz: CAR_HZ, wrap: Math.abs(u) > 316 } : { x: u, y, z: l, vx: c.sp, vy, vz: 0, hx: CAR_HZ, hz: CAR_HX, wrap: Math.abs(u) > 316 };
+    return c.axis === 0 ? { x: l, y, z: u, vx: 0, vy, vz: c.sp, hx: CAR_HX, hz: CAR_HZ, wrap: Math.abs(u) > 316, yaw: c.sp > 0 ? 0 : Math.PI } : { x: u, y, z: l, vx: c.sp, vy, vz: 0, hx: CAR_HZ, hz: CAR_HX, wrap: Math.abs(u) > 316, yaw: c.sp > 0 ? Math.PI / 2 : -Math.PI / 2 };
 }
 function collideCars(s: Sim, prevY: number, dt: number) {
     const p = s.pos, v = s.vel, hw = 0.5, hh = 1.0;
     for (let i = 0; i < CAR_N; i++) {
+        if (PILOT.i === i && !PILOT.parked) continue;   // the car you are flying
         const c = carAt(i, s.t); if (c.wrap) continue;
         const top = c.y + CAR_TOP, bot = c.y + CAR_BOT;
         if (p[0] + hw <= c.x - c.hx || p[0] - hw >= c.x + c.hx || p[2] + hw <= c.z - c.hz || p[2] - hw >= c.z + c.hz || p[1] - hh > top + 0.05 || p[1] + hh <= bot) continue;
@@ -342,6 +349,47 @@ function collideBoats(s: Sim, prevY: number, dt: number) {
 export function movingAnchor(id: number, t: number): V3 | null {
     if (id >= 100) { const b = boatAt(id - 100, t); return [b.x, b.y + BOAT_MAST, b.z]; }
     const c = carAt(id, t); return c.wrap ? null : [c.x, c.y + CAR_BOT, c.z];
+}
+
+/** Nearest car within reach of the hero (or -1); the parked car counts too. */
+export function rideTarget(s: Sim): number {
+    if (PILOT.i >= 0 && !PILOT.parked) return PILOT.i;
+    let best = -1, bd = RIDE_RANGE;
+    for (let i = 0; i < CAR_N; i++) { const c = carAt(i, s.t); if (c.wrap) continue; const d = Math.hypot(c.x - s.pos[0], (c.y + 0.6) - s.pos[1], c.z - s.pos[2]); if (d < bd) { bd = d; best = i; } }
+    return best;
+}
+function stepRide(s: Sim, dt: number, input: Input, ev: Events): boolean {
+    if (input.rideQ) {
+        input.rideQ = false;
+        if (PILOT.i >= 0 && !PILOT.parked) {   // hop out onto the roof; the car hovers where you left it
+            PILOT.parked = true; PILOT.vx = PILOT.vy = PILOT.vz = 0;
+            s.pos[0] = PILOT.x; s.pos[1] = PILOT.y + CAR_TOP + 1.1; s.pos[2] = PILOT.z; s.vel = [0, 0, 0]; s.ground = true; (s as any).riding = false; ev.jump();
+            return false;
+        }
+        const i = rideTarget(s);
+        if (i >= 0) { const c = carAt(i, s.t); Object.assign(PILOT, { i, x: c.x, y: c.y, z: c.z, yaw: c.yaw, vx: c.vx, vy: 0, vz: c.vz, parked: false }); s.web = false; s.glideOn = false; s.wall = null; s.swim = false; s.dive = false; (s as any).riding = true; ev.attach(); }
+    }
+    if (!(PILOT.i >= 0 && !PILOT.parked)) { (s as any).riding = false; return false; }
+    // flying: throttle along the camera heading, climb/dive with the camera pitch, Space/jump to climb straight up, strafe to slide sideways
+    const k = input.keys; let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
+    const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
+    const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx, MAX = 42;
+    const tx = (fx * my + rx * mx) * MAX, tz = (fz * my + rz * mx) * MAX, ty = (input.jumpHeld ? 14 : 0) + (-Math.sin(s.pitch - 0.25)) * Math.abs(my) * 22;
+    const a = Math.min(1, dt * 1.6);
+    PILOT.vx += (tx - PILOT.vx) * a; PILOT.vz += (tz - PILOT.vz) * a; PILOT.vy += (ty - PILOT.vy) * Math.min(1, dt * 2.5);
+    PILOT.x += PILOT.vx * dt; PILOT.y += PILOT.vy * dt; PILOT.z += PILOT.vz * dt;
+    const hs = Math.hypot(PILOT.vx, PILOT.vz); if (hs > 2) { let dy = Math.atan2(PILOT.vx, PILOT.vz) - PILOT.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); PILOT.yaw += dy * Math.min(1, dt * 4); }
+    // keep the car out of buildings and above street / water, inside the world
+    const floor = (PILOT.z < WATER_Z ? WATER_Y + 2.5 : 3);
+    if (PILOT.y < floor) { PILOT.y = floor; PILOT.vy = Math.max(0, PILOT.vy); } if (PILOT.y > 220) { PILOT.y = 220; PILOT.vy = Math.min(0, PILOT.vy); }
+    for (const b of blds) { const m = 2.6; if (PILOT.x > b.x0 - m && PILOT.x < b.x1 + m && PILOT.z > b.z0 - m && PILOT.z < b.z1 + m && PILOT.y < b.h + 1.4) {
+        const l = PILOT.x - (b.x0 - m), r = (b.x1 + m) - PILOT.x, f = PILOT.z - (b.z0 - m), kk = (b.z1 + m) - PILOT.z, top = b.h + 1.4 - PILOT.y, mn = Math.min(l, r, f, kk, top);
+        if (mn === top) { PILOT.y = b.h + 1.4; PILOT.vy = Math.max(0, PILOT.vy); } else if (mn === l) { PILOT.x = b.x0 - m; PILOT.vx = Math.min(0, PILOT.vx); } else if (mn === r) { PILOT.x = b.x1 + m; PILOT.vx = Math.max(0, PILOT.vx); } else if (mn === f) { PILOT.z = b.z0 - m; PILOT.vz = Math.min(0, PILOT.vz); } else { PILOT.z = b.z1 + m; PILOT.vz = Math.max(0, PILOT.vz); } } }
+    const xl = PILOT.z < WATER_Z - 4 ? SEA.xMax : HALF - 3; PILOT.x = Math.max(-xl, Math.min(xl, PILOT.x)); PILOT.z = Math.max(SEA.zMin, Math.min(HALF - 3, PILOT.z));
+    // the hero sits in the cabin and moves with the car
+    s.pos[0] = PILOT.x; s.pos[1] = PILOT.y + 1.6; s.pos[2] = PILOT.z; s.vel = [PILOT.vx, PILOT.vy, PILOT.vz]; s.ground = false; s.web = false; s.swim = false;
+    s.safe = [PILOT.x, Math.max(PILOT.y, 2), PILOT.z];
+    return true;
 }
 /** Web anchor under the nearest suitable car ahead (or null). Same distance/aim rules as building anchors. */
 function findCarAnchor(s: Sim, bestScore: number): { a: V3; sc: number; i: number } | null {
@@ -467,10 +515,15 @@ export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 22, glideAcc: 14 };
 const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 22, FLY_GLIDE_ACC = 14;   // traversal tuning (was 34 / 14 / 14 / 10): user asked for faster flight
 export interface StepOptions { updateEnemies?: boolean; }
 export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
+    stepSimInner(s, dt, ev, controls, options);
+    if (controls === input && (s as any).riding && PILOT.i >= 0 && !PILOT.parked) { s.pos[0] = PILOT.x; s.pos[1] = PILOT.y + 1.6; s.pos[2] = PILOT.z; s.vel = [PILOT.vx, PILOT.vy, PILOT.vz]; s.ground = false; s.swim = false; s.dive = false; s.web = false; s.glideOn = false; s.wall = null; }
+}
+function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
     const input = controls;
     if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
     { const ac = (s as any).anchorCar; if (ac >= 0 && (s.web || s.grappleFlight)) { const m = movingAnchor(ac, s.t); if (!m) { (s as any).anchorCar = -1; if (s.web) { s.web = false; ev.release(); } } else { s.anchor[0] = m[0]; s.anchor[1] = m[1]; s.anchor[2] = m[2]; } } else if (!s.web && !s.grappleFlight) (s as any).anchorCar = -1; }   // a web on a flying car rides with the car
+    if (s.mode === 'play' && controls === (globalThis as any).__svMainInput && stepRide(s, dt, input, ev)) { input.jumpQ = false; input.swingQ = false; input.grabQ = false; input.swing = false; }
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
     const turn = (k['arrowleft'] ? 1 : 0) - (k['arrowright'] ? 1 : 0);

@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import gsap from 'gsap';
 import { Scene } from './Scene';
 import { GhostCompanion } from './Ghost';
-import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
+import { createSim, buildings, resetSim, input, actionCtx, rideTarget, type Events } from './sim';
 import { installDesktopInput, MAP_KB, MAP_PAD } from './desktopInput';
 import { QUALITY, QK, AA_MSAA } from './quality';
 import { audio } from './audio/engine';
@@ -54,7 +54,7 @@ export function App() {
     const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
     const perf = useRef({ scale: coarse ? 0.7 : 1, fps: 60, speed: 0 }).current;
     const snd = useMemo(() => new SoundDirector(sim), [sim]);   // cinematic sound pass: beds, SFX and adaptive score (src/audio)
-    const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0, sc: 0, gr: false, me: false, sh: false, sn: false, wb: false });
+    const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0, sc: 0, gr: false, me: false, sh: false, sn: false, wb: false, rd: 0 });
     const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
     const toastId = useRef(0);
     const [muted, setMuted] = useState(audio.muted);
@@ -95,9 +95,9 @@ export function App() {
             setDbg(Math.round(perf.fps) + ' fps · res ' + perf.scale.toFixed(2) + (isGl2() ? ' · WebGL2' : ' · WebGL1'));
             document.documentElement.style.setProperty('--spd', String(Math.min(1, Math.max(0, (perf.speed - 18) / 40))));
             setHud((h) => {
-                const ctx = actionCtx(sim); const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, hp: Math.round(sim.hp), ko: sim.kos, gr: ctx.grab, me: ctx.melee, sh: ctx.shot, sn: ctx.snare, wb: sim.web, sc: Math.round(Math.min(1, ((sim as any).snareCd || 0) / 9) * 20) / 20, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
+                const ctx = actionCtx(sim); const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, hp: Math.round(sim.hp), ko: sim.kos, gr: ctx.grab, me: ctx.melee, sh: ctx.shot, sn: ctx.snare, wb: sim.web, rd: (sim as any).riding ? 2 : rideTarget(sim) >= 0 ? 1 : 0, sc: Math.round(Math.min(1, ((sim as any).snareCd || 0) / 9) * 20) / 20, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
                 if (sim.score > sim.best) { sim.best = sim.score; n.best = sim.best; try { localStorage.setItem('webswinger3d-best', String(sim.best)); } catch (e) { /* ignore */ } }
-                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.hp === n.hp && h.ko === n.ko && h.gr === n.gr && h.me === n.me && h.sh === n.sh && h.sn === n.sn && h.wb === n.wb && h.sc === n.sc && h.bd === n.bd ? h : n;
+                return h.score === n.score && h.time === n.time && h.mode === n.mode && h.best === n.best && h.bn === n.bn && h.hp === n.hp && h.ko === n.ko && h.gr === n.gr && h.me === n.me && h.sh === n.sh && h.sn === n.sn && h.wb === n.wb && h.rd === n.rd && h.sc === n.sc && h.bd === n.bd ? h : n;
             });
         }, 100);
         // Shift / Alt (now web buttons) can rewrite e.key (Shift+"." = ">", Mac Option+W = "∑"); map such characters back to the physical key so WASD / "." keep working while they are held
@@ -108,6 +108,7 @@ export function App() {
             if (k === 'control') e.preventDefault();
             if (sim.mode !== 'play') { if (!e.repeat && !['escape', 'tab', 'meta', 'alt', 'control', 'shift', 'capslock'].includes(k)) start(); input.keys[k] = true; return; }   // title screen: any key starts
             if (!coarse) { deskRef.current = true; setDesk(true); }
+            if (k === 'enter' && !e.repeat) input.rideQ = true;   // Shifat Oct 29: Enter near a flying car to ride / hop out
             if (k === ' ' && !input.keys[' '] && !input.keys['@i']) { input.jumpQ = true; input.jumpHeld = true; }   // identical flags/timing to the mobile jump button
             if ((k === 'k' || k === 'm' || k === '.' || k === 'control') && !input.keys[k]) { input.meleeQ = true; input.attackQ = true; }
             input.keys[k] = true;
@@ -198,6 +199,8 @@ export function App() {
             <button className={'ico swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web swing"
                 onPointerDown={(e) => { burst(e, '#8fe9ff', -25, false); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.swing = true; input.swingQ = true; setSwingOn(true); }}
                 onPointerUp={() => { input.swing = false; setSwingOn(false); }} onPointerCancel={() => { input.swing = false; setSwingOn(false); }}><ISwing /></button>
+            {hud.rd > 0 && <button className={'ico ride' + (hud.rd === 2 ? ' on' : '')} aria-label={hud.rd === 2 ? 'hop out' : 'ride car'} onPointerDown={(e) => { burst(e, '#ffd166', 0); input.rideQ = true; }}><span style={{ fontSize: 26, lineHeight: 1 }}>{hud.rd === 2 ? '⏏' : '🚗'}</span></button>}
+            {desk && hud.rd === 1 && <div className="ridehint">Enter: ride</div>}
             <button className={'ico grab' + (hud.gr ? '' : ' off')} aria-label="web grab" onPointerDown={(e) => { burst(e, '#ffffff', 20); input.grabQ = true; }}><IGrab /></button>
             <button className={'ico shot' + (hud.sh ? '' : ' off')} aria-label="web shot" onPointerDown={(e) => { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; }}><IShot /></button>
             <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn ? '' : ' off')} aria-label="Web Shock" onPointerDown={(e) => { burst(e, '#c9a7ff', 180); input.specialQ = true; }}><IShock /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>

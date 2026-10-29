@@ -20,7 +20,7 @@ import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, SEA, seabedAt, BOATS, boatAt, BOAT_HX, BOAT_HZ, BOAT_DECK, BOAT_MAST, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, PED_VOICE, type Unibeam, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, SEA, seabedAt, BOATS, boatAt, BOAT_HX, BOAT_HZ, BOAT_DECK, BOAT_MAST, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, PED_VOICE, PILOT, type Unibeam, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
@@ -1039,7 +1039,7 @@ function FlyingCars({ sim }: { sim: Sim }) {
         const t = sim.t, m = ref.current; if (!m) return;
         for (let i = 0; i < CAR_N; i++) {
             const c = carAt(i, t);
-            tmp.position.set(c.x, c.y, c.z); tmp.rotation.set(0, CARS[i].axis === 0 ? (CARS[i].sp > 0 ? 0 : Math.PI) : (CARS[i].sp > 0 ? Math.PI / 2 : -Math.PI / 2), 0);
+            tmp.position.set(c.x, c.y, c.z); tmp.rotation.set(PILOT.i === i && !PILOT.parked ? Math.max(-0.25, Math.min(0.25, -c.vy * 0.015)) : 0, c.yaw, 0);
             tmp.scale.setScalar(CAR_SCALE); tmp.updateMatrix(); m.setMatrixAt(i, tmp.matrix); if (DBG && i === 0) (window as any).__car0 = [c.x, c.y, c.z, CARS[i].axis, CARS[i].sp];
         }
         m.instanceMatrix.needsUpdate = true;
@@ -1721,7 +1721,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         // camera
         const cy = Math.cos(sim.pitch), sy = Math.sin(sim.pitch);
         const dbgD = DBG ? (window as any).__camDist as number | undefined : undefined; if (DBG && (window as any).__hq) { curScale.current = 1; perf.scale = 1; }
-        let dist = dbgD ?? (sim.web ? 11.5 : sim.wall ? 7 : 8.5);
+        let dist = dbgD ?? ((sim as any).riding ? 17 : sim.web ? 11.5 : sim.wall ? 7 : 8.5);   // flying a car: pull the camera back so the car doesn't fill the screen
         const fxd = Math.sin(sim.yaw) * cy, fzd = Math.cos(sim.yaw) * cy;
         for (; !dbgD && dist > (sim.wall ? 5 : 6); dist -= 1) {
             const ex = p[0] - fxd * dist, ey = p[1] + 1.5 + sy * dist, ez = p[2] - fzd * dist;

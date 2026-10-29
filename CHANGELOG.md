@@ -369,3 +369,6 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 - 49 meme-flavoured, family-friendly voice lines (generated TTS, original delivery; no ripped clips): Shadow 16, Ghost 6, robots 8 (robot FX), boss 7 (deep + echo), street peds 12 (6 voices). Lazy-loaded from public/audio/vo (1.5 MB total).
 - Director triggers: Shadow on some web attaches / KOs / hurt / idle; robots taunt when near, yelp on hits, sign off on KO; boss greets on boss-zone aggro, taunts, reacts to hits and KO; peds react when you zip past them low and fast; Ghost quips after some KOs. One line at a time, per-kind cooldowns.
 - Underwater fog far-only; centre dot crosshair hidden.
+
+## Ride flying cars (Oct 29)
+- Enter (desktop) or the 🚗 button (phone) near a flying car takes it over; fly along the camera heading, climb/dive with camera pitch, Space/jump climbs. Enter / ⏏ hops out onto the roof; the car hovers where you left it until you take another. Car stays out of buildings, above street/water, inside the world. Camera pulls back while flying.
