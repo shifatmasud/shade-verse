@@ -20,7 +20,7 @@ const bridgeYaw = -Math.atan2(0.857, 0.514); // follows the existing diagonal pa
 export const PARK_BRIDGE = {
     x: PARK_POND.cx, z: PARK_POND.cz, yaw: bridgeYaw,
     axisX: Math.cos(bridgeYaw), axisZ: -Math.sin(bridgeYaw),
-    modules: 6, halfLength: 12, halfWidth: 1.35, rampLength: 6,
+    modules: 8, halfLength: 16, halfWidth: 1.35, rampLength: 5, // env-iter1: deck clears the round shore (r=14), ramps land on the trail
     deckY: PARK_POND_Y + 0.95,
 };
 export function bridgeSurfaceAt(x: number, z: number): number | null {
