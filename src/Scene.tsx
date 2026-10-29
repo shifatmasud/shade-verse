@@ -382,6 +382,11 @@ function trunkTube(o: TubeOpt) {
             if (i < o.hSeg && j < o.rSeg) { const a0 = i * (o.rSeg + 1) + j, a1 = a0 + o.rSeg + 1; idx.push(a0, a1, a0 + 1, a0 + 1, a1, a1 + 1); }
         }
     }
+    // Shifat Oct 29 "weird tree trunk gape": the tube was open at the top, so the fork showed a hollow ring. Close it with a
+    // low rounded cap (apex just above the last ring, along the trunk direction).
+    { const top = o.hSeg * (o.rSeg + 1), cTop = path(1), Tt = path(1).sub(path(0.98)).normalize(), apex = pos.length / 3;
+      const cap = cTop.addScaledVector(Tt, rad(1) * 0.6); pos.push(cap.x, cap.y, cap.z); uv.push(0.5, o.vScale ? (o.H + rad(1) * 0.6) / o.vScale : 1); col.push(0.82, 0.8, 0.78);
+      for (let j = 0; j < o.rSeg; j++) idx.push(top + j, apex, top + j + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
     g.computeVertexNormals();
     { const n = g.attributes.normal as THREE.BufferAttribute, w = o.rSeg + 1; for (let i = 0; i <= o.hSeg; i++) { const a = i * w, b = a + o.rSeg; const x = n.getX(a) + n.getX(b), y = n.getY(a) + n.getY(b), z = n.getZ(a) + n.getZ(b), l = Math.hypot(x, y, z) || 1; n.setXYZ(a, x / l, y / l, z / l); n.setXYZ(b, x / l, y / l, z / l); } }   // close the seam
@@ -389,7 +394,7 @@ function trunkTube(o: TubeOpt) {
 }
 /** Branch limb: tapered, 3 segments, curving up into the canopy, thicker collar where it leaves the trunk. Built along +Y. */
 function limbGeo(rTop: number, rBot: number, len: number, rSeg: number) {
-    const g = new THREE.CylinderGeometry(rTop, rBot, len, rSeg, 3, true); g.translate(0, len / 2, 0);
+    const g = new THREE.CylinderGeometry(rTop, rBot, len, rSeg, 3, false); g.translate(0, len / 2, 0);   // closed ends (no hollow limb tips)
     const pa = g.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < pa.count; i++) { const y = pa.getY(i), t = y / len, col = 1 + 0.35 * Math.max(0, 1 - t / 0.18); pa.setXYZ(i, pa.getX(i) * col + len * 0.16 * t * t, y, pa.getZ(i) * col); }
     g.computeVertexNormals();
