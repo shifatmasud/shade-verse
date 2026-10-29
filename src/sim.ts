@@ -1,4 +1,5 @@
 // Pure game simulation: city generation + swing physics. No rendering code here.
+import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
 export type V3 = [number, number, number];
 export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number }
 
@@ -7,8 +8,38 @@ export const FOG: V3 = [0.84, 0.77, 0.74];
 const G = 27;
 export const JUMP_V = 16;
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
-// valley: the park floor sinks into a gentle rolling bowl; zero at the park edge so it meets street level, about -5 m in the middle
-export function parkH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
+export const PARK_POND = { cx: 180, cz: 100, rx: 16, rz: 11 };
+// Valley topography remains unchanged outside the pond; the pond itself is a deeper bowl for swimming and underwater light.
+function parkBaseH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
+function pondBowlWeight(x: number, z: number) { const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz, r = Math.sqrt(dx * dx + dz * dz); const t = Math.max(0, Math.min(1, (1 - r) / 0.34)); return t * t * (3 - 2 * t); }
+export function parkH(x: number, z: number): number { return parkBaseH(x, z) - 3.8 * pondBowlWeight(x, z); }
+export function isLegacyCityCore(x: number, z: number) { return Math.abs(x) <= 120 && Math.abs(z) <= 120; }
+// Keep the old waterline and bridge elevation; only the lake bed is lowered.
+export const PARK_POND_Y = parkBaseH(PARK_POND.cx, PARK_POND.cz) + 0.55;
+const bridgeYaw = -Math.atan2(0.857, 0.514); // follows the existing diagonal park trail
+export const PARK_BRIDGE = {
+    x: PARK_POND.cx, z: PARK_POND.cz, yaw: bridgeYaw,
+    axisX: Math.cos(bridgeYaw), axisZ: -Math.sin(bridgeYaw),
+    modules: 6, halfLength: 12, halfWidth: 1.35, rampLength: 6,
+    deckY: PARK_POND_Y + 0.95,
+};
+export function bridgeSurfaceAt(x: number, z: number): number | null {
+    const dx = x - PARK_BRIDGE.x, dz = z - PARK_BRIDGE.z;
+    const along = dx * PARK_BRIDGE.axisX + dz * PARK_BRIDGE.axisZ;
+    const across = -dx * PARK_BRIDGE.axisZ + dz * PARK_BRIDGE.axisX;
+    if (Math.abs(across) > PARK_BRIDGE.halfWidth) return null;
+    const end = Math.abs(along) - PARK_BRIDGE.halfLength;
+    if (end <= 0) return PARK_BRIDGE.deckY;
+    if (end > PARK_BRIDGE.rampLength) return null;
+    const t = end / PARK_BRIDGE.rampLength;
+    return PARK_BRIDGE.deckY * (1 - t) + parkH(x, z) * t;
+}
+export function isLakeWater(x: number, z: number) {
+    const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz;
+    return dx * dx + dz * dz < 0.92 && bridgeSurfaceAt(x, z) === null;
+}
+export function lakeWaveH(x: number, z: number, t: number) { return Math.sin(x * 0.11 + z * 0.08 + t * 0.42) * 0.09 + Math.sin(x * 0.21 - z * 0.16 - t * 0.31) * 0.035; }
+export function waterSurfaceAt(x: number, z: number, t = 0) { return isLakeWater(x, z) ? PARK_POND_Y + lakeWaveH(x, z, t) : WATER_Y; }
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 
 let seedv = 1337;
@@ -28,11 +59,12 @@ function buildWorld() {
     const streetBlds: Bld[] = [];
     const data: number[] = [];
     const idx: number[] = [];
+    let hideProceduralBuildingVisuals = false;
     const box = (cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, col: V3, seed: number, skipBottom = true) => {
         for (let fi = 0; fi < 6; fi++) {
             if (skipBottom && fi === 5) continue;
             const f = FACES[fi], base = data.length / 10, n = f[0];
-            for (let i = 1; i < 5; i++) { const p = f[i]; data.push(cx + p[0] * sx, cy + p[1] * sy, cz + p[2] * sz, n[0], n[1], n[2], col[0], col[1], col[2], seed); }
+            for (let i = 1; i < 5; i++) { const p = f[i]; data.push(cx + p[0] * sx, cy + p[1] * sy, cz + p[2] * sz, n[0], n[1], n[2], col[0], col[1], col[2], hideProceduralBuildingVisuals ? 100 : seed); }
             idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         }
     };
@@ -40,6 +72,7 @@ function buildWorld() {
     for (let i = 0; i < N; i++) for (let j = 2; j < N; j++) {
         const cx = (i - mi) * CELL, cz = (j - mi) * CELL;
         if (cx > PARK.x0 && cx < PARK.x1 && cz > PARK.z0 && cz < PARK.z1) continue; // forest park block
+        hideProceduralBuildingVisuals = !isLegacyCityCore(cx, cz);
         const blockStart=[data.length,idx.length,blds.length];
         const dc = Math.hypot(cx, cz) / HALF;
         const w = 20 + rnd() * 8, d = 20 + rnd() * 8;
@@ -86,6 +119,7 @@ function buildWorld() {
         if (rnd() < 0.5) { box(cx + w * 0.25, h + 1.5, cz - d * 0.2, 0.4, 1.5, 0.4, [0.7, 0.2, 0.25], 0.5); }
         if (rnd() < 0.3) box(cx + w * 0.1, h + 0.25, cz - d * 0.1, w * 0.3, 0.25, d * 0.12, [0.9, 0.55, 0.3], 0.5); // roof glow strip
         // One six-home Polyfork block replaces an existing outer-city tower, preserving RNG for every other block.
+        hideProceduralBuildingVisuals = false;
         streetBlds.push(...blds.slice(blockStart[2]).filter(b=>b.host===undefined));
         if(cx===-240 && cz===80){data.length=blockStart[0];idx.length=blockStart[1];blds.length=blockStart[2];for(let k=0;k<6;k++){const x=-249+(k%3)*9,z=72+Math.floor(k/3)*17;const host=blds.length;blds.push({x0:x-4,x1:x+4,z0:z-4,z1:z+4,h:18});
             for(const q of [[-4,-3.7,-4,4], [3.7,4,-4,4], [-3.7,3.7,-4,-3.7],[-3.7,3.7,3.65,4]]) blds.push({x0:x+q[0],x1:x+q[1],z0:z+q[2],z1:z+q[3],h:19,host});
@@ -101,7 +135,20 @@ function buildWorld() {
 export const world = buildWorld();
 const blds = world.blds;
 
-export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean; born?: number }
+// Fixed rooftop arena on the central tower, distinct from the player's spawn roof.
+const arenaRoof = blds.find((b) => b.host === undefined && Math.abs((b.x0 + b.x1) / 2 - 40) < 1 && Math.abs((b.z0 + b.z1) / 2) < 1);
+if (!arenaRoof) throw new Error('Boss arena rooftop was not generated');
+export const BOSS_ARENA = {
+    x: (arenaRoof.x0 + arenaRoof.x1) / 2,
+    y: arenaRoof.h + 1,
+    z: (arenaRoof.z0 + arenaRoof.z1) / 2,
+    roof: { x0: arenaRoof.x0, x1: arenaRoof.x1, z0: arenaRoof.z0, z1: arenaRoof.z1 },
+};
+
+export type BossFlightPhase = 'grounded' | 'takeoff' | 'hover' | 'propel' | 'landing';
+export interface BossFlightState { phase: BossFlightPhase; phaseT: number; baseY: number; startX: number; startZ: number; targetX: number; targetZ: number; cycle: number }
+const BOSS_FLIGHT = { groundWait: 3.2, takeoff: 0.95, hover: 1.15, propel: 1.8, landing: 0.9, altitude: 6.5, forward: 8.5, lateral: 4.5 };
+export interface Enemy { roof?: { x0: number; x1: number; z0: number; z1: number }; x: number; y: number; z: number; hp: number; atk: number; hit: number; kb: [number, number]; ang: number; down: number; kind?: number; air?: boolean; born?: number; boss?: boolean; flight?: BossFlightState }
 export interface Sim {
     mode: 'menu' | 'play' | 'over';
     pos: V3; vel: V3; ground: boolean; web: boolean; anchor: V3; rope: number;
@@ -176,6 +223,13 @@ function spawnEnemy0(s: Sim, noRoof = false): Enemy {
     }
     return { x: 20, y: 1, z: 20, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 };
 }
+function spawnBoss(s: Sim): Enemy {
+    const e = spawnEnemy0(s, true);
+    e.x = BOSS_ARENA.x; e.y = BOSS_ARENA.y; e.z = BOSS_ARENA.z; e.roof = { ...BOSS_ARENA.roof };
+    e.boss = true; e.kind = 0; e.hp = 24; e.atk = 0; e.hit = 0; e.kb = [0, 0]; e.ang = 0; e.down = 0; e.born = s.t;
+    e.flight = { phase: 'grounded', phaseT: 0, baseY: e.y, startX: e.x, startZ: e.z, targetX: e.x, targetZ: e.z, cycle: 0 };
+    return e;
+}
 export function resetSim(s: Sim) {
     const b = blds.reduce((best, c) => Math.hypot(c.x0, c.z0) < Math.hypot(best.x0, best.z0) ? c : best, blds[0]);
     s.pos = [(b.x0 + b.x1) / 2 + 4, b.h + 1, (b.z0 + b.z1) / 2 - 4]; s.vel = [0, 0, 0]; s.web = false; s.ground = true; s.safe = [...s.pos] as V3;
@@ -186,7 +240,7 @@ export function resetSim(s: Sim) {
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.plasma = []; s.blasts = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = [];
-    s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s));
+    s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s)); s.enemies.push(spawnBoss(s));
 }
 
 function findAnchor(s: Sim, strict = false): V3 {
@@ -215,11 +269,11 @@ export function pickPlasmaTarget(s: Sim): Enemy | null {
     let best: Enemy | null = null, bs = 1e9;
     for (const e of s.enemies) {
         if (e.down > 0) continue;
-        const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs(e.y - p[1]);
+        const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs((e.boss ? targetY(e) : e.y) - p[1]);
         if (d < 2 || d > 42 || dy > 18) continue;
         const dot = (dx * fx + dz * fz) / d;
         if (dot < 0.35) continue;   // assist cone (~70 deg): not through buildings, not behind the hero
-        if (!losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) continue;
+        if (!losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) continue;
         const sc = d * (0.4 + (1 - dot) * 8);   // strongly prefer what the camera points at, then nearer
         if (sc < bs) { bs = sc; best = e; }
     }
@@ -228,14 +282,14 @@ export function pickPlasmaTarget(s: Sim): Enemy | null {
 const PLASMA_SPEED = 55, PLASMA_CAP = 3, BLAST_CAP = 6, BLAST_R = 8;
 function spawnPlasma(s: Sim, tgt: Enemy) {
     if (s.plasma.length >= PLASMA_CAP) s.plasma.shift();   // cap concurrent bolts (low-end budget)
-    const p = s.pos, ty = tgt.y + BODY_OFF[tgt.kind ?? 0];
+    const p = s.pos, ty = tgt.y + enemyBodyOffset(tgt);
     const ox = p[0] + Math.sin(s.yaw) * 0.6, oy = p[1] + 1.4, oz = p[2] + Math.cos(s.yaw) * 0.6;   // from the raised hands
     const d = norm([tgt.x - ox, ty - oy, tgt.z - oz]);
     s.plasma.push({ x: ox, y: oy, z: oz, vx: d[0] * PLASMA_SPEED, vy: d[1] * PLASMA_SPEED, vz: d[2] * PLASMA_SPEED, t: 0, tgt });
 }
 // visual-only death explosion: pooled blast at the bot's body, no damage, no chain reaction
 function deathBlast(s: Sim, e: Enemy) {
-    s.blasts.push({ x: e.x, y: e.y + BODY_OFF[e.kind ?? 0], z: e.z, t: 0, r: 5.5 });
+    s.blasts.push({ x: e.x, y: e.y + enemyBodyOffset(e), z: e.z, t: 0, r: 5.5 });
     if (s.blasts.length > BLAST_CAP) s.blasts.shift();
 }
 function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
@@ -244,7 +298,7 @@ function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
     let any = false;
     for (const e of s.enemies) {
         if (e.down > 0) continue;
-        const dx = e.x - x, dz = e.z - z, dy = (e.y + BODY_OFF[e.kind ?? 0]) - y, dh = Math.hypot(dx, dz);
+        const dx = e.x - x, dz = e.z - z, dy = (e.y + enemyBodyOffset(e)) - y, dh = Math.hypot(dx, dz);
         const d = Math.hypot(dh, dy);
         if (d > BLAST_R) continue;
         const k = 1 - d / BLAST_R;
@@ -261,10 +315,10 @@ function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
 // read-only HUD context: which actions would actually do something right now (same ranges the actions use)
 export function actionCtx(s: Sim) {
     const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let melee = false, shot = false, snare = false;
-    for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs(e.y - p[1]);
-        if (d < 3.6 && dy < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) melee = true;   // close strike
-        if (!melee && d < 16 && dy < 4.5 && !s.swim && !s.wall && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) melee = true;   // web-pull strike range
-        if (d < 24 && dy < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) snare = true; }
+    for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz), dy = Math.abs((e.boss ? targetY(e) : e.y) - p[1]);
+        if (!e.boss && d < 3.6 && dy < 3.5 && (d < 1.2 || (dx * fx + dz * fz) / (d || 1) > -0.1)) melee = true;   // close strike
+        if (!e.boss && !melee && d < 16 && dy < 4.5 && !s.swim && !s.wall && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) melee = true;   // web-pull strike range
+        if (d < 24 && dy < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) snare = true; }
     shot = !!pickPlasmaTarget(s);   // web shot lights when the plasma auto-target has a lock
     const grab = !s.swim && !s.wall && s.spring <= 0 && findAnchor(s, true) !== null;
     return { grab, melee, shot, snare: snare && !((s as any).snareCd > 0) };
@@ -357,15 +411,17 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
     s.wallT = Math.max(0, s.wallT - dt);
-    if (!s.web) { const zone = p[2] < WATER_Z; (s as any).leapT = Math.max(0, ((s as any).leapT || 0) - dt); if (zone && p[1] < WATER_Y + 0.9 && !((s as any).leapT > 0)) s.swim = true; else if (!zone || p[1] > WATER_Y + 1.4) { s.swim = false; s.dive = false; } } else { s.swim = false; s.dive = false; }
+    if (!s.web) { const ocean = p[2] < WATER_Z, lake = isLakeWater(p[0], p[2]), zone = ocean || lake, surface = waterSurfaceAt(p[0], p[2], s.t); (s as any).leapT = Math.max(0, ((s as any).leapT || 0) - dt); if (zone && p[1] < surface + 0.9 && !((s as any).leapT > 0)) s.swim = true; else if (!zone || p[1] > surface + 1.4) { s.swim = false; s.dive = false; } } else { s.swim = false; s.dive = false; }
     if (s.swim) { s.wall = null; s.ground = false; if (input.dodgeQ) { input.dodgeQ = false; s.dive = !s.dive; } }
     // Manual pitch is retained on walls; no forced leveling.
     if (s.swim) {
-        const sp = s.dive ? 7 : 9.5, a = Math.min(1, dt * 4);
+        const inLake = isLakeWater(p[0], p[2]), surface = waterSurfaceAt(p[0], p[2], s.t);
+        const lakeDepth = inLake ? Math.max(1.2, surface - parkH(p[0], p[2]) - 1.05) : 5;
+        const sp = s.dive ? (inLake ? 5.8 : 7) : (inLake ? 7.2 : 9.5), a = Math.min(1, dt * (inLake ? 3.2 : 4));
         const cur = s.dive ? Math.sin(s.t * 0.3) * 0.9 : 0;   // underwater current: gentle sideways drift while diving (same phase as the bubble drift)
         v[0] += (wx * sp + cur - v[0]) * a; v[2] += (wz * sp - v[2]) * a;
-        const target = s.dive ? -5 : WATER_Y + 0.25;
-        v[1] += ((target - p[1]) * 3 - v[1]) * Math.min(1, dt * 5);
+        const target = s.dive ? (inLake ? Math.max(parkH(p[0], p[2]) + 1.05, surface - lakeDepth) : -5) : surface + 0.25;
+        v[1] += ((target - p[1]) * 3 - v[1]) * Math.min(1, dt * (inLake ? 5.5 : 5));
         s.runPhase += Math.hypot(v[0], v[2]) * dt * 0.8;
         if (p[2] > WATER_Z - 1.2 && wz > 0.3 && p[1] > WATER_Y - 2.5) { p[1] = 1; p[2] = WATER_Z + 1.3; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; }
     } else if (s.wall && !s.web) {
@@ -424,9 +480,10 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
-    if (s.swim && p[1] < SEABED + 1) { p[1] = SEABED + 1; if (v[1] < 0) v[1] = 0; }
-    const gy = 1.0 + parkH(p[0], p[2]);
-    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level (or valley floor): walkable, snaps down gentle slopes
+    if (s.swim) { const floor = isLakeWater(p[0], p[2]) ? parkH(p[0], p[2]) + 1.05 : SEABED + 1; if (p[1] < floor) { p[1] = floor; if (v[1] < 0) v[1] = 0; } }
+    const parkFloor = parkH(p[0], p[2]), bridgeFloor = bridgeSurfaceAt(p[0], p[2]);
+    const gy = 1.0 + Math.max(parkFloor, bridgeFloor ?? -Infinity);
+    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes
         if (!s.ground) { s.ground = true; }
         p[1] = gy; if (v[1] < 0) v[1] = 0;
     }
@@ -454,8 +511,11 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 }
 export const buildings = blds;
 const BODY_OFF = [0.8, 0.3, 1.05, 1.7];   // kind 3 torso height follows its 1.8 scale (1.2 at scale 1.25)
-// Shadow Snare special ability only; regular melee move timing and tuning stay separate.
-export const SNARE = { MAX_TARGETS: 5, RANGE: 24, VERTICAL_RANGE: 14, TOTAL: 1.65, GATHER_END: 0.9, SPIN_START: 0.6, IMPACT: 0.15, HIT_RANGE: 5.5, GROUP_RADIUS: 2.4, PULL_SPEED: 30, DAMAGE: 3, KNOCKBACK: 18, HIT_STOP: 0.10, SHAKE: 0.34 } as const;
+const BOSS_BODY_OFF = BOSS_BODY_OFFSET;
+export const enemyBodyOffset = (e: Enemy) => e.boss ? BOSS_BODY_OFF : BODY_OFF[e.kind ?? 0];
+const targetY = (e: Enemy) => e.y + enemyBodyOffset(e);
+// Multi-Target Shock Web Attack only; regular melee move timing and tuning stay separate.
+export const SNARE = { MAX_TARGETS: 5, RANGE: 24, VERTICAL_RANGE: 14, TOTAL: 1.65, GATHER_END: 0.9, SHOCK_START: 0.6, IMPACT: 0.15, HIT_RANGE: 5.5, GROUP_RADIUS: 2.4, PULL_SPEED: 30, DAMAGE: 3, KNOCKBACK: 18, HIT_STOP: 0.10, SHAKE: 0.34 } as const;
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
 const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
 const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
@@ -474,17 +534,17 @@ export const MOVES: Record<number, { dur: number; hit: number; cancel: number; s
     6: { dur: 0.58, hit: 0.32, cancel: 0.42, stop: 1.90, dmg: 1, kb: 17, lift: 3, shake: 0.24, stopT: 0.07, reach: 3.6 },
     7: { dur: 0.52, hit: 0.20, cancel: 0.40, stop: 0, dmg: 0, kb: 0, lift: -28, shake: 0.18, stopT: 0.06, reach: 24 },
 };
-const bodyY = (e: Enemy) => e.y + ((e as any).ly || 0) + BODY_OFF[e.kind ?? 0];
+const bodyY = (e: Enemy) => e.y + ((e as any).ly || 0) + enemyBodyOffset(e);
 function nearLifted(s: Sim, r: number, minLy = 1.2): Enemy | null {
     const p = s.pos; let best: Enemy | null = null, bd = r;
-    for (const e of s.enemies) { if (e.down > 0 || !(((e as any).ly || 0) > minLy)) continue; const d = Math.hypot(e.x - p[0], e.z - p[2]); if (d < bd && losClear(p[0], p[1] + 1.5, p[2], e.x, bodyY(e), e.z)) { bd = d; best = e; } }
+    for (const e of s.enemies) { if (e.down > 0 || e.boss || !(((e as any).ly || 0) > minLy)) continue; const d = Math.hypot(e.x - p[0], e.z - p[2]); if (d < bd && losClear(p[0], p[1] + 1.5, p[2], e.x, bodyY(e), e.z)) { bd = d; best = e; } }
     return best;
 }
 // pick the bot the chain should flow into: in front first, then nearest; returns [enemy, dist]
 function comboTarget(s: Sim, r: number): [Enemy | null, number] {
     const p = s.pos, fx = Math.sin(s.ang), fz = Math.cos(s.ang); let best: Enemy | null = null, bs = 1e9, bdist = 0;
     for (const e of s.enemies) {
-        if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d > r || Math.abs(bodyY(e) - p[1] - 0.5) > 4.5) continue;
+        if (e.down > 0 || e.boss) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d > r || Math.abs(bodyY(e) - p[1] - 0.5) > 4.5) continue;
         const front = (dx * fx + dz * fz) / (d || 1); const sc = d - front * 2.2; if (sc < bs) { bs = sc; best = e; bdist = d; }
     }
     return [best, bdist];
@@ -540,7 +600,7 @@ function stepMove(s: Sim, dt: number, ev: Events) {
         else {
             const fx = Math.sin(s.ang), fz = Math.cos(s.ang); let any = false;
             for (const o of s.enemies) {
-                if (o.down > 0) continue; const dx = o.x - p[0], dz = o.z - p[2], d = Math.hypot(dx, dz), dy = bodyY(o) - (p[1] + 0.5);
+                if (o.down > 0 || o.boss) continue; const dx = o.x - p[0], dz = o.z - p[2], d = Math.hypot(dx, dz), dy = bodyY(o) - (p[1] + 0.5);
                 const reachOK = o === e ? d < M.reach + 0.8 : d < M.reach;
                 if (!reachOK || Math.abs(dy) > (m.id === 5 ? 3.2 : 2.6) || (d > 1.2 && (dx * fx + dz * fz) / (d || 1) < (m.id === 3 ? -0.6 : -0.1))) continue;   // spin kick sweeps a wider arc
                 const oa = o as any; o.hp -= M.dmg; o.hit = Math.max(o.hit, m.id >= 3 ? 0.55 : 0.32); o.atk = 0;
@@ -572,6 +632,47 @@ function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
     if (e.down <= 0) e.hit = Math.max(e.hit, 0.12);
     return true;
 }
+function bossRoofClamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
+function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
+    const flight = e.flight; if (!flight) return;
+    const roof = e.roof ?? BOSS_ARENA.roof;
+    const marginX = Math.min(1.5, Math.max(0, (roof.x1 - roof.x0) * 0.1));
+    const marginZ = Math.min(1.5, Math.max(0, (roof.z1 - roof.z0) * 0.1));
+    const minX = roof.x0 + marginX, maxX = roof.x1 - marginX, minZ = roof.z0 + marginZ, maxZ = roof.z1 - marginZ;
+    const ease = (t: number) => t * t * (3 - 2 * t);
+    if (flight.phase === 'grounded') {
+        e.y = flight.baseY; flight.phaseT += dt;
+        if (flight.phaseT >= BOSS_FLIGHT.groundWait && engaged && e.hit <= 0 && e.atk <= 0) {
+            const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1;
+            const ux = dx / d, uz = dz / d, side = flight.cycle % 2 === 0 ? 1 : -1;
+            flight.startX = e.x; flight.startZ = e.z;
+            flight.targetX = bossRoofClamp(e.x + ux * BOSS_FLIGHT.forward - uz * BOSS_FLIGHT.lateral * side, minX, maxX);
+            flight.targetZ = bossRoofClamp(e.z + uz * BOSS_FLIGHT.forward + ux * BOSS_FLIGHT.lateral * side, minZ, maxZ);
+            flight.cycle++; flight.phase = 'takeoff'; flight.phaseT = 0;
+        }
+        return;
+    }
+    flight.phaseT += dt;
+    if (flight.phase === 'takeoff') {
+        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.takeoff);
+        e.y = flight.baseY + BOSS_FLIGHT.altitude * ease(t);
+        if (t >= 1) { flight.phase = 'hover'; flight.phaseT = 0; }
+    } else if (flight.phase === 'hover') {
+        e.y = flight.baseY + BOSS_FLIGHT.altitude + Math.sin(flight.phaseT * 2.6) * 0.16;
+        if (flight.phaseT >= BOSS_FLIGHT.hover) { flight.phase = 'propel'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; }
+    } else if (flight.phase === 'propel') {
+        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.propel), k = ease(t);
+        e.x = flight.startX + (flight.targetX - flight.startX) * k;
+        e.z = flight.startZ + (flight.targetZ - flight.startZ) * k;
+        e.y = flight.baseY + BOSS_FLIGHT.altitude + Math.sin(flight.phaseT * 2.6) * 0.12;
+        if (t < 1) e.ang = Math.atan2(flight.targetX - flight.startX, flight.targetZ - flight.startZ);
+        if (t >= 1) { flight.phase = 'landing'; flight.phaseT = 0; flight.startX = e.x; flight.startZ = e.z; }
+    } else if (flight.phase === 'landing') {
+        const t = Math.min(1, flight.phaseT / BOSS_FLIGHT.landing);
+        e.y = flight.baseY + BOSS_FLIGHT.altitude * (1 - ease(t));
+        if (t >= 1) { e.y = flight.baseY; flight.phase = 'grounded'; flight.phaseT = 0; }
+    }
+}
 function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
     const input = controls;
     const p = s.pos, v = s.vel;
@@ -597,47 +698,51 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
               else if (fShot || !comboStart(s, ev, fMelee)) {
                   if (!fMelee) {
                       s.atkT = 0.32; s.shotE = null;
-                      if (s.aimE) { s.shotT = 0.3; s.shotTgt = [s.aimE.x, s.aimE.y + BODY_OFF[s.aimE.kind ?? 0], s.aimE.z]; spawnPlasma(s, s.aimE); s.shotE = null; }
+                      if (s.aimE) { s.shotT = 0.3; s.shotTgt = [s.aimE.x, s.aimE.y + enemyBodyOffset(s.aimE), s.aimE.z]; spawnPlasma(s, s.aimE); s.shotE = null; }
                   }
               }
           }
       }
       stepMove(s, dt, ev);
-    // SHADOW SNARE special: gather, bind briefly, spin through the group, impact, then recover.
+    // Each actor's simulator runs its own Multi-Target Shock Web Attack: gather, grip its bound web, discharge, then recover.
     { const sa = s as any; sa.snareCd = Math.max(0, (sa.snareCd || 0) - dt);
-      if (input.specialQ) { input.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs(e.y - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, SNARE.MAX_TARGETS); if (L.length) { sa.snareList = L; sa.snareT = SNARE.TOTAL; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
+      if (controls.specialQ) { controls.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim && !s.wall) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs((e.boss ? targetY(e) : e.y) - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, SNARE.MAX_TARGETS); if (L.length) { sa.snareList = L; sa.snareT = SNARE.TOTAL; sa.snareCd = 9; s.atkT = 0; s.shotT = 0; ev.attach(); } } }
       if (sa.snareT > 0) { const before = sa.snareT; sa.snareT = Math.max(0, sa.snareT - dt); const L = sa.snareList as Enemy[];
         if (sa.snareT > SNARE.IMPACT) { for (const e of L) { if (e.down > 0) continue; e.hit = Math.max(e.hit, 0.3); e.atk = 0; e.kb[0] = 0; e.kb[1] = 0;
           if (sa.snareT > SNARE.GATHER_END) { const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > SNARE.GROUP_RADIUS) { const st = Math.min(d - SNARE.GROUP_RADIUS, SNARE.PULL_SPEED * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } }
         } }
-        if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + BODY_OFF[e.kind ?? 0], e.z)) { e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.max(sa.shake || 0, SNARE.SHAKE); } }
+        if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) { e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.max(sa.shake || 0, SNARE.SHAKE); } }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
     if (options.updateEnemies !== false) {
     let atkN = 0; for (const e0 of s.enemies) if (e0.atk > 0) atkN++;
     for (let i = 0; i < s.enemies.length; i++) {
-        const e = s.enemies[i];
+        const e = s.enemies[i], isBoss = !!e.boss;
         const sa = s as any, snareBound = e.down <= 0 && sa.snareT > SNARE.IMPACT && sa.snareList?.includes(e);
         const airb = snareBound ? false : enemyAir(s, e, dt, ev);
-        if (e.down > 0) { e.down -= dt; if (e.down <= 0) s.enemies[i] = spawnEnemy(s); continue; }
+        if (e.down > 0) { e.down -= dt; if (e.down <= 0) { if (e.boss) { s.enemies.splice(i, 1); i--; } else s.enemies[i] = spawnEnemy(s); } continue; }
         if (snareBound) { e.atk = 0; e.kb[0] = 0; e.kb[1] = 0; continue; }
         e.hit = Math.max(0, e.hit - dt);
         if (airb) { const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz)) { e.x += kx; e.z += kz; } e.kb[0] *= 0.92; e.kb[1] *= 0.92; e.atk = 0; continue; }
-        if (e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = spawnEnemy(s); continue; }   // left far behind: re-place near the hero
+        if (e.atk <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) > 100) { s.enemies[i] = e.boss ? spawnBoss(s) : spawnEnemy(s); continue; }   // preserve boss type when re-placing far actors near the hero
         const kx = e.kb[0] * dt, kz = e.kb[1] * dt; if (Math.abs(kx) + Math.abs(kz) > 0.001 && (e.roof ? inRoof(e, e.x + kx, e.z + kz) : !insideB(e.x + kx, e.z + kz) && !inPk(e.x + kx, e.z + kz))) { e.x += kx; e.z += kz; } e.kb[0] *= 0.85; e.kb[1] *= 0.85;
-        const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
-        if (d < (e.air ? 32 : 26) && (e.air || dy < 5) && e.hit <= 0) {
+        let dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz), dy = Math.abs(p[1] - e.y);
+        if (isBoss) {
+            stepBossFlight(s, e, dt, p, d < 54 && dy < 18 && e.hit <= 0);
+            dx = p[0] - e.x; dz = p[2] - e.z; d = Math.hypot(dx, dz); dy = Math.abs(p[1] - e.y);
+        }
+        if (d < (e.air ? 32 : isBoss ? 54 : 26) && (e.air || dy < (isBoss ? 18 : 5)) && e.hit <= 0) {
             e.ang = Math.atan2(dx, dz);
             if (e.air) e.y += Math.max(-5 * dt, Math.min(5 * dt, Math.max(2, p[1]) - e.y));   // drones descend/climb to the hero's height
-            if (d > 2.0 && e.atk <= 0) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = 4.2 * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
-            if (d <= 2.4 && e.atk <= 0 && (!e.air || dy < 3) && atkN < (e.air ? 1 : 2) && ((s as any).windT ?? 0) <= s.t) { e.atk = 0.7 + (i % 3) * 0.12; atkN++; (s as any).windT = s.t + 0.45; } // telegraph; at most 2 enemies wind up at once (staggered, not one synchronized burst), drones wait to be at the hero's height
+            if (d > (isBoss ? 5.0 : 2.0) && e.atk <= 0 && (!isBoss || e.flight?.phase === 'grounded')) { const free = !!e.air && insideBA(e.x, e.z, e.y); const sp = (isBoss ? 1.65 : 4.2) * dt, nx = e.x + dx / d * sp, nz = e.z + dz / d * sp; if (e.roof ? inRoof(e, nx, e.z) : (free || !(e.air ? insideBA(nx, e.z, e.y) : insideB(nx, e.z))) && (e.air || !inPk(nx, e.z))) e.x = nx; if (e.roof ? inRoof(e, e.x, nz) : (free || !(e.air ? insideBA(e.x, nz, e.y) : insideB(e.x, nz))) && (e.air || !inPk(e.x, nz))) e.z = nz; }
+            if (d <= (isBoss ? 5.3 : 2.4) && e.atk <= 0 && (!e.air || dy < 3) && (!isBoss || dy < 16) && atkN < (e.air ? 1 : 2) && ((s as any).windT ?? 0) <= s.t) { e.atk = isBoss ? 1.3 : 0.7 + (i % 3) * 0.12; atkN++; (s as any).windT = s.t + 0.45; } // telegraph; at most 2 enemies wind up at once (staggered, not one synchronized burst), drones wait to be at the hero's height
         }
         if (e.atk > 0) {
             e.atk -= dt;
             if (e.atk <= 0) {
                 const dd = Math.hypot(p[0] - e.x, p[2] - e.z);
-                if (dd < 2.9 && Math.abs(p[1] - e.y) < 3 && s.dodgeT <= 0) { s.hp -= 12; s.hurtT = 0.3; s.lastHit = s.t; ev.hurt(); }
-                e.atk = -1.2;
+                if (dd < (isBoss ? 6.3 : 2.9) && Math.abs(p[1] - e.y) < (isBoss ? 18 : 3) && s.dodgeT <= 0) { s.hp -= isBoss ? 20 : 12; s.hurtT = 0.3; s.lastHit = s.t; ev.hurt(); }
+                e.atk = isBoss ? -2.2 : -1.2;
             }
         } else if (e.atk < 0) e.atk = Math.min(0, e.atk + dt);
     }
@@ -646,13 +751,13 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
     for (let i = s.plasma.length - 1; i >= 0; i--) {
         const b = s.plasma[i]; b.t += dt;
         if (b.tgt && b.tgt.down <= 0) {
-            const ty = b.tgt.y + BODY_OFF[b.tgt.kind ?? 0], d = norm([b.tgt.x - b.x, ty - b.y, b.tgt.z - b.z]);
+            const ty = b.tgt.y + enemyBodyOffset(b.tgt), d = norm([b.tgt.x - b.x, ty - b.y, b.tgt.z - b.z]);
             const sp = Math.hypot(b.vx, b.vy, b.vz), turn = Math.min(1, dt * 7);   // limited turn: tracks without wild curves
             b.vx += (d[0] * sp - b.vx) * turn; b.vy += (d[1] * sp - b.vy) * turn; b.vz += (d[2] * sp - b.vz) * turn;
         }
         const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt, nz = b.z + b.vz * dt;
         let boom = b.t > 1.4;
-        if (!boom) for (const e of s.enemies) { if (e.down > 0) continue; if (Math.hypot(e.x - nx, e.z - nz) < 1.6 && Math.abs((e.y + BODY_OFF[e.kind ?? 0]) - ny) < 2.4) { boom = true; break; } }
+        if (!boom) for (const e of s.enemies) { if (e.down > 0) continue; if (Math.hypot(e.x - nx, e.z - nz) < (e.boss ? BOSS_HIT_RADIUS : 1.6) && Math.abs((e.y + enemyBodyOffset(e)) - ny) < (e.boss ? BOSS_HIT_HALF_HEIGHT : 2.4)) { boom = true; break; } }
         if (!boom) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { boom = true; break; } }
         if (!boom) { const gy = nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.85) boom = true; }
         if (boom) { detonate(s, nx, ny, nz, ev); s.plasma.splice(i, 1); } else { b.x = nx; b.y = ny; b.z = nz; }

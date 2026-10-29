@@ -1,8 +1,9 @@
 import puppeteer from 'puppeteer-core';
 const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
 const p = await b.newPage(); await p.setViewport({ width:390, height:780, hasTouch:true, isMobile:true });
+const port = Number(process.env.PORT || 4173);
 const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
-await p.goto('http://localhost:4173/',{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
+await p.goto(`http://localhost:${port}/`,{waitUntil:'load'}); await new Promise(r=>setTimeout(r,1500));
 await p.evaluate(()=>window.__game.start()); await new Promise(r=>setTimeout(r,600));
 const shot=process.argv[2];
 const R=await p.evaluate(async()=>{const g=window.__game,s=g.sim,w=(ms)=>new Promise(r=>setTimeout(r,ms)); const out={};

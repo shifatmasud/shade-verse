@@ -1,12 +1,98 @@
-## v0.79 - Ghost Companion + Mirror Shadow Snare (Provisional Score: 81/100)
-- Visuals: 17/20 (desktop and phone-landscape SwiftShader captures were reviewed; physical-device visuals remain untested)
-- Controls/behavior: 23/25 (Ghost follow and autonomous combat, plus Snare's five-target gather, group hold, finisher, cooldown, and unchanged melee chain pass focused assertions)
-- Performance (estimate): 15/20 (one additional bounded companion simulation; target-device frame rate was not measured)
-- Stability: 14/15 (type-check, production build, and both focused two-viewport browser tests pass; full regression suite not rerun)
-- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
-Evidence: `test/ghost.mjs` and `test/snare.mjs` pass in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390. Captures were reviewed during local QA but are not committed.
+## Restored lake/city district, detailed foliage, and Shadow swim fix — provisional 83/100
+- Visuals: 17/20 (the 844×390 landscape capture clearly shows the lake and preserved bridge; underwater and Shadow-swim images are visibly rendered in SwiftShader, not physical-device output)
+- Controls/behavior: 25/25 (Shadow's swim lean is applied after clip sampling; lake buoyancy and drag work; Ghost source, controls, HUD, normal melee, city routes, bridge/ramp traversal, and rooftop arena remain unchanged)
+- Performance (estimate): 15/20 (both reflection and refraction targets are capped at 256×128 and throttled by elapsed time; the refraction pass is skipped when far from the lake; physical GPU frame rate is not measured)
+- Stability: 14/15 (production build and focused environment/water/Shadow regressions pass with zero browser errors; the full suite was not run)
+- Device compatibility (estimate): 12/20 (physical Android/Windows appearance and performance remain untested)
+Evidence: `npx tsc --noEmit`, `npm run build`, `PORT=4174 node test/environment.mjs`, `PORT=4174 node test/lake-swim-shadow.mjs`, and `PORT=4174 node test/water.mjs` PASS at phone-landscape 844×390/WebGL2 SwiftShader; the existing ocean swim/exit regression also passes. The environment check loads 27/27 Polyfork GLBs, with 132 outer-district building placements around the restored legacy center, four below-soil subway entrances, 266 trees/54 bushes, nine layered foliage species, 48 shrub cards, reflection/refraction targets, and grounded bridge deck/ramps. The lake swim check verifies buoyancy lifts the test swimmer from −6.0 to about −5.04, drag reduces horizontal speed from 6 to about 2.90, Shadow's wrapper/body pitches are 1.45/0 while the swim clip remains active, Ghost matches its starting source, and underwater tint/reflection are active. Before/after captures: `art/environment/shot-before-lake-city-water-mobile-landscape.png` and `art/environment/shot-after-lake-bridge-polyfork-mobile-landscape.png`; underwater effects: `art/environment/shot-after-lake-underwater-mobile-landscape.png`. Physical-device performance and appearance remain untested.
 
----
+## Pedestrian hand cleanup — provisional 84/100
+- Visuals: 17/20 (paired phone-landscape captures show compact palms/fingers attached at both wrists; software-rendered only)
+- Controls/behavior: 25/25 (NPC placement/type slot remains stable; player Shadow, controls, HUD, and default enemy path remain unchanged)
+- Performance (estimate): 16/20 (424 triangles added to each shared pedestrian geometry and merged into the existing instanced mesh, with no extra scene mesh/draw call; target-GPU FPS is not measured)
+- Stability: 14/15 (type-check, production build, focused hand regression, environment grounding, fight completion, and Shadow/Ghost animation parity pass; full suite not rerun)
+- Device compatibility (estimate): 12/20 (physical-device appearance and target-GPU performance remain untested)
+Evidence: `node test/pedestrian-hands.mjs http://localhost:4174/ art/pedestrian-hands/shot-after-hands-mobile-landscape.png` PASS at 844×390 in Chromium WebGL2/ANGLE SwiftShader. It checks mirrored wrist centers, five finger forms per hand, a bounded 4,175-triangle pedestrian mesh, unchanged deterministic placement, unchanged quad-drone geometry, and zero browser errors. Matched full and close captures: `art/pedestrian-hands/shot-before-hands-mobile-landscape.png`, `art/pedestrian-hands/shot-after-hands-mobile-landscape.png`, `art/pedestrian-hands/shot-before-hands-detail-mobile-landscape.png`, and `art/pedestrian-hands/shot-after-hands-detail-mobile-landscape.png`. Physical-device testing remains untested.
+
+## Procedural 3D enemy fire KO — provisional 85/100
+- Visuals: 18/20 (the emissive orange core, tapered tongues, ground ring, and embers read as a 3D burst in the phone-landscape capture; software-rendered only)
+- Controls/behavior: 25/25 (the effect consumes the existing enemy-down state; the focused test confirms score, KO count, player health/position, and attack input are unchanged)
+- Performance (estimate): 16/20 (four fixed-capacity instanced batches, bounded to six active bursts; target-GPU frame rate is not measured)
+- Stability: 14/15 (type-check, production build, whitespace check, and the focused phone-landscape regression pass; full suite not rerun)
+- Device compatibility (estimate): 12/20 (physical Android/Windows appearance and target-GPU performance remain untested)
+Evidence: `node test/death-vfx.mjs http://localhost:4174/ art/death-vfx/shot-after-fire-ko-mobile-landscape.png` PASS at 844×390 in Chromium WebGL2/ANGLE SwiftShader. It drives the existing down-state transition directly, so it verifies VFX behavior rather than combat timing; assertions cover one trigger, world-space placement, fixed instance capacities, unchanged gameplay state, effect expiry, and no browser errors. Captures: `art/death-vfx/shot-before-fire-ko-mobile-landscape.png` and `art/death-vfx/shot-after-fire-ko-mobile-landscape.png`. Vite reports a non-blocking 2.77 MB minified JavaScript chunk; no physical-device performance claim is made.
+
+## Ordinary swing ring cleanup — provisional 86/100
+- Visuals: 18/20 (ordinary swings no longer draw a screen attach ring, button ripple, or linked dashed halo; Shock Web colors and effects remain distinct)
+- Controls/behavior: 25/25 (swing input, icon kick, flash, linked highlight, and HUD layout are preserved)
+- Performance (estimate): 17/20 (removes short-lived DOM/CSS ring visuals; no added scene geometry or draw calls)
+- Stability: 14/15 (type-check, production build, focused phone-landscape regression, animation parity, and both special-effect tests pass)
+- Device compatibility (estimate): 12/20 (physical-device appearance and target-GPU performance remain untested)
+Evidence: `node test/ordinary-swing-rings.mjs http://localhost:4174/` PASS at 844×390 in Chromium WebGL2/ANGLE SwiftShader; Shadow/Ghost ordinary swing rings and pulses remain zero, and the Shock Web tests still report 80 ring segments in each actor's own special. Vite reports a non-blocking 2.77 MB minified JavaScript chunk; no physical-device performance claim is made.
+
+## Boss arena and Ghost traversal/morph update — provisional 83/100
+- Visuals: 18/20 (the phone-landscape capture shows the saturated red rooftop beacon and boss; the matched capture shows Ghost's pink-white particle re-form)
+- Controls/behavior: 24/25 (focused assertions confirm Ghost shares Shadow's wall, swing, and glide modes; the fixed boss remains on its assigned roof)
+- Performance (estimate): 15/20 (bounded 96-point morph cloud and a small marker scene graph; SwiftShader is not a target-device FPS result)
+- Stability: 14/15 (type-check, production build, existing Ghost/boss tests, and new focused phone-landscape tests pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows tests remain untested)
+Evidence: `test/ghost-traversal.mjs` and `test/boss-arena.mjs` PASS at phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader. The first checks same-wall attachment, swing, glide, and particle out/in states; the second checks the roof-contained boss, 84 m red beam, and rooftop ring. Captures: `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`, `art/ghost/shot-after-ghost-morph-mobile-landscape.png`, and `art/boss/shot-after-boss-arena-mobile-landscape.png`. Commit `01d40a7` is on the mirror's `main`; the live URL returned HTTP 200 with the updated bundle. Physical Android/Windows and target-GPU frame rates remain untested.
+
+## Polyfork lake, bridge, city and park rebuild — provisional 83/100
+- Visuals: 16/20 (the phone-landscape capture shows the Polyfork lake crossing, timber bridge, shoreline/support foam, mixed tree grove, and blossoms; software rendering only)
+- Controls/behavior: 25/25 (the hero remains grounded on the bridge deck and both approach ramps; city footprints, routes, rooftop boss arena, and existing traversal controls are preserved)
+- Performance (estimate): 16/20 (27 compact GLBs, batched into 178 building placements, 266 trees, and 54 bushes; curved grass uses a bounded instanced tuft pool and bloom renders a quarter-resolution light-only layer; no physical FPS result)
+- Stability: 14/15 (type-check, build, environment, water, ground, boss-arena/flight, Ghost animation, and both independent Shock Web regressions pass; full suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows devices and target-GPU frame rates remain untested)
+Evidence: `test/environment.mjs` PASS at 844×390; 27/27 Polyfork GLBs return HTTP 200, the city uses 15 model families across 178 placements, the nine tree species and bushes are present, and live simulation samples confirm grounding on the deck and ramp. `test/water.mjs`, `test/ground.mjs`, `test/boss-arena.mjs`, `test/boss-flight.mjs`, `test/ghost-animation-sync.mjs`, `test/snare.mjs`, and `test/ghost-snare.mjs` PASS. Before/after: `art/environment/shot-before-lake-bridge-mobile-landscape.jpg` and `art/environment/shot-after-lake-bridge-polyfork-mobile-landscape.png`. The later 3D fire KO effect remains queued for a separate iteration.
+
+## Ghost full-action animation parity, one-hand web, and landing/wall morph — provisional 84/100
+- Visuals: 18/20 (Ghost now uses the same live Shadow clip/procedural action pose; phone-landscape morph evidence is reviewed, but only software rendering is available)
+- Controls/behavior: 25/25 (28 animation cases cover all implemented action families, including Shadow-matched alternating one-hand web strands and an actual dual-hand spring launch; four surface tests cover street, park, rooftop, and collision-backed wall attachment with no visible relocation)
+- Performance (estimate): 15/20 (shared pose function and bounded 96-particle morph; target-GPU frame rate not measured)
+- Stability: 14/15 (type-check, production build, action/morph/traversal, Ghost, and boss tests pass; legacy combat/Snare tests also fail on the exact baseline; full suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows tests remain untested)
+Evidence: `test/ghost-animation-sync.mjs` PASS at 844×390, including one right-hand strand on odd swings, one left-hand strand on even swings, and matching Shadow/Ghost spring state with two aimed hands on the same anchor; `test/ghost-surface-morph.mjs` and `test/ghost-traversal.mjs` PASS at 844×390. Morph screenshot: `art/ghost/shot-after-ghost-morph-mobile-landscape.png`. Legacy `test/combat.mjs` and `test/snare.mjs` produce the same failures on baseline `e3439faa`; no `sim.ts` or Shadow rendering changes were made. Physical-device and target-GPU results are UNTESTED.
+
+## Shadow-bodied giant boss revision — provisional 79/100
+- Visuals: 17/20 (the actual Shadow human mesh now drives a broader athletic white body with red eyes; the accepted before/after visual pair is phone-landscape)
+- Controls/behavior: 22/25 (one persistent boss and its slow pursuit/telegraphed strike remain; tests confirm ordinary melee cannot select or damage it and Shadow Snare still does)
+- Performance (estimate): 14/20 (one 5,172-vertex skinned body plus its outline; SwiftShader is software-rendered evidence, not a physical-device FPS measurement)
+- Stability: 14/15 (type-check, production build, and focused two-viewport assertions pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows devices remain untested)
+Evidence: `node test/boss.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader structural and combat checks at desktop 1365×768 and phone-landscape 844×390. It checks exact 3× root scale (4.5 versus Shadow's 1.5), the 17-bone/5,172-vertex Shadow mesh, muscle-profile geometry, white material, red-eye texture pixels, boss strike, melee exclusion, and Snare target/damage with unchanged input keys. The phone-landscape capture pair is `art/boss/shot-before-shadow-body-boss-mobile-landscape.png` and `art/boss/shot-after-shadow-body-boss-mobile-landscape.png`. The desktop after-capture was blank and is not used as visual evidence; desktop rendering is unclaimed. Physical Android/Windows and target-GPU frame rates remain untested.
+
+## Previous custom giant humanoid boss iteration — 79/100
+- Visuals: 17/20 (original white muscular silhouette at 5x root scale, blank lower face and two red eyes; paired local captures reviewed at matching viewport sizes, with debug-only rooftop/camera framing in the after-images)
+- Controls/behavior: 22/25 (one persistent boss, slow pursuit and telegraphed strike; plasma and Shadow Snare can hit it; ordinary melee target/damage exclusion is tested, with player input structure and timings unchanged)
+- Performance (estimate): 14/20 (seven merged low-poly meshes; software-rendered desktop simulation advanced slowly, so this is a conservative code-size estimate, not a device FPS measurement)
+- Stability: 14/15 (type-check, production build and focused two-viewport browser assertions pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
+Evidence: `test/boss.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390. It checks boss spawn/persistence, exact 7.5 root scale (five times the 1.5 hero root), red eye vertices, a wind-up and strike, Shadow Snare's target/damage path, and that an ordinary melee move neither selects nor damages the boss. After the main push, the stable public URL served the updated bundle with the boss marker. For a short smoke check, the harness advances the existing strike/Snare timers to their impact edges; it is not a full timing/soak test. SwiftShader screenshots are in `art/boss/`; physical Android/Windows and target-GPU frame rates remain untested.
+
+## Ghost autonomous companion iteration — provisional 82/100
+- Visuals: 18/20 (the same human suit silhouette now has a subtle feminine shape and white replacement panels; hot-pink lenses are assigned in the model; the captured rear-facing poses do not show the lens color clearly)
+- Controls/behavior: 23/25 (independent AI, autonomous melee and follow pass the focused test on two viewports; traversal intents are implemented but not separately asserted)
+- Performance (estimate): 15/20 (one additional lightweight actor simulation and skinned rig; target-GPU frame rate not measured)
+- Stability: 14/15 (type-check, production build and focused SwiftShader assertions pass; full regression suite not run)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested)
+Evidence: `test/ghost.mjs` PASS in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390; SwiftShader captures reviewed and supplied separately with the report. The Git-triggered Vercel production deployment from `main` is READY at https://web-swinger-3d-mirror.vercel.app/.
+
+## Ghost swing parity and independent Shock Web — provisional 84/100
+- Visuals: 19/20 (ordinary swings show no pulse/ring effect; Shadow's own purple and Ghost's own hot-pink shocks match their lenses and bind five targets; desktop and landscape-phone behavior is browser-checked, with special-effect captures from phone-landscape only; physical devices untested)
+- Controls: 23/25 (alternating one-hand swings, two-hand spring launch, independent target groups/timing/cooldowns, the lightning/shock glyph with original label and 48px box, and the regular melee chain are covered; button placement, styling, and cooldown ring are unchanged)
+- Performance (estimate): 16/20 (bounded five-target simulation and line geometry; target-GPU frame rate not measured)
+- Stability: 14/15 (focused Chromium/SwiftShader animation, traversal, Snare, boss, and boss-arena assertions pass; not a full regression suite)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 untested)
+Evidence: `test/ghost-animation-sync.mjs` PASS (25 shared-action cases, alternating right/left strands, dual-hand spring, and zero pulse/ring geometry on both heroes during swing); `test/snare.mjs` PASS at desktop 1365×768 and phone-landscape 844×390 (Shadow alone binds five targets, advances its purple pulse, deals one hit per target, and leaves Ghost's special inactive); `test/ghost-snare.mjs` PASS at phone-landscape (Ghost alone uses its own five-target list and hot-pink shock without changing Shadow's input or cooldown); and `test/ghost-traversal.mjs` PASS. Captures: `art/shadow-snare/after-{desktop,mobile-landscape}.png`, `art/shadow-snare/shock-mobile-landscape.png`, and Ghost's hot-pink pulse `art/shadow-snare/ghost-shock-mobile-landscape.png`.
+
+## Ghost first-scene follow iteration — provisional 81/100
+- Visuals: 16/20 (original white-suited silhouette now sits beside Shadow in the first gameplay frame; captures are SwiftShader/WebGL2-verified, but physical-device appearance is untested)
+- Controls: 24/25 (automatic spawn and follow; no activation button and no changes to existing controls)
+- Performance (estimate): 15/20 (single low-poly follower with bounded movement math; target-GPU frame rate not measured)
+- Stability: 14/15 (focused two-viewport first-scene/follow test passes with zero page/console errors; full regression suite not rerun)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 untested)
+Evidence: `test/ghost.mjs` PASS under Chromium WebGL2/ANGLE SwiftShader at desktop and phone-landscape sizes. `art/ghost/` contains the four before/after PNGs; their central scene crops passed the nonblank checks. The pre-fix production bundle lacked Ghost markers; this iteration was subsequently merged to `main` and is included in the READY production deployment at https://web-swinger-3d-mirror.vercel.app/.
 
 ## v0.76 - Combat Choreography Release (Score: 85/100)
 - Visuals: 18/20 (tactile hit-stop frame impact weight, multi-angle strike animations, comic outlines intact)
@@ -65,3 +151,19 @@ UPDATE 5:37: wall crawl/run, wall jump, wall vault, higher jump (apex 4.6 m) imp
 Wall crawling, wall walking/running, higher jump, running, swimming (ocean, split view, underwater).
 Tests required before any claim: wall attach/detach, wall jump, water entry/exit, transitions ground<->wall<->swing.
 Current jump apex 2.4 m (to raise). Run PASS. Wall and swim: none.
+
+## Rooftop boss autonomous flight — provisional 82/100
+- Visuals: 18/20 (the 3× red-armored Shadow-body boss retains its red eyes; paired cyan boot plumes are visible during the flight cycle in the phone-landscape capture)
+- Controls/behavior: 24/25 (engaged boss lift, hover, bounded propel, and controlled landing are verified; existing strike, Snare targeting, and player's input fields remain intact)
+- Performance (estimate): 14/20 (two shared cone geometries and four plume meshes are isolated to the single boss; target-device frame rate is unmeasured)
+- Stability: 14/15 (type-check/build, flight, boss/arena, and 25-action Ghost parity regressions pass; generic combat harness wall-clock sampling was not reliable on SwiftShader)
+- Device compatibility (estimate): 12/20 (physical Android and Windows remain untested)
+Evidence: `test/boss-flight.mjs` verifies takeoff, hover, roof-bounded propulsion, landing, plume response, and unchanged player input; `test/boss.mjs`, `test/boss-arena.mjs`, and `test/ghost-animation-sync.mjs` pass. Capture: `art/boss/shot-after-boss-flight-mobile-landscape.png` (844×390). The legacy `test/combat.mjs` missed melee/landing events at its SwiftShader wall-clock sample intervals; a direct live trace confirmed a normal melee hit and HP reduction. Physical-device and target-GPU results are UNTESTED.
+
+## Full-body red boss armor — provisional 84/100
+- Visuals: 18/20 (the phone-landscape capture shows the 3× Shadow-bodied boss in bulky red armor from helmet to boots, with two clear red eyes through the open face)
+- Controls/behavior: 25/25 (the existing 3× body, fixed roof/beacon, boss strike, ordinary-melee exclusion, and Snare damage remain covered by focused regressions)
+- Performance (estimate): 15/20 (50 bone-attached armor meshes are limited to the single boss; SwiftShader is not a target-device FPS result)
+- Stability: 14/15 (type-check, production build, boss, arena, and Ghost animation/morph regressions pass; full suite not run)
+- Device compatibility (estimate): 12/20 (physical Android and Windows remain untested)
+Evidence: `test/boss.mjs` PASS at desktop 1365×768 and phone-landscape 844×390; verifies all 50 red armor meshes are attached to the existing bones, required helmet-to-boot coverage, the open eye aperture, original red lens texture and two red highlights, exact 3× scale, and unchanged combat checks. `test/boss-arena.mjs` plus Ghost animation, morph, and traversal tests PASS. Captures: `art/boss/shot-after-red-armor-mobile-landscape.png` and `art/boss/shot-after-boss-arena-mobile-landscape.png`; physical-device and target-GPU frame-rate results are UNTESTED.

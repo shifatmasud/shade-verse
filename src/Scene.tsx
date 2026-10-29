@@ -14,9 +14,16 @@ import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
+import { withPedestrianHands } from './pedestrianHands';
+import { GiantBoss } from './GiantBoss';
+import { BossArenaMarker } from './BossArenaMarker';
+import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, parkH, WATER_Y, SEABED, HALF, FOG, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
+import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
+import { SelectiveBloomPass } from './SelectiveBloomPass';
+import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 // time of day: one shared state object, materials hold references to its uniform objects and the DayNight component updates them in place
 const TOD = { sun: new THREE.Vector3(-0.55, 0.22, 0.8).normalize(), sunU: null as any, day: { value: 1 }, warm: { value: 1 }, noon: { value: 0 }, fog: new THREE.Color(FOG[0], FOG[1], FOG[2]), sky: new THREE.Color('#c4dcef') };
@@ -30,6 +37,7 @@ void main(){vPos=position;vNor=normal;vCol=aCol;vSeed=aSeed;gl_Position=projecti
 const CITY_FS = `varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
 uniform vec3 uFog;uniform float uTime;uniform vec3 uSunV;uniform float uDay;uniform float uNoon;
 void main(){
+ if(vSeed>10.0)discard;
  vec3 n=normalize(vNor);
  vec3 L=normalize(mix(-uSunV,uSunV,step(0.0,uSunV.y))*vec3(1.0,1.0,1.0)+vec3(0.0,0.35,0.0));
  float d=max(dot(n,L),0.0);
@@ -343,16 +351,16 @@ function Underwater({ sim }: { sim: Sim }) {
         kelp.current.instanceMatrix.needsUpdate = true;
     }, []);
     useFrame((st) => {
-        const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2], inBay = hz < WATER_Z + 6, under = inBay && st.camera.position.y < WATER_Y + 1.5 && sim.mode === 'play';
+        const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2], inBay = hz < WATER_Z + 6, inLake = isLakeWater(hx, hz), inWater = inBay || inLake, surfaceY = inLake ? waterSurfaceAt(hx, hz, t) : WATER_Y, under = inWater && st.camera.position.y < surfaceY + 1.5 && sim.mode === 'play';
         kelpMat.uniforms.uTime.value = t; rayMat.uniforms.uTime.value = t;
-        kelp.current.visible = inBay; const cu = under && st.camera.position.y < WATER_Y - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // shafts and bubbles only once the camera is really below the surface (they showed as thin dark dashes at the horizon just above water)
-        if (!inBay) return;
+        kelp.current.visible = inBay; const cu = under && st.camera.position.y < surfaceY - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // shafts and bubbles only once the camera is really below either water surface
+        if (!inWater) return;
         if (under) {
             const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, B = 7;   // bubbles: unit-box seeds wrapped around the hero, rising with a current drift
             const cur = Math.sin(t * 0.3) * 0.5;
-            for (let i = 0; i < pa.count; i++) { const sx = (i * 0.618) % 1, sz = (i * 0.382 + 0.2) % 1, sp = 0.5 + ((i * 0.137) % 1) * 0.9; const ry = ((((i * 0.29) % 1) + t * 0.06 * sp) % 1); pa.setXYZ(i, hx + (sx - 0.5) * B * 2 + cur * ry * 4, WATER_Y - 6 + ry * 6 + Math.min(0, hy + 4) * 0.0, hz + (sz - 0.5) * B * 2 + Math.sin(t * 0.8 + i) * 0.1); }
+            for (let i = 0; i < pa.count; i++) { const sx = (i * 0.618) % 1, sz = (i * 0.382 + 0.2) % 1, sp = 0.5 + ((i * 0.137) % 1) * 0.9; const ry = ((((i * 0.29) % 1) + t * 0.06 * sp) % 1); pa.setXYZ(i, hx + (sx - 0.5) * B * 2 + cur * ry * 4, surfaceY - 6 + ry * 6 + Math.min(0, hy + 4) * 0.0, hz + (sz - 0.5) * B * 2 + Math.sin(t * 0.8 + i) * 0.1); }
             pa.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
-            rays.current.position.set(hx, WATER_Y + 0.1, hz); rays.current.rotation.y = 0;
+            rays.current.position.set(hx, surfaceY + 0.1, hz); rays.current.rotation.y = 0;
         }
     });
     return <group>
@@ -378,7 +386,7 @@ const treeWind = (leaf: boolean) => (sh: any) => {
     `);
 };
 const trunkWindShader = treeWind(false), leafWindShader = treeWind(true);
-function Forest({ sim }: { sim: Sim }) {
+function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean }) {
     const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
     const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; };
@@ -434,8 +442,8 @@ function Forest({ sim }: { sim: Sim }) {
         return { floor: fl, path: mk(8, 190, 2, 90, Math.atan(0.6), 0.04) };
     }, []);
     return <group>
-        <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>
-        <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>
+        {renderGround && <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>}
+        {renderGround && <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>}
         {geos.map((g, v) => <group key={v}>
             <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.con ? pbarkTex : barkTex} emissive="#4a3a2c" side={THREE.DoubleSide} onBeforeCompile={trunkWindShader} /></instancedMesh>
             <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
@@ -445,7 +453,6 @@ function Forest({ sim }: { sim: Sim }) {
     </group>;
 }
 
-
 // park floor: no flat green between tufts - value noise plus fine blade streaks in world space, so the gaps read as grass undergrowth (ref: BotW grassland ground mottling)
 const floorGrass = (sh: any) => {
     sh.vertexShader = 'varying vec2 vFx;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vFx = (modelMatrix * vec4(position, 1.0)).xz;');
@@ -453,30 +460,43 @@ const floorGrass = (sh: any) => {
 };
 // meadow: long grass tufts + subtle flowers + fireflies. Reference study: instanced blade-cluster grass with wind sway in the vertex shader (common real-time approach, e.g. GDC "Ghost of Tsushima" grass talk, three.js instanced grass guides); blade shapes, colours and placement are mine
 const INK_R = 2;
-const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2; const a: number[] = []; for (let i = 0; i < 39000; i++) { const x = PARK.x0 + 3 + rnd() * (PARK.x1 - PARK.x0 - 6), z = PARK.z0 + 3 + rnd() * (PARK.z1 - PARK.z0 - 6); if (Math.abs((x - cx) - (z - cz) * 0.6) < 6.5 || Math.hypot(x - cx, z - cz) < 4) continue; a.push(x, z, rnd(), rnd()); } return a; })();
+const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2; const a: number[] = []; for (let i = 0; i < 39000; i++) { const x = PARK.x0 + 3 + rnd() * (PARK.x1 - PARK.x0 - 6), z = PARK.z0 + 3 + rnd() * (PARK.z1 - PARK.z0 - 6); const pond = ((x - PARK_POND.cx) / (PARK_POND.rx + 1.5)) ** 2 + ((z - PARK_POND.cz) / (PARK_POND.rz + 1.5)) ** 2; if (Math.abs((x - cx) - (z - cz) * 0.6) < 6.5 || Math.hypot(x - cx, z - cz) < 4 || pond < 1.0 || bridgeSurfaceAt(x, z) !== null) continue; a.push(x, z, rnd(), rnd()); } return a; })();
 function tuftGeo() {
     const pos: number[] = [], col: number[] = []; let r = 5; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
     for (let b = 0; b < 7; b++) {
         const a = rnd() * 6.28, ox = (rnd() - 0.5) * 0.35, oz = (rnd() - 0.5) * 0.35, h = 0.8 + rnd() * 0.7, w = 0.035 + rnd() * 0.025, lean = (0.3 + rnd() * 0.45) * h;
         const dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx;
-        // two-segment blade: base quad to mid, then a tip
-        const mid = [ox + dx * lean * 0.20, h * 0.62, oz + dz * lean * 0.20], tip = [ox + dx * lean, h, oz + dz * lean];
-        const v = [[ox - px * w, 0, oz - pz * w], [ox + px * w, 0, oz + pz * w], [mid[0] - px * w * 0.6, mid[1], mid[2] - pz * w * 0.6], [mid[0] + px * w * 0.6, mid[1], mid[2] + pz * w * 0.6], tip];
-        for (const t of [[0, 1, 2], [1, 3, 2], [2, 3, 4]]) t.forEach((i) => { pos.push(...v[i]); const k = v[i][1] / h; col.push(0.34 + 0.36 * k, 0.47 + 0.31 * k, 0.29 + 0.19 * k); });
+        // Eight curved segments provide a smooth blade arc before the vertex shader adds the wind bend.
+        const segments = 8;
+        const point = (t: number, side: number) => {
+            const curve = 0.14 * Math.sin(t * Math.PI) + 0.86 * t * t;
+            const width = w * (1 - 0.9 * t) * side;
+            return [ox + dx * lean * curve + px * width, h * t, oz + dz * lean * curve + pz * width];
+        };
+        const vertex = (v: number[]) => {
+            pos.push(v[0], v[1], v[2]);
+            const k = v[1] / h;
+            col.push(0.34 + 0.36 * k, 0.47 + 0.31 * k, 0.29 + 0.19 * k);
+        };
+        for (let j = 0; j < segments; j++) {
+            const t0 = j / segments, t1 = (j + 1) / segments;
+            const left0 = point(t0, -1), right0 = point(t0, 1), left1 = point(t1, -1), right1 = point(t1, 1);
+            [left0, right0, left1, right0, right1, left1].forEach(vertex);
+        }
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
 }
 const FL_COL = ['#8a5cf0', '#4f7cff', '#e03a4a', '#ff7fb8'];
 function Meadow({ sim }: { sim: Sim }) {
     const gr = useRef<THREE.InstancedMesh>(null!), fl = useRef<THREE.InstancedMesh>(null!), ff = useRef<THREE.Points>(null!), last = useRef([1e9, 1e9]), uni = useRef({ uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uCam: { value: new THREE.Vector3() } }), fu = useRef({ uTime: { value: 0 } });
-    useFrame((st) => { uni.current.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); uni.current.uCam.value.copy(st.camera.position); const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
+    useFrame((st) => { if (ff.current && ff.current.layers.mask !== 3) ff.current.layers.enable(SELECTIVE_BLOOM_LAYER); uni.current.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); uni.current.uCam.value.copy(st.camera.position); if (DBG && gr.current) (window as any).__polyforkGrass = { outlineMaskAlpha: gr.current.userData.outlineMaskAlpha, outlineMaskThreshold: gr.current.userData.outlineMaskThreshold, bladeSegments: 8 }; const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
     const geo = useMemo(tuftGeo, []);
     const flGeo = useMemo(() => { const g = new THREE.CircleGeometry(0.17, 7); g.rotateX(-Math.PI / 2.4); g.translate(0, 0.62, 0); const st = new THREE.PlaneGeometry(0.02, 0.62); st.translate(0, 0.31, 0); return mergeGeometries([g, st], false)!; }, []);
     const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5 + parkH(p[i * 3], p[i * 3 + 2]); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
     const place = (hx: number, hz: number) => {
         const o = new THREE.Object3D(), col = new THREE.Color(); let gi = 0, fi = 0;
         for (let i = 0; i < GR_POOL.length && gi < 6500; i += 4) {
-            const x = GR_POOL[i], z = GR_POOL[i + 1]; if (Math.hypot(x - hx, z - hz) > 57) continue;
+            const x = GR_POOL[i], z = GR_POOL[i + 1]; if (Math.hypot(x - hx, z - hz) > 57 || bridgeSurfaceAt(x, z) !== null) continue;
             o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl) * (1 + 0.04 * Math.max(0, -parkH(x, z)));   o.scale.set(sc, sc, sc); o.updateMatrix(); gr.current.setMatrixAt(gi, o.matrix); gr.current.setColorAt(gi++, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.30 + 0.06 * cl, 0.34 + GR_POOL[i + 2] * 0.10 + 0.065 * cl));
             if (GR_POOL[i + 2] < 0.12 && fi < 420) { o.position.set(x + 0.2, 0.05 + parkH(x + 0.2, z), z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
         }
@@ -485,9 +505,9 @@ function Meadow({ sim }: { sim: Sim }) {
     useFrame((st) => { uni.current.uTime.value = fu.current.uTime.value = st.clock.elapsedTime; const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 8) { last.current = [hx, hz]; place(hx, hz); } });
     const onGrass = (sh: any) => { sh.uniforms.uTime = uni.current.uTime; sh.uniforms.uHero = uni.current.uHero; sh.uniforms.uCam = uni.current.uCam; sh.vertexShader = 'uniform float uTime; uniform vec3 uHero; uniform vec3 uCam;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n float hh = position.y; transformed.y *= mix(0.4, 1.0, smoothstep(0.9, 3.8, length(instanceMatrix[3].xz - uHero.xz))) * mix(0.3, 1.0, smoothstep(1.5, 5.5, length(instanceMatrix[3].xz - uCam.xz))); float wv = sin(uTime * 0.9 + instanceMatrix[3].x * 0.07 + instanceMatrix[3].z * 0.045) * 0.5 + 0.5; transformed.x += (sin(uTime * 1.5 + instanceMatrix[3].x * 0.35 + instanceMatrix[3].z * 0.22) * 0.1 + wv * 0.38) * hh * hh; transformed.y -= wv * 0.12 * hh * hh; transformed.z += cos(uTime * 1.2 + instanceMatrix[3].z * 0.3) * 0.1 * hh * hh; vHt = clamp(position.y / 0.9, 0.0, 1.0);').replace('void main() {', 'varying float vHt;\nvoid main() {');
         // grass optics (ref: BotW grassland, blades dark at the root and sun-lit translucent yellow-green at the tips): base occlusion, bright backlit tips, soft sheen
-        sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.25, 0.32, 0.17), uDayG) * vHt * vHt * 0.32;\n#include <opaque_fragment>'); };   // night: tips glow cool blue-grey, not yellow (ref: moonlit meadow)
+        sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.25, 0.32, 0.17), uDayG) * vHt * vHt * 0.32; diffuseColor.a = 0.5;\n#include <opaque_fragment>'); };   // alpha 0.5 is still fully visible in the opaque color pass but falls below the screen-outline mask threshold
     return <group>
-        <instancedMesh ref={gr} args={[geo, undefined, 6500]} frustumCulled={true}><meshLambertMaterial vertexColors emissive="#1c3410" side={THREE.DoubleSide} onBeforeCompile={onGrass} /></instancedMesh>
+        <instancedMesh ref={gr} name="polyfork-curved-grass-blades" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geo, undefined, 6500]} frustumCulled={true}><meshLambertMaterial vertexColors emissive="#1c3410" side={THREE.DoubleSide} onBeforeCompile={onGrass} /></instancedMesh>
         <instancedMesh ref={fl} args={[flGeo, undefined, 420]}><meshLambertMaterial emissive="#555555" side={THREE.DoubleSide} /></instancedMesh>
         <points ref={ff} geometry={ffGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} blending={THREE.AdditiveBlending} uniforms={fu.current} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying vec3 vOrbCol; void main(){ vOrbCol=0.58+0.42*cos(ph+vec3(0.0,2.1,4.2)); vec3 p = position; p.x += sin(uTime*0.4+ph*3.0)*2.5; p.z += cos(uTime*0.35+ph*2.0)*2.5; p.y += sin(uTime*0.7+ph)*0.8; vec4 mv = modelViewMatrix*vec4(p,1.0); gl_Position = projectionMatrix*mv; vA = 0.35+0.65*pow(0.5+0.5*sin(uTime*1.6+ph*5.0),2.0); gl_PointSize = clamp(38.0/(-mv.z), 2.0, 9.0); }`} fragmentShader={`varying float vA;varying vec3 vOrbCol;void main(){float d=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.0,d);gl_FragColor=vec4(vOrbCol*(0.7+0.3*a),a*a*vA);}`} /></points>
     </group>;
@@ -519,11 +539,11 @@ function Civilians({sim}:{sim:Sim}){
     const refs=useRef<THREE.InstancedMesh[]>([]);
     const time=useRef({value:0});
     const set=useMemo(()=>PED_TYPES.map((t:any)=>{
-        if(t.model==='shadow')return {geo:shadowGeo({shell:t.shell,accent:t.coat,eye:EYE_BLUE}),mat:shadowMat(time.current,7)};
+        if(t.model==='shadow')return {geo:withPedestrianHands(shadowGeo({shell:t.shell,accent:t.coat,eye:EYE_BLUE}),t.shell),mat:shadowMat(time.current,7,true)};
         const r=robotGeo({model:t.model,eye:EYE_BLUE,shell:t.shell,scale:t.model==='sdrone'?1.3:t.model==='survey'?1.0:t.model==='companion'?1.15:1,extras:t.coat?coatRobot(t.coat):undefined});
         return {geo:r.geo,mat:robotMat(r.parts,r.scale,time.current,t.model==='sdrone'?0:3.2)};
     }),[]);
-    if(DBG)(window as any).__pedInfo=set.map((p:any)=>{p.geo.computeBoundingBox();const b=p.geo.boundingBox;return{tris:(p.geo.index?p.geo.index.count:p.geo.attributes.position.count)/3,verts:p.geo.attributes.position.count,size:[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].map((x:number)=>+x.toFixed(2)),minY:+b.min.y.toFixed(2)}});
+    if(DBG)(window as any).__pedInfo=set.map((p:any)=>{p.geo.computeBoundingBox();const b=p.geo.boundingBox;return{tris:(p.geo.index?p.geo.index.count:p.geo.attributes.position.count)/3,verts:p.geo.attributes.position.count,size:[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].map((x:number)=>+x.toFixed(2)),minY:+b.min.y.toFixed(2),hands:p.geo.userData.pedestrianHands||null,materialKey:p.mat.customProgramCacheKey()}});
     // distant tier: a ~40-triangle box proxy per type (torso, head, blue visor band), used beyond PED_NEAR metres; the full 600-2700 triangle robots stay for the near field
     const far=useMemo(()=>PED_TYPES.map((t:any,ti:number)=>{
         const sh=new THREE.Color().setRGB(...(t.shell||[0.82,0.84,0.88]) as [number,number,number]),cc=new THREE.Color().setRGB(...(t.coat||t.shell||[0.82,0.84,0.88]) as [number,number,number]),blue=new THREE.Color().setRGB(...(EYE_BLUE as unknown as [number,number,number])),dark=sh.clone().multiplyScalar(0.55);
@@ -586,7 +606,8 @@ const POSES: Record<number, [number, PoseK][]> = {
     7: [[0, P({ uarmR: [-1.75, 0, -0.1], farmR: [-0.05, 0, 0], uarmL: [-1.7, 0, 0.1], farmL: [-0.05, 0, 0], spine: [0.15, 0, 0] })], [0.25, P({ uarmR: [-1.9, 0, -0.1], farmR: [-0.1, 0, 0], uarmL: [-1.85, 0, 0.1], farmL: [-0.1, 0, 0], spine: [0.1, 0, 0] })], [0.42, P({ uarmR: [0.45, 0, 0.15], farmR: [-1.4, 0, 0], uarmL: [0.45, 0, -0.15], farmL: [-1.4, 0, 0], spine: [-0.38, 0, 0], hips: [0, -0.2, 0], thighL: [-0.6, 0, 0], shinL: [0.6, 0, 0], thighR: [0.45, 0, 0], shinR: [0.4, 0, 0], head: [0.2, 0, 0] })], [0.75, P({ uarmR: [0.2, 0, 0.1], farmR: [-1.6, 0, 0], uarmL: [0.2, 0, -0.1], farmL: [-1.6, 0, 0], spine: [-0.15, 0, 0] })], [1, GUARD]],
 };
 export type CombatPoseState = { w: number; c: Float32Array; t: Float32Array };
-const _cp: CombatPoseState = { w: 0, c: new Float32Array(CP_BONES.length * 3), t: new Float32Array(CP_BONES.length * 3) };
+export function createCombatPoseState(): CombatPoseState { return { w: 0, c: new Float32Array(CP_BONES.length * 3), t: new Float32Array(CP_BONES.length * 3) }; }
+const _cp: CombatPoseState = createCombatPoseState();
 const cstep = (x: number) => x * x * (3 - 2 * x);
 function samplePose(keys: [number, PoseK][], u: number, out: Float32Array) {
     let k = 0; while (k < keys.length - 2 && u > keys[k + 1][0]) k++;
@@ -611,14 +632,51 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
     if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
     if (fl) { const u = Math.min(1, fl.t / fl.dur), a = cstep(u) * Math.PI * 2 * fl.dir; if (fl.ax === 'x') rig.b.hips.rotation.x += a; else rig.b.hips.rotation.z += a; }
 }
-function SnareLines({ sim }: { sim: Sim }) {
-    const ref = useRef<THREE.LineSegments>(null!);
+export const SNARE_PULSE_SEGMENTS = 2;
+export const SNARE_RING_SEGMENTS = 16;
+export const SHADOW_SNARE_COLOR = '#a855f7';
+export function writeSnarePulse(a: THREE.BufferAttribute, start: number, hx: number, hy: number, hz: number, tx: number, ty: number, tz: number, progress: number, seed: number) {
+    const p = Math.max(0, Math.min(1, progress)), span = 0.11, t0 = Math.max(0, p - span), t1 = Math.min(1, p + span), tm = (t0 + t1) * 0.5;
+    const dx = tx - hx, dy = ty - hy, dz = tz - hz, side = Math.hypot(dx, dz) || 1, jitter = Math.sin(seed + p * 18) * 0.18;
+    const ox = -dz / side * jitter, oz = dx / side * jitter;
+    const x0 = hx + dx * t0, y0 = hy + dy * t0, z0 = hz + dz * t0;
+    const xm = hx + dx * tm + ox, ym = hy + dy * tm + Math.cos(seed + p * 14) * 0.12, zm = hz + dz * tm + oz;
+    const x1 = hx + dx * t1, y1 = hy + dy * t1, z1 = hz + dz * t1;
+    a.setXYZ(start * 2, x0, y0, z0); a.setXYZ(start * 2 + 1, xm, ym, zm);
+    a.setXYZ((start + 1) * 2, xm, ym, zm); a.setXYZ((start + 1) * 2 + 1, x1, y1, z1);
+    return start + SNARE_PULSE_SEGMENTS;
+}
+export function writeSnareRing(a: THREE.BufferAttribute, start: number, x: number, y: number, z: number, radius: number) {
+    for (let i = 0; i < SNARE_RING_SEGMENTS; i++) { const a0 = i / SNARE_RING_SEGMENTS * Math.PI * 2, a1 = (i + 1) / SNARE_RING_SEGMENTS * Math.PI * 2, o = (start + i) * 2; a.setXYZ(o, x + Math.cos(a0) * radius, y, z + Math.sin(a0) * radius); a.setXYZ(o + 1, x + Math.cos(a1) * radius, y, z + Math.sin(a1) * radius); }
+    return start + SNARE_RING_SEGMENTS;
+}
+export function SnareLines({ sim }: { sim: Sim }) {
+    const ref = useRef<THREE.LineSegments>(null!), shockRef = useRef<THREE.LineSegments>(null!);
+    const lineMat = useRef<THREE.LineBasicMaterial>(null!), shockMat = useRef<THREE.LineBasicMaterial>(null!);
     const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((SNARE.MAX_TARGETS * 2 + 2) * 2 * 3), 3)); return g; }, []);
-    useFrame(() => { const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute; let n = 0;
-        if (sa.snareT > SNARE.IMPACT) { const hw = sa.handW as number[][] | undefined; (sa.snareList as any[]).forEach((e, i) => { if (e.down > 0 || i >= SNARE.MAX_TARGETS) return; for (let sd = 0; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, e.y + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0], e.z); n++; } }); }
-        { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const hw = sa.handW as number[][] | undefined, e = cw.e, ty = e.y + (e.ly || 0) + [1.2, -0.3, 0.67, 1.2][e.kind ?? 0]; for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++; } } }
-        geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0; });
-    return <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial color="#ffffff" transparent opacity={0.95} depthTest={false} depthWrite={false} /></lineSegments>;
+    const shockGeo = useMemo(() => { const cap = SNARE.MAX_TARGETS * 2 * SNARE_PULSE_SEGMENTS + SNARE.MAX_TARGETS * SNARE_RING_SEGMENTS, g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap * 2 * 3), 3)); return g; }, []);
+    useFrame(() => {
+        const sa = sim as any, a = geo.attributes.position as THREE.BufferAttribute, sh = shockGeo.attributes.position as THREE.BufferAttribute;
+        const sn = sa.snareT || 0, hw = sa.handW as number[][] | undefined, targets = (sa.snareList || []) as Sim['enemies']; let n = 0, pn = 0, rn = 0, shockProgress = 0;
+        for (let i = 0; i < Math.min(SNARE.MAX_TARGETS, targets.length); i++) {
+            const e = targets[i]; if (e.down > 0) continue; const ty = e.y + ((e as any).ly || 0) + enemyBodyOffset(e);
+            for (let sd = 0; sd < 2; sd++) {
+                const hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]], o = n * 2; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++;
+                if (sn > SNARE.IMPACT && sn <= SNARE.SHOCK_START) { const p = 1 - (sn - SNARE.IMPACT) / (SNARE.SHOCK_START - SNARE.IMPACT); shockProgress = p; pn = writeSnarePulse(sh, pn, hp[0], hp[1], hp[2], e.x, ty, e.z, p, i * 3.1 + sd * 1.7); }
+            }
+            if (sn > 0 && sn <= SNARE.IMPACT) { const p = 1 - sn / SNARE.IMPACT; rn = writeSnareRing(sh, rn, e.x, ty, e.z, 0.35 + p * 1.75); }
+        }
+        { const cw = sa.cWeb; if (cw && cw.e && cw.e.down <= 0) { const e = cw.e, ty = e.y + (e.ly || 0) + enemyBodyOffset(e); for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) { const o = n * 2, hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]]; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++; } } }
+        geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0;
+        shockGeo.setDrawRange(0, (pn + rn) * 2); sh.needsUpdate = true; shockRef.current.visible = pn + rn > 0;
+        if (lineMat.current) { lineMat.current.color.set(sn > 0 ? SHADOW_SNARE_COLOR : '#ffffff'); lineMat.current.opacity = sn > 0 ? 0.98 : 0.86; }
+        if (shockMat.current) shockMat.current.color.set(sn > 0 ? SHADOW_SNARE_COLOR : '#ffffff');
+        if (DBG) (window as any).__shadowSnareFx = { webLines: n, pulseSegments: pn, ringSegments: rn, pulseProgress: shockProgress, snareColor: sn > 0 ? SHADOW_SNARE_COLOR : null, strandColor: lineMat.current?.color.getHexString(), shockColor: shockMat.current?.color.getHexString() };
+    });
+    return <>
+        <lineSegments ref={ref} geometry={geo} frustumCulled={false}><lineBasicMaterial ref={lineMat} color="#ffffff" transparent opacity={0.86} depthTest={false} depthWrite={false} /></lineSegments>
+        <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false}><lineBasicMaterial ref={shockMat} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} /></lineSegments>
+    </>;
 }
 // flying cars: instanced, lane traffic above the streets (decor only, no collision)
 const CAR_N = 36;
@@ -661,6 +719,92 @@ function aimBone(bone: THREE.Bone, child: THREE.Object3D, target: THREE.Vector3,
     bone.parent!.getWorldQuaternion(_pq); bone.quaternion.premultiply(_pq.clone().invert().multiply(_aq).multiply(_pq));
 }
 const _id = new THREE.Quaternion(), _tg = new THREE.Vector3();
+export type HeroClipState = { key: string; t: number; w: number };
+export function createHeroClipState(): HeroClipState { return { key: '', t: 0, w: 0 }; }
+export type HeroRootPoseState = { lean: number; glideBlend: number; bank: number; yaw: number; swimWave: number };
+export type HeroAnimationFrame = { clipState: HeroClipState; poseState?: CombatPoseState; sourceClipState?: HeroClipState; poseDt?: number; glideBlend: number; publishState?: boolean };
+export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, position: ArrayLike<number>, scale: number, sourcePose?: HeroRootPoseState, publishState = true) {
+    const root = rig.root as THREE.Group, poseRoot = rig.poseRoot as THREE.Group, sa = sim as any;
+    root.position.set(position[0], position[1] - 1, position[2]);
+    root.scale.setScalar(scale);
+    if (sim.wall) { root.position.x += Math.sin(sim.ang) * 0.2; root.position.z += Math.cos(sim.ang) * 0.2; }
+    if (sourcePose) state.swW = sourcePose.swimWave;
+    if (sim.swim) {
+        if (!sourcePose) { const baseY = waterRenderY(position[0], position[2], sim.t) - waveAtWater(position[0], position[2], sim.t), kw = Math.max(0, Math.min(1, (position[1] - baseY + 2) / 2.3)), wv = waveAtWater(position[0], position[2], sim.t) * kw; state.swW = state.swW === undefined ? wv : state.swW + (wv - state.swW) * Math.min(1, dt * 10); }
+        root.position.y = position[1] - 1.7 + (state.swW || 0); root.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); root.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3);
+    }
+    const oldBlend = state.gB || 0;
+    state.gB = sourcePose?.glideBlend ?? oldBlend + ((sim.glideOn ? 1 : 0) - oldBlend) * Math.min(1, dt * 3.5);
+    const lean = sourcePose?.lean ?? ((sim.swim ? (sim.dive ? 1.9 : 1.45) : sim.wall ? 0.32 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - state.gB * 0.8) + state.gB * 1.12);
+    root.rotation.set(0, sim.ang, 0);
+    poseRoot.rotation.set(lean, 0, 0); poseRoot.rotation.order = 'ZXY';
+    let bank = sourcePose?.bank;
+    if (bank === undefined) {
+        const yr = state.bYaw === undefined ? 0 : ((sim.yaw - state.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3);
+        state.bYaw = sim.yaw; state.bR = (state.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * state.gB - (state.bR || 0)) * Math.min(1, dt * 4); bank = state.bR;
+    } else { state.bYaw = sourcePose!.yaw; state.bR = bank; }
+    poseRoot.rotation.z = bank;
+    if (state.gB > 0.01) { const lc = 0.9 * state.gB; root.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; root.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; root.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
+    root.position.y -= sim.land * 0.5;
+    poseRoot.rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 && !sa.flip ? 0.6 : 0);
+    const rootPose = { lean, glideBlend: state.gB, bank, yaw: sim.yaw, swimWave: state.swW || 0 };
+    if (publishState) sa.__heroRootPoseState = rootPose;
+    return rootPose;
+}
+export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnimationFrame) {
+    const { clipState, poseState, sourceClipState, poseDt = dt, glideBlend, publishState = true } = frame;
+    const h = rig.root, poseRoot = rig.poseRoot as THREE.Group, sa = sim as any, v = sim.vel;
+    rig.bones.forEach((b: THREE.Bone) => b.rotation.set(0, 0, 0));
+    const speed = Math.hypot(v[0], v[1], v[2]), hs = Math.hypot(v[0], v[2]);
+    const legR = rig.b.thighR as THREE.Bone, legL = rig.b.thighL as THREE.Bone;
+    const armR = rig.b.uarmR as THREE.Bone, armL = rig.b.uarmL as THREE.Bone;
+    const sw = sim.ground ? Math.sin(sim.runPhase * 3) * 0.9 * Math.min(1, hs / 6) : 0.25;
+    legR.rotation.x = sw; legL.rotation.x = -sw; armL.rotation.x = -sw * 0.8;
+    if (sim.swim) { const cs = Math.sin(sim.runPhase * 2.4); legR.rotation.x = cs * 0.5; legL.rotation.x = -cs * 0.5; armL.rotation.x = -2.6 + cs * 1.2; }
+    if (sim.wall) { const moving = Math.min(1, speed / 7), cw = Math.sin(sim.runPhase * 2.5) * moving; legR.rotation.x = -0.3 + cw * 1.05; legL.rotation.x = -0.3 - cw * 1.05; armL.rotation.x = -1.35 - cw * 0.8; }
+    armR.rotation.x = sim.swim ? -2.6 - Math.sin(sim.runPhase * 2.4) * 1.2 : sim.wall ? -1.35 + Math.sin(sim.runPhase * 2.5) * 0.8 * Math.min(1, speed / 7) : sim.web ? (sim.swings % 2 === 1 ? -2.7 : -0.5) : sim.atkT > 0 ? -1.5 - Math.sin((0.32 - sim.atkT) * 10) * 0.6 : sw * 0.8;
+    if (sim.web && !sim.swim && !sim.wall) armL.rotation.x = sim.swings % 2 === 0 ? -2.7 : -0.5;
+    if (sa.kick && sim.atkT > 0 && sim.shotT <= 0) { const kp = Math.sin((1 - sim.atkT / 0.32) * Math.PI); legR.rotation.x = -1.7 * kp; legL.rotation.x = 0.15; armR.rotation.x = -0.8; armL.rotation.x = -1.2; }
+    if (sim.glideOn && !(sa.snareT > 0)) { armR.rotation.x = -0.1; armL.rotation.x = -0.1; armR.rotation.z = 1.3; armL.rotation.z = -1.3; const gt = Math.sin(sim.t * 5) * 0.05; legR.rotation.x = 0.12 + gt; legL.rotation.x = 0.06 - gt; }
+    const sn = sa.snareT || 0;
+    if (sn > 0) {
+        if (sn > SNARE.GATHER_END) { armR.rotation.x = -1.35; armL.rotation.x = -1.35; legR.rotation.x = -0.2; legL.rotation.x = 0.1; }
+        else { const charge = sn <= SNARE.SHOCK_START ? Math.sin((SNARE.SHOCK_START - sn) * 18) * 0.035 : 0; armR.rotation.x = -1.22 - charge; armL.rotation.x = -1.22 - charge; armR.rotation.z = -0.2; armL.rotation.z = 0.2; legR.rotation.x = -0.2; legL.rotation.x = 0.1; }
+    }
+    { const tR = legR.rotation.x, tL = legL.rotation.x, tuck = sim.ground || sim.glideOn || sim.wall ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armR.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armL.rotation.x + 1.2) * 0.2; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
+    const ck = (sa.mv || sa.flip || sn > 0 || (sim.glideOn && glideBlend > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? (sa.kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
+    const cs = clipState;
+    if (sourceClipState) { cs.key = sourceClipState.key; cs.t = sourceClipState.t; cs.w = sourceClipState.w; }
+    else {
+        if (ck !== cs.key) cs.key = ck || cs.key;
+        cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
+        if (ck) {
+            const c = CLIPS[ck];
+            if (ck === 'wall') cs.t += dt * Math.min(1.6, speed / 3);
+            else if (ck === 'swim') cs.t += dt * (0.6 + Math.min(1.2, speed / 8));
+            else if (ck === 'punch') cs.t = 0.10 + (0.32 - sim.atkT) * 2.0;
+            else if (ck === 'jump') cs.t = (c.n / c.fps) * 0.5;
+            else if (ck === 'run') cs.t += dt * Math.max(0.5, Math.min(2, hs / 5.5));
+            else cs.t += dt;
+        }
+    }
+    if (cs.key === 'swim' || cs.key === 'wall') poseRoot.rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') poseRoot.rotation.x *= 1 - cs.w * 0.7;
+    rig.b.head.rotation.x = -poseRoot.rotation.x * 0.5;
+    if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
+    if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
+    if (sim.shotT > 0 || sim.spring > 0) { const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12); rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]); for (const side of ['L', 'R']) { aimBone(rig.b['uarm' + side], rig.b['farm' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + side], rig.b['hand' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); } }
+    const activePoseState = poseState ?? _cp;
+    combatPose(sim, rig, h, poseDt, activePoseState);
+    if (publishState && !sourceClipState) {
+        sa.__heroClipState = { key: cs.key, t: cs.t, w: cs.w };
+        const sharedPose = sa.__heroPoseState ?? (sa.__heroPoseState = { w: 0, c: new Float32Array(activePoseState.c.length), t: new Float32Array(activePoseState.t.length) });
+        sharedPose.w = activePoseState.w; sharedPose.c.set(activePoseState.c); sharedPose.t.set(activePoseState.t);
+    }
+    const zip = sim.web && sim.webT < 1.6 && sim.anchor[1] - sim.pos[1] > 25 && Math.hypot(sim.anchor[0] - sim.pos[0], sim.anchor[1] - sim.pos[1], sim.anchor[2] - sim.pos[2]) < sim.rope - 0.5;
+    const action = sn > 0 ? 'shadow-snare' : sa.mv ? `move-${sa.mv.id}` : sa.flip ? 'dodge-flip' : sim.shotT > 0 ? 'plasma-web-shot' : sim.spring > 0 ? 'web-spring-launch' : sim.web ? (zip ? 'street-zip-up' : 'web-swing') : sim.swim ? (sim.dive ? 'dive' : 'swim') : sim.wall ? 'wall-crawl' : sim.wallT > 0 ? 'wall-jump' : sim.glideOn ? (sa.flightBoost ? 'powered-flight' : 'glide') : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne') : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
+    const snarePhase = sn <= 0 ? 'inactive' : sn > SNARE.GATHER_END ? 'gather' : sn > SNARE.SHOCK_START ? 'grip' : sn > SNARE.IMPACT ? 'shockwave' : 'discharge';
+    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, snarePhase, gripHands: sn > 0 ? 2 : 0, snareTargets: (sa.snareList || []).length, shotT: sim.shotT, spring: sim.spring, aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
+}
 export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: number; shake: number }; perf: { scale: number; fps: number; speed: number } }
 
 
@@ -718,11 +862,11 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
         }`);
     };
     const mesh = new THREE.SkinnedMesh(g, mat); mesh.frustumCulled = false;
-    const root = new THREE.Group(); root.add(mesh); mesh.add(bones[0]);
+    const root = new THREE.Group(), poseRoot = new THREE.Group(); root.add(poseRoot); poseRoot.add(mesh); mesh.add(bones[0]);
     root.updateMatrixWorld(true);
     mesh.bind(new THREE.Skeleton(bones));
     // cel-style ink outline: inverted hull sharing the geometry and skeleton, pushed out along the skinned normal (ref: Wind Waker character edge ink)
-    { const om = new THREE.MeshBasicMaterial({ color: '#0a0d1a', side: THREE.BackSide }); om.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', 'transformed += normalize(objectNormal) * 0.014;\n#include <project_vertex>'); }; const ol = new THREE.SkinnedMesh(g, om); ol.frustumCulled = false; ol.bind(mesh.skeleton, mesh.bindMatrix); root.add(ol); }
+    { const om = new THREE.MeshBasicMaterial({ color: '#0a0d1a', side: THREE.BackSide }); om.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', 'transformed += normalize(objectNormal) * 0.014;\n#include <project_vertex>'); }; const ol = new THREE.SkinnedMesh(g, om); ol.frustumCulled = false; ol.bind(mesh.skeleton, mesh.bindMatrix); poseRoot.add(ol); }
     // candidate extreme vertices (chosen per dominant bone in many bone-local directions), kept with their full skin blend so wall contact uses real skinned positions
     const hull: { p: THREE.Vector3; bi: number[]; bw: number[]; foot?: boolean }[] = [];
     {
@@ -743,7 +887,7 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
         best.forEach((arr) => arr.forEach((e) => { if (e.i >= 0 && !seen.has(e.i)) { seen.add(e.i); hull.push({ p: new THREE.Vector3(pa.getX(e.i), pa.getY(e.i), pa.getZ(e.i)), bi: [0, 1, 2, 3].map((k) => si[e.i * 4 + k]), bw: [0, 1, 2, 3].map((k) => sw[e.i * 4 + k]) }); } }));
     }
     const skel = mesh.skeleton;
-    return { root, b: byName, bones, hull, skel, hipsY: byName.hips.position.y };
+    return { root, poseRoot, b: byName, bones, hull, skel, hipsY: byName.hips.position.y };
 }
 
 
@@ -785,23 +929,25 @@ const seabedMat = mkSea(false), wallMat = mkSea(true);
 const WAVES = `
 float wh(vec2 p, float t){
   float h = 0.0;
-  h += sin(dot(p, vec2(0.021, 0.013)) + t * 0.55) * 0.55;
-  h += sin(dot(p, vec2(-0.033, 0.027)) + t * 0.8) * 0.3;
-  h += sin(dot(p, vec2(0.11, -0.07)) + t * 1.6) * 0.1;
-  h += sin(dot(p, vec2(0.23, 0.19)) + t * 2.4) * 0.05;
+  h += sin(dot(p, vec2(0.008, 0.005)) + t * 0.32) * 0.78;
+  h += sin(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42;
+  h += sin(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12;
+  h += sin(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035;
   return h;
 }
 vec2 wg(vec2 p, float t){
   vec2 g = vec2(0.0);
-  g += cos(dot(p, vec2(0.021, 0.013)) + t * 0.55) * 0.55 * vec2(0.021, 0.013);
-  g += cos(dot(p, vec2(-0.033, 0.027)) + t * 0.8) * 0.3 * vec2(-0.033, 0.027);
-  g += cos(dot(p, vec2(0.11, -0.07)) + t * 1.6) * 0.1 * vec2(0.11, -0.07);
-  g += cos(dot(p, vec2(0.23, 0.19)) + t * 2.4) * 0.05 * vec2(0.23, 0.19);
+  g += cos(dot(p, vec2(0.008, 0.005)) + t * 0.32) * 0.78 * vec2(0.008, 0.005);
+  g += cos(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42 * vec2(-0.012, 0.009);
+  g += cos(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12 * vec2(0.033, -0.023);
+  g += cos(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035 * vec2(0.076, 0.054);
   return g;
 }`;
 function waveH(x: number, z: number, t: number) {
-    return Math.sin(x * 0.021 + z * 0.013 + t * 0.55) * 0.55 + Math.sin(-x * 0.033 + z * 0.027 + t * 0.8) * 0.3 + Math.sin(x * 0.11 - z * 0.07 + t * 1.6) * 0.1 + Math.sin(x * 0.23 + z * 0.19 + t * 2.4) * 0.05;
+    return Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035;
 }
+function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
+function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') } },
@@ -828,8 +974,8 @@ const waterMat = new THREE.ShaderMaterial({
       vec3 col = mix(body, refl, fr);
       col += vec3(1.0, 0.85, 0.7) * (pow(max(dot(r, uSun), 0.0), 220.0) * 1.6 + pow(max(dot(r, uSun), 0.0), 40.0) * 0.35);
       col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, wh(vW.xz, uTime)) * 0.25 * (1.0 - fr);
-      float crest = smoothstep(0.62, 0.9, wh(vW.xz, uTime) + sin(vW.x * 0.7) * sin(vW.z * 0.6) * 0.08);
-      col = mix(col, vec3(1.0), crest * 0.08);
+      float crest = smoothstep(0.95, 1.22, wh(vW.xz, uTime) + sin(vW.x * 0.07) * sin(vW.z * 0.06) * 0.035);
+      col = mix(col, vec3(1.0), crest * 0.11);
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
       col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
       float aOut = mix(0.82, 1.0, max(fr, 0.0));
@@ -936,7 +1082,7 @@ function PlasmaFx({ sim }: { sim: Sim }) {
         const e = sim.aimE;
         ret.current.visible = !!e && sim.mode === 'play';
         if (e) {
-            ret.current.position.set(e.x, e.y + [0.8, 0.3, 1.05, 0.95][e.kind ?? 0] + 1.05, e.z);
+            ret.current.position.set(e.x, e.y + (e.boss ? BOSS_BODY_OFFSET : [0.8, 0.3, 1.05, 0.95][e.kind ?? 0]) + 1.05, e.z);
             ret.current.quaternion.copy(camera.quaternion);
             const s2 = 1 + Math.sin(sim.t * 6) * 0.09; ret.current.scale.setScalar(s2);
             ret.current.children[0].rotation.z = sim.t * 2.4;
@@ -964,6 +1110,70 @@ function PlasmaFx({ sim }: { sim: Sim }) {
             <mesh frustumCulled={false}><ringGeometry args={[0.5, 0.58, 4, 1]} /><meshBasicMaterial color="#8fe9ff" transparent opacity={0.85} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
             <mesh frustumCulled={false}><circleGeometry args={[0.07, 8]} /><meshBasicMaterial color="#dffbff" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
         </group>
+    </>;
+}
+
+// Enemy KO fire: a small, pooled world-space burst (hot core, tapered flame tongues,
+// an expanding ground ring, and embers). It observes the existing down transition only.
+const DEATH_FX_SLOTS = 6, DEATH_FX_FLAMES = 9, DEATH_FX_EMBERS = 12, DEATH_FX_LIFE = 1.05;
+type DeathFxSlot = { x: number; y: number; z: number; born: number; active: boolean };
+function EnemyDeathFx({ sim }: { sim: Sim }) {
+    const slots = useRef<DeathFxSlot[]>(Array.from({ length: DEATH_FX_SLOTS }, () => ({ x: 0, y: 0, z: 0, born: -10, active: false })));
+    const seenDown = useRef(new WeakMap<object, boolean>()), cursor = useRef(0), triggered = useRef(0);
+    const core = useRef<THREE.InstancedMesh>(null!), flames = useRef<THREE.InstancedMesh>(null!), embers = useRef<THREE.InstancedMesh>(null!), rings = useRef<THREE.InstancedMesh>(null!);
+    const assets = useMemo(() => ({
+        coreGeo: new THREE.IcosahedronGeometry(0.62, 1), flameGeo: new THREE.ConeGeometry(0.24, 1.15, 5, 1), emberGeo: new THREE.ConeGeometry(0.055, 0.34, 4, 1), ringGeo: new THREE.TorusGeometry(0.62, 0.055, 5, 24),
+        coreMat: new THREE.MeshStandardMaterial({ color: '#ff8a16', emissive: '#ff3c00', emissiveIntensity: 2.4, roughness: 0.85, metalness: 0, toneMapped: false }),
+        flameMat: new THREE.MeshStandardMaterial({ color: '#ff7412', emissive: '#ff3b00', emissiveIntensity: 2.2, roughness: 0.8, metalness: 0, toneMapped: false }),
+        emberMat: new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
+        ringMat: new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
+    }), []);
+    const obj = useMemo(() => new THREE.Object3D(), []), up = useMemo(() => new THREE.Vector3(0, 1, 0), []), dir = useMemo(() => new THREE.Vector3(), []), col = useMemo(() => new THREE.Color(), []);
+    useFrame(() => {
+        for (const e of sim.enemies) {
+            const down = e.down > 0, wasDown = seenDown.current.get(e) || false;
+            if (down && !wasDown) {
+                const slot = slots.current[cursor.current++ % DEATH_FX_SLOTS], lift = (e as any).ly || 0;
+                slot.x = e.x; slot.y = e.y + lift + enemyBodyOffset(e); slot.z = e.z; slot.born = sim.t; slot.active = true; triggered.current++;
+            }
+            seenDown.current.set(e, down);
+        }
+        let active = 0;
+        for (let i = 0; i < DEATH_FX_SLOTS; i++) {
+            const s = slots.current[i], age = sim.t - s.born, on = s.active && age >= 0 && age < DEATH_FX_LIFE;
+            if (s.active && !on) s.active = false; if (on) active++;
+            const t = on ? age / DEATH_FX_LIFE : 1, fade = Math.max(0, 1 - t), swell = Math.sin(Math.min(1, t * 1.7) * Math.PI * 0.5);
+            obj.position.set(s.x, s.y, s.z); obj.rotation.set(t * 1.4, sim.t * 2.2 + i, t * 0.8);
+            const coreScale = on ? (0.28 + 1.05 * swell) * Math.pow(fade, 0.72) : 0;
+            obj.scale.setScalar(coreScale); obj.updateMatrix(); core.current.setMatrixAt(i, obj.matrix); core.current.setColorAt(i, col.setHSL(0.075 + t * 0.035, 1, 0.54 + fade * 0.12));
+            obj.position.set(s.x, s.y - 0.72, s.z); obj.rotation.set(-Math.PI / 2, 0, 0); obj.scale.setScalar(on ? 0.18 + t * 1.6 : 0); obj.updateMatrix(); rings.current.setMatrixAt(i, obj.matrix); rings.current.setColorAt(i, col.setRGB(fade, fade * 0.34, fade * 0.035));
+            for (let j = 0; j < DEATH_FX_FLAMES; j++) {
+                const idx = i * DEATH_FX_FLAMES + j, a = j * 2.39996 + i * 0.53, lift = 0.42 + ((j * 7) % 5) * 0.12;
+                dir.set(Math.cos(a) * 0.72, lift, Math.sin(a) * 0.72).normalize();
+                const wobble = on ? Math.sin(sim.t * 17 + j * 2.1 + i) * 0.07 : 0, spread = on ? 0.28 + 1.1 * t : 0;
+                obj.position.set(s.x + dir.x * spread, s.y + dir.y * (0.18 + 0.62 * t) + wobble, s.z + dir.z * spread);
+                obj.quaternion.setFromUnitVectors(up, dir); obj.rotation.y += sim.t * 0.35 + j;
+                const flicker = 0.78 + 0.22 * Math.sin(sim.t * 24 + j * 3.7 + i), flameFade = on ? fade * flicker : 0;
+                obj.scale.set(0.62 * flameFade, (1.25 + 0.25 * swell) * flameFade, 0.62 * flameFade); obj.updateMatrix(); flames.current.setMatrixAt(idx, obj.matrix);
+                flames.current.setColorAt(idx, col.setHSL((j % 3 === 0 ? 0.13 : 0.075) + 0.025 * t, 1, 0.48 + 0.12 * fade));
+            }
+            for (let j = 0; j < DEATH_FX_EMBERS; j++) {
+                const idx = i * DEATH_FX_EMBERS + j, a = j * 2.39996 + i * 0.31, elev = 0.25 + ((j * 7) % 9) * 0.075, speed = 1.5 + ((j * 5) % 7) * 0.27;
+                const vx = Math.cos(a) * Math.cos(elev) * speed, vz = Math.sin(a) * Math.cos(elev) * speed, vy = (0.65 + Math.sin(elev)) * speed;
+                obj.position.set(s.x + vx * age, s.y + vy * age - 1.2 * age * age, s.z + vz * age); dir.set(vx, vy - 2.4 * age, vz).normalize();
+                obj.quaternion.setFromUnitVectors(up, dir); const emberFade = on ? fade * (0.82 + 0.18 * Math.sin(sim.t * 31 + j)) : 0;
+                obj.scale.set(emberFade, emberFade, emberFade); obj.updateMatrix(); embers.current.setMatrixAt(idx, obj.matrix); embers.current.setColorAt(idx, col.setRGB(emberFade, emberFade * 0.58, emberFade * 0.16));
+            }
+        }
+        for (const m of [core.current, flames.current, embers.current, rings.current]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+        if (DBG && core.current) { core.current.userData.activeEffects = active; core.current.userData.triggeredTotal = triggered.current; }
+    });
+    const bloom = (o: THREE.Object3D) => o.layers.enable(SELECTIVE_BLOOM_LAYER);
+    return <>
+        <instancedMesh ref={core} name="enemy-death-core" onUpdate={bloom} args={[assets.coreGeo, assets.coreMat, DEATH_FX_SLOTS]} frustumCulled={false} />
+        <instancedMesh ref={flames} name="enemy-death-flames" onUpdate={bloom} args={[assets.flameGeo, assets.flameMat, DEATH_FX_SLOTS * DEATH_FX_FLAMES]} frustumCulled={false} />
+        <instancedMesh ref={embers} name="enemy-death-embers" onUpdate={bloom} args={[assets.emberGeo, assets.emberMat, DEATH_FX_SLOTS * DEATH_FX_EMBERS]} frustumCulled={false} />
+        <instancedMesh ref={rings} name="enemy-death-ring" onUpdate={bloom} args={[assets.ringGeo, assets.ringMat, DEATH_FX_SLOTS]} frustumCulled={false} />
     </>;
 }
 
@@ -1001,7 +1211,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         legR.current = r.b.thighR as any; legL.current = r.b.thighL as any; armR.current = r.b.uarmR as any; armL.current = r.b.uarmL as any; cape.current = t1 as any;
         if (DBG) (window as any).__rig = r; return r;
     }, []);
-    const clipSt = useRef({ key: '', t: 0, w: 0 });
+    const clipSt = useRef(createHeroClipState()), poseSt = useRef(createCombatPoseState());
     const lastWall = useRef<{ n: number[]; b: number } | null>(null), wallCorr = useRef(0), groundCorr = useRef(0), groundMin = useRef({ key: '', v: 1e9 }), tp0 = useMemo(() => new THREE.Vector3(), []);
     const enemyTime = useRef({ value: 0 });
     const enemySet = useMemo(() => [0, 1, 2, 3].map((k) => buildEnemy(k, enemyTime.current)), []);
@@ -1079,7 +1289,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const cp = camera as THREE.PerspectiveCamera;
         // Near-clip-aware waterline: retain the nearby underside instead of cutting a hole through it.
         // Restore the ordinary land frustum away from the bay surface to preserve depth precision.
-        const nearWater = camera.position.z < WATER_Z + 2 && Math.abs(camera.position.y - WATER_Y) < 1.5;
+        const nearWater = (camera.position.z < WATER_Z + 2 && Math.abs(camera.position.y - WATER_Y) < 1.5) || (isLakeWater(camera.position.x, camera.position.z) && Math.abs(camera.position.y - waterSurfaceAt(camera.position.x, camera.position.z, sim.t)) < 1.5);
         const nearTarget = nearWater ? 0.05 : 0.5;
         if (cp.near !== nearTarget) { cp.near = nearTarget; cp.updateProjectionMatrix(); }
         const targetFov = 62 + Math.min(14, speed * 0.25) + fx.fov;
@@ -1087,13 +1297,13 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         {   // water: animate, and split view (waterline across the screen when the camera is at the surface)
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
             const uw = document.getElementById('uw');
-            const inBay = camera.position.z < WATER_Z + 2;
-            const dy = camera.position.y - WATER_Y; const under = inBay && dy < 0; UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
+            const inBay = camera.position.z < WATER_Z + 2, inLake = isLakeWater(camera.position.x, camera.position.z), inWater = inBay || inLake;
+            const surfaceY = inLake ? waterSurfaceAt(camera.position.x, camera.position.z, sim.t) : WATER_Y; const dy = camera.position.y - surfaceY; const under = inWater && dy < 0; UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
             if (uw) {
-                if (inBay && dy < 1.2 && dy > -2.2) {
+                if (inWater && dy < 1.2 && dy > -2.2) {
                     // project the waterline a little ahead of the camera to find where the surface cuts the screen
                     camera.getWorldDirection(_wd); const hx = _wd.x, hz = _wd.z, hl = Math.hypot(hx, hz) || 1;
-                    const ax = camera.position.x + hx / hl * 11, az = camera.position.z + hz / hl * 11; _wp.set(ax, WATER_Y + waveH(ax, az, sim.t), az).project(camera);
+                    const ax = camera.position.x + hx / hl * 11, az = camera.position.z + hz / hl * 11; _wp.set(ax, waterRenderY(ax, az, sim.t), az).project(camera);
                     const yPct = Math.max(0, Math.min(100, (1 - (_wp.y * 0.5 + 0.5)) * 100));
                     { const mk = `linear-gradient(180deg, transparent ${Math.max(0, yPct - 3)}%, #000 ${Math.min(100, yPct + 7)}%)`; uw.style.maskImage = mk; (uw.style as any).webkitMaskImage = mk; } uw.style.opacity = '1'; uw.dataset.split = '1';   // waterline tint edge fades over about 10% of the screen instead of a hard clip
                 } else { uw.style.maskImage = 'none'; (uw.style as any).webkitMaskImage = 'none'; uw.style.opacity = under ? '1' : '0'; uw.dataset.split = '0'; }
@@ -1101,15 +1311,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         // hero
         const h = hero.current;
-        for (const bn of rig.bones) bn.rotation.set(0, 0, 0);
-        h.position.set(p[0], p[1] - 1.0, p[2]);
-        { const sn = (sim as any).snareT || 0, u = sn > 0 && sn < SNARE.SPIN_START ? Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))) : 0; h.rotation.set(0, sim.ang + cstep(u) * Math.PI * 2, 0); } h.scale.setScalar(HERO_SC);
         const wl = !!sim.wall;
-        if (wl) { h.position.x += Math.sin(sim.ang) * 0.2; h.position.z += Math.cos(sim.ang) * 0.2; }
-        const sw2 = sim.swim;
-        { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > -3) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
+        { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > waterSurfaceAt(p[0], p[2], sim.t) - 2.0) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
         { // original curved two-arm wake: short position history keeps the trail behind a turning swimmer
-            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surface = sim.swim && !sim.dive && p[1]>-2.1;
+            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surfaceY = waterSurfaceAt(p[0],p[2],sim.t), surface = sim.swim && !sim.dive && p[1] > surfaceY - 1.1;
             const target = surface && sp>0.6 ? Math.min(0.58,sp*0.10) : 0;
             wakeStrength.current += (target-wakeStrength.current)*Math.min(1,dt*(target>0?6:3));
             const trail = wakeTrail.current;
@@ -1122,58 +1327,15 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 for(let side=0;side<2;side++)for(let j=0;j<=24;j++){const t=j/24,sgn=side?1:-1,fi=t*(trail.length-1),ii=Math.floor(fi),ff=fi-ii,a=trail[ii],b=trail[Math.min(ii+1,trail.length-1)],prev=trail[Math.max(0,ii-1)],next=trail[Math.min(trail.length-1,ii+1)];
                     let dx=prev.x-next.x,dz=prev.z-next.z;const ln=Math.hypot(dx,dz);if(ln>0.02){dx/=ln;dz/=ln;}else{dx=Math.sin(sim.ang);dz=Math.cos(sim.ang);}
                     const cx=a.x+(b.x-a.x)*ff-dx*0.8,cz=a.z+(b.z-a.z)*ff-dz*0.8,spread=0.55+t*1.7,width=0.06+t*0.16;
-                    for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,WATER_Y+waveH(x,z,sim.t)+0.055,z);}}
+                    for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,waterRenderY(x,z,sim.t)+0.055,z);}}
                 pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current*THREE.MathUtils.smoothstep(sim.t-wakeBorn.current,0.1,0.65);}}
         }
-        { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (rg) { const on = sim.swim && p[1] > -2.6; rg.visible = on; if (on) { const wy = WATER_Y + waveH(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
-        if (sw2) { { const kw = Math.max(0, Math.min(1, (p[1] + 3) / 2.3)), wv = waveH(p[0], p[2], sim.t) * kw, sa2 = sim as any; sa2.swW = (sa2.swW === undefined ? wv : sa2.swW + (wv - sa2.swW) * Math.min(1, dt * 10)); h.position.y = p[1] - 1.7 + sa2.swW; } h.position.x -= Math.sin(sim.ang) * (sim.dive ? 0.6 : 1.3); h.position.z -= Math.cos(sim.ang) * (sim.dive ? 0.6 : 1.3); }
-        const sa0 = sim as any; sa0.gB = (sa0.gB || 0) + ((sim.glideOn ? 1 : 0) - (sa0.gB || 0)) * Math.min(1, dt * 3.5);   // glide pose blend (slow in, quick out)
-        const lean = (sw2 ? (sim.dive ? 1.9 : 1.45) : wl ? 0.32 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - sa0.gB * 0.8) + sa0.gB * 1.12;
-        h.children[0].rotation.x = lean;
-        { const c0 = h.children[0], sb = sim as any; c0.rotation.order = 'ZXY'; const yr = sb.bYaw === undefined ? 0 : ((sim.yaw - sb.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3); sb.bYaw = sim.yaw; sb.bR = (sb.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * sa0.gB - (sb.bR || 0)) * Math.min(1, dt * 4); c0.rotation.z = sb.bR; }   // glide banking: roll into the turn, eased
-        if (sa0.gB > 0.01) { const lc = 0.9 * sa0.gB; h.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; h.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; h.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
-        const hs = Math.hypot(v[0], v[2]);
-        const sw = sim.ground ? Math.sin(sim.runPhase * 3) * 0.9 * Math.min(1, hs / 6) : 0.25;
-        legR.current.rotation.x = sw; legL.current.rotation.x = -sw;
-        armL.current.rotation.x = -sw * 0.8;
-        if (sw2) { const cs = Math.sin(sim.runPhase * 2.4); legR.current.rotation.x = cs * 0.5; legL.current.rotation.x = -cs * 0.5; armL.current.rotation.x = -2.6 + cs * 1.2; }
-        if (wl) { const moving=Math.min(1,Math.hypot(v[0],v[1],v[2])/7),cw = Math.sin(sim.runPhase * 2.5)*moving; legR.current.rotation.x = -.3 + cw * 1.05; legL.current.rotation.x = -.3 - cw * 1.05; armL.current.rotation.x = -1.35 - cw * .8; }
-        armR.current.rotation.x = sw2 ? -2.6 - Math.sin(sim.runPhase * 2.4) * 1.2 : wl ? -1.35 + Math.sin(sim.runPhase * 2.5) * .8 * Math.min(1,Math.hypot(v[0],v[1],v[2])/7) : sim.web ? (sim.swings % 2 === 1 ? -2.7 : -0.5) : sim.atkT > 0 ? -1.5 - Math.sin((0.32 - sim.atkT) * 10) * 0.6 : sw * 0.8;
-        if (sim.web && !sw2 && !wl) armL.current.rotation.x = sim.swings % 2 === 0 ? -2.7 : -0.5;
-        
-        if ((sim as any).kick && sim.atkT > 0 && sim.shotT <= 0) { const kp = Math.sin((1 - sim.atkT / 0.32) * Math.PI); legR.current.rotation.x = -1.7 * kp; legL.current.rotation.x = 0.15; armR.current.rotation.x = -0.8; armL.current.rotation.x = -1.2; }
-        if (sim.glideOn && !((sim as any).snareT > 0)) { armR.current.rotation.x = -0.1; armL.current.rotation.x = -0.1; armR.current.rotation.z = 1.3; armL.current.rotation.z = -1.3; const gt = Math.sin(sim.t * 5) * 0.05; legR.current.rotation.x = 0.12 + gt; legL.current.rotation.x = 0.06 - gt; }
-        { const sn = (sim as any).snareT || 0;
-            if (sn > SNARE.GATHER_END) { armR.current.rotation.x = -1.35; armL.current.rotation.x = -1.35; legR.current.rotation.x = -0.2; legL.current.rotation.x = 0.1; }
-            else if (sn > SNARE.SPIN_START) { const hold = Math.max(0, Math.min(1, (SNARE.GATHER_END - sn) / (SNARE.GATHER_END - SNARE.SPIN_START))); armR.current.rotation.x = -1.35 - 0.35 * hold; armL.current.rotation.x = -1.35 - 0.25 * hold; legR.current.rotation.x = -0.2 - 0.35 * hold; legL.current.rotation.x = 0.1 + 0.1 * hold; }
-            else if (sn > 0) { const spin = Math.max(0, Math.min(1, (SNARE.SPIN_START - sn) / (SNARE.SPIN_START - SNARE.IMPACT))), recover = sn <= SNARE.IMPACT ? Math.max(0, sn / SNARE.IMPACT) : 1, kick = Math.sin(spin * Math.PI * 0.5) * recover; legR.current.rotation.x = -1.5 * kick; legL.current.rotation.x = 0.2 * kick; armR.current.rotation.x = -0.6 * kick; armL.current.rotation.x = -1.4 * kick; }
-        }
-        { const tR = legR.current.rotation.x, tL = legL.current.rotation.x, tuck = sim.ground || sim.glideOn || wl ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = -0.35 + Math.min(0, armR.current.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = -0.35 + Math.min(0, armL.current.rotation.x + 1.2) * 0.2; rig.b.head.rotation.x = -(h.children[0].rotation.x) * 0.5; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
-        {   // clip layer: pick a Mixamo-derived clip for the state, crossfade by weight
-            const ck = ((sim as any).mv || (sim as any).flip || (sim as any).snareT > 0 || (sim.glideOn && (sim as any).gB > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? ((sim as any).kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
-            const cs = clipSt.current;
-            if (ck !== cs.key) { cs.key = ck || cs.key; }
-            cs.w += ((ck ? 1 : 0) - cs.w) * Math.min(1, dt * 10);
-            if (ck) {
-                const c = CLIPS[ck];
-                if (ck === 'wall') cs.t += dt * Math.min(1.6, speed / 3);
-                else if (ck === 'swim') cs.t += dt * (0.6 + Math.min(1.2, speed / 8));
-                else if (ck === 'punch') cs.t = 0.10 + (0.32 - sim.atkT) * 2.0;  // clip frames: fist reaches 0.67 m forward at clip t 0.233 s, holds to ~0.55 s; so arrival ~0.10 s after input
-                else if (ck === 'jump') cs.t = (c.n / c.fps) * 0.5;
-                else if (ck === 'run') cs.t += dt * Math.max(0.5, Math.min(2, hs / 5.5));
-                else cs.t += dt;
-            }
-            if (cs.key === 'swim' || cs.key === 'wall') h.children[0].rotation.x *= 1 - cs.w * 0.9; else if (cs.key === 'run') h.children[0].rotation.x *= 1 - cs.w * 0.7;
-            if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
-            if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
-            if (false as boolean) { _gq.setFromAxisAngle(_gz, 1.45); rig.b.uarmL.quaternion.premultiply(_gq); _gq.setFromAxisAngle(_gz, -1.45); rig.b.uarmR.quaternion.premultiply(_gq); }
-            if (sim.shotT > 0 || sim.spring > 0) { // both arms aimed at the web target (shot: the enemy, spring: the anchor), blended in/out
-                const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12);
-                rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]);
-                for (const s2 of ['L', 'R']) { aimBone(rig.b['uarm' + s2], rig.b['farm' + s2], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + s2], rig.b['hand' + s2], _tg, wt); rig.root.updateWorldMatrix(true, true); }
-            }
-        }
-        combatPose(sim, rig, h, dt);
+        { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (rg) { const surfaceY=waterSurfaceAt(p[0],p[2],sim.t), on = sim.swim && p[1] > surfaceY - 1.6; rg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
+        const sa0 = sim as any;
+        const rootPose = applyHeroRootPose(sim, rig, dt, sa0, p, HERO_SC);
+        const lean = rootPose.lean, shadowBody = rig.poseRoot.children[0] as THREE.Object3D;
+        const shadowAnimation = animateHeroBones(sim, rig, dt, { clipState: clipSt.current, poseState: poseSt.current, glideBlend: rootPose.glideBlend, publishState: true });
+        if (DBG) { (window as any).__shadowAnimation = shadowAnimation; (window as any).__shadowSwimOrientation = { wrapperPitch: rig.poseRoot.rotation.x, bodyPitch: shadowBody.rotation.x, rootYaw: h.rotation.y, simYaw: sim.ang, lean, clipWeight: clipSt.current.w }; }
         if (!sim.swim && sim.ground && !wl && (clipSt.current.key === 'run' || clipSt.current.key === 'idle')) {   // plant the lowest foot vertex on the street (measured from the skinned mesh, replaces the fixed run drop)
             h.updateMatrixWorld(true);
             let mn = 1e9;
@@ -1191,7 +1353,6 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (DBG && (window as any).__dbgGround) (window as any).__gc = { mn, corr: groundCorr.current };
         } else { groundMin.current.key = ''; groundCorr.current += (0 - groundCorr.current) * Math.min(1, dt * 10); }
         h.position.y += groundCorr.current;
-        h.position.y -= sim.land * 0.5; h.children[0].rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 && !(sim as any).flip ? 0.6 : 0);
         if (!sim.swim && sim.ground && !wl) {   // Guard the skinned contact hull (including hands/feet) against the actual street, valley or rooftop support. Raise only.
             h.updateMatrixWorld(true);
             let mn2 = 1e9;
@@ -1211,7 +1372,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (want < wallCorr.current) wallCorr.current = want; else wallCorr.current += (want - wallCorr.current) * Math.min(1, dt * 14);   // push out instantly, ease back in
         } else wallCorr.current += (0 - wallCorr.current) * Math.min(1, dt * (sim.wallT > 0 ? 3 : 10));   // after a wall jump keep the push-out until the exit velocity clears the hull
         if (Math.abs(wallCorr.current) > 1e-4 && wnX) { const n = wnX; h.position.x -= n[0] * wallCorr.current; h.position.z -= n[1] * wallCorr.current; }
-        { const gp = DBG ? (window as any).__game : null; if (gp && gp.probe) { h.updateMatrixWorld(true); const m = rig.root.children[0] as THREE.SkinnedMesh; m.skeleton.update(); const pa = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex, swt = m.geometry.attributes.skinWeight, hv = new THREE.Vector3(); const grp = (n: string) => /^head|^neck/.test(n) ? 'head' : /^hand/.test(n) ? 'hands' : /^foot/.test(n) ? 'feet' : 'body'; const parts: Record<string, number[]> = {}; for (let i = 0; i < pa.count; i++) { let bi = si.getX(i), bw = swt.getX(i); for (let k = 1; k < 4; k++) { const w2 = swt.getComponent(i, k); if (w2 > bw) { bw = w2; bi = si.getComponent(i, k); } } const gname = grp(m.skeleton.bones[bi].name); const P = parts[gname] || (parts[gname] = [1e9, -1e9, 1e9, -1e9]); m.getVertexPosition(i, hv); hv.applyMatrix4(m.matrixWorld); P[0] = Math.min(P[0], hv.x); P[1] = Math.max(P[1], hv.x); P[2] = Math.min(P[2], hv.z); P[3] = Math.max(P[3], hv.z); } gp.parts = parts; } }
+        { const gp = DBG ? (window as any).__game : null; if (gp && gp.probe) { h.updateMatrixWorld(true); const m = rig.poseRoot.children[0] as THREE.SkinnedMesh; m.skeleton.update(); const pa = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex, swt = m.geometry.attributes.skinWeight, hv = new THREE.Vector3(); const grp = (n: string) => /^head|^neck/.test(n) ? 'head' : /^hand/.test(n) ? 'hands' : /^foot/.test(n) ? 'feet' : 'body'; const parts: Record<string, number[]> = {}; for (let i = 0; i < pa.count; i++) { let bi = si.getX(i), bw = swt.getX(i); for (let k = 1; k < 4; k++) { const w2 = swt.getComponent(i, k); if (w2 > bw) { bw = w2; bi = si.getComponent(i, k); } } const gname = grp(m.skeleton.bones[bi].name); const P = parts[gname] || (parts[gname] = [1e9, -1e9, 1e9, -1e9]); m.getVertexPosition(i, hv); hv.applyMatrix4(m.matrixWorld); P[0] = Math.min(P[0], hv.x); P[1] = Math.max(P[1], hv.x); P[2] = Math.min(P[2], hv.z); P[3] = Math.max(P[3], hv.z); } gp.parts = parts; } }
         cape.current.rotation.x = 0.25 + Math.min(1.0, speed / 38) + Math.sin(sim.t * 14) * 0.05 * Math.min(1, speed / 20);
         { // hidden cape chain: trail back with speed, flare and flutter in the glide
             const c1 = rig.b.cape1, c2 = rig.b.cape2, c3 = rig.b.cape3;
@@ -1270,7 +1431,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         { // enemies (instanced, one mesh per bot kind)
             enemyTime.current.value = sim.t; const n = sim.enemies.length, cnt = [0, 0, 0, 0];
             for (let i = 0; i < n; i++) {
-                const e = sim.enemies[i], k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
+                const e = sim.enemies[i]; if (e.boss) continue; const k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
                 const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k >= 2 ? Math.sin(sim.t * 2.5 + i) * 0.12 : 0;
                 const ea = e as any, ly = ea.ly || 0, lean = e.down > 0 ? 0 : Math.min(1, e.hit / 0.35) * (ea.hitDir >= 3 ? 0.55 : 0.32), tum = ly > 0.05 ? Math.sin(Math.min(1, ly / 3) * 1.57) * (ea.slam ? -1.1 : 0.9) : 0;
                 tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob + ly, e.z); tmp.rotation.set(fall * -1.4 - lean - tum, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = (e.kind === 3 ? BOT_SC : 1.25) * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
@@ -1301,22 +1462,28 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     });
 
     return <>
-        <mesh ref={beaconRef} frustumCulled={false}><cylinderGeometry args={[4, 4, 90, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
+        <mesh ref={beaconRef} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false}><cylinderGeometry args={[4, 4, 90, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
         <color attach="background" args={[FOG[0], FOG[1], FOG[2]]} />
         <hemisphereLight name="hemi" args={['#d4e4ff', '#8a9a6a', 1.25]} />
         <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
         <DayNight />
         {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={coarse} />}
+        <SelectiveBloomPass />
         <Sky />
         <City /><TenementBlock />
+        <ParkGround />
+        <React.Suspense fallback={null}>
+            <PolyforkBuildings />
+            <PolyforkLakeBridge sim={sim} />
+        </React.Suspense>
         <FlyingCars />
-        <Forest sim={sim} /><Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} />
-        <group ref={hero}>
-            <group>
-                <primitive object={rig.root} />
-            </group>
-        </group>
+        {/* Rebuild park and city trees with authored forms and foliage; never overlay Polyfork tree canopies. */}
+        <Forest sim={sim} renderGround={false} />
+        <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} />
+        <primitive object={rig.root} ref={hero} />
+        <BossArenaMarker />
+        <GiantBoss sim={sim} />
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={webB} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>
@@ -1327,8 +1494,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh position={[0, SEABED, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500]} /><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
-        <instancedMesh ref={cores} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" transparent opacity={0.5} blending={THREE.NoBlending} /></instancedMesh>
-        <instancedMesh ref={glows} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
+        <instancedMesh ref={cores} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" transparent opacity={0.5} blending={THREE.NoBlending} /></instancedMesh>
+        <instancedMesh ref={glows} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
     </>;
 }
 export { gsap, resetSim };

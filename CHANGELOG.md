@@ -2,20 +2,162 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
-## [v0.79] - Ghost Companion and Mirror Shadow Snare
-### Added
-- Ghost follows, traverses, and fights alongside Shadow using a separate simulation while sharing enemies and leaving Shadow's input unchanged.
+## [Released] - Restored lake/city district and Shadow swim orientation
 ### Changed
-- Shadow Snare now follows the mirror implementation: it gathers up to five visible targets within 24 m (14 m vertical range), holds them in a group through a 1.65 s gather/spin/recovery, then deals 3 damage with 18 knockback within 5.5 m; cooldown remains 9 s and the normal melee chain is unchanged.
+- Restored the legacy procedural buildings as the central old city and placed Polyfork building families around it as the outer district; the shared city traversal/collision routes and rooftop boss arena remain intact. Removed above-ground subway building instances and placed four small entrances below soil level.
+- Kept Polyfork tree and shrub silhouettes while restoring full layered legacy-style foliage across nine recognizable tree species and bushes: 266 trees, 54 bushes, nine species-specific leaf overlays, and 48 layered shrub cards. The old lake and bridge crossing remain the only restored legacy environment area.
+- Rebuilt the lake as a 3.8 m basin under the existing bridge and ramps. Its broad calm wave displacement uses the same simulation clock and wave function as buoyancy; swimmers retain buoyancy, drag, shallow dive/floor limits, and waterline transitions. The mobile water shader uses Schlick Fresnel reflection, screen-space Snell-direction refraction with depth absorption, animated caustics, God rays, and shoreline/object-contact foam through throttled 256×128 scene captures.
+- Fixed Shadow's swimming orientation by applying the swim lean to the rig wrapper after swim-clip sampling. The locked Shadow model, controls, HUD, ordinary melee, landscape-only mode, and Ghost swim implementation remain unchanged.
 ### Verification
-- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, `PORT=4174 node test/ghost.mjs`, and `PORT=4174 node test/snare.mjs` pass in Chromium WebGL2/ANGLE SwiftShader at desktop 1365×768 and phone-landscape 844×390. Physical devices and the full regression suite remain untested.
+- `npx tsc --noEmit`, `npm run build`, `PORT=4174 node test/environment.mjs`, `PORT=4174 node test/lake-swim-shadow.mjs`, and `PORT=4174 node test/water.mjs` pass. The phone-landscape WebGL2/ANGLE SwiftShader checks load 27/27 Polyfork GLBs, confirm 132 outer-district building placements, legacy center, four underground entrances, all 266 trees/54 bushes and detailed foliage overlays, lake reflection/refraction targets, and grounded bridge deck/ramps with zero browser errors; the existing ocean swim/exit regression still passes.
+- The lake swim regression verifies entry, buoyancy (starting Y −6.0 to about −5.04), drag (horizontal speed 6 to about 2.90), a live Shadow swim clip, wrapper pitch 1.45 with neutral skinned-body pitch, unchanged Ghost source against starting commit `4696dca`, underwater tint, and an updating reflection target.
+- Matched 844×390 landscape captures: `art/environment/shot-before-lake-city-water-mobile-landscape.png` and `art/environment/shot-after-lake-bridge-polyfork-mobile-landscape.png`; underwater effects capture: `art/environment/shot-after-lake-underwater-mobile-landscape.png`. Physical-device appearance/performance remains untested.
+- Scoped to the private mirror's `main`; the original repository remains untouched. The push is intended to trigger the existing mirror Vercel deployment.
+### References
+- The user-provided lake/bridge visual targets, Polyfork asset/license notes, and water shader/physics references are recorded in `docs/REFERENCES.md`; no third-party shader code or game assets were copied.
+
+## [Released] - Pedestrian hand cleanup
+### Changed
+- Added mirrored low-poly palms, four rounded finger forms, and attached thumbs to NPC pedestrian instances. A pedestrian-only gait mask keeps wrist/hand vertices on the arm swing instead of the leg swing; the new 424 triangles per robot are merged into the existing instanced mesh.
+### Preserved
+- `src/hero.json`, the locked player Shadow model, default enemy robot material, NPC placement/AI, player controls, and HUD are unchanged.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `git diff --check`, `node test/pedestrian-hands.mjs http://localhost:4174/ art/pedestrian-hands/shot-after-hands-mobile-landscape.png`, `PORT=4174 node test/environment.mjs`, and `PORT=4174 node test/ghost-animation-sync.mjs` pass. The enemy fight check completes without browser errors.
+- Matched Chromium WebGL2/SwiftShader phone-landscape captures at 844×390: full view `art/pedestrian-hands/shot-before-hands-mobile-landscape.png` / `shot-after-hands-mobile-landscape.png`; close wrist view `shot-before-hands-detail-mobile-landscape.png` / `shot-after-hands-detail-mobile-landscape.png`. Physical-device appearance and target-GPU performance remain untested.
+- Scoped to the private mirror's `main`; the original repository remains untouched.
+
+## [Released] - Ordinary swing ring cleanup
+### Changed
+- Removed the ordinary-swing screen attach ring, swing-button ripple, and linked dashed halo. The existing button icon kick, flash, cyan linked highlight, controls, and HUD layout remain; the purple Shadow and hot-pink Ghost Shock Web rings still render only during their owners' separate special attacks.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `git diff --check`, `node test/ordinary-swing-rings.mjs http://localhost:4174/`, `PORT=4174 node test/ghost-animation-sync.mjs`, `PORT=4174 node test/snare.mjs`, and `PORT=4174 node test/ghost-snare.mjs` pass. The focused 844×390 test checks attach feedback, button ripple, linked outline, both heroes' ordinary-swing ring/pulse counts, and browser errors; the special tests still see the 80-segment Shock Web rings. Physical-device appearance remains untested.
+- Scoped to the private mirror's `main`; the original repository remains untouched. The push is intended to trigger the mirror's existing Vercel deployment.
+
+## [Released] - Procedural 3D enemy fire KO
+### Added
+- Added a renderer-only pooled world-space burst on the existing enemy-down transition: an emissive low-poly core and tapered fire tongues, a short expanding ground ring, and additive embers. Four fixed-capacity instanced batches support up to six overlapping KOs; the VFX is tagged for the existing selective-bloom layer.
+### Preserved
+- No simulation, damage, hit cadence, KO/score logic, player controls/position, HUD, or environment code changed. The effect reads the existing down state and expires after 1.05 seconds.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `git diff --check`, and `node test/death-vfx.mjs http://localhost:4174/ art/death-vfx/shot-after-fire-ko-mobile-landscape.png` pass. The focused browser test directly drives the existing down-state transition (it does not measure combat timing) and checks no pre-KO burst, one trigger, world-space anchoring, pooled instance capacities, unchanged score/KOs/player HP/position/attack input, expiry, and zero browser errors.
+- Matched phone-landscape evidence at 844×390: `art/death-vfx/shot-before-fire-ko-mobile-landscape.png` (alive) and `art/death-vfx/shot-after-fire-ko-mobile-landscape.png` (KO with fire). Chromium WebGL2/SwiftShader only; physical-device appearance and target-GPU frame rate remain untested.
+- Release scope is the private mirror's `main`; the original repository remains untouched. The production push is intended to trigger the mirror's existing Vercel deployment.
+### References
+- Real-time VFX and Three.js implementation references are recorded in `docs/REFERENCES.md`; no third-party code, models, or textures were copied.
+
+## [Released] - Polyfork lake, bridge, city and park rebuild
+### Changed
+- Replaced the rendered procedural city blocks with instanced Polyfork models across 178 remaining building sites and 15 model families; retained the existing city footprints, collision records, original Polyfork six-home block, routes, and rooftop boss arena.
+- Replaced all mounted legacy park and side-street trees with 266 Polyfork trees spanning nine species, including palm, pine, oak, birch, maple, cherry blossom, and cherry, plus 54 Polyfork bushes. Added a mixed grove around the lake and kept bridge/path clearances.
+- Added the Polyfork water body and a six-module wooden footbridge with two walkable approach ramps, 14 animated shoreline/support foam patches, a cutout so the old trail does not show through the pond, and a subdivided water surface. Retuned ocean motion to broad, calm swells with restrained crest foam.
+- Rebuilt each grass blade as an eight-segment curved mesh and set its render alpha below the screen-outline mask threshold; the terrain/field silhouette keeps its outline. Added quarter-resolution selective bloom for explicitly tagged lights only (boss eyes, rooftop beacon, arena marker, orbs, and fireflies), excluding grass, blossom petals, and the full scene.
+- Shadow, Ghost, combat, HUD placement, boss flight/armor, and ordinary traversal remain intact; existing light meshes only gained bloom tagging, and bridge/ramp ground support was added to traversal.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, and `git diff --check` pass. `PORT=4173 node test/environment.mjs` passes at phone-landscape 844×390: all 27/27 Polyfork GLBs load, 178 city placements and all required species are present, and the hero grounds on both bridge deck and ramp with no browser errors. `test/water.mjs`, `test/ground.mjs`, `test/boss-arena.mjs`, `test/boss-flight.mjs`, `test/ghost-animation-sync.mjs`, `test/snare.mjs`, and `test/ghost-snare.mjs` also pass.
+- Landscape comparison: `art/environment/shot-before-lake-bridge-mobile-landscape.jpg` and `art/environment/shot-after-lake-bridge-polyfork-mobile-landscape.png`. Testing used Chromium WebGL2/SwiftShader; physical-device appearance and target-GPU frame rate remain untested.
+- Changes are scoped to the private mirror's `main`; the push is intended to trigger its Vercel deployment. No original-repository changes are included. Sources and asset/license notes are in `docs/REFERENCES.md`.
+
+## [Released] - Rooftop boss autonomous flight
+### Changed
+- The armored 3× Shadow-body boss now performs an arena-bounded flight cycle when engaged: controlled lift to 6.5 m, a steady hover, a propelled traverse within the roof bounds, and a controlled landing. The existing attack windup, strike range/damage/recovery, Snare targeting, armor, red eyes, rooftop beacon, and player systems are unchanged.
+- Added a restrained paired cyan boot-exhaust cue and tucked airborne leg pose. The exhaust responds to takeoff/hover/propel/landing and shuts off when grounded, hit, or KO'd; the Shadow player, controls, HUD, ordinary melee, and landscape-only behavior are untouched.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `PORT=4187 node test/boss-flight.mjs` (all flight phases, roof bounds, thruster response, touchdown, and unchanged player input), `PORT=4187 node test/boss.mjs` (desktop and phone-landscape body/armor/eyes/melee exclusion/strike/Snare), `PORT=4187 node test/boss-arena.mjs` (roof and 84 m beacon), and `PORT=4173 node test/ghost-animation-sync.mjs` (25 shared-action cases) pass in Chromium WebGL2/SwiftShader.
+- The legacy `test/combat.mjs` did not complete reliably in this SwiftShader environment: its wall-clock waits sampled before melee/landing events. A direct live trace registered the ordinary melee hit and lowered enemy health; no player combat or control code was changed. Physical devices and target-GPU frame rates remain untested.
+- Phone-landscape flight evidence: `art/boss/shot-after-boss-flight-mobile-landscape.png` (844×390). Changes are scoped to the private mirror `main`; no original-repository changes were made.
+
+## [Released] - Ghost swing parity and independent eye-colored Shock Web
+### Changed
+- Ghost now uses the same alternating one-hand web strand as Shadow during ordinary swings (odd swing: right; even swing: left); both hands remain reserved for the spring-launch pose. Neither hero emits pulse or ring geometry during an ordinary swing.
+- Shadow and Ghost keep independent Shock Web instances, target lists, timing, and cooldowns. One hero's activation does not trigger or merge the other's attack. Shadow's special strands/pulse/rings are purple (`#a855f7`); Ghost's are hot pink (`#ff1a96`), matching their lenses. Each effect is visible only during its owner's special.
+- Changed only the special button glyph to a lightning/shock symbol; its 48px box, position, label, styling, cooldown ring, and every other HUD element are unchanged. Shadow's model, controls, ordinary melee, spring-launch behavior, landscape-only gameplay, and the 3× red-armored rooftop boss and beacon are preserved.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `PORT=4187 node test/ghost-animation-sync.mjs` (25 shared-action cases, alternating one-hand swings, dual-hand spring, and no swing pulses/rings), `PORT=4187 node test/snare.mjs` (Shadow-only five-target attack and purple shock at desktop and phone-landscape), and `PORT=4187 node test/ghost-snare.mjs` (Ghost-only attack and hot-pink shock at phone-landscape), plus focused traversal and boss checks.
+- Changes are scoped to private mirror `main`; the original-repository copy remains pinned at `9358d66` and is not included.
+
+## [Released] - Ghost one-hand swing strand parity
+### Changed
+- Ghost now emits a single web strand from the same alternating hand as Shadow during ordinary swings (odd swing: right; even swing: left). Both strands remain reserved for the two-hand spring-launch pose.
+- Shadow’s model, controls, animation/action source, spring launch, simulator, HUD, ordinary melee, landscape-only behavior, and the 3× red-armored rooftop boss remain unchanged.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, and `PORT=4173 node test/ghost-animation-sync.mjs` cover 25 shared-action cases, including alternating one-hand web strands, no swing shock rings/pulses, and the existing two-hand spring-launch regression. Focused Ghost traversal and boss checks are recorded below after the release verification run.
+- Changes are scoped to private mirror `main`; the original-repository copy remains pinned at `9358d66` and is not included.
+
+## [Released] - Full-body red boss armor
+### Changed
+- Added 50 original, low-poly red armor plates over the existing 17-bone Shadow boss from helmet and gorget through chest/back, shoulders, arms, gauntlets, pelvis, thighs, knees, greaves, and boots. The open-faced helmet leaves Shadow's original red lens pixels unobstructed; two tiny red eye highlights make them legible at phone size. The armor is bone-attached and follows the existing heavy stride/attack.
+- Kept the boss's Shadow skinned human body, exact 3× root scale, hitbox/combat rules, fixed rooftop arena and red beacon, Ghost animation parity/morphs, and the player's model/HUD/controls/melee/landscape behavior unchanged. No simulator, player, or Ghost logic was modified; the armor geometry/materials are original and use no external assets.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, `PORT=4173 node test/boss.mjs` (17-bone body, 3× scale, 50 red bone-attached armor meshes, full-body coverage, eye aperture, boss strike, ordinary-melee exclusion, and Snare damage at desktop 1365×768 and phone-landscape 844×390), `PORT=4173 node test/boss-arena.mjs`, and the Ghost animation/morph/traversal regressions pass in Chromium WebGL2/ANGLE SwiftShader.
+- Phone-landscape armor evidence: `art/boss/shot-after-red-armor-mobile-landscape.png` (844×390), paired against the earlier white-body view `art/boss/shot-after-shadow-body-boss-mobile-landscape.png`. Physical Android/Windows and target-GPU frame rates remain untested.
+- Changes are scoped to the private mirror's `main`; no push was made to the original repository.
+
+## [Released] - Ghost full-action animation parity and surface morph
+### Changed
+- Ghost renders Shadow's shared live clip and procedural action poses for traversal, spring-shot, glide/flight, swimming/dive, dodge/roll/cartwheel, all seven melee moves, and plasma web; each hero's Shock Web special is evaluated from its own simulator, targets, and timing. The two-hand spring shot is driven by the real jump-from-web simulator transition and aims both hands at Shadow's anchor.
+- On Shadow's ground landings and wall-crawl surface entries, Ghost finds a nearby point on the same valid support and morph-transports through the existing pink-white 96-particle effect; the fade hides relocation so it never visibly snaps. Long-distance catch-up remains intact.
+- Shadow's model, HUD, controls, ordinary melee simulation, landscape-only behavior, the 3× rooftop boss, red beacon, and prior Ghost features remain unchanged; no simulation/combat rules were edited.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, `PORT=4173 node test/ghost-animation-sync.mjs` (26 action cases, including dual-hand spring-shot), `node test/ghost-surface-morph.mjs` (street, park, roof, wall), `node test/ghost-traversal.mjs` (wall, swing, zip-up, glide/morph), `node test/ghost.mjs`, `node test/boss.mjs`, and `node test/boss-arena.mjs` pass in Chromium WebGL2/ANGLE SwiftShader. The phone-landscape morph capture is `art/ghost/shot-after-ghost-morph-mobile-landscape.png` (844×390).
+- Legacy `test/combat.mjs` and `test/snare.mjs` fail unchanged on the exact starting commit `e3439faa` in a temporary baseline worktree (no KO/damage and Snare impact wait timeout, respectively); these are pre-existing test failures, not introduced here. Physical Android/Windows devices and target-GPU frame rates remain untested.
+- Changes are scoped to the private mirror's `main`; no push was made to the original repository.
+### References
+- Adobe Mixamo animation workflow, Insomniac/PlayStation traversal and combat references, and the existing particle-VFX inspiration are recorded in `docs/REFERENCES.md`; no third-party code or game assets were copied.
+
+## [Released] - Ghost traversal match, particle morph, and fixed boss arena
+### Changed
+- Fixed the existing white, red-eyed, 3× Shadow-body boss to a central rooftop arena, constrained its pursuit to that roof, and marked the location with a pulsing 84 m red beacon and rooftop rings.
+- Ghost now follows Shadow's active wall-crawl, web-swing, and airborne/glide mode using its own simulation. Long-distance catch-up fades through a pink-and-white particle morph instead of a visible snap.
+- Preserved Shadow's model, HUD, controls, ordinary melee, the boss's model/scale, and landscape-only gameplay; no normal-melee tuning changed.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, `PORT=4173 node test/ghost.mjs`, `PORT=4173 node test/boss.mjs`, `PORT=4173 node test/ghost-traversal.mjs`, and `PORT=4173 node test/boss-arena.mjs` pass. Focused Chromium WebGL2/ANGLE SwiftShader assertions cover the existing desktop/mobile Ghost and boss checks plus phone-landscape wall/swing/glide/morph behavior and rooftop/beacon placement.
+- Phone-landscape captures (844×390): baseline `art/ghost/shot-before-ghost-traversal-mobile-landscape.png`; after `art/ghost/shot-after-ghost-morph-mobile-landscape.png` and `art/boss/shot-after-boss-arena-mobile-landscape.png`. These are local browser captures, not physical-device screenshots.
+- Physical Android 10/Chrome 155 and Windows 10/Edge 155/Intel UHD 600 tests remain untested. Commit `01d40a7` was pushed to the mirror's `main`; the existing Git-triggered production URL https://web-swinger-3d-mirror.vercel.app/ returned HTTP 200 and served a 200 bundle containing the new red-beacon marker.
+### References
+- Official Insomniac/PlayStation traversal references and the particle VFX reference are recorded in `docs/REFERENCES.md`; no source assets or code were copied.
+
+## [Released] - Shadow-bodied giant boss revision
+### Changed
+- Replaced the custom boss body with Shadow's existing skinned human model and skeleton. The boss uses an exact 3× root-scale ratio (4.5 versus Shadow's 1.5), with a broadened athletic chest/arms, white-painted suit texture, and red eyes.
+- Kept Shadow's model, HUD, controls, ordinary melee, Ghost behavior, and landscape-only behavior unchanged. Boss aim/collision centers now match the smaller model; ordinary melee still cannot damage it, while Shadow Snare remains the only player attack that can.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, and `PORT=4173 node test/boss.mjs` pass. Chromium WebGL2/ANGLE SwiftShader structural and combat assertions ran at desktop 1365×768 and phone-landscape 844×390, checking the 17-bone/5,172-vertex Shadow mesh, exact 3× scale, white material/red-eye texture, boss strike, ordinary-melee exclusion, Shadow Snare damage, and unchanged input keys.
+- Accepted visual evidence is the matched phone-landscape SwiftShader/WebGL2 pair: `art/boss/shot-before-shadow-body-boss-mobile-landscape.png` and `art/boss/shot-after-shadow-body-boss-mobile-landscape.png` (844×390). The desktop after-capture was blank, so it is excluded and desktop rendering is not claimed. These are focused smoke checks, not a full regression or timing soak.
+- Physical Android and Windows testing remains untested. Pushing this revision to the mirror's `main` uses its existing Vercel Git integration; the public URL is https://web-swinger-3d-mirror.vercel.app/.
+### References
+- [Michelangelo's David — right view 2, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Michelangelo%27s_David_-_right_view_2.jpg) — real sculptural reference for a broad heroic human silhouette and white finish; no photo or external model asset is included.
+- [The Biomechanical Characteristics of the Strongman Yoke Walk, Frontiers](https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2021.670297/full) — loaded human gait findings used as context for a short, restrained heavy stride.
+- [5 Rules For Animating Colossi, GameAnim](https://www.gameanim.com/2021/09/30/5-rules-for-animating-colossi/) — smooth starts for large mass and restrained heavy-limb motion.
+
+## [Released] - Giant humanoid boss
+### Added
+- An original, procedural white humanoid boss at 5x Shadow's root scale, with a muscular torso and limbs, two red eyes, and a deliberately blank lower face. Its slow pursuit and telegraphed heavy strike use the existing enemy loop; the boss is targetable by the existing plasma weapon and Shadow Snare, but excluded from ordinary melee.
+- The boss uses seven merged low-poly meshes. Shadow's model, HUD, controls, ordinary melee tuning, and landscape-only behavior remain unchanged.
+### Verification
+- `npx tsc --noEmit`, `npm run build`, and `PORT=4173 node test/boss.mjs` pass. The focused local Chromium WebGL2/ANGLE SwiftShader checks cover desktop 1365×768 and phone-landscape 844×390, one boss plus 26 normal enemies, 5x root scale, red-eye geometry, a boss strike, Shadow Snare target/damage, ordinary-melee target/damage exclusion, and unchanged input keys.
+- `art/boss/shot-before-boss-{desktop,mobile-landscape}.png` and `art/boss/shot-after-boss-{desktop,mobile-landscape}.png` are paired local captures at the same viewport sizes. The after-images use a debug-only rooftop placement and lower camera framing so the full boss fits; the live spawn remains at street level. The browser harness advances the existing strike and Snare timers to their impact edges, so this is a focused smoke check, not a timing soak or full regression suite.
+- Desktop SwiftShader simulation was slow; that is software-renderer evidence only, not physical-device FPS. Android 10/Adreno 506 and Windows 10/Intel UHD 600 have not been tested. After commit `40e7899` was pushed to `main`, the stable public URL returned HTTP 200 and served `/assets/index-BUWdjKMy.js` with the `giantBoss` component marker, confirming the Git-triggered release: https://web-swinger-3d-mirror.vercel.app/. No Vercel CLI/API or settings were used.
+### References
+- [5 Rules For Animating Colossi, GameAnim](https://www.gameanim.com/2021/09/30/5-rules-for-animating-colossi/) — weighty acceleration and restrained heavy-limb motion.
+- [The Biomechanical Characteristics of the Strongman Yoke Walk, Frontiers in Sports and Active Living](https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2021.670297/full) — loaded human gait context for slower cadence and longer stance.
+- [Shadow of the Colossus art gallery, Creative Uncut](https://www.creativeuncut.com/art_shadow-of-the-colossus_a.html) — scale/silhouette context; no art or model assets copied. Additional notes: `art/boss/research-notes.md`.
+
+## [Released] - Ghost autonomous companion and human suit
+### Changed
+- Ghost now reuses Shadow's human body and clothing design as a feminine variant: dark suit panels are white and the lenses are hot pink. Her separate AI follows, traverses and fights alongside Shadow; shared enemies update only once. Shadow's model, spawn/follow behavior, controls, HUD, combat and landscape-only behavior remain unchanged.
+### Verification
+- `npx tsc --noEmit`, `VITE_DBG=1 npm run build`, and `PORT=4174 node test/ghost.mjs` pass on the exact requested baseline. Focused assertions pass at desktop 1365×768 and phone-landscape 844×390 in Chromium WebGL2/ANGLE SwiftShader, covering independent simulation, autonomous melee, follow, unchanged Shadow input, and browser errors. The SwiftShader captures were reviewed separately and are supplied with the report. Physical devices and full regression suite remain untested.
+- Merged to `main`; the Git-triggered Vercel production deployment is READY at https://web-swinger-3d-mirror.vercel.app/.
 
 ---
 
-## [v0.78] - Shadow Snare Bind and Finisher
+## [Released] - Ghost first-scene companion visibility
 ### Changed
-- Shadow Snare now catches up to 6 bots within 30 m, extends the bind to 1.25 s, and finishes with 4 damage, 6.5 m reach, and 18 knockback.
-- Added a brief per-target web burst and short tether links using a fixed, low-cost line buffer.
+- Ghost now settles beside Shadow at a short rear-quarter distance on the first gameplay frame and continues to follow smoothly. It remains automatically mounted, with no Ghost activation button; Shadow's locked model, HUD, controls, melee, and landscape-only behavior are unchanged.
+### Verification
+- Focused `test/ghost.mjs` passed on desktop and phone-landscape in Chromium with WebGL2 and an ANGLE SwiftShader renderer. It checks first-scene visibility/distance, absence of a Ghost activation button, follow movement, no page/console errors, and a nonblank central scene crop before writing screenshots.
+- Before/after captures are committed under `art/ghost/shot-{before,after}-ghost-{desktop,mobile-landscape}.png`; all four were captured with SwiftShader and passed the nonblank guard. Physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 remain untested.
+- The read-only public-page check before this branch update showed Shadow but no Ghost and no client errors; its JavaScript bundle lacked Ghost component markers. That was the pre-release build: this iteration was subsequently merged to `main` with the autonomous Ghost release, and its Git-triggered Vercel production deployment is READY at https://web-swinger-3d-mirror.vercel.app/. No Vercel CLI/API/settings changes were used.
 
 ---
 
@@ -165,3 +307,4 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 ### Added
 - Core WebGL2 / Three.js / R3F game engine with Vite.
 - Rooftop pendulum swinging physics, collectibles, daytime/sunset palette, and headless assertion harness.
+- The user-provided lake/bridge visual targets, Polyfork asset/license notes, and water shader/physics references are recorded in `docs/REFERENCES.md`; Polyfork models are used under its license, and no third-party water or shader code was copied.

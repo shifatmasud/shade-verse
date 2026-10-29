@@ -87,6 +87,4 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 
 .impact{position:absolute;left:50%;top:50%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:5px solid currentColor;box-shadow:0 0 30px currentColor,inset 0 0 20px currentColor;opacity:0;pointer-events:none}
 .ico.swing.linked{color:#8fe9ff;filter:drop-shadow(0 0 12px #8fe9ff) drop-shadow(0 0 3px #000);transform:scale(1.15)}
-.ico.swing.linked::after{content:'';position:absolute;inset:4px;border-radius:50%;border:2px dashed #8fe9ff;animation:spin 1.2s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
 .hud .chip.orbs{pointer-events:auto}.mutedmark{display:flex;opacity:.9}

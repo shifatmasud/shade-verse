@@ -21,7 +21,7 @@ for (const [name, width, height, mobile] of cases) {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto(baseUrl, { waitUntil: 'load' });
     await new Promise((r) => setTimeout(r, 1200));
-    await page.evaluate(() => { window.__ghostTestHoldFire = true; window.__game.start(); });
+    await page.evaluate(() => window.__game.start());
     await new Promise((r) => setTimeout(r, 900));
 
     const start = await page.evaluate(() => {
@@ -46,11 +46,7 @@ for (const [name, width, height, mobile] of cases) {
         e.hp = 10; e.atk = 0; e.hit = 0; e.down = 0; e.kb = [0, 0]; e.kind = 0; e.air = false; e.roof = undefined;
         return { index: 0, hp: e.hp };
     });
-    await page.evaluate(() => { window.__ghostTestHoldFire = false; });
-    await page.waitForFunction(() => {
-        const e = window.__game?.sim?.enemies?.[0];
-        return e && (e.hp < 10 || e.down > 0);
-    }, { timeout: 30000 });
+    await new Promise((r) => setTimeout(r, 2200));
     const fight = await page.evaluate((fixture) => {
         const game = window.__game, actor = window.__ghostSim;
         const e = fixture ? game.sim.enemies[fixture.index] : null;
@@ -73,7 +69,7 @@ for (const [name, width, height, mobile] of cases) {
         const baseline = [...actor.pos]; game.sim.pos[0] += 8;
         return baseline;
     });
-    await new Promise((r) => setTimeout(r, 1800));
+    await new Promise((r) => setTimeout(r, 900));
     const after = await page.evaluate(() => window.__ghostState);
     const followDelta = after?.position
         ? Math.hypot(after.position[0] - followStart[0], after.position[1] - followStart[1], after.position[2] - followStart[2])
@@ -84,7 +80,7 @@ for (const [name, width, height, mobile] of cases) {
         && fight.shadowInput === start.shadowInput
         && after?.visible === true && after.leaderDistance < 15 && followDelta > 1
         && errors.length === 0;
-    console.log(name, JSON.stringify({ ok, start, fixture, fight, followStart, after, followDelta: +followDelta.toFixed(2), errors }));
+    console.log(name, JSON.stringify({ ok, start, fixture, fight, after, followDelta: +followDelta.toFixed(2), errors }));
     passed = passed && ok;
     await page.close();
 }

@@ -3,12 +3,15 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
-import { buildings, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
-import { buildRig, CLIPS, combatPose, sampleClip, type CombatPoseState } from './Scene';
+import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
+import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, writeSnareRing, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
+import { BOSS_BODY_OFFSET } from './bossConfig';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const HERO_SCALE = 1.5;
+const GHOST_SNARE_COLOR = '#ff1a96';
 const BODY_OFF = [0.8, 0.3, 1.05, 1.7];
+const enemyBodyOffset = (e: Sim['enemies'][number]) => e.boss ? BOSS_BODY_OFFSET : BODY_OFF[e.kind ?? 0];
 const SILENT: Events = {
     orb: () => {}, fall: () => {}, attach: () => {}, release: () => {}, jump: () => {},
     hit: () => {}, hurt: () => {}, ko: () => {}, land: () => {}, blast: () => {},
@@ -85,9 +88,28 @@ function makeGhostRig() {
 }
 
 function floorAt(x: number, z: number) {
-    let y = 0;
+    let y = parkH(x, z);
     for (const b of buildings) if (x > b.x0 + 0.25 && x < b.x1 - 0.25 && z > b.z0 + 0.25 && z < b.z1 - 0.25 && b.h > y) y = b.h;
     return y;
+}
+
+function nearbyGroundPoint(sim: Sim, preferX: number, preferZ: number): [number, number, number] {
+    const surface = sim.pos[1] - 1, dx = preferX - sim.pos[0], dz = preferZ - sim.pos[2], base = Math.atan2(dz, dx);
+    const radii = [Math.hypot(dx, dz), 2.6, 2.1, 1.6, 1.1, 0.65, 0];
+    for (const r of radii) for (let i = 0; i < (r === 0 ? 1 : 16); i++) {
+        const a = i === 0 ? base : base + i * Math.PI * 2 / 16, x = sim.pos[0] + Math.cos(a) * r, z = sim.pos[2] + Math.sin(a) * r, y = floorAt(x, z);
+        if (Math.abs(y - surface) <= 0.9) return [x, y + 1, z];
+    }
+    return [sim.pos[0], sim.pos[1], sim.pos[2]];
+}
+
+function nearbyWallPoint(sim: Sim, wall: [number, number], x: number, y: number, z: number): [number, number, number] {
+    const b = buildings[sim.wallB]; if (!b) return [x, y, z];
+    const clamp = (v: number, lo: number, hi: number) => hi >= lo ? Math.max(lo, Math.min(hi, v)) : (lo + hi) * 0.5;
+    if (Math.abs(wall[0]) > Math.abs(wall[1])) { x = sim.pos[0]; z = clamp(z, b.z0 + 1.1, b.z1 - 1.1); }
+    else { z = sim.pos[2]; x = clamp(x, b.x0 + 1.1, b.x1 - 1.1); }
+    y = clamp(y, 1.2, Math.max(1.3, b.h - 0.65));
+    return [x, y, z];
 }
 
 function makeControls(): Input {
@@ -122,47 +144,73 @@ function selectTarget(actor: Sim) {
     for (const e of actor.enemies) {
         if (e.down > 0) continue;
         const d = Math.hypot(e.x - actor.pos[0], e.z - actor.pos[2]);
-        const dy = Math.abs(e.y + ((e as any).ly || 0) + BODY_OFF[e.kind ?? 0] - actor.pos[1]);
+        const dy = Math.abs(e.y + ((e as any).ly || 0) + enemyBodyOffset(e) - actor.pos[1]);
         if (d < 25 && dy < 16) count++;
         if (d < bestD && dy < 16) { best = e; bestD = d; }
     }
     return { enemy: best, distance: best ? bestD : Infinity, count };
 }
 
-function animateHuman(actor: Sim, rig: ReturnType<typeof buildRig>, dt: number, state: any) {
-    const root = rig.root, bones = rig.bones;
-    root.position.set(actor.pos[0], actor.pos[1] - 1, actor.pos[2]);
-    root.rotation.set(0, actor.ang, 0);
-    root.scale.setScalar(HERO_SCALE);
-    bones.forEach((b) => b.rotation.set(0, 0, 0));
-    const speed = Math.hypot(actor.vel[0], actor.vel[2]);
-    const sa = actor as any;
-    const clipKey = sa.mv || sa.flip || sa.snareT > 0 || (actor.glideOn && (sa.gB ?? 0) > 0.3) ? '' : actor.swim ? 'swim' : actor.wall ? 'wall' : actor.atkT > 0 && actor.shotT <= 0 ? 'punch' : (!actor.ground && !actor.web) ? 'jump' : (actor.ground && speed < 0.6 && !actor.dive) ? 'idle' : (actor.ground && !actor.web) ? 'run' : '';
-    if (state.anim.key !== clipKey) { state.anim.key = clipKey; state.anim.t = 0; }
-    const clip = clipKey ? CLIPS[clipKey] : null;
-    if (clip) {
-        if (clipKey === 'wall') state.anim.t += dt * Math.min(1.6, speed / 3);
-        else if (clipKey === 'swim') state.anim.t += dt * (0.6 + Math.min(1.2, speed / 8));
-        else if (clipKey === 'punch') state.anim.t = 0.10 + (0.32 - actor.atkT) * 2;
-        else if (clipKey === 'jump') state.anim.t = (clip.n / clip.fps) * 0.5;
-        else if (clipKey === 'run') state.anim.t += dt * Math.max(0.5, Math.min(2, speed / 5.5));
-        else state.anim.t += dt;
-        state.anim.w += ((clipKey === 'idle' ? 0.55 : 1) - state.anim.w) * Math.min(1, dt * 6);
-        sampleClip(clip, state.anim.t, clipKey === 'wall' || clipKey === 'swim' || clipKey === 'idle' || clipKey === 'run', bones, state.anim.w);
-        if ((clipKey === 'run' || clipKey === 'idle') && clip.hy) {
-            const fi = Math.floor(((state.anim.t * clip.fps) % clip.n + clip.n) % clip.n);
-            rig.b.hips.position.y = rig.hipsY + (clip.hy[fi] - 1) * (clipKey === 'idle' ? 0.3 : 0.6) * state.anim.w;
-        }
-    } else state.anim.w += (0 - state.anim.w) * Math.min(1, dt * 7);
-    if (actor.glideOn && !sa.snareT) {
-        rig.b.uarmR.rotation.x = rig.b.uarmL.rotation.x = -0.1;
-        rig.b.uarmR.rotation.z = 1.3; rig.b.uarmL.rotation.z = -1.3;
-        const gt = Math.sin(actor.t * 5) * 0.05;
-        rig.b.thighR.rotation.x = 0.12 + gt; rig.b.thighL.rotation.x = 0.06 - gt;
-    }
-    combatPose(actor, rig, root, dt, state.pose as CombatPoseState);
+function hasLiveShadowAction(sim: Sim) {
+    const s = sim as any, speed = Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]);
+    return !!(s.mv || s.flip || s.snareT > 0 || sim.web || sim.spring > 0 || sim.grappleFlight || sim.glideOn || sim.swim || sim.wall || sim.wallT > 0 || sim.atkT > 0 || sim.shotT > 0 || sim.dodgeT > 0 || !sim.ground || sim.land > 0 || speed > 0.6);
+}
+
+function animateHuman(actor: Sim, rig: ReturnType<typeof buildRig>, dt: number, state: any, driver: Sim = actor) {
+    const root = rig.root;
+    const shadowRootPose = driver !== actor ? (driver as any).__heroRootPoseState as HeroRootPoseState | undefined : undefined;
+    const rootPose = applyHeroRootPose(driver, rig, dt, state, actor.pos, HERO_SCALE, shadowRootPose, driver === actor);
+    const shadowClipState = driver !== actor ? (driver as any).__heroClipState as HeroClipState | undefined : undefined;
+    const shadowPoseState = driver !== actor ? (driver as any).__heroPoseState as CombatPoseState | undefined : undefined;
+    if (shadowPoseState) { state.pose.w = shadowPoseState.w; state.pose.c.set(shadowPoseState.c); state.pose.t.set(shadowPoseState.t); }
+    const animation = animateHeroBones(driver, rig, dt, { clipState: state.anim as HeroClipState, poseState: state.pose as CombatPoseState, sourceClipState: shadowClipState, poseDt: shadowClipState ? 0 : dt, glideBlend: rootPose.glideBlend, publishState: driver === actor });
     root.updateMatrixWorld(true);
     rig.skel.update();
+    return { ...animation, source: driver === actor ? 'ghost' : 'shadow' };
+}
+
+const MORPH_PARTICLES = 96;
+function makeMorphGeometry() {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MORPH_PARTICLES * 3), 3));
+    const colors = new Float32Array(MORPH_PARTICLES * 3);
+    const pink = new THREE.Color('#ff45ad'), white = new THREE.Color('#fff7ff');
+    for (let i = 0; i < MORPH_PARTICLES; i++) (i % 3 === 0 ? pink : white).toArray(colors, i * 3);
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setDrawRange(0, 0);
+    return geometry;
+}
+
+function setRigOpacity(root: THREE.Object3D, opacity: number) {
+    root.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const material of materials) {
+            if (material.opacity === undefined) continue;
+            material.opacity = opacity;
+            material.transparent = opacity < 0.999;
+            material.depthWrite = opacity >= 0.999;
+            material.needsUpdate = true;
+        }
+    });
+}
+
+function updateMorphParticles(geometry: THREE.BufferGeometry, material: THREE.PointsMaterial, morph: { phase: 'out' | 'in'; t: number; from: [number, number, number]; to: [number, number, number]; seed: number }) {
+    const duration = morph.phase === 'out' ? 0.32 : 0.38;
+    const k = Math.max(0, Math.min(1, morph.t / duration)), eased = k * k * (3 - 2 * k);
+    const expanding = morph.phase === 'out', center = expanding ? morph.from : morph.to;
+    const radius = expanding ? eased : 1 - eased;
+    const positions = geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < MORPH_PARTICLES; i++) {
+        const angle = i * 2.399963 + morph.seed + morph.t * 3.8;
+        const r = 0.18 + radius * (2.2 + (i % 5) * 0.34);
+        const lift = (i % 12) * 0.14 + radius * 1.8;
+        positions.setXYZ(i, center[0] + Math.cos(angle) * r, center[1] + lift + Math.sin(angle * 0.7) * 0.18, center[2] + Math.sin(angle) * r);
+    }
+    positions.needsUpdate = true;
+    geometry.setDrawRange(0, MORPH_PARTICLES);
+    material.opacity = expanding ? 0.9 : 0.9 * (1 - eased);
 }
 
 export function GhostCompanion({ sim }: { sim: Sim }) {
@@ -170,32 +218,51 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     const actorRef = useRef<Sim | null>(null);
     const controls = useMemo(makeControls, []);
     const lineGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(72 * 3), 3)); return g; }, []);
+    const shockGeo = useMemo(() => { const cap = SNARE.MAX_TARGETS * (2 * SNARE_PULSE_SEGMENTS + SNARE_RING_SEGMENTS), g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap * 2 * 3), 3)); return g; }, []);
     const plasmaGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 3), 3)); g.setDrawRange(0, 0); return g; }, []);
+    const morphGeo = useMemo(makeMorphGeometry, []);
     const lineRef = useRef<THREE.LineSegments>(null!);
+    const shockRef = useRef<THREE.LineSegments>(null!);
+    const lineMatRef = useRef<THREE.LineBasicMaterial>(null!);
+    const shockMatRef = useRef<THREE.LineBasicMaterial>(null!);
     const plasmaRef = useRef<THREE.Points>(null!);
-    const state = useRef({ ready: false, floorY: 0, floorX: 1e9, floorZ: 1e9, floorT: -1, attackAt: 0, shotAt: 0, jumpAt: 0, swingAt: 0, specialAt: 0, dodgeAt: 0,
-        anim: { key: '', t: 0, w: 0 }, pose: { w: 0, c: new Float32Array(36), t: new Float32Array(36) } });
+    const morphRef = useRef<THREE.Points>(null!);
+    const morphMatRef = useRef<THREE.PointsMaterial>(null!);
+    const state = useRef({ ready: false, wallSyncB: -1, leaderSurfaceSeen: false, leaderGround: false, leaderWallB: -1, leaderWall: null as [number, number] | null, lastVaulted: 0, vaultUntil: -1, gB: 0, bYaw: undefined as number | undefined, bR: 0, floorY: 0, floorX: 1e9, floorZ: 1e9, floorT: -1, attackAt: 0, shotAt: 0, jumpAt: 0, swingAt: 0, specialAt: 0, dodgeAt: 0,
+        morph: { active: false, phase: 'out' as 'out' | 'in', t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0, 0] as [number, number, number], seed: 0, reason: '' },
+        anim: createHeroClipState(), pose: createCombatPoseState() });
 
     useFrame((_, rawDt) => {
         const dt = Math.min(0.05, rawDt), st = state.current, root = model.root;
-        if (DBG && (window as any).__ghostTestDisabled) {
-            root.visible = false; st.ready = false; actorRef.current = null; setCompanionSim(null); resetControls(controls);
-            if (lineRef.current) lineRef.current.visible = false;
-            if (plasmaRef.current) plasmaRef.current.visible = false;
-            return;
-        }
         if (sim.mode !== 'play') {
             root.visible = false; st.ready = false; actorRef.current = null; setCompanionSim(null);
+            st.morph.active = false; setRigOpacity(root, 1); root.scale.setScalar(HERO_SCALE);
+            st.leaderSurfaceSeen = false; st.leaderWall = null; st.leaderWallB = -1; st.lastVaulted = 0; st.vaultUntil = -1;
             st.attackAt = st.shotAt = st.jumpAt = st.swingAt = st.specialAt = st.dodgeAt = 0;
             st.anim.key = ''; st.anim.t = 0; st.anim.w = 0; st.pose.w = 0; st.pose.c.fill(0); st.pose.t.fill(0);
             if (lineRef.current) lineRef.current.visible = false;
+            if (shockRef.current) shockRef.current.visible = false;
+            shockGeo.setDrawRange(0, 0);
             if (plasmaRef.current) plasmaRef.current.visible = false;
+            if (morphRef.current) morphRef.current.visible = false;
+            morphGeo.setDrawRange(0, 0);
             if (DBG) (window as any).__ghostState = { visible: false, mode: sim.mode };
             return;
         }
         const fx = Math.sin(sim.ang), fz = Math.cos(sim.ang), rx = -fz, rz = fx;
-        const tx = sim.pos[0] - fx * 1.45 + rx * 2.6;
-        const tz = sim.pos[2] - fz * 1.45 + rz * 2.6;
+        let tx = sim.pos[0] - fx * 1.45 + rx * 2.6;
+        let tz = sim.pos[2] - fz * 1.45 + rz * 2.6;
+        const leaderWall = sim.wall && !sim.swim ? sim.wall as [number, number] : null;
+        const leaderAir = sim.glideOn || sim.grappleFlight || sim.spring > 0 || (!sim.ground && !sim.web && !sim.wall && !sim.swim);
+        const wallEntered = !!leaderWall && st.leaderSurfaceSeen && (!st.leaderWall || st.leaderWallB !== sim.wallB || Math.hypot(leaderWall[0] - st.leaderWall[0], leaderWall[1] - st.leaderWall[1]) > 0.25);
+        const landed = !!(st.leaderSurfaceSeen && sim.ground && !st.leaderGround);
+        const surfaceTransition = landed || wallEntered;
+        const vaulted = (sim as any).vaulted || 0;
+        if (vaulted !== st.lastVaulted) { st.lastVaulted = vaulted; if (vaulted > 0 && !leaderWall) st.vaultUntil = sim.t + 0.75; }
+        st.leaderSurfaceSeen = true; st.leaderGround = !!sim.ground;
+        st.leaderWall = leaderWall ? [...leaderWall] as [number, number] : null;
+        st.leaderWallB = leaderWall ? sim.wallB : -1;
+        if (!leaderWall) st.wallSyncB = -1;
         const airborneLeader = !sim.ground && !sim.wall && !sim.swim;
         let ty: number;
         if (sim.ground && !sim.web && !sim.wall && !sim.swim) {
@@ -204,6 +271,15 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             }
             ty = st.floorY + 1;
         } else ty = sim.swim ? sim.pos[1] : sim.pos[1] - (airborneLeader ? 0.25 : 0);
+        if (leaderWall) {
+            const txWall = -leaderWall[1], tzWall = leaderWall[0];
+            const lateral = sim.vel[0] * txWall + sim.vel[2] * tzWall;
+            if (Math.abs(lateral) > 1) { tx = sim.pos[0] - Math.sign(lateral) * txWall * 2.8; tz = sim.pos[2] - Math.sign(lateral) * tzWall * 2.8; }
+            else { tx = sim.pos[0]; tz = sim.pos[2]; }
+            ty = sim.pos[1] - (Math.abs(sim.vel[1]) > 0.6 ? Math.sign(sim.vel[1]) * 2.6 : 2.4);
+            [tx, ty, tz] = nearbyWallPoint(sim, leaderWall, tx, ty, tz);
+        }
+        if (surfaceTransition && sim.ground && !leaderWall && !sim.swim) [tx, ty, tz] = nearbyGroundPoint(sim, tx, tz);
 
         _target.set(tx, ty, tz);
         if (!actorRef.current) actorRef.current = makeActor(sim, [tx, ty, tz]);
@@ -212,49 +288,100 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         actor.safe[0] = tx; actor.safe[1] = ty; actor.safe[2] = tz;
         setCompanionSim(actor);
         resetControls(controls);
+        const independentSnare = (sim as any).snareT > 0 || (actor as any).snareT > 0;
+        const animationSource = !independentSnare && (hasLiveShadowAction(sim) || sim.t < st.vaultUntil) ? sim : actor;
         const toLeader = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[1] - sim.pos[1], actor.pos[2] - sim.pos[2]);
-        if (!st.ready || toLeader > 42) {
+        const targetDistance = Math.hypot(tx - actor.pos[0], ty - actor.pos[1], tz - actor.pos[2]);
+        if (!st.ready) {
             actor.pos[0] = tx; actor.pos[1] = ty; actor.pos[2] = tz;
             actor.vel[0] = actor.vel[1] = actor.vel[2] = 0;
             actor.web = false; actor.wall = null; actor.ground = true; actor.swim = false;
             actor.ang = sim.ang; actor.yaw = sim.ang; st.ready = true;
+        } else if (!st.morph.active && (toLeader > 42 || surfaceTransition || (leaderWall && st.wallSyncB !== sim.wallB && targetDistance > 10))) {
+            st.morph.active = true; st.morph.phase = 'out'; st.morph.t = 0;
+            st.morph.from = [actor.pos[0], actor.pos[1], actor.pos[2]];
+            st.morph.to = [tx, ty, tz]; st.morph.seed = sim.t * 2.1;
+            st.morph.reason = wallEntered ? 'wall-entry' : landed ? 'ground-landing' : toLeader > 42 ? 'distance-catch-up' : 'wall-resync';
+            if (leaderWall) st.wallSyncB = sim.wallB;
         }
+        if (st.morph.active) {
+            st.morph.t += dt;
+            if (st.morph.phase === 'out' && st.morph.t >= 0.32) {
+                actor.pos[0] = st.morph.to[0]; actor.pos[1] = st.morph.to[1]; actor.pos[2] = st.morph.to[2];
+                actor.vel[0] = actor.vel[1] = actor.vel[2] = 0;
+                actor.web = false; actor.wall = leaderWall ? [...leaderWall] as [number, number] : null; actor.wallB = leaderWall ? sim.wallB : -1;
+                actor.ground = !leaderWall && !leaderAir; actor.swim = false; actor.dive = false; actor.glideOn = false; actor.airT = leaderAir ? 0.34 : 0; actor.wallT = 0;
+                if (leaderAir) { actor.ground = false; actor.vel[1] = 2.5; }
+                actor.ang = leaderWall ? sim.ang : sim.ang; actor.yaw = sim.ang;
+                st.morph.phase = 'in'; st.morph.t = 0;
+            } else if (st.morph.phase === 'in' && st.morph.t >= 0.38) {
+                st.morph.active = false; setRigOpacity(root, 1); root.scale.setScalar(HERO_SCALE);
+            }
+        }
+        if (st.morph.active) {
+            const animation = animateHuman(actor, model, dt, st, animationSource);
+            root.visible = true;
+            const k = Math.max(0, Math.min(1, st.morph.t / (st.morph.phase === 'out' ? 0.32 : 0.38))), eased = k * k * (3 - 2 * k);
+            const bodyOpacity = st.morph.phase === 'out' ? 1 - eased : eased;
+            setRigOpacity(root, bodyOpacity);
+            root.scale.setScalar(HERO_SCALE * (0.82 + 0.18 * (st.morph.phase === 'out' ? 1 - eased : eased)));
+            if (morphRef.current && morphMatRef.current) { morphRef.current.visible = true; updateMorphParticles(morphGeo, morphMatRef.current, st.morph); }
+            if (lineRef.current) lineRef.current.visible = false;
+            if (shockRef.current) shockRef.current.visible = false;
+            shockGeo.setDrawRange(0, 0);
+            if (plasmaRef.current) plasmaRef.current.visible = false;
+            if (DBG) (window as any).__ghostState = { visible: true, mode: sim.mode, position: [...actor.pos], target: [tx, ty, tz], action: 'transport', leaderTraversal: leaderWall ? 'wall' : sim.web ? 'swing' : leaderAir ? 'glide' : 'ground', ghostTraversal: 'transport', transport: st.morph.phase, morphReason: st.morph.reason, morphT: st.morph.t, morphFrom: [...st.morph.from], morphTo: [...st.morph.to], bodyOpacity, particles: MORPH_PARTICLES, grounded: actor.ground, wallB: actor.wallB, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1, targetSupportY: leaderWall ? null : floorAt(st.morph.to[0], st.morph.to[2]), leaderSurfaceY: leaderWall ? null : sim.pos[1] - 1, animation };
+            return;
+        }
+        if (morphRef.current) morphRef.current.visible = false;
+        morphGeo.setDrawRange(0, 0);
 
-        const choice = DBG && (window as any).__ghostTestHoldFire
-            ? { enemy: null, distance: Infinity, count: 0 }
-            : selectTarget(actor);
-        const enemy = choice.enemy;
+        const choice = selectTarget(actor), enemy = choice.enemy;
         const enemyD = choice.distance;
         const fighting = !!enemy && enemyD < 23;
+        if (leaderWall) {
+            actor.wall = [...leaderWall] as [number, number]; actor.wallB = sim.wallB; actor.wallT = 0;
+            actor.ground = false; actor.web = false; actor.swim = false; actor.glideOn = false; actor.airT = 0;
+        }
         const gx = fighting && enemy ? enemy.x : tx, gz = fighting && enemy ? enemy.z : tz;
-        const gy = fighting && enemy ? enemy.y + ((enemy as any).ly || 0) + BODY_OFF[enemy.kind ?? 0] : ty;
+        const gy = fighting && enemy ? enemy.y + ((enemy as any).ly || 0) + enemyBodyOffset(enemy) : ty;
         const dx = gx - actor.pos[0], dz = gz - actor.pos[2], goalD = Math.hypot(dx, dz);
         const destYaw = Math.atan2(dx, dz);
-        actor.yaw = destYaw;
-        if (goalD > 2.4) { controls.my = 1; }
+        actor.yaw = leaderWall ? sim.ang : destYaw;
+        if (leaderWall) {
+            const wallDx = tx - actor.pos[0], wallDy = ty - actor.pos[1], wallDz = tz - actor.pos[2];
+            const rightX = -Math.cos(actor.yaw), rightZ = Math.sin(actor.yaw);
+            controls.my = Math.max(-1, Math.min(1, wallDy / 2.2));
+            controls.mx = Math.max(-1, Math.min(1, (wallDx * rightX + wallDz * rightZ) / 2.2));
+        } else if (goalD > 2.4) { controls.my = 1; }
         if (fighting && enemyD < 3.5 && enemy && enemy.atk > 0.18 && actor.dodgeT <= 0 && sim.t >= st.dodgeAt) {
             controls.dodgeQ = true; controls.mx = (enemy.x - actor.pos[0]) >= 0 ? -0.65 : 0.65; controls.my = -0.7; st.dodgeAt = sim.t + 1.1;
         }
         const longRoute = Math.hypot(tx - actor.pos[0], tz - actor.pos[2]) > 12 || goalD > 15;
-        if (longRoute && !actor.web && !actor.swim && sim.t >= st.swingAt) {
+        if (sim.web) {
+            controls.swing = true;
+            if (!actor.web) controls.swingQ = true;
+        } else if (longRoute && !actor.web && !actor.swim && !leaderWall && !leaderAir && sim.t >= st.swingAt) {
             if (!actor.ground && !actor.wall) { controls.swingQ = true; controls.swing = true; st.swingAt = sim.t + 1.2; }
             else if (goalD > 22) { controls.grabQ = true; st.swingAt = sim.t + 1.8; }
         }
-        if (actor.web && goalD > 8 && longRoute) controls.swing = true;
-        if (actor.web && (!longRoute || goalD < 7)) controls.swing = false;
-        if (longRoute && actor.ground && !actor.swim && sim.t >= st.jumpAt) {
+        if (actor.web && !sim.web && goalD > 8 && longRoute && !leaderAir) controls.swing = true;
+        if (actor.web && !sim.web && (!longRoute || goalD < 7 || leaderAir)) controls.swing = false;
+        if (leaderAir) {
+            controls.swing = false; controls.jumpHeld = true;
+            if (!actor.glideOn && (actor.ground || actor.wall || actor.web)) { actor.airT = 0.34; controls.jumpQ = true; }
+        } else if (longRoute && actor.ground && !actor.swim && !leaderWall && !sim.web && sim.t >= st.jumpAt) {
             controls.jumpQ = true; st.jumpAt = sim.t + 0.7;
-        } else if (longRoute && actor.web && sim.t >= st.jumpAt) {
+        } else if (longRoute && actor.web && !sim.web && sim.t >= st.jumpAt) {
             controls.jumpQ = true; st.jumpAt = sim.t + 1.0;
         }
         if (actor.swim && sim.swim && actor.dive !== sim.dive && sim.t >= st.jumpAt) { controls.jumpQ = true; st.jumpAt = sim.t + 1.0; }
 
-        if (fighting && enemy) {
+        if (fighting && enemy && !((actor as any).snareT > 0) && !(DBG && (window as any).__ghostDisableCombat)) {
             const lifted = ((enemy as any).ly || 0) > 1.1 || ((enemy as any).vy || 0) > 1.2;
-            if (choice.count >= 2 && (actor as any).snareCd <= 0 && sim.t >= st.specialAt) {
-                controls.specialQ = true; st.specialAt = sim.t + 9.2;
-            }
-            if (lifted && enemyD < 22 && sim.t >= st.attackAt) {
+            const useSpecial = choice.count >= 2 && (actor as any).snareCd <= 0 && sim.t >= st.specialAt;
+            if (useSpecial) { controls.specialQ = true; st.specialAt = sim.t + 9.2; }
+            else if (lifted && enemyD < 22 && sim.t >= st.attackAt) {
                 controls.attackQ = true; controls.shotQ = true; st.attackAt = sim.t + 0.48;
             } else if (enemyD < 16 && sim.t >= st.attackAt) {
                 controls.attackQ = true; controls.meleeQ = true; st.attackAt = sim.t + 0.48;
@@ -263,8 +390,14 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             }
         }
 
+        if (DBG && (window as any).__ghostForceSpecial) {
+            controls.attackQ = controls.shotQ = controls.meleeQ = false;
+            controls.specialQ = true;
+            (window as any).__ghostForceSpecial = false;
+        }
         for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
-        animateHuman(actor, model, dt, st);
+        if (leaderAir) actor.vel[1] += Math.max(-8, Math.min(8, (ty - actor.pos[1]) * 0.32 - actor.vel[1] * 0.65)) * dt;
+        const animation = animateHuman(actor, model, dt, st, animationSource);
         root.visible = true;
 
         const pa = plasmaGeo.attributes.position as THREE.BufferAttribute;
@@ -273,29 +406,50 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         plasmaGeo.setDrawRange(0, bolts.length); pa.needsUpdate = true;
         if (plasmaRef.current) plasmaRef.current.visible = bolts.length > 0;
 
-        const la = lineGeo.attributes.position as THREE.BufferAttribute; let n = 0;
-        if (actor.web || actor.spring > 0 || (actor as any).snareT > 0) {
+        const la = lineGeo.attributes.position as THREE.BufferAttribute, xa = shockGeo.attributes.position as THREE.BufferAttribute; let n = 0, webHandMask = 0, pulseSegments = 0, ringSegments = 0, snareWebLines = 0, pulseProgress = 0;
+        const webSource = animationSource, webState = webSource as any;
+        if (webSource.web || webSource.spring > 0 || webState.snareT > 0) {
             model.root.updateMatrixWorld(true);
             model.b.handL.getWorldPosition(_handL); model.b.handR.getWorldPosition(_handR);
-            if (actor.web || actor.spring > 0) {
-                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, actor.anchor[0], actor.anchor[1], actor.anchor[2]); n++;
-                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, actor.anchor[0], actor.anchor[1], actor.anchor[2]); n++;
+            if (webSource.web || webSource.spring > 0) {
+                const bothHands = webSource.spring > 0, swingSide = webSource.swings % 2;
+                if (bothHands || swingSide === 0) {
+                    la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
+                    webHandMask |= 1;
+                }
+                if (bothHands || swingSide === 1) {
+                    la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
+                    webHandMask |= 2;
+                }
             }
-            const targets = ((actor as any).snareList || []) as Sim['enemies'];
+            const targets = (webState.snareList || []) as Sim['enemies'];
+            const sn = webState.snareT || 0;
             for (let i = 0; i < Math.min(5, targets.length); i++) {
                 const e = targets[i]; if (e.down > 0) continue;
-                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e.x, e.y + BODY_OFF[e.kind ?? 0], e.z); n++;
-                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e.x, e.y + BODY_OFF[e.kind ?? 0], e.z); n++;
+                const ty = e.y + ((e as any).ly || 0) + enemyBodyOffset(e);
+                la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e.x, ty, e.z); n++;
+                la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e.x, ty, e.z); n++; snareWebLines += 2;
+                if (sn > SNARE.IMPACT && sn <= SNARE.SHOCK_START) { const p = 1 - (sn - SNARE.IMPACT) / (SNARE.SHOCK_START - SNARE.IMPACT); pulseProgress = p; pulseSegments = writeSnarePulse(xa, pulseSegments, _handL.x, _handL.y, _handL.z, e.x, ty, e.z, p, i * 3.1); pulseSegments = writeSnarePulse(xa, pulseSegments, _handR.x, _handR.y, _handR.z, e.x, ty, e.z, p, i * 3.1 + 1.7); }
+                if (sn > 0 && sn <= SNARE.IMPACT) { const p = 1 - sn / SNARE.IMPACT; ringSegments = writeSnareRing(xa, ringSegments, e.x, ty, e.z, 0.35 + p * 1.75); }
             }
         }
         lineGeo.setDrawRange(0, n * 2); la.needsUpdate = true;
         if (lineRef.current) lineRef.current.visible = n > 0;
+        shockGeo.setDrawRange(0, (pulseSegments + ringSegments) * 2); xa.needsUpdate = true;
+        if (shockRef.current) shockRef.current.visible = pulseSegments + ringSegments > 0;
+        const ownSnare = (actor as any).snareT > 0;
+        if (lineMatRef.current) lineMatRef.current.color.set(ownSnare ? GHOST_SNARE_COLOR : '#d8f5ff');
+        if (shockMatRef.current) shockMatRef.current.color.set(ownSnare ? GHOST_SNARE_COLOR : '#ffffff');
         if (DBG) (window as any).__ghostState = {
             visible: true, mode: sim.mode, position: [...actor.pos], target: [tx, ty, tz], speed: Math.hypot(actor.vel[0], actor.vel[1], actor.vel[2]),
             leaderDistance: Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[1] - sim.pos[1], actor.pos[2] - sim.pos[2]),
             enemyDistance: enemyD, targetId: enemy ? sim.enemies.indexOf(enemy) : -1,
-            action: ((actor as any).mv || (actor as any).snareT > 0) ? 'combat' : actor.web ? 'swing' : actor.wall ? 'wall' : actor.swim ? 'swim' : 'follow',
-            web: actor.web, combo: actor.combo, kos: actor.kos,
+            action: ((actor as any).mv || (actor as any).snareT > 0) ? 'combat' : actor.wall ? 'wall' : actor.web ? 'swing' : actor.glideOn ? 'glide' : actor.swim ? 'swim' : 'follow',
+            animation,
+            morphReason: st.morph.reason, surfaceTransition, landed, wallEntered, leaderGround: !!sim.ground, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1,
+            leaderTraversal: leaderWall ? 'wall' : sim.web ? 'swing' : leaderAir ? 'glide' : sim.swim ? 'swim' : 'ground',
+            ghostTraversal: actor.wall ? 'wall' : actor.web ? 'swing' : actor.glideOn ? 'glide' : actor.swim ? 'swim' : 'follow',
+            transport: 'idle', web: actor.web, webHandMask, snareWebLines, pulseSegments, ringSegments, pulseProgress, snareColor: ownSnare ? GHOST_SNARE_COLOR : null, strandColor: lineMatRef.current?.color.getHexString(), shockColor: shockMatRef.current?.color.getHexString(), gripHands: animation.gripHands, snarePhase: animation.snarePhase, combo: actor.combo, kos: actor.kos,
         };
         if (DBG) (window as any).__ghostSim = actor;
     });
@@ -303,10 +457,16 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     return <>
         <primitive object={model.root} dispose={null} />
         <lineSegments ref={lineRef} geometry={lineGeo} frustumCulled={false} dispose={null}>
-            <lineBasicMaterial color="#d8f5ff" transparent opacity={0.92} depthTest={false} depthWrite={false} />
+            <lineBasicMaterial ref={lineMatRef} color="#d8f5ff" transparent opacity={0.92} depthTest={false} depthWrite={false} />
+        </lineSegments>
+        <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false} dispose={null}>
+            <lineBasicMaterial ref={shockMatRef} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} />
         </lineSegments>
         <points ref={plasmaRef} geometry={plasmaGeo} frustumCulled={false} dispose={null}>
             <pointsMaterial color="#c9f5ff" size={0.52} sizeAttenuation transparent opacity={0.95} depthWrite={false} />
+        </points>
+        <points ref={morphRef} geometry={morphGeo} visible={false} frustumCulled={false} dispose={null}>
+            <pointsMaterial ref={morphMatRef} color="#ffffff" vertexColors size={0.42} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
         </points>
     </>;
 }
