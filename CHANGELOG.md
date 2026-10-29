@@ -352,3 +352,10 @@ All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness
 - Core WebGL2 / Three.js / R3F game engine with Vite.
 - Rooftop pendulum swinging physics, collectibles, daytime/sunset palette, and headless assertion harness.
 - The user-provided lake/bridge visual targets, Polyfork asset/license notes, and water shader/physics references are recorded in `docs/REFERENCES.md`; Polyfork models are used under its license, and no third-party water or shader code was copied.
+
+
+## South Sea step 1a: greater ocean (Oct 29)
+- Playable sea now runs to z -1150 and x ±480 (the old wall at the city edge is gone at sea).
+- Ocean is one camera-following sheet with a warped grid (dense under the camera, coarse at the horizon) folded onto the shoreline in the vertex shader.
+- Real seabed depth profile shared by render and sim (`seabedAt`): -10 m shelf, slope to -26, trench to -50, far shelf at -28, with dunes/ridges; swim floor, kelp, underwater camera floor follow it.
+- Swell grows offshore (x2.3 by 750 m out) and deep water reads darker blue.

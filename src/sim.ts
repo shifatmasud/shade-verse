@@ -60,6 +60,16 @@ export function isLakeWater(x: number, z: number) {
 export function lakeWaveH(x: number, z: number, t: number) { return Math.sin(x * 0.11 + z * 0.08 + t * 0.42) * 0.09 + Math.sin(x * 0.21 - z * 0.16 - t * 0.31) * 0.035; }
 export function waterSurfaceAt(x: number, z: number, t = 0) { return isLakeWater(x, z) ? PARK_POND_Y + lakeWaveH(x, z, t) : WATER_Y; }
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
+// Greater ocean (Shifat Oct 29, step 1 of the South Sea plan): playable sea far beyond the old city-edge wall, with a real depth profile:
+// shallow shelf near the beach -> slope -> a deep trench -> rising again toward the future 2nd-city platform.
+export const SEA = { zMin: -1150, xMax: HALF + 180 };
+const _sm = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+export function seabedAt(x: number, z: number) {
+    const d = WATER_Z - z;   // metres offshore
+    let y = SEABED - 16 * _sm(110, 300, d) - 24 * _sm(420, 600, d) + 22 * _sm(760, 930, d);   // -10 shelf, -26 slope, -50 trench, -28 far shelf
+    y += Math.sin(x * 0.045 + z * 0.021) * 1.4 * _sm(30, 120, d) + Math.sin(x * 0.013 - z * 0.032) * 2.2 * _sm(200, 400, d);   // dunes / ridges
+    return Math.min(y, SEABED);
+}
 
 let seedv = 1337;
 const rnd = () => { seedv = (seedv * 1664525 + 1013904223) % 4294967296; return seedv / 4294967296; };
@@ -406,9 +416,9 @@ function collide(s: Sim, prevY: number) {
         if (m === l) { p[0] -= l; if (v[0] > 0) v[0] *= -0.1; hitN = [-1, 0]; } else if (m === r) { p[0] += r; if (v[0] < 0) v[0] *= -0.1; hitN = [1, 0]; }
         else if (m === f) { p[2] -= f; if (v[2] > 0) v[2] *= -0.1; hitN = [0, -1]; } else { p[2] += k; if (v[2] < 0) v[2] *= -0.1; hitN = [0, 1]; }
     }
-    const lim = HALF - 3;
-    if (p[0] > lim) { p[0] = lim; v[0] = Math.min(v[0], 0); } if (p[0] < -lim) { p[0] = -lim; v[0] = Math.max(v[0], 0); }
-    if (p[2] > lim) { p[2] = lim; v[2] = Math.min(v[2], 0); } if (p[2] < -lim) { p[2] = -lim; v[2] = Math.max(v[2], 0); }
+    const lim = HALF - 3, xl = p[2] < WATER_Z - 4 ? SEA.xMax : lim;   // the open sea is wider than the city and runs far south
+    if (p[0] > xl) { p[0] = xl; v[0] = Math.min(v[0], 0); } if (p[0] < -xl) { p[0] = -xl; v[0] = Math.max(v[0], 0); }
+    if (p[2] > lim) { p[2] = lim; v[2] = Math.min(v[2], 0); } if (p[2] < SEA.zMin) { p[2] = SEA.zMin; v[2] = Math.max(v[2], 0); }
 }
 
 export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 22, glideAcc: 14 };   // traversal tuning knobs
@@ -552,7 +562,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
-    if (s.swim) { const floor = isLakeWater(p[0], p[2]) ? parkH(p[0], p[2]) + 1.05 : SEABED + 1; if (p[1] < floor) { p[1] = floor; if (v[1] < 0) v[1] = 0; } }
+    if (s.swim) { const floor = isLakeWater(p[0], p[2]) ? parkH(p[0], p[2]) + 1.05 : seabedAt(p[0], p[2]) + 1; if (p[1] < floor) { p[1] = floor; if (v[1] < 0) v[1] = 0; } }
     const parkFloor = parkH(p[0], p[2]), bridgeFloor = bridgeSurfaceAt(p[0], p[2]);
     const gy = 1.0 + Math.max(parkFloor, bridgeFloor ?? -Infinity);
     if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes

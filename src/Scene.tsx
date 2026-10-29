@@ -20,7 +20,7 @@ import { BossArenaMarker } from './BossArenaMarker';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, type Unibeam, type Sim, type Events } from './sim';
+import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, SEA, seabedAt, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, type Unibeam, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
@@ -631,7 +631,7 @@ function Underwater({ sim }: { sim: Sim }) {
     const B = useMemo(() => ({ x: new Float32Array(BUB_N), y: new Float32Array(BUB_N), z: new Float32Array(BUB_N), v: new Float32Array(BUB_N), age: new Float32Array(BUB_N).fill(1), life: new Float32Array(BUB_N).fill(0), wa: new Float32Array(BUB_N), wf: new Float32Array(BUB_N), wp: new Float32Array(BUB_N), dx: new Float32Array(BUB_N), dz: new Float32Array(BUB_N), sz: new Float32Array(BUB_N), acc: 0, heroAcc: 0, next: 0, lastT: -1 }), []);
     useEffect(() => {
         let r = 3; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; const o = new THREE.Object3D();
-        for (let i = 0; i < 1400; i++) { const cx = (rn() - 0.5) * 2 * (HALF - 20), cz = WATER_Z - 6 - rn() * 110, k = 0.6 + rn() * 1.1; o.position.set(cx, SEABED, cz); o.rotation.set(0, rn() * 3.14, 0); o.scale.set(k * (0.5 + rn() * 0.6), 0.45 + rn() * 1.0, k); o.updateMatrix(); kelp.current.setMatrixAt(i, o.matrix); }
+        for (let i = 0; i < 1400; i++) { const cx = (rn() - 0.5) * 2 * (HALF - 20), cz = WATER_Z - 6 - rn() * 110, k = 0.6 + rn() * 1.1; o.position.set(cx, seabedAt(cx, cz), cz); o.rotation.set(0, rn() * 3.14, 0); o.scale.set(k * (0.5 + rn() * 0.6), 0.45 + rn() * 1.0, k); o.updateMatrix(); kelp.current.setMatrixAt(i, o.matrix); }
         kelp.current.instanceMatrix.needsUpdate = true;
     }, []);
     useFrame((st) => {
@@ -642,7 +642,7 @@ function Underwater({ sim }: { sim: Sim }) {
         if (under) {
             const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, ca = bub.current.geometry.attributes.color as THREE.BufferAttribute, za = bub.current.geometry.attributes.aSize as THREE.BufferAttribute;
             const dt = B.lastT < 0 ? 0.016 : Math.min(0.1, Math.max(0, t - B.lastT)); B.lastT = t;
-            const floor = inLake ? PARK_POND_Y - 3.6 : SEABED + 0.4, cx = st.camera.position.x, cz = st.camera.position.z, cur = Math.sin(t * 0.3) * 0.25;
+            const floor = inLake ? PARK_POND_Y - 3.6 : seabedAt(st.camera.position.x, st.camera.position.z) + 0.4, cx = st.camera.position.x, cz = st.camera.position.z, cur = Math.sin(t * 0.3) * 0.25;
             const spawn = (x: number, y: number, z: number, small: boolean) => {
                 if (inLake && !isLakeWater(x, z)) return;
                 let k = -1; for (let j = 0; j < BUB_N; j++) { const q = (B.next + j) % BUB_N; if (B.age[q] >= B.life[q]) { k = q; break; } }
@@ -1267,13 +1267,14 @@ const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
 const seabedMat = mkSea(false), wallMat = mkSea(true);
 // Water: sum-of-sines height field, fresnel sky mix, sun glitter, crest foam, distance haze (informed by public ocean-shader write-ups, see docs/REFERENCES.md)
 const WAVES = `
+float swellK(float z){ return 1.0 + 1.3 * smoothstep(-300.0, -750.0, z); }   // bigger swell offshore (greater ocean)
 float wh(vec2 p, float t){
   float h = 0.0;
   h += sin(dot(p, vec2(0.008, 0.005)) + t * 0.32) * 0.78;
   h += sin(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42;
   h += sin(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12;
   h += sin(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035;
-  return h;
+  return h * swellK(p.y);
 }
 vec2 wg(vec2 p, float t){
   vec2 g = vec2(0.0);
@@ -1281,10 +1282,11 @@ vec2 wg(vec2 p, float t){
   g += cos(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42 * vec2(-0.012, 0.009);
   g += cos(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12 * vec2(0.033, -0.023);
   g += cos(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035 * vec2(0.076, 0.054);
-  return g;
+  return g * swellK(p.y);
 }`;
 function waveH(x: number, z: number, t: number) {
-    return Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035;
+    const zk = Math.max(0, Math.min(1, (z + 300) / -450)), sk = 1 + 1.3 * zk * zk * (3 - 2 * zk);
+    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035);
 }
 function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
 function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }
@@ -1293,7 +1295,7 @@ const waterMat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
         tScene: { value: null }, tDepth: { value: null }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
-    vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
+    vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
@@ -1314,6 +1316,7 @@ const waterMat = new THREE.ShaderMaterial({
       vec3 td = refract(-v, n, 1.0 / 1.333); float path = 9.0 / max(abs(td.y), 0.12);
       vec3 absorb = vec3(0.45, 0.07, 0.02), Tw = exp(-absorb * path);
       vec3 body = vec3(0.62, 0.72, 0.62) * 0.9 * Tw + mix(uShallow, uDeep, depthMix * 0.7) * (1.0 - exp(-0.02 * path)) * 0.9;
+      body = mix(body, uDeep * 0.5, smoothstep(-300.0, -800.0, vW.z) * 0.55);   // deep offshore water reads darker blue
       vec3 r = reflect(-v, n);
       vec3 refl = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, r.y)) + vec3(1.0, 0.55, 0.3) * 0.25 * pow(max(dot(normalize(r), uSun), 0.0), 6.0);
       if (uUseScene > 0.5 && !below) {
@@ -1377,9 +1380,32 @@ const waterMat = new THREE.ShaderMaterial({
 });
 
 
+
+// Greater ocean: a camera-following sea sheet whose grid is dense under the camera and coarse toward the horizon (one mesh, no extra
+// draw calls). The vertex shader folds anything north of the shoreline onto it, so the sheet never covers land.
+const OCEAN_HALF = 900, OCEAN_SNAP = 8;
+function oceanGeo() {
+    const n = 150, pos: number[] = [], idx: number[] = [];
+    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), 1.9) * OCEAN_HALF;
+    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(warp(i / n * 2 - 1), 0, warp(j / n * 2 - 1));
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i, b = a + n + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;
+}
+// Seabed with the real depth profile (shelf -> slope -> trench), shared with the swim floor in the sim.
+function seabedGeo() {
+    const nx = 110, nz = 150, x0 = -(HALF + 500), x1 = HALF + 500, z0 = WATER_Z + 1, z1 = SEA.zMin - 450, pos: number[] = [], idx: number[] = [];
+    for (let j = 0; j <= nz; j++) { const tz = j / nz, z = z0 + (z1 - z0) * Math.pow(tz, 1.25); for (let i = 0; i <= nx; i++) { const x = x0 + (x1 - x0) * i / nx; pos.push(x, seabedAt(x, z), z); } }
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, b = a + nx + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+const OCEAN_GEO = oceanGeo(), SEABED_GEO = seabedGeo();
+function OceanFollow({ waterRef }: { waterRef: React.MutableRefObject<THREE.Mesh | null> }) {
+    useFrame(({ camera }) => { const w = waterRef.current; if (!w) return; w.position.set(Math.round(camera.position.x / OCEAN_SNAP) * OCEAN_SNAP, WATER_Y, Math.round(camera.position.z / OCEAN_SNAP) * OCEAN_SNAP); });
+    return null;
+}
 // Ocean screen-space copy (same technique as the park lake): a low-res colour+depth copy of the scene without the sea, taken only
 // while the sea is on screen and near enough to matter; skipped when the frame budget is tight.
-const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 40, SEABED, -HALF - 200), new THREE.Vector3(HALF + 40, WATER_Y + 2, WATER_Z + 2));
+const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA.zMin - 600), new THREE.Vector3(HALF + 700, WATER_Y + 4, WATER_Z + 2));
 function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: React.MutableRefObject<THREE.Mesh | null>; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
     const target = useMemo(() => { const t = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }); t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType; return t; }, []);
@@ -1671,7 +1697,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 for(let k=0;k<3;k++){if(Math.abs(delta[k])<1e-7){if(origin[k]<mn[k]||origin[k]>mx[k]){hit=false;break;}}else{let a=(mn[k]-origin[k])/delta[k],c=(mx[k]-origin[k])/delta[k];if(a>c){const t=a;a=c;c=t;}lo=Math.max(lo,a);hi=Math.min(hi,c);if(lo>hi){hit=false;break;}}}
                 if(hit&&lo>0)safe=Math.max(0,lo-.025);
             }
-            for(let i=1;i<=32;i++){const f=safe*i/32,x=ax+dx*f,y=ay+dy*f,z=az+dz*f;const floor=z<WATER_Z?SEABED:Math.min(0,parkH(x,z));if(y<floor+.35){safe=safe*(i-1)/32;break;}}
+            for(let i=1;i<=32;i++){const f=safe*i/32,x=ax+dx*f,y=ay+dy*f,z=az+dz*f;const floor=z<WATER_Z?seabedAt(x,z):Math.min(0,parkH(x,z));if(y<floor+.35){safe=safe*(i-1)/32;break;}}
             if(safe<1)q.set(ax+dx*safe,ay+dy*safe,az+dz*safe);
         }
         camera.position.copy(cam.current); { const shk = (sim as any).shake || 0; if (shk > 0.001) { const a = shk * shk * 2.2, tt = sim.t * 61; camera.position.x += Math.sin(tt * 1.3) * a; camera.position.y += Math.sin(tt * 1.9 + 1.7) * a * 0.8; camera.position.z += Math.sin(tt * 1.1 + 4.1) * a; } } if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
@@ -1883,9 +1909,10 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh ref={wakeRef} geometry={wakeGeo} material={wakeMat} visible={false} frustumCulled={false} />
         <group ref={splashRef} visible={false}>{[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => <mesh key={i} frustumCulled={false}><coneGeometry args={[0.13, 1, 5]} /><meshBasicMaterial color="#f4fdff" transparent opacity={0.9} depthWrite={false} /></mesh>)}</group>
         <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}><ringGeometry args={[1.0, 1.09, 48]} /><meshBasicMaterial color="#eefbff" transparent opacity={0.4} depthWrite={false} /></mesh>)}</group>
-        <mesh position={[0, WATER_Y, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]} ref={waterRef} material={waterMat} frustumCulled={false}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500, 160, 80]} /></mesh>
+        <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
+        <OceanFollow waterRef={waterRef} />
         <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
-        <mesh position={[0, SEABED, (WATER_Z - HALF - 500) / 2]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2 * (HALF + 500), WATER_Z + HALF + 500]} /><primitive object={seabedMat} attach="material" /></mesh>
+        <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
         <instancedMesh ref={cores} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" transparent opacity={0.5} blending={THREE.NoBlending} /></instancedMesh>
