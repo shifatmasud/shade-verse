@@ -463,12 +463,13 @@ export function PolyforkLakeBridge({ sim }: { sim: Sim }) {
     const [waterGLTF, bridgeGLTF] = useLoader(GLTFLoader, [WATER_ASSET.url, BRIDGE_ASSET.url]) as GLTF[];
     const waterModel = useMemo(() => prepareModel(WATER_ASSET.id, waterGLTF), [waterGLTF]);
     const bridgeModel = useMemo(() => prepareModel(BRIDGE_ASSET.id, bridgeGLTF), [bridgeGLTF]);
-    const waterGeometry = useMemo(() => subdividePositions(waterModel.parts[0].geometry, 2), [waterModel]);
+    // env-iter1: circular lake sheet (polar grid so vertex waves have interior detail), unit diameter in XZ.
+    const waterGeometry = useMemo(() => { const g = new THREE.RingGeometry(0.0001, 0.5, 96, 14); g.rotateX(-Math.PI / 2); return g.toNonIndexed(); }, []);
     const waterScale = useMemo<[number, number, number]>(() => [
-        (PARK_POND.rx * 2) / Math.max(0.01, waterModel.dimensions.x),
+        PARK_POND.rx * 2,
         1,
-        (PARK_POND.rz * 2) / Math.max(0.01, waterModel.dimensions.z),
-    ], [waterModel]);
+        PARK_POND.rz * 2,
+    ], []);
     const { gl, scene, camera } = useThree();
     const captureFrame = useRef(0), lakeClock = useRef(0), lastRefractionTime = useRef(-100), lastRefractionFrame = useRef(-100), lastReflectionTime = useRef(-100), lastReflectionFrame = useRef(-100);
     const refractionTarget = useMemo(() => new THREE.WebGLRenderTarget(256, 128, { depthBuffer: true, stencilBuffer: false, samples: 0 }), []);

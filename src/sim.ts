@@ -8,7 +8,7 @@ export const FOG: V3 = [0.84, 0.77, 0.74];
 const G = 27;
 export const JUMP_V = 16;
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
-export const PARK_POND = { cx: 180, cz: 100, rx: 16, rz: 11 };
+export const PARK_POND = { cx: 180, cz: 100, rx: 14, rz: 14 }; // circular lake (env-iter1)
 // Valley topography remains unchanged outside the pond; the pond itself is a deeper bowl for swimming and underwater light.
 function parkBaseH(x: number, z: number): number { const e = Math.min(x - PARK.x0, PARK.x1 - x, z - PARK.z0, PARK.z1 - z); if (e <= 0) return 0; const t = Math.min(1, e / 34), w = t * t * (3 - 2 * t); return w * (-5.0 + 1.4 * Math.sin(x * 0.06 + 1.0) * Math.cos(z * 0.05)); }
 function pondBowlWeight(x: number, z: number) { const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz, r = Math.sqrt(dx * dx + dz * dz); const t = Math.max(0, Math.min(1, (1 - r) / 0.34)); return t * t * (3 - 2 * t); }
