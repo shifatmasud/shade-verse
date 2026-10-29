@@ -417,6 +417,9 @@ function treeGeo(kind: 'broad' | 'umbrella' | 'poplar' | 'cherry', seed: number,
     const cy = H + R * shape.cyk * (kind === 'poplar' ? 0.7 : 1); const ctr: THREE.Vector3[] = [];
     for (let i = 0; i < shape.nb; i++) { const ang = rnd() * 6.28; const len = R * (0.7 + rnd() * 0.4) * (kind === 'poplar' ? 0.25 : 1); const bg = limbGeo(kind === 'broad' ? 0.08 : 0.05, kind === 'broad' ? 0.26 : 0.16, len, 5); bg.rotateZ(kind === 'umbrella' || kind === 'cherry' ? 0.95 + rnd() * 0.35 : 0.7 + rnd() * 0.5); bg.rotateY(ang); const hb = H * (0.55 + rnd() * 0.3), ba = tube.at(hb / H); bg.translate(ba.x, hb, ba.z); trunkP.push(bg); ctr.push(new THREE.Vector3(Math.cos(ang) * R * 0.55 * shape.sx, cy + (rnd() - 0.4) * R * 0.5 * shape.sy, Math.sin(ang) * R * 0.55 * shape.sz)); }
     ctr.push(new THREE.Vector3(0, cy + R * 0.3 * shape.sy, 0));
+    // Shifat Oct 29 "foliage must make that trunk top not visible": two extra leaf clusters wrapped around the trunk's top and fork,
+    // so the crown closes over where the trunk ends instead of floating above it.
+    { const tt = tube.at(1); ctr.push(new THREE.Vector3(tt.x, H + R * 0.08, tt.z), new THREE.Vector3(tt.x, H - R * 0.12, tt.z)); }
     for (let i = 0; i < leafN; i++) {
         const c = ctr[Math.floor(rnd() * ctr.length)]; const bx = LEAF_BOX[Math.floor(rnd() * 8)];
         const u = new THREE.Vector3(rnd() - 0.5, (rnd() - 0.5) * 0.8, rnd() - 0.5).normalize().multiplyScalar(R * 0.48 * Math.cbrt(rnd())); u.x *= shape.sx; u.y *= shape.sy; u.z *= shape.sz;
