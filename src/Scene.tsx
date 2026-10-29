@@ -603,7 +603,7 @@ const kelpMat = new THREE.ShaderMaterial({
       p.x += cur * h * h; p.z += cos(uTime * 0.6 + ip.z * 0.2 + p.y * 0.4) * 0.35 * h * h;
       vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0); vW = w.xyz; vH = h; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `varying vec3 vW; varying float vH;
-    void main(){ vec3 col = mix(vec3(0.12, 0.30, 0.16), vec3(0.42, 0.62, 0.22), vH); float d = length(vW - cameraPosition); col = col * exp(-vec3(0.45, 0.07, 0.02) * d * 0.5) + ${UW_FOG} * (1.0 - exp(-d * 0.028)); gl_FragColor = vec4(col, 1.0); }`,
+    void main(){ vec3 col = mix(vec3(0.12, 0.30, 0.16), vec3(0.42, 0.62, 0.22), vH); float d = length(vW - cameraPosition); col = col * exp(-vec3(0.45, 0.07, 0.02) * d * 0.12) + ${UW_FOG} * (1.0 - exp(-d * 0.028)); gl_FragColor = vec4(col, 1.0); }`,
     side: THREE.DoubleSide,
 });
 const rayMat = new THREE.ShaderMaterial({
@@ -1258,7 +1258,7 @@ const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
     void main(){ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y))); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float c = cau(p) + 0.6 * cau(p * 1.7 + 3.0);
       vec3 sand = mix(vec3(0.46, 0.62, 0.58), vec3(0.58, 0.70, 0.62), h(floor(${xy ? 'vW.xy' : 'vW.xz'} * 3.0)) * 0.6);
       vec3 col = sand * 0.7 + vec3(0.75, 0.95, 0.9) * c * 0.55;
-      float d = length(vW - cameraPosition); vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.5); col = col * Tb; float fg = 1.0 - exp(-d * 0.045 * 1.6); ${xy ? 'fg = fg * 0.8;' : ''} col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
+      float d = length(vW - cameraPosition); vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.12); col = col * Tb; float fg = smoothstep(45.0, 190.0, d);   /* far-only underwater fog (Shifat Oct 29) */ ${xy ? 'fg = fg * 0.8;' : ''} col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
       ${xy ? `// Match grazing rays at the wall/surface junction without changing the deeper sand wall.
       vec3 ray=normalize(cameraPosition-vW);vec3 junction=fogUsed*(1.0+0.9*pow(1.0-clamp(abs(ray.y),0.0,1.0),2.5));
       col=mix(col,junction,smoothstep(-5.0,-0.6,vW.y));` : ''}
@@ -1355,7 +1355,7 @@ const waterMat = new THREE.ShaderMaterial({
         aOut = mix(0.45, 0.96, max(fr, critical));
       }
       float haze = 1.0 - exp(-length(cameraPosition - vW) * 0.006);
-      if (below) col = mix(col, uWaterDisplay, 1.0 - exp(-length(cameraPosition - vW) * 0.045 * 1.6));
+      if (below) col = mix(col, uWaterDisplay, smoothstep(45.0, 190.0, length(cameraPosition - vW)));
       if (below) col += uWaterDisplay * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5);   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
       if (!below) {
@@ -1781,8 +1781,9 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             // Shifat Oct 29 "use underwater fogs inside ocean": these statements had slipped into the comment above, so the underwater
             // state never switched on. Now: underwater background + a scene fog that thickens with depth (deeper = darker, shorter view).
             UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
-            if (!(state.scene.fog instanceof THREE.FogExp2)) state.scene.fog = new THREE.FogExp2(UWF.value.getHex(), 0);   // kept for the whole session (density 0 above water) so entering water causes no shader recompiles
-            { const fg = state.scene.fog as THREE.FogExp2; if (under) { const deep = Math.min(1, Math.max(0, -dy / 30)); fg.color.copy(UWF.value).multiplyScalar(1 - 0.55 * deep); fg.density = 0.035 + 0.04 * deep; (state.scene.background as THREE.Color).copy(fg.color); } else fg.density = 0; }
+            // Shifat Oct 29: "fog should only be visible at great distance, not close" -> linear fog: clear water near you, fog only far off.
+            if (!(state.scene.fog instanceof THREE.Fog)) state.scene.fog = new THREE.Fog(UWF.value.getHex(), 1e4, 2e4);   // kept for the whole session (pushed out of reach above water) so entering water causes no shader recompiles
+            { const fg = state.scene.fog as THREE.Fog; if (under) { const deep = Math.min(1, Math.max(0, -dy / 30)); fg.color.copy(UWF.value).multiplyScalar(1 - 0.45 * deep); fg.near = 55 - 15 * deep; fg.far = 190 - 50 * deep; (state.scene.background as THREE.Color).copy(fg.color); } else { fg.near = 1e4; fg.far = 2e4; } }
             if (uw) {
                 if (inWater && dy < 1.2 && dy > -2.2) {
                     // project the waterline a little ahead of the camera to find where the surface cuts the screen
