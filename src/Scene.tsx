@@ -21,7 +21,7 @@ import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
 import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
 import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, WATER_Y, SEABED, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
-import { ParkGround, PolyforkBuildings, PolyforkForest, PolyforkLakeBridge, createVegetationPlacements } from './polyforkEnvironment';
+import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -386,7 +386,7 @@ const treeWind = (leaf: boolean) => (sh: any) => {
     `);
 };
 const trunkWindShader = treeWind(false), leafWindShader = treeWind(true);
-function Forest({ sim }: { sim: Sim }) {
+function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean }) {
     const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
     const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; };
@@ -442,8 +442,8 @@ function Forest({ sim }: { sim: Sim }) {
         return { floor: fl, path: mk(8, 190, 2, 90, Math.atan(0.6), 0.04) };
     }, []);
     return <group>
-        <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>
-        <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>
+        {renderGround && <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>}
+        {renderGround && <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>}
         {geos.map((g, v) => <group key={v}>
             <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.con ? pbarkTex : barkTex} emissive="#4a3a2c" side={THREE.DoubleSide} onBeforeCompile={trunkWindShader} /></instancedMesh>
             <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
@@ -452,81 +452,6 @@ function Forest({ sim }: { sim: Sim }) {
         <instancedMesh ref={bush} args={[undefined, undefined, 70]} frustumCulled={false}><primitive object={bushGeo} attach="geometry" /><meshLambertMaterial map={bushTex} color="#dce1cd" emissive="#182510" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
     </group>;
 }
-
-function PolyforkDetailedFoliage() {
-    const placements = useMemo(createVegetationPlacements, []);
-    const [leafTex, pineTex, bushTex] = useMemo(() => {
-        const loader = new THREE.TextureLoader();
-        const mk = (url: string) => { const t = loader.load(url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
-        return [mk('/spray145.png'), mk(PINE_URL), mk('/shrub134.png')];
-    }, []);
-    const groups = useMemo(() => [
-        { key: 'oak', ids: ['broadleaf-oak-997c22'], geometry: treeGeo('broad', 11, 250, 1.5).leaves, fit: [0.88, 0.58, 0.88], color: '#ffffff', conifer: false },
-        { key: 'birch', ids: ['birch-tree-181b33'], geometry: treeGeo('poplar', 1234, 220, 1.45).leaves, fit: [0.48, 0.74, 0.48], color: '#ffffff', conifer: false },
-        { key: 'tall-pine', ids: ['tall-pine-tree-ab4108'], geometry: coniferGeo('pine', 31, 5, 3, 1.12).leaves, fit: [0.68, 0.78, 0.68], color: '#f2ffe9', conifer: true },
-        { key: 'young-pine', ids: ['young-pine-0d7695'], geometry: coniferGeo('spruce', 57, 4, 2, 1.12).leaves, fit: [0.62, 0.43, 0.62], color: '#f2ffe9', conifer: true },
-        { key: 'maple', ids: ['maple-tree-65fa12'], geometry: treeGeo('umbrella', 77, 230, 1.45).leaves, fit: [0.82, 0.58, 0.82], color: '#ffffff', conifer: false },
-        { key: 'cherry', ids: ['cherry-tree-a710a9'], geometry: treeGeo('broad', 19, 230, 1.45).leaves, fit: [0.70, 0.52, 0.70], color: '#ffffff', conifer: false },
-        { key: 'palm', ids: ['palm-tree-a307da'], geometry: treeGeo('umbrella', 77, 170, 0.9).leaves, fit: [0.52, 0.48, 0.52], color: '#efffe8', conifer: false },
-        { key: 'street-tree', ids: ['street-tree-0d33f3'], geometry: treeGeo('broad', 31, 200, 1.45).leaves, fit: [0.72, 0.55, 0.72], color: '#ffffff', conifer: false },
-        { key: 'cherry-blossom', ids: ['cherry-blossom-tree-3f7ab7'], geometry: treeGeo('broad', 73, 250, 1.5).leaves, fit: [0.78, 0.52, 0.78], color: '#f3a2bf', conifer: false },
-    ], []);
-    const materials = useMemo(() => groups.map((g) => {
-        const m = new THREE.MeshLambertMaterial({ map: g.conifer ? pineTex : leafTex, color: g.color, vertexColors: true, emissive: '#426439', alphaTest: 0.5, side: THREE.DoubleSide });
-        m.onBeforeCompile = leafWindShader;
-        return m;
-    }), [groups, leafTex, pineTex]);
-    const bushGeo = useMemo(() => {
-        const gs: THREE.BufferGeometry[] = []; let r = 73; const rnd = () => (r = r * 16807 % 2147483647) / 2147483647;
-        const boxes = [[224, 0, 357, 184], [102, 205, 248, 396], [360, 195, 482, 372], [371, 59, 459, 181]];
-        for (let i = 0; i < 48; i++) {
-            const bx = boxes[i % boxes.length], w = (bx[2] - bx[0]) / 512, h = (bx[3] - bx[1]) / 512, len = 0.5 + rnd() * 0.5;
-            const g = new THREE.PlaneGeometry(len * w / h, len); g.translate(0, len / 2, 0);
-            const uv = g.attributes.uv; for (let k = 0; k < 4; k++) uv.setXY(k, bx[0] / 512 + uv.getX(k) * w, 1 - bx[3] / 512 + uv.getY(k) * h);
-            const a = i * 2.39996, rad = 0.1 + 0.6 * Math.sqrt(rnd()); g.rotateZ((rnd() - 0.5) * 1.3); g.rotateY(a); g.translate(Math.cos(a) * rad, 0.02 + rnd() * 0.65, Math.sin(a) * rad); gs.push(g);
-        }
-        return mergeGeometries(gs, false)!;
-    }, []);
-    const bushMaterial = useMemo(() => {
-        const m = new THREE.MeshLambertMaterial({ map: bushTex, color: '#dce1cd', emissive: '#182510', alphaTest: 0.5, side: THREE.DoubleSide });
-        m.onBeforeCompile = leafWindShader;
-        return m;
-    }, [bushTex]);
-    const refs = useRef<Record<string, THREE.InstancedMesh | null>>({});
-    useEffect(() => {
-        const object = new THREE.Object3D();
-        groups.forEach((g) => {
-            const mesh = refs.current[g.key]; if (!mesh) return;
-            const list = g.ids.flatMap((id) => placements.trees[id] || []);
-            list.forEach((p, i) => { object.position.set(p.x, p.y, p.z); object.rotation.set(0, p.yaw, 0); object.scale.set(p.sx * g.fit[0], p.sy * g.fit[1], p.sz * g.fit[2]); object.updateMatrix(); mesh.setMatrixAt(i, object.matrix); });
-            mesh.count = list.length; mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
-            mesh.userData.polyforkFoliageSpecies = g.key; mesh.userData.detailedLeafInstances = list.length;
-        });
-        const bush = refs.current.bush;
-        if (bush) {
-            placements.bushes.forEach((p, i) => { object.position.set(p.x, p.y, p.z); object.rotation.set(0, p.yaw, 0); object.scale.set(p.sx, p.sy, p.sz); object.updateMatrix(); bush.setMatrixAt(i, object.matrix); });
-            bush.count = placements.bushes.length; bush.instanceMatrix.needsUpdate = true; bush.computeBoundingSphere();
-        }
-    }, [groups, placements]);
-    useFrame((state) => {
-        treeWindTime.value = state.clock.elapsedTime;
-        materials.forEach((m) => m.emissive.set('#426439').multiplyScalar(0.12 + 0.88 * TOD.day.value));
-        bushMaterial.emissive.set('#182510').multiplyScalar(0.12 + 0.88 * TOD.day.value);
-    });
-    useEffect(() => {
-        if (DBG) (window as any).__polyforkDetailedFoliage = {
-            legacyStyleLeafMeshes: groups.length,
-            leavesBySpecies: Object.fromEntries(groups.map((g) => [g.key, (placements.trees[g.ids[0]] || []).length])),
-            shrubLeafCards: 48, bushes: placements.bushes.length,
-            cherryBlossomTint: '#f3a2bf', windSway: true,
-        };
-    }, [groups, placements]);
-    return <group name="polyfork-detailed-foliage">
-        {groups.map((g, i) => <instancedMesh key={g.key} name={`polyfork-detail-leaves-${g.key}`} ref={(m) => { refs.current[g.key] = m; }} args={[g.geometry, materials[i], g.ids.reduce((n, id) => n + (placements.trees[id] || []).length, 0)]} frustumCulled={false} />)}
-        <instancedMesh name="polyfork-detail-shrub-leaves" ref={(m) => { refs.current.bush = m; }} args={[bushGeo, bushMaterial, placements.bushes.length]} frustumCulled={false} />
-    </group>;
-}
-
 
 // park floor: no flat green between tufts - value noise plus fine blade streaks in world space, so the gaps read as grass undergrowth (ref: BotW grassland ground mottling)
 const floorGrass = (sh: any) => {
@@ -1550,11 +1475,11 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <ParkGround />
         <React.Suspense fallback={null}>
             <PolyforkBuildings />
-            <PolyforkForest />
-            <PolyforkDetailedFoliage />
             <PolyforkLakeBridge sim={sim} />
         </React.Suspense>
         <FlyingCars />
+        {/* Rebuild park and city trees with authored forms and foliage; never overlay Polyfork tree canopies. */}
+        <Forest sim={sim} renderGround={false} />
         <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} />
         <primitive object={rig.root} ref={hero} />
         <BossArenaMarker />
