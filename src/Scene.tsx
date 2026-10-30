@@ -1376,8 +1376,8 @@ const waterMat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
         tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uSceneTx: { value: new THREE.Vector2(0.004, 0.007) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uBoat: { value: [0, 1, 2, 3, 4].map(() => new THREE.Vector4(0, 1e5, 0, 0)) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroDA: { value: new THREE.Vector4(0, 0, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
-    vertexShader: WAVES + `uniform float uTime; uniform vec4 uHeroA, uHeroB; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec2 vHw; void main(){ vHw = vec2(wh(uHeroA.xz, uTime), wh(uHeroB.xz, uTime));   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
-    fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec2 vHw;
+    vertexShader: WAVES + `uniform float uTime; uniform vec4 uHeroA, uHeroB; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw; void main(){ vHw = vec3(wh(uHeroA.xz, uTime), wh(uHeroB.xz, uTime), wh(cameraPosition.xz, uTime));   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
+    fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
     uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform vec2 uSceneTx; uniform float uFogK;
     #define WATER_LVL -1.0
@@ -1403,9 +1403,9 @@ const waterMat = new THREE.ShaderMaterial({
     #endif
       vec2 o = uSceneTx * 0.7; vec3 c = texture2D(tScene, uv + vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv - vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv + vec2(-o.x * 0.35, o.y)).rgb + texture2D(tScene, uv - vec2(-o.x * 0.35, o.y)).rgb; return linearToOutputTexel(vec4(c * 0.25, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
     void main(){
-      vec2 g = wg(vW.xz, uTime) + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
+      vec2 gW = wg(vW.xz, uTime); vec2 g = gW + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
-      g = mix(g, wg(vW.xz, uTime), smoothstep(15.0, 70.0, length(cameraPosition.xz - vW.xz)));
+      g = mix(g, gW, smoothstep(15.0, 70.0, length(cameraPosition.xz - vW.xz)));
       // AAA-style micro detail (Sea of Thieves / Uncharted use scrolling normal maps over the big waves): two layers of a tileable ripple normal
       // map drifting in different directions; mipmaps + a distance fade stop far-field shimmer. Above the surface only.
       float wDist = length(cameraPosition - vW);
@@ -1534,11 +1534,12 @@ const waterMat = new THREE.ShaderMaterial({
       float lowSun = (1.0 - smoothstep(0.06, 0.4, uSun.y)) * smoothstep(-0.05, 0.03, uSun.y);   /* RDR2 / Sea of Thieves sunset: a broad golden glitter road on the sea toward a low sun, not a thin strip */
       float ndh = max(dot(n, normalize(uSun + v)), 0.0), shin = mix(700.0, 40.0, smoothstep(15.0, 380.0, wDist)) * (1.0 - 0.7 * lowSun), rs = max(dot(r, uSun), 0.0);
       vec3 sunSpec = sunC * min(pow(ndh, shin) * shin * (0.0075 + 0.012 * lowSun) + pow(rs, 40.0) * 0.3 + pow(rs, 8.0) * 0.12 * (1.0 - smoothstep(0.1, 0.5, uSun.y)), 2.2) * smoothstep(-0.05, 0.04, uSun.y);   // + a broad warm sheen when the sun is low
-      col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, wh(vW.xz, uTime)) * 0.25 * (1.0 - fr);
+      float hW = wh(vW.xz, uTime);   /* evaluated once per pixel (was twice) */
+      col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, hW) * 0.25 * (1.0 - fr);
       // Whitecaps (ref: Sea of Thieves / AC Black Flag): foam where the wind-wave crests peak, broken into lacy cells by the caustic network
       // (same thin-line structure as real crest foam), drifting with the wave; thin streaks trail behind. One extra fetch; fades with distance.
       float crest = 0.0;
-      if (gl_FrontFacing) { float hh = wh(vW.xz, uTime) / max(swellK(vW.xz), 0.05);
+      if (gl_FrontFacing) { float hh = hW / max(swellK(vW.xz), 0.05);
         /* bombed lace (no 6 m tile) + coarse breakup, and none in the sheltered harbor canals */
         float lk = (0.5 + 0.5 * sin(vW.x * 0.0213 + sin(vW.z * 0.0171) * 2.2)) * 6.0, lf = fract(lk), li = floor(lk); vec2 luv = vec2(dot(vW.xz, vec2(0.83, -0.56)) * 0.17, dot(vW.xz, vec2(0.56, 0.83)) * 0.42) + vec2(0.0, uTime * 0.02);   /* wind-stretched fine streaks, not big blotches (Shifat 4:49 AM) */
         float lace = mix(texture2D(uCaus, luv + sin(vec2(4.1, 9.3) * li)).r, texture2D(uCaus, luv * 0.93 + sin(vec2(4.1, 9.3) * (li + 1.0))).r, smoothstep(0.25, 0.75, lf));
@@ -1600,7 +1601,7 @@ const waterMat = new THREE.ShaderMaterial({
       // A near-waterline camera can sit inside a displaced crest while viewing its top face.
       // Fade only that nearby top-face sheet so the swimmer remains readable through the split.
       // This is a local transparency approximation, not scene-colour refraction.
-      float waterline = 1.0 - smoothstep(0.35, 1.4, abs(cameraPosition.y - wh(cameraPosition.xz, uTime)));
+      float waterline = 1.0 - smoothstep(0.35, 1.4, abs(cameraPosition.y - vHw.z));
       float nearClear = mix(1.0, smoothstep(1.0, 16.0, length(cameraPosition - vW)), waterline);
       float splitBlend = (1.0 - smoothstep(0.8, 1.4, -1.0 - cameraPosition.y)) * (1.0 - smoothstep(0.4, 4.0, length(cameraPosition - vW)));
       if (below) { col = mix(col, linearToOutputTexel(vec4(uUWF, 1.0)).rgb, splitBlend); aOut = mix(aOut, 1.0, splitBlend); }
