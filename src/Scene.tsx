@@ -1467,12 +1467,12 @@ const waterMat = new THREE.ShaderMaterial({
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
         vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); if (uReflSoft.x > 0.0) rs = (rs * 2.0 + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv + vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998))) / 6.0;   /* phone: soft 5-tap, reads smooth not pixelated */ refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
       }
-      float heroSee = 0.0;
+      float heroSee = 0.0; float hwA = wh(uHeroA.xz, uTime), hwB = wh(uHeroB.xz, uTime);   // the live wave surface at each hero
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
         // their capsules, so a swimming / diving hero is seen bent, tinted and absorbed through the water (red dies first), shifting with the waves.
         vec3 tdr = refract(-v, n, 1.0 / 1.333); float rA = -1.0, rB = -1.0;
-        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 30.0 && uHeroA.y < WATER_LVL + 0.6) rA = capHit(vW, tdr, uHeroA.xyz + vec3(0.0, 0.25, 0.0), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34);
-        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 30.0 && uHeroB.y < WATER_LVL + 0.6) rB = capHit(vW, tdr, uHeroB.xyz + vec3(0.0, 0.25, 0.0), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 30.0 && uHeroA.y + 0.25 < hwA) rA = capHit(vW, tdr, uHeroA.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroA.x, min(uHeroA.y + 1.55, hwA), uHeroA.z), 0.34);   /* only the submerged part refracts; flying = none */
+        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 30.0 && uHeroB.y + 0.25 < hwB) rB = capHit(vW, tdr, uHeroB.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroB.x, min(uHeroB.y + 1.5, hwB), uHeroB.z), 0.3);
         float rt = -1.0; vec3 rc = vec3(0.0);
         if (rA > 0.0) { rt = rA; rc = vec3(0.09, 0.11, 0.21); }
         if (rB > 0.0 && (rA < 0.0 || rB < rA)) { rt = rB; rc = vec3(0.78, 0.82, 0.92); }
@@ -1480,8 +1480,8 @@ const waterMat = new THREE.ShaderMaterial({
         // hidden. Where the straight view ray hits a hero capsule below the surface, open the surface up (low alpha) so the real body shows
         // through, tinted by the water it is seen through.
         float sA = -1.0, sB = -1.0;
-        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 12.0) sA = capHit(vW, -v, uHeroA.xyz + vec3(0.0, -0.2, 0.0), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.4);
-        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 12.0) sB = capHit(vW, -v, uHeroB.xyz + vec3(0.0, -0.2, 0.0), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.36);
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 12.0 && uHeroA.y - 0.2 < hwA) sA = capHit(vW, -v, uHeroA.xyz + vec3(0.0, -0.2, 0.0), vec3(uHeroA.x, min(uHeroA.y + 1.7, hwA + 0.3), uHeroA.z), 0.4);
+        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 12.0 && uHeroB.y - 0.2 < hwB) sB = capHit(vW, -v, uHeroB.xyz + vec3(0.0, -0.2, 0.0), vec3(uHeroB.x, min(uHeroB.y + 1.65, hwB + 0.3), uHeroB.z), 0.36);
         float st = sA > 0.0 && (sB < 0.0 || sA < sB) ? sA : sB; if (st > 0.0 && st < 8.0) heroSee = exp(-st * 0.18) * 0.5;
         float sA2 = uHeroA.w > 0.5 && sA > 0.0 ? capHit(vW, -v, uHeroA.xyz + vec3(0.0, 0.05, 0.0), uHeroA.xyz + vec3(0.0, 1.5, 0.0), 0.32) : -1.0;
         float sB2 = uHeroB.w > 0.5 && sB > 0.0 ? capHit(vW, -v, uHeroB.xyz + vec3(0.0, 0.05, 0.0), uHeroB.xyz + vec3(0.0, 1.45, 0.0), 0.29) : -1.0;
@@ -1491,8 +1491,8 @@ const waterMat = new THREE.ShaderMaterial({
       float heroK = 0.0; vec3 heroC = vec3(0.0);
       if (!below && r.y > 0.0) {
         vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
-        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0) tA = capHit(vW, r, uHeroA.xyz + vec3(0.0, 0.25, 0.0), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34);
-        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0) tB = capHit(vW, r, uHeroB.xyz + vec3(0.0, 0.25, 0.0), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA) tA = capHit(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.25, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34);   /* only the part above the surface reflects (Shifat 5:12) */
+        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB) tB = capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.25, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
         if (tA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = 1.0; }   // Shadow's dark suit
         if (tB > 0.0 && (tA < 0.0 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = 1.0; }   // Ghost's pale suit
         refl = mix(refl, hc * mix(0.35, 1.0, uDay), hk * 0.9); heroK = hk; heroC = hc * mix(0.35, 1.0, uDay);
