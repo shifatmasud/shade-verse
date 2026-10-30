@@ -1315,13 +1315,13 @@ float wh(vec2 p, float t){
   h += sin(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42;
   h += sin(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12;
   h += sin(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035;
-  // Shifat 3:17 AM 'waves must never tile': 4 wind-wave trains at golden-angle directions (irrational ratios, so crests never re-align), deep-water
+  // Shifat 3:17/3:30 AM 'waves must never tile' (+ phase warp: crests bend, never straight parallel rows): 4 wind-wave trains at golden-angle directions (irrational ratios, so crests never re-align), deep-water
   // dispersion speeds, and each train's height modulated by its own slow envelope across the sea - the same trick AAA FFT oceans use to hide the tile.
   { float m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); h += sin(dot(p, vec2(0.1464, 0.04529)) + t * 0.6744) * 0.26 * m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); h += sin(dot(p, vec2(-0.19587, 0.0926)) + t * 0.8018) * 0.18 * m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); h += sin(dot(p, vec2(0.10942, -0.26808)) + t * 0.927) * 0.12 * m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); h += sin(dot(p, vec2(0.13366, 0.36156)) + t * 1.0695) * 0.08 * m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); h += sin(dot(p, vec2(0.1464, 0.04529)) + 1.3 * sin(dot(p, vec2(-0.00317, 0.01025)) + 0.0 * 2.3) + t * 0.6744) * 0.26 * m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); h += sin(dot(p, vec2(-0.19587, 0.0926)) + 1.3 * sin(dot(p, vec2(-0.00648, -0.01371)) + 1.7 * 2.3) + t * 0.8018) * 0.18 * m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); h += sin(dot(p, vec2(0.10942, -0.26808)) + 1.3 * sin(dot(p, vec2(0.01877, 0.00766)) + 3.4 * 2.3) + t * 0.927) * 0.12 * m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); h += sin(dot(p, vec2(0.13366, 0.36156)) + 1.3 * sin(dot(p, vec2(-0.02531, 0.00936)) + 5.1 * 2.3) + t * 1.0695) * 0.08 * m;
   }
   return h * swellK(p);
 }
@@ -1332,16 +1332,16 @@ vec2 wg(vec2 p, float t){
   g += cos(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12 * vec2(0.033, -0.023);
   g += cos(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035 * vec2(0.076, 0.054);
   { float m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); g += cos(dot(p, vec2(0.1464, 0.04529)) + t * 0.6744) * 0.26 * m * vec2(0.1464, 0.04529);
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); g += cos(dot(p, vec2(-0.19587, 0.0926)) + t * 0.8018) * 0.18 * m * vec2(-0.19587, 0.0926);
-    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); g += cos(dot(p, vec2(0.10942, -0.26808)) + t * 0.927) * 0.12 * m * vec2(0.10942, -0.26808);
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); g += cos(dot(p, vec2(0.13366, 0.36156)) + t * 1.0695) * 0.08 * m * vec2(0.13366, 0.36156);
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); g += cos(dot(p, vec2(0.1464, 0.04529)) + 1.3 * sin(dot(p, vec2(-0.00317, 0.01025)) + 0.0 * 2.3) + t * 0.6744) * 0.26 * m * vec2(0.1464, 0.04529);
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); g += cos(dot(p, vec2(-0.19587, 0.0926)) + 1.3 * sin(dot(p, vec2(-0.00648, -0.01371)) + 1.7 * 2.3) + t * 0.8018) * 0.18 * m * vec2(-0.19587, 0.0926);
+    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); g += cos(dot(p, vec2(0.10942, -0.26808)) + 1.3 * sin(dot(p, vec2(0.01877, 0.00766)) + 3.4 * 2.3) + t * 0.927) * 0.12 * m * vec2(0.10942, -0.26808);
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); g += cos(dot(p, vec2(0.13366, 0.36156)) + 1.3 * sin(dot(p, vec2(-0.02531, 0.00936)) + 5.1 * 2.3) + t * 1.0695) * 0.08 * m * vec2(0.13366, 0.36156);
   }
   return g * swellK(p);
 }`;
 function waveH(x: number, z: number, t: number) {
     const zk = Math.max(0, Math.min(1, (z + 300) / -450)), ik = Math.max(0, Math.min(1, (Math.hypot(x - ISLAND.cx, z - ISLAND.cz) - 105) / 110)), sk = (1 + 1.3 * zk * zk * (3 - 2 * zk)) * (0.22 + 0.78 * ik * ik * (3 - 2 * ik));
-    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035 + Math.sin(x * 0.1464 + z * 0.04529 + t * 0.6744) * 0.26 * (0.55 + 0.45 * Math.sin(x * -0.0018 + z * 0.00583 + 0.0 + t * 0.03))+Math.sin(x * -0.19587 + z * 0.0926 + t * 0.8018) * 0.18 * (0.55 + 0.45 * Math.sin(x * -0.00261 + z * -0.00551 + 1.7 + t * 0.03))+Math.sin(x * 0.10942 + z * -0.26808 + t * 0.927) * 0.12 * (0.55 + 0.45 * Math.sin(x * 0.00565 + z * 0.00231 + 3.4 + t * 0.03))+Math.sin(x * 0.13366 + z * 0.36156 + t * 1.0695) * 0.08 * (0.55 + 0.45 * Math.sin(x * -0.00572 + z * 0.00212 + 5.1 + t * 0.03)));
+    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035 + Math.sin(x * 0.1464 + z * 0.04529 + 1.3 * Math.sin(x * -0.00317 + z * 0.01025 + 0.0 * 2.3) + t * 0.6744) * 0.26 * (0.55 + 0.45 * Math.sin(x * -0.0018 + z * 0.00583 + 0.0 + t * 0.03))+Math.sin(x * -0.19587 + z * 0.0926 + 1.3 * Math.sin(x * -0.00648 + z * -0.01371 + 1.7 * 2.3) + t * 0.8018) * 0.18 * (0.55 + 0.45 * Math.sin(x * -0.00261 + z * -0.00551 + 1.7 + t * 0.03))+Math.sin(x * 0.10942 + z * -0.26808 + 1.3 * Math.sin(x * 0.01877 + z * 0.00766 + 3.4 * 2.3) + t * 0.927) * 0.12 * (0.55 + 0.45 * Math.sin(x * 0.00565 + z * 0.00231 + 3.4 + t * 0.03))+Math.sin(x * 0.13366 + z * 0.36156 + 1.3 * Math.sin(x * -0.02531 + z * 0.00936 + 5.1 * 2.3) + t * 1.0695) * 0.08 * (0.55 + 0.45 * Math.sin(x * -0.00572 + z * 0.00212 + 5.1 + t * 0.03)));
 }
 function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
 function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }
@@ -1379,7 +1379,7 @@ const waterMat = new THREE.ShaderMaterial({
     vec2 bedUV(vec2 xz){ return (xz - uBedC.xy) / (2.0 * uBedC.z) + 0.5; }
     // open-sea bed = the sim's seabedAt profile (shelf -> slope -> trench + dunes); the baked island map blends into it at its edges (no square seam)
     float seaBed(vec2 xz){ float d = -222.0 - xz.y; float y = -10.0 - 16.0 * smoothstep(110.0, 300.0, d) - 24.0 * smoothstep(420.0, 600.0, d) + 22.0 * smoothstep(760.0, 930.0, d);
-      return y + sin(xz.x * 0.045 + xz.y * 0.021) * 1.4 * smoothstep(30.0, 120.0, d) + sin(xz.x * 0.013 - xz.y * 0.032) * 2.2 * smoothstep(200.0, 400.0, d); }
+      return y + (sin(xz.x * 0.0173 + sin(xz.y * 0.0091) * 2.3) * sin(xz.y * 0.0137 + sin(xz.x * 0.0071) * 1.9)) * 1.6 * smoothstep(30.0, 200.0, d); }   /* warped, incommensurate: no repeating dune blotches */
     float bedEdge(vec2 xz){ vec2 q = bedUV(xz); return smoothstep(0.0, 0.12, min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y))); }
     float bedY(vec2 xz){ float e = bedEdge(xz); return mix(seaBed(xz), texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0, e); }
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
@@ -1392,7 +1392,12 @@ const waterMat = new THREE.ShaderMaterial({
       // map drifting in different directions; mipmaps + a distance fade stop far-field shimmer. Above the surface only.
       float wDist = length(cameraPosition - vW);
       if (gl_FrontFacing) { vec2 wq = vW.xz + 9.0 * vec2(sin(vW.z * 0.013 + uTime * 0.02), cos(vW.x * 0.011 - uTime * 0.017));   /* slow domain warp: the ripple tile never lines up into a grid */
-        vec2 d1 = texture2D(uNrm, wq * 0.045 + vec2(0.011, 0.006) * uTime).rg * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) d2 = texture2D(uNrm, mat2(0.743, -0.669, 0.669, 0.743) * wq * 0.1237 - vec2(0.008, -0.012) * uTime).rg * 2.0 - 1.0;   /* phones: one layer */
+        // texture bombing (Quilez 'texture no-tile' v3): a low-frequency variation value picks which randomly offset copy of the ripple map each patch
+        // uses and blends neighbours, so the 22 m tile never shows as a repeat
+        float kk = texture2D(uCaus, wq * 0.0031 + 0.37).r * 0.6 + 0.4 * (0.5 + 0.5 * sin(wq.x * 0.0071 + sin(wq.y * 0.0053) * 2.0));
+        float lv = kk * 8.0, fv = fract(lv), ia = floor(lv); vec2 uv1 = wq * 0.045 + vec2(0.011, 0.006) * uTime;
+        vec2 ca = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * ia)).rg, cb = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * (ia + 1.0))).rg;
+        vec2 d1 = mix(ca, cb, smoothstep(0.2, 0.8, fv - 0.1 * (ca.x - cb.x + ca.y - cb.y))) * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) d2 = texture2D(uNrm, mat2(0.743, -0.669, 0.669, 0.743) * wq * 0.1237 - vec2(0.008, -0.012) * uTime).rg * 2.0 - 1.0;   /* phones: one layer */
         g += (d1 * 0.11 + d2 * 0.06) * mix(1.0, 0.12, smoothstep(30.0, 220.0, wDist)); }   /* far away the waves carry the shape; a tiled ripple there would read as a pattern */
       vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
       vec3 v = normalize(cameraPosition - vW);
@@ -1414,7 +1419,7 @@ const waterMat = new THREE.ShaderMaterial({
         float sy = -td.y; sy = max(sy, 0.08); float t0 = max(vW.y - bedY(vW.xz), 0.0) / sy, t1 = t0;
         t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = mix(t0, t1, 0.85);
         vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, bedUV(hx)); float be = bedEdge(hx), byh = bedY(hx); float dep = max(vW.y - byh, 0.0);
-        float nn1 = sin(hx.x * 0.21 + hx.y * 0.13) * sin(hx.x * 0.07 - hx.y * 0.17); bs.g = mix(clamp((byh + 16.0 + nn1 * 4.0) / 9.0, 0.0, 1.0), bs.g, be); bs.b = mix(0.5 + 0.5 * nn1, bs.b, be);
+        float nn1 = 0.5 * sin(hx.x * 0.031 + sin(hx.y * 0.019) * 2.1) * sin(hx.y * 0.027 + sin(hx.x * 0.023) * 1.7); bs.g = mix(clamp((byh + 16.0 + nn1 * 4.0) / 9.0, 0.0, 1.0), bs.g, be); bs.b = mix(0.5 + 0.5 * nn1, bs.b, be);
         // bed albedo: white tropical sand shallow, darker rock / weed deeper, with soft ripple marks
         vec3 alb = mix(vec3(0.30, 0.34, 0.26), vec3(0.93, 0.87, 0.70), bs.g) * (0.86 + 0.14 * bs.b) * (0.93 + 0.07 * sin(hx.x * 1.7 + sin(hx.y * 0.9) * 2.0));
         // caustics: the wavy surface focuses sunlight into moving bright webs on the bed (two scrolling cell layers, min = sharp lines)
