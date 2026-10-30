@@ -1665,7 +1665,7 @@ function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<
         if (!st.tagged || st.n % 300 === 0) {   // (re)tag big opaque shapes - island, city blocks, bridges, harbor - plus lights (three culls lights by layer too)
             const sp = new THREE.Sphere(); let nT = 0;
             scene.traverse((o: any) => { if (o.isLight) { o.layers.enable(REFL_LAYER); return; } if (!o.isMesh || o.isPoints || o.isSkinnedMesh || o.layers.isEnabled(REFL_LAYER)) return;
-                const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || (o.isInstancedMesh && o.count > 3000))) return;   /* custom-shader city/blocks included; water, sky, fx excluded */
+                const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || (o.isInstancedMesh && o.count > 3000)) return;   /* custom-shader city/blocks included; water, sky, fx excluded */
                 const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); sp.copy(g.boundingSphere!).applyMatrix4(o.matrixWorld); if (!o.isInstancedMesh && (sp.radius < 3.5 || sp.radius > 3000 || sp.center.y + sp.radius < WATER_Y + 0.5)) return; o.layers.enable(REFL_LAYER); nT++; });
             if (DBG) (window as any).__reflTagged = ((window as any).__reflTagged || 0) + nT;
             st.tagged = true;
