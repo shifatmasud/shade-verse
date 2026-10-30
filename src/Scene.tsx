@@ -29,7 +29,8 @@ import { OCC } from './occlude';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SouthSea, CITY_LOD } from './SouthSea';
-import { ISLAND, islandH } from './seaWorld';
+import { ISLAND, islandH } from './seaWorld'
+import { CAUSTIC_TEX, CAUSTIC_GLSL } from './caustics';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -1351,9 +1352,10 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, uCaus: { value: CAUSTIC_TEX }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
+    ${CAUSTIC_GLSL}
     uniform sampler2D tScene; uniform sampler2D tDepth; uniform sampler2D uBed; uniform vec3 uBedC; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
     vec2 bedUV(vec2 xz){ return (xz - uBedC.xy) / (2.0 * uBedC.z) + 0.5; }
     float bedY(vec2 xz){ return texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0; }
@@ -1386,11 +1388,9 @@ const waterMat = new THREE.ShaderMaterial({
         // bed albedo: white tropical sand shallow, darker rock / weed deeper, with soft ripple marks
         vec3 alb = mix(vec3(0.30, 0.34, 0.26), vec3(0.93, 0.87, 0.70), bs.g) * (0.86 + 0.14 * bs.b) * (0.93 + 0.07 * sin(hx.x * 1.7 + sin(hx.y * 0.9) * 2.0));
         // caustics: the wavy surface focuses sunlight into moving bright webs on the bed (two scrolling cell layers, min = sharp lines)
-        vec2 cq = hx * 1.05; float c1 = abs(sin(cq.x + sin(cq.y * 1.3 + uTime * 0.9) * 1.1 + uTime * 0.5) * sin(cq.y * 0.9 + sin(cq.x * 1.1 - uTime * 0.7) * 1.2));
-        vec2 cr = hx * 1.55 + 3.7; float c2 = abs(sin(cr.x * 1.1 - sin(cr.y + uTime * 1.1) * 1.3 - uTime * 0.4) * sin(cr.y - sin(cr.x * 1.2 + uTime * 0.8) * 1.0));
-        float caus = pow(1.0 - min(c1, c2), 9.0) * exp(-dep * 0.12) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW)));   // faded with distance (no shimmer/aliasing far away)
+        vec3 causC = causRGB(hx * 0.5, uTime * 0.8) * 2.6 * exp(-dep * 0.10) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW)));   // real caustic network (faded with depth / distance)
         float sunK = mix(0.25, 1.0, uDay) * (0.75 + 0.25 * max(uSun.y, 0.0));
-        vec3 bedL = alb * sunK * (1.0 + caus * 1.1);
+        vec3 bedL = alb * sunK * (0.82 + causC);
         // Beer-Lambert along the real path: down to the bed along the sunlight (~depth) and back up along the refracted view ray (t1); red dies first
         vec3 Tb = exp(-vec3(0.17, 0.040, 0.026) * (t1 + dep * 0.6));
         vec3 scat = mix(vec3(0.06, 0.52, 0.58), uDeep * 0.85, smoothstep(4.0, 24.0, dep)) * mix(0.25, 1.0, uDay);

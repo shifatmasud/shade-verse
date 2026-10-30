@@ -9,6 +9,7 @@ import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, 
 import { buildings } from './sim';
 import { QUALITY, QK, LOWQ } from './quality';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
+import { CAUSTIC_TEX, CAUSTIC_GLSL } from './caustics';
 
 export interface SouthSeaKit {
     tod: { fog: THREE.Color; sky: THREE.Color; sun: THREE.Vector3; day: { value: number } };
@@ -204,9 +205,10 @@ function riverGeo() {
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
 const RIVER_MAT = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') } },
+    transparent: true, depthWrite: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX } },
     vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-    fragmentShader: `varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky;
+    fragmentShader: `${CAUSTIC_GLSL}
+    varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky;
     float n2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
     float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(n2(i), n2(i + vec2(1, 0)), f.x), mix(n2(i + vec2(0, 1)), n2(i + vec2(1, 1)), f.x), f.y); }
     void main(){ float sp = 1.6 + vSl * 40.0; vec2 f = vec2(vUv.x * 4.0, vUv.y * 0.55 - uT * sp);
@@ -224,10 +226,9 @@ const RIVER_MAT = new THREE.ShaderMaterial({
         float t1 = dep / sy; vec2 hx = vW.xz + td.xz * t1;
         float peb = vn(hx * 2.3) * 0.6 + vn(hx * 6.1 + 2.0) * 0.4;
         vec3 alb = mix(vec3(0.42, 0.40, 0.32), vec3(0.86, 0.80, 0.64), smoothstep(2.5, 0.3, dep)) * (0.75 + 0.35 * peb);
-        vec2 cq = hx * 1.7; float c1 = abs(sin(cq.x + sin(cq.y * 1.3 + uT * 1.6) * 1.2 + uT * 0.9) * sin(cq.y * 0.9 + sin(cq.x * 1.1 - uT * 1.3) * 1.3));
-        float cs = pow(1.0 - c1, 8.0) * exp(-dep * 0.2) * uDay * (1.0 - smoothstep(20.0, 60.0, length(cameraPosition - vW)));
+        vec3 cs = causRGB(hx, uT * 1.8) * 1.9 * exp(-dep * 0.2) * uDay * (1.0 - smoothstep(20.0, 60.0, length(cameraPosition - vW)));   // faster drift: moving water
         vec3 Tb = exp(-vec3(0.19, 0.045, 0.035) * (t1 + dep * 0.5));
-        vec3 seen = alb * (1.0 + cs * 0.7) * Tb + vec3(0.06, 0.45, 0.47) * (1.0 - Tb);
+        vec3 seen = alb * (0.82 + cs) * Tb + vec3(0.06, 0.45, 0.47) * (1.0 - Tb);
         body = mix(body, seen, 0.95);
       }
       white *= 1.0 - 0.95 * vCalm; body = mix(body, vec3(0.16, 0.62, 0.66), vCalm);   /* mouth: foam dies down and the colour turns to the shallow sea's, so river and ocean read as one surface */
@@ -279,9 +280,10 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
     const bedTex = new THREE.DataTexture(bd, BN, BN, THREE.RGBAFormat); bedTex.magFilter = bedTex.minFilter = THREE.LinearFilter; bedTex.wrapS = bedTex.wrapT = THREE.ClampToEdgeWrapping; bedTex.needsUpdate = true;
     return new THREE.ShaderMaterial({
         transparent: true, depthWrite: true, side: THREE.DoubleSide,
-        uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) } },
+        uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) } },
         vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
         fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3]; uniform sampler2D uBed; uniform vec4 uBB;
+        ${CAUSTIC_GLSL}
         float bedD(vec2 xz){ return texture2D(uBed, (xz - uBB.xy) / (2.0 * uBB.z) + 0.5).r * 12.0 - 1.0; }   // depth of the floor below the surface
         void main(){ float rr = length(vW.xz - uC) / uR; if (rr > 1.0) discard;
           float og = 0.0; for (int i = 0; i < 3; i++) og = max(og, 1.0 - smoothstep(uOut[i].z * 0.5, uOut[i].z * 1.3, length(vW.xz - uOut[i].xy)));
@@ -298,12 +300,10 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
             float t1 = max(bedD(vW.xz), 0.0) / sy; t1 = max(bedD(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(bedD(vW.xz + td.xz * t1), 0.0) / sy;
             vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, (hx - uBB.xy) / (2.0 * uBB.z) + 0.5); float dep = max(bs.r * 12.0 - 1.0, 0.0);
             vec3 alb = mix(vec3(0.55, 0.52, 0.40), vec3(0.92, 0.86, 0.70), smoothstep(5.5, 0.5, dep)) * (0.85 + 0.15 * bs.g);
-            vec2 cq = hx * 1.6; float c1 = abs(sin(cq.x + sin(cq.y * 1.3 + uT * 1.1) * 1.2 + uT * 0.6) * sin(cq.y * 0.9 + sin(cq.x * 1.1 - uT * 0.9) * 1.3));
-            vec2 cr = hx * 2.3 + 1.9; float c2 = abs(sin(cr.x * 1.1 - sin(cr.y + uT * 1.3) * 1.3 - uT * 0.5) * sin(cr.y - sin(cr.x * 1.2 + uT) * 1.1));
-            float cs = pow(1.0 - min(c1, c2), 9.0) * exp(-dep * 0.15) * uDay * (1.0 - smoothstep(20.0, 70.0, length(cameraPosition - vW)));
+            vec3 cs = causRGB(hx, uT) * 1.9 * exp(-dep * 0.15) * uDay * (1.0 - smoothstep(20.0, 70.0, length(cameraPosition - vW)));
             vec3 Tb = exp(-vec3(0.24, 0.055, 0.040) * (t1 + dep * 0.6));
             vec3 scat = mix(vec3(0.10, 0.55, 0.56), vec3(0.03, 0.36, 0.44), smoothstep(1.0, 7.0, dep));
-            vec3 seen = alb * (1.0 + cs * 0.6) * Tb + scat * (1.0 - Tb);
+            vec3 seen = alb * (0.82 + cs) * Tb + scat * (1.0 - Tb);
             traced = 1.0 - og * 0.6; body = mix(body, seen, traced); caus *= 1.0 - traced;
           }
           vec3 r = reflect(-v, n); float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay;
