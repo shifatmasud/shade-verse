@@ -1595,6 +1595,9 @@ const waterMat = new THREE.ShaderMaterial({
       // angles where Fresnel reflection takes over), so fish, the swimmer and the real seabed show through everywhere close by, not only in a window.
       float dCam = length(cameraPosition - vW); float nearK = (1.0 - smoothstep(12.0, 32.0, dCam)) * (1.0 - fr) * step(-222.0, -vW.z) * (1.0 - step(below ? 1.0 : 0.0, 0.5) * 0.0);
       float aAbove = mix(nearClear, 0.3, heroSee * (1.0 - fr * 0.5)); aAbove = min(aAbove, mix(1.0, 0.5, nearK));
+      // soft shorelines (AAA depth fade): where the sea is only a few cm deep over terrain - inlets, coarse terrain edges - it thins to nothing
+      // instead of ending in a hard polygon edge; uses the depth of the scene copy the refraction already makes (no extra pass)
+      if (uUseScene > 0.5 && !below) { vec2 suvF = vScreen.xy / vScreen.w * 0.5 + 0.5; float thk = max(vView.z - oceanZ(suvF), 0.0); aAbove *= smoothstep(0.0, 0.9, thk); col = mix(vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), col, smoothstep(0.05, 0.6, thk) * 0.6 + 0.4); }
       gl_FragColor = vec4(col, below ? aOut : aAbove);
     }`,
 });
