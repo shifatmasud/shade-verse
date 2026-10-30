@@ -504,7 +504,7 @@ void main(){
   for(int i=0;i<16;i++){if(float(i)>=uSteps)break;float k=(float(i)+1.0)/uSteps;float t=90.0*k*k;vec3 Q=vView+Rv*t;vec4 c=uProj*vec4(Q,1.0);if(c.w<=0.0)break;vec2 uv=c.xy/c.w*0.5+0.5;
    if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0)break;float sz=sceneZ(uv);if(Q.z<sz&&Q.z>sz-(t-tp)*1.2-0.6&&sz>-uFar*0.98){
     if(uSteps>12.0){float a0=tp,a1=t;for(int j=0;j<4;j++){float m=0.5*(a0+a1);vec3 M=vView+Rv*m;vec4 cm=uProj*vec4(M,1.0);vec2 um=cm.xy/cm.w*0.5+0.5;if(M.z<sceneZ(um)){a1=m;uv=um;}else a0=m;}}
-    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);refl=mix(refl,texture2D(tScene,uv).rgb,e);reflDist=t;break;}
+    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);vec2 bo=vec2(0.0035,0.0045)*(1.0+0.6*clamp(t/40.0,0.0,1.0));vec3 rs=(texture2D(tScene,uv).rgb*2.0+texture2D(tScene,uv+vec2(bo.x,0.0)).rgb+texture2D(tScene,uv-vec2(bo.x,0.0)).rgb+texture2D(tScene,uv+vec2(0.0,bo.y)).rgb+texture2D(tScene,uv-vec2(0.0,bo.y)).rgb)/6.0;/* soft 5-tap: the low-res scene copy no longer reads as pixel blocks, and blurs more for far objects like real ripple-roughened water */refl=mix(refl,rs,e);reflDist=t;break;}
    tp=t;}}
  vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0)&&(vWorld+R*ht).y>vWorld.y)refl=heroCol(hn);/* Shifat 5:12: only the part above the surface reflects */
  // refraction / transmission
