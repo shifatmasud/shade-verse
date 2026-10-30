@@ -1322,6 +1322,12 @@ float wh(vec2 p, float t){
     m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); h += sin(dot(p, vec2(-0.19587, 0.0926)) + 1.3 * sin(dot(p, vec2(-0.00648, -0.01371)) + 1.7 * 2.3) + t * 0.8018) * 0.18 * m;
     m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); h += sin(dot(p, vec2(0.10942, -0.26808)) + 1.3 * sin(dot(p, vec2(0.01877, 0.00766)) + 3.4 * 2.3) + t * 0.927) * 0.12 * m;
     m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); h += sin(dot(p, vec2(0.13366, 0.36156)) + 1.3 * sin(dot(p, vec2(-0.02531, 0.00936)) + 5.1 * 2.3) + t * 1.0695) * 0.08 * m;
+    /* 5 short chop trains (12-3 m, golden-angle, warped, own envelopes): visual only, too small to matter to the swim physics */
+    m = 0.5 + 0.5 * sin(dot(p, vec2(0.0038, -0.00738)) + 6.8 + t * 0.04); h += sin(dot(p, vec2(-0.45426, -0.23365)) + 1.1 * sin(dot(p, vec2(0.01168, -0.02271)) + 6.8) + t * 1.2312) * 0.05 * m;
+    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00219, 0.00801)) + 8.5 + t * 0.04); h += sin(dot(p, vec2(0.6967, -0.19024)) + 1.1 * sin(dot(p, vec2(0.00951, 0.03483)) + 8.5) + t * 1.464) * 0.032 * m;
+    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00702, -0.00443)) + 10.2 + t * 0.04); h += sin(dot(p, vec2(-0.54941, 0.87127)) + 1.1 * sin(dot(p, vec2(-0.04356, -0.02747)) + 10.2) + t * 1.7483) * 0.02 * m;
+    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00817, -0.00148)) + 11.9 + t * 0.04); h += sin(dot(p, vec2(-0.25427, -1.40518)) + 1.1 * sin(dot(p, vec2(0.07026, -0.01271)) + 11.9) + t * 2.0585) * 0.013 * m;
+    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00502, 0.00661)) + 13.6 + t * 0.04); h += sin(dot(p, vec2(1.51557, 1.1525)) + 1.1 * sin(dot(p, vec2(-0.05763, 0.07578)) + 13.6) + t * 2.377) * 0.009 * m;
   }
   return h * swellK(p);
 }
@@ -1336,6 +1342,11 @@ vec2 wg(vec2 p, float t){
     m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); g += cos(dot(p, vec2(-0.19587, 0.0926)) + 1.3 * sin(dot(p, vec2(-0.00648, -0.01371)) + 1.7 * 2.3) + t * 0.8018) * 0.18 * m * vec2(-0.19587, 0.0926);
     m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); g += cos(dot(p, vec2(0.10942, -0.26808)) + 1.3 * sin(dot(p, vec2(0.01877, 0.00766)) + 3.4 * 2.3) + t * 0.927) * 0.12 * m * vec2(0.10942, -0.26808);
     m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); g += cos(dot(p, vec2(0.13366, 0.36156)) + 1.3 * sin(dot(p, vec2(-0.02531, 0.00936)) + 5.1 * 2.3) + t * 1.0695) * 0.08 * m * vec2(0.13366, 0.36156);
+    m = 0.5 + 0.5 * sin(dot(p, vec2(0.0038, -0.00738)) + 6.8 + t * 0.04); g += cos(dot(p, vec2(-0.45426, -0.23365)) + 1.1 * sin(dot(p, vec2(0.01168, -0.02271)) + 6.8) + t * 1.2312) * 0.05 * m * vec2(-0.45426, -0.23365);
+    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00219, 0.00801)) + 8.5 + t * 0.04); g += cos(dot(p, vec2(0.6967, -0.19024)) + 1.1 * sin(dot(p, vec2(0.00951, 0.03483)) + 8.5) + t * 1.464) * 0.032 * m * vec2(0.6967, -0.19024);
+    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00702, -0.00443)) + 10.2 + t * 0.04); g += cos(dot(p, vec2(-0.54941, 0.87127)) + 1.1 * sin(dot(p, vec2(-0.04356, -0.02747)) + 10.2) + t * 1.7483) * 0.02 * m * vec2(-0.54941, 0.87127);
+    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00817, -0.00148)) + 11.9 + t * 0.04); g += cos(dot(p, vec2(-0.25427, -1.40518)) + 1.1 * sin(dot(p, vec2(0.07026, -0.01271)) + 11.9) + t * 2.0585) * 0.013 * m * vec2(-0.25427, -1.40518);
+    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00502, 0.00661)) + 13.6 + t * 0.04); g += cos(dot(p, vec2(1.51557, 1.1525)) + 1.1 * sin(dot(p, vec2(-0.05763, 0.07578)) + 13.6) + t * 2.377) * 0.009 * m * vec2(1.51557, 1.1525);
   }
   return g * swellK(p);
 }`;
@@ -1397,7 +1408,8 @@ const waterMat = new THREE.ShaderMaterial({
         float kk = texture2D(uCaus, wq * 0.0031 + 0.37).r * 0.6 + 0.4 * (0.5 + 0.5 * sin(wq.x * 0.0071 + sin(wq.y * 0.0053) * 2.0));
         float lv = kk * 8.0, fv = fract(lv), ia = floor(lv); vec2 uv1 = wq * 0.045 + vec2(0.011, 0.006) * uTime;
         vec2 ca = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * ia)).rg, cb = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * (ia + 1.0))).rg;
-        vec2 d1 = mix(ca, cb, smoothstep(0.2, 0.8, fv - 0.1 * (ca.x - cb.x + ca.y - cb.y))) * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) d2 = texture2D(uNrm, mat2(0.743, -0.669, 0.669, 0.743) * wq * 0.1237 - vec2(0.008, -0.012) * uTime).rg * 2.0 - 1.0;   /* phones: one layer */
+        vec2 d1 = mix(ca, cb, smoothstep(0.2, 0.8, fv - 0.1 * (ca.x - cb.x + ca.y - cb.y))) * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) { vec2 uv2b = mat2(0.743, -0.669, 0.669, 0.743) * wq * 0.1237 - vec2(0.008, -0.012) * uTime; float l2v = kk * 5.0 + 0.5, f2v = fract(l2v), i2v = floor(l2v);
+          vec2 ea = texture2D(uNrm, uv2b + sin(vec2(5.0, 2.0) * i2v)).rg, eb = texture2D(uNrm, uv2b + sin(vec2(5.0, 2.0) * (i2v + 1.0))).rg; d2 = mix(ea, eb, smoothstep(0.2, 0.8, f2v)) * 2.0 - 1.0; }   /* phones: one layer */
         g += (d1 * 0.11 + d2 * 0.06) * mix(1.0, 0.12, smoothstep(30.0, 220.0, wDist)); }   /* far away the waves carry the shape; a tiled ripple there would read as a pattern */
       vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
       vec3 v = normalize(cameraPosition - vW);
@@ -1439,7 +1451,7 @@ const waterMat = new THREE.ShaderMaterial({
         vec2 suv = vScreen.xy / vScreen.w * 0.5 + 0.5; float wz = vView.z;
         // screen-space reflection: march the reflected ray through the low-res scene copy (palms, buildings, hero, boats show in the sea)
         vec3 Rv = normalize((viewMatrix * vec4(r, 0.0)).xyz); float tp = 0.0;
-        for (int i = 0; i < 16; i++) { if (float(i) >= uSteps) break; float k = (float(i) + 1.0) / uSteps; float tt = 140.0 * k * k; vec3 Q = vView + Rv * tt; vec4 c = uProj * vec4(Q, 1.0); if (c.w <= 0.0) break; vec2 uv = c.xy / c.w * 0.5 + 0.5;
+        for (int i = 0; i < 16; i++) { if (float(i) >= uSteps || uUseRefl > 0.5) break; float k = (float(i) + 1.0) / uSteps; float tt = 140.0 * k * k; vec3 Q = vView + Rv * tt; vec4 c = uProj * vec4(Q, 1.0); if (c.w <= 0.0) break; vec2 uv = c.xy / c.w * 0.5 + 0.5;
           if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break; float sz = oceanZ(uv);
           if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); refl = mix(refl, sceneCol(uv), e * 0.92); break; }
           tp = tt; }
@@ -1449,7 +1461,7 @@ const waterMat = new THREE.ShaderMaterial({
         float th = clamp(wz - sz2, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
         body = sceneCol(uv2) * Tr + body * (1.0 - Tr);
       }
-      if (uUseRefl > 0.5 && uUseScene < 0.5 && !below) {   // mirrored island shapes, rippled by the surface normal (more distortion with distance to the plane)
+      if (uUseRefl > 0.5 && !below) {   // mirrored island / city / bridge shapes, rippled by the surface normal (more distortion with distance to the plane)
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
         vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92);
       }
@@ -1635,19 +1647,24 @@ function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
         rot: new THREE.Matrix4(), cp: new THREE.Vector3(), la: new THREE.Vector3(), tg: new THREE.Vector3(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
-        bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1), col: new THREE.Color() }), []);
+        bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1), col: new THREE.Color(), pv: new THREE.Matrix4(), fr: new THREE.Frustum() }), []);
     useEffect(() => () => st.rt.dispose(), [st]);
     useFrame(() => {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
         HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost);   // analytic hero reflections (everywhere on the sea)
         const d = Math.hypot(cam.position.x - ISLAND.cx, cam.position.z - ISLAND.cz);
-        const ok = !!w && u.uUseScene.value < 0.5 && d < 520 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 90 && !(UW as any).on;
+        // Shifat 3:39 AM "cities & bridges must reflect on water too": the mirror pass now runs near the island, along the city shore, and around the
+        // east bridge / harbor; it replaces the screen-space march there (which could never show what is off-screen, like the tops of towers).
+        const zone = d < 520 || cam.position.z > WATER_Z - 320 || (cam.position.x > -40 && cam.position.z < -760);
+        st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
+        const ok = !!w && zone && cam.position.z < WATER_Z + 40 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 110 && !(UW as any).on && st.fr.intersectsBox(_oceanBox);   /* only when the sea is actually in view */
         if (!ok) { u.uUseRefl.value = 0; return; }
-        if (!st.tagged) {   // tag the island's opaque shapes (and the lights, which three culls by layer too) for the reflection pass
-            const isl = scene.getObjectByName('south-sea-island');
-            if (!isl) return;
-            isl.traverse((o: any) => { if (!o.isMesh || o.isPoints) return; const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || (o.isInstancedMesh && o.count > 3000) || m.isShaderMaterial || m.isMeshBasicMaterial) return; o.layers.enable(REFL_LAYER); });
-            scene.traverse((o: any) => { if (o.isLight) o.layers.enable(REFL_LAYER); });
+        if (!st.tagged || st.n % 300 === 0) {   // (re)tag big opaque shapes - island, city blocks, bridges, harbor - plus lights (three culls lights by layer too)
+            const sp = new THREE.Sphere(); let nT = 0;
+            scene.traverse((o: any) => { if (o.isLight) { o.layers.enable(REFL_LAYER); return; } if (!o.isMesh || o.isPoints || o.isSkinnedMesh || o.layers.isEnabled(REFL_LAYER)) return;
+                const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || (o.isInstancedMesh && o.count > 3000)) return;   /* custom-shader city/blocks included; water, sky, fx excluded */
+                const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); sp.copy(g.boundingSphere!).applyMatrix4(o.matrixWorld); if (!o.isInstancedMesh && (sp.radius < 3.5 || sp.radius > 3000 || sp.center.y + sp.radius < WATER_Y + 0.5)) return; o.layers.enable(REFL_LAYER); nT++; });
+            if (DBG) (window as any).__reflTagged = ((window as any).__reflTagged || 0) + nT;
             st.tagged = true;
         }
         st.n++;
@@ -1661,7 +1678,7 @@ function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<
             const vc = st.cam; vc.position.set(st.cp.x, 2 * WATER_Y - st.cp.y, st.cp.z);
             st.tg.set(st.la.x, 2 * WATER_Y - st.la.y, st.la.z);
             vc.up.set(0, 1, 0).applyMatrix4(st.rot); vc.up.y = -vc.up.y; vc.lookAt(st.tg);
-            vc.fov = cam.fov; vc.aspect = cam.aspect; vc.near = cam.near; vc.far = Math.min(cam.far, 900); vc.updateProjectionMatrix(); vc.updateMatrixWorld();
+            vc.fov = cam.fov; vc.aspect = cam.aspect; vc.near = cam.near; vc.far = Math.min(cam.far, PHONE_REFL ? 450 : 700); vc.updateProjectionMatrix(); vc.updateMatrixWorld();
             vc.layers.set(REFL_LAYER);
             const prev = gl.getRenderTarget(), ac = gl.autoClear, sh = gl.shadowMap.autoUpdate, cp = gl.clippingPlanes, cc = gl.getClearAlpha(); gl.getClearColor(st.col);
             try { gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.clippingPlanes = [st.plane]; gl.setClearColor(st.col, 0); gl.setRenderTarget(st.rt); gl.clear(true, true, true); gl.render(scene, vc); }
