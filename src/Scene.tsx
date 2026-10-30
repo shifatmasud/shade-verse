@@ -812,6 +812,9 @@ function carGeo() {
     return mergeGeometries(parts, false)!;
 }
 // South Sea 4 phone safety: out at the island / Neon Harbor the full city is hidden; SouthSea draws it as plain hazy boxes instead.
+// Small city props (benches, lamps, rooftop clutter: a few metres each) drawn as city-wide instanced batches that frustum culling can never skip.
+// Once the camera is >340 m out to sea they are under ~2 px on every device and inside the haze, so the whole batch is skipped there.
+function FarPropGate({ children }: { children: React.ReactNode }) { const ref = useRef<THREE.Group>(null!); useFrame(({ camera }) => { if (ref.current) ref.current.visible = camera.position.z > WATER_Z - 340; }); return <group ref={ref}>{children}</group>; }
 function CityGate({ children }: { children: React.ReactNode }) { const ref = useRef<THREE.Group>(null!); useFrame(() => { if (ref.current) ref.current.visible = !CITY_LOD.far; }); return <group ref={ref}>{children}</group>; }
 function FlyingCars({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.InstancedMesh>(null!);
@@ -1355,8 +1358,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <ParkGround />
         <React.Suspense fallback={null}>
             <PolyforkBuildings />
-            <RoofProps />
-            <StreetProps tod={TOD} />
+            <FarPropGate><RoofProps />
+            <StreetProps tod={TOD} /></FarPropGate>
             <PolyforkLakeBridge sim={sim} perf={perf} tod={TOD} />
         </React.Suspense></CityGate>
         <FlyingCars sim={sim} />
