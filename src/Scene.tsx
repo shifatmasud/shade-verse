@@ -1511,7 +1511,9 @@ const waterMat = new THREE.ShaderMaterial({
           float bow = exp(-pow(length(vec2(l * 0.8, s - 6.0)) - 2.8, 2.0) * 1.5) * smoothstep(2.0, 6.5, s);
           wk = max(wk, (exp(-arm * arm / aw) * 0.9 + trail * 0.75) * fade + bow * 0.7); }
         if (wk > 0.01) { float lace = texture2D(uCaus, vW.xz * 0.23 + vec2(uTime * 0.01, 0.0)).r + 0.5 * texture2D(uCaus, vW.xz * 0.61).g;
-          col = mix(col, vec3(0.95, 0.98, 1.0) * mix(0.35, 1.0, uDay), clamp(wk * smoothstep(0.25, 0.85, lace * 0.8 + wk * 0.35), 0.0, 1.0) * 0.85); }
+          col = mix(col, vec3(0.95, 0.98, 1.0) * mix(0.35, 1.0, uDay), clamp(wk * smoothstep(0.25, 0.85, lace * 0.8 + wk * 0.35), 0.0, 1.0) * 0.85);
+          n = normalize(n + vec3(lace - 0.75, 0.0, texture2D(uCaus, vW.xz * 0.37 + 0.3).b - 0.5) * min(wk, 1.0) * 0.9);   /* churned wake water: the bent normal breaks the sun glitter into scattered sparkles along the arms and trail */
+          col *= 1.0 - 0.18 * exp(-pow(abs(wk - 0.25) * 4.0, 2.0)); }   /* faint troughs just outside the foam give the wake relief */
       }
       col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.9);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
