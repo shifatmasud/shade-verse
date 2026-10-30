@@ -9,7 +9,7 @@ import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, 
 import { buildings } from './sim';
 import { QUALITY, QK, LOWQ } from './quality';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
-import { CAUSTIC_TEX, CAUSTIC_GLSL } from './caustics';
+import { CAUSTIC_TEX, CAUSTIC_GLSL, HERO_REFL } from './caustics';
 
 export interface SouthSeaKit {
     tod: { fog: THREE.Color; sky: THREE.Color; sun: THREE.Vector3; day: { value: number } };
@@ -290,10 +290,17 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
     const bedTex = new THREE.DataTexture(bd, BN, BN, THREE.RGBAFormat); bedTex.magFilter = bedTex.minFilter = THREE.LinearFilter; bedTex.wrapS = bedTex.wrapT = THREE.ClampToEdgeWrapping; bedTex.needsUpdate = true;
     return new THREE.ShaderMaterial({
         transparent: true, depthWrite: true, side: THREE.DoubleSide,
-        uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) } },
+        uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost }, uHeroDA: { value: HERO_REFL.shadowDir } },
         vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-        fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3]; uniform sampler2D uBed; uniform vec4 uBB;
+        fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3]; uniform sampler2D uBed; uniform vec4 uBB; uniform vec4 uHeroA, uHeroB, uHeroDA;
         ${CAUSTIC_GLSL}
+        float capHitP(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
+          float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0 || baba < 1e-4) return -1.0;
+          float t = (-b - sqrt(h)) / a, y = baoa + t * bard; if (y > 0.0 && y < baba) return t;
+          vec3 oc = y <= 0.0 ? oa : ro - pb; b = dot(rd, oc); c = dot(oc, oc) - ra * ra; h = b * b - c; return h > 0.0 ? -b - sqrt(h) : -1.0; }
+        /* Shadow swimming lies flat along his facing (same as the sea); otherwise upright */
+        float heroA(vec3 ro, vec3 rd, float y0, float y1){ if (uHeroDA.w > 0.5) { vec3 c = vec3(uHeroA.x, uHeroA.y - 0.05, uHeroA.z), d = vec3(uHeroDA.x, 0.0, uHeroDA.z) * 0.8; return capHitP(ro, rd, c - d, c + d, 0.24); }
+          return capHitP(ro, rd, vec3(uHeroA.x, y0, uHeroA.z), vec3(uHeroA.x, y1, uHeroA.z), 0.34); }
         float bedD(vec2 xz){ return texture2D(uBed, (xz - uBB.xy) / (2.0 * uBB.z) + 0.5).r * 12.0 - 1.0; }   // depth of the floor below the surface
         void main(){ float rr = length(vW.xz - uC) / uR; if (rr > 1.0) discard;
           float og = 0.0; for (int i = 0; i < 3; i++) og = max(og, 1.0 - smoothstep(uOut[i].z * 0.5, uOut[i].z * 1.3, length(vW.xz - uOut[i].xy)));
@@ -316,14 +323,26 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
             vec3 seen = alb * (0.74 + cs * 0.55 / (1.0 + cs * 0.55)) * Tb + scat * (1.0 - Tb);   /* soft-compressed: bright shallow sand no longer blows out into white blotches */
             traced = 1.0 - og * 0.6; body = mix(body, seen, traced); caus *= 1.0 - traced;
           }
-          vec3 r = reflect(-v, n); float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay;
-          vec3 col = mix(body + caus, uSky, below ? 0.1 : fr * 0.75) + sp;
+          // Shifat 5:12 AM hero rule in the island pools: below the surface refracts and shows through, above it reflects (flying = reflection only)
+          float see = 0.0; vec3 r = reflect(-v, n); float hk = 0.0; vec3 hc = vec3(0.0); float wy = uBB.w;
+          if (!below) {
+            vec3 tdh = refract(-v, n, 1.0 / 1.333);
+            float rA = uHeroA.w > 0.5 && uHeroA.y + 0.25 < wy && length(uHeroA.xz - vW.xz) < 25.0 ? heroA(vW, tdh, uHeroA.y + 0.25, min(uHeroA.y + 1.55, wy)) : -1.0;
+            float rB = uHeroB.w > 0.5 && uHeroB.y + 0.25 < wy && length(uHeroB.xz - vW.xz) < 25.0 ? capHitP(vW, tdh, uHeroB.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroB.x, min(uHeroB.y + 1.5, wy), uHeroB.z), 0.3) : -1.0;
+            float rt = rA > 0.0 && (rB < 0.0 || rA < rB) ? rA : rB; if (rt > 0.0 && rt < 12.0) see = exp(-rt * 0.15);
+            float qA = uHeroA.w > 0.5 && uHeroA.y + 1.55 > wy && length(uHeroA.xz - vW.xz) < 25.0 ? heroA(vW, r, max(uHeroA.y + 0.25, wy), uHeroA.y + 1.55) : -1.0;
+            float qB = uHeroB.w > 0.5 && uHeroB.y + 1.5 > wy && length(uHeroB.xz - vW.xz) < 25.0 ? capHitP(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.25, wy), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3) : -1.0;
+            if (qA > 0.0 && (qB < 0.0 || qA < qB)) { hk = 1.0; hc = vec3(0.09, 0.11, 0.21); } else if (qB > 0.0) { hk = 1.0; hc = vec3(0.78, 0.82, 0.92); }
+          }
+          float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay * (1.0 - hk);
+          vec3 col = mix(body + caus, mix(uSky, hc * mix(0.35, 1.0, uDay), hk * 0.7), below ? 0.1 : max(fr * 0.75, hk * 0.4)) + sp;
           float lz = texture2D(uCaus, q * 0.21 + vec2(uT * 0.012, -uT * 0.02)).r + 0.6 * texture2D(uCaus, q * 0.53 - uT * 0.03).g;   /* lacy swash, same language as the island shore */
           float ph = fract(uT * 0.16 + 0.4 * sin(atan(vW.z - uC.y, vW.x - uC.x) * 3.0) + 0.15 * lz), run = smoothstep(0.0, 0.15, ph) * (1.0 - smoothstep(0.15, 0.9, ph));
           float edgeFoam = smoothstep(0.84 - 0.06 * run, 0.97, rr) * smoothstep(0.45, 0.9, lz * (0.55 + run) + 0.25 * smoothstep(0.95, 0.99, rr)) * 0.75 * (1.0 - og);
           col = mix(col, vec3(0.97, 1.0, 1.0), edgeFoam) * mix(0.28, 1.0, uDay);
           float a = mix(0.42, 0.9, deep) * mix(1.0 - smoothstep(0.9, 1.0, rr), 1.0, og * 0.6) + fr * 0.2 * (1.0 - smoothstep(0.92, 1.0, rr));
           a = mix(a, 0.97 * (1.0 - smoothstep(0.93, 1.0, rr)) + fr * 0.03, traced * (1.0 - og * 0.5));   /* traced floor drawn here; only the rim fades to the real bank */
+          a = min(a, mix(1.0, 0.6, see));   /* the submerged body shows through, mild */
           a = clamp(below ? 0.7 : a, 0.0, 1.0); if (a < 0.03) discard;
           gl_FragColor = vec4(col, a); }`,
     });

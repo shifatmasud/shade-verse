@@ -1701,7 +1701,7 @@ function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefO
     useEffect(() => () => st.rt.dispose(), [st]);
     useFrame(() => {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
-        HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost); u.uHeroDA.value.set(Math.sin(sim.yaw), 0, Math.cos(sim.yaw), sim.swim && !sim.dive ? 1 : 0);   // analytic hero reflections (everywhere on the sea)
+        HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost); HERO_REFL.shadowDir.set(Math.sin(sim.yaw), 0, Math.cos(sim.yaw), sim.swim && !sim.dive ? 1 : 0); u.uHeroDA.value.copy(HERO_REFL.shadowDir);   // analytic hero reflections (everywhere on the sea)
         const d = Math.hypot(cam.position.x - ISLAND.cx, cam.position.z - ISLAND.cz);
         // Shifat 3:39 AM "cities & bridges must reflect on water too": the mirror pass now runs near the island, along the city shore, and around the
         // east bridge / harbor; it replaces the screen-space march there (which could never show what is off-screen, like the tops of towers).
