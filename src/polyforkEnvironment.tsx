@@ -508,7 +508,7 @@ void main(){
    tp=t;}}
  vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0))refl=heroCol(hn);
  // refraction / transmission
- vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.17,0.04,0.026)*1.6;/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
+ vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.46,0.12,0.075);/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
  vec3 trans;float alpha=1.0;
  if(uUseScene>0.5&&!below){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
   float sz2=sceneZ(uv2);if(sz2>wz){uv2=suv;sz2=sceneZ(suv);}float th=clamp(wz-sz2,0.0,12.0)*1.15;vec3 T=exp(-absorb*th);
@@ -532,7 +532,16 @@ void main(){vec3 k=causRGB(vWorld.xz*0.5,uTime*0.8)*2.6;float edge=1.0-smoothste
 gl_FragColor=vec4(k*edge*exp(-dep*0.10)*uDayC*0.7,1.0);}`;
 
 const FOAM_VS = `uniform float uTime; varying vec2 vUv; void main(){ vUv=uv; vec3 p=position; p.y+=0.016*sin(uv.x*35.0+uTime*1.3); gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0); }`;
-const FOAM_FS = `uniform float uTime; varying vec2 vUv; float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} void main(){ float n=sin(vUv.x*151.0+uTime*1.8)*0.42+sin(vUv.x*67.0-uTime*1.1)*0.33+sin(vUv.x*311.0+vUv.y*6.0+uTime*2.7)*0.25; float fleck=smoothstep(-0.18,0.52,n+h(vec2(floor(vUv.x*85.0),floor(uTime*2.0)))*0.28); float edge=smoothstep(0.02,0.28,vUv.y)*(1.0-smoothstep(0.74,1.0,vUv.y)); float a=fleck*edge*(0.18+0.68*(0.5+0.5*sin(vUv.x*31.0-uTime*1.4))); gl_FragColor=vec4(vec3(0.83,0.95,0.92),a); }`;
+// pond shore foam, same language as the island swash (Shifat 3:17 AM 'never tile'): caustic-cell lace (bombed along the ring), a soft run-up pulse
+// that travels across the band at irregular moments, thinning outward - replaces the regular sine flecks that read as white smears.
+const FOAM_FS = `uniform float uTime; varying vec2 vUv;
+${CAUSTIC_GLSL}
+void main(){ float s = vUv.x * 92.0, li = floor(s * 0.031 + 0.5 + 0.5 * sin(s * 0.047)); vec2 q = vec2(s * 0.19, vUv.y * 1.3) + sin(vec2(4.1, 9.3) * li);
+ float lace = texture2D(uCaus, q + vec2(uTime * 0.012, -uTime * 0.02)).r + 0.6 * texture2D(uCaus, q * 2.3 - uTime * 0.025).g;
+ float ph = fract(uTime * 0.16 + 0.35 * sin(s * 0.11) + 0.2 * sin(s * 0.037)), run = smoothstep(0.0, 0.15, ph) * (1.0 - smoothstep(0.15, 0.9, ph));
+ float band = 1.0 - smoothstep(0.15 + 0.45 * run, 0.95, vUv.y), edge = smoothstep(0.0, 0.08, vUv.y) * (1.0 - smoothstep(0.08, 0.3, vUv.y));
+ float a = band * smoothstep(0.45, 0.9, lace * (0.55 + run)) * 0.8 + edge * (0.35 + 0.35 * run);
+ gl_FragColor = vec4(vec3(0.93, 0.98, 0.96), clamp(a, 0.0, 0.9)); }`;
 const CONTACT_VS = `varying vec2 vUv; void main(){vUv=uv;vec4 w=modelMatrix*instanceMatrix*vec4(position,1.0);gl_Position=projectionMatrix*viewMatrix*w;}`;
 const CONTACT_FS = `uniform float uTime; varying vec2 vUv; void main(){float r=length(vUv-0.5);float ring=smoothstep(0.30,0.42,r)*(1.0-smoothstep(0.14,0.25,r));float wave=0.58+0.42*sin(atan(vUv.y-0.5,vUv.x-0.5)*17.0+uTime*2.2);float fleck=smoothstep(0.12,0.6,sin(vUv.x*71.0+vUv.y*39.0+uTime*1.7)*0.5+0.5);gl_FragColor=vec4(0.86,0.97,0.94,ring*wave*fleck*0.72);}`;
 
@@ -599,7 +608,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
     }), []);
     const shoreGeo = useMemo(() => shorelineFoamGeometry(PARK_POND.rx * LAKE_SHORE, PARK_POND.rz * LAKE_SHORE), []);
     const shoreMaterial = useMemo(() => new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } }, vertexShader: FOAM_VS, fragmentShader: FOAM_FS,
+        uniforms: { uTime: { value: 0 }, uCaus: { value: CAUSTIC_TEX } }, vertexShader: FOAM_VS, fragmentShader: FOAM_FS,
         transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }), []);
     const contactGeo = useMemo(() => new THREE.RingGeometry(0.2, 0.38, 18, 1), []);
