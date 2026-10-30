@@ -105,7 +105,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 Rv = normalize((viewMatrix * vec4(r, 0.0)).xyz); float tp = 0.0;
         for (int i = 0; i < 16; i++) { if (float(i) >= uSteps || uUseRefl > 0.5) break; float k = (float(i) + 1.0) / uSteps; float tt = 140.0 * k * k; vec3 Q = vView + Rv * tt; vec4 c = uProj * vec4(Q, 1.0); if (c.w <= 0.0) break; vec2 uv = c.xy / c.w * 0.5 + 0.5;
           if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break; float sz = oceanZ(uv);
-          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); refl = mix(refl, sceneCol(uv), e * 0.92); break; }
+          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); vec3 sc_ = sceneCol(uv); refl = mix(refl, mix(sc_, dot(sc_, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + refl * 0.25, 0.7), e * 0.3); break;   /* same subtle blue as the mirror (Shifat 3:49 PM) */ }
           tp = tt; }
         // refraction: the real seabed / shore / swimmer behind the surface, absorbed by the water thickness (red dies first)
         float dd = max(wz - oceanZ(suv), 0.0); vec3 Nv = (viewMatrix * vec4(n, 0.0)).xyz; vec2 uv2 = suv + Nv.xy * 0.04 * clamp(dd * 0.3, 0.0, 1.0);
@@ -116,14 +116,12 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       vec3 nGlow = vec3(0.0);   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
       float fdE = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK;
       if (uUseRefl > 0.5 && !below && fdE < 1.9) {   // mirrored island / city / bridge shapes (skipped where the fog has swallowed them), rippled by the surface normal (more distortion with distance to the plane)
-        vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
-        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); 
-        #ifdef PHONE_W
-        rs = (rs + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998))) * 0.5;   /* phone: 2 taps + bilinear, same softness at phone resolution */
-        #else
-        if (uReflSoft.x > 0.0) rs = (rs * 2.0 + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv + vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998))) / 6.0;
-        #endif
-        /* desktop: soft 5-tap, reads smooth not pixelated */ refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
+        vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.07;
+        /* Shifat 3:49 PM 'reflections of the cities & islands subtler, blurrier, bluer - very very subtle, never grab attention; ultra performance':
+           one low-res mirror on every device, 2 spread taps (+ bilinear = wide soft blur), tinted toward the water's own blue and laid in at ~30 %. */
+        vec4 rs = (texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998))) * 0.5;
+        vec3 rsc = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb; vec3 rsb = mix(rsc, dot(rsc, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + refl * 0.25, 0.7);
+        refl = mix(refl, rsb, rs.a * 0.3); nGlow = rsc * rs.a;
       }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against

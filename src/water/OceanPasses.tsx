@@ -52,17 +52,17 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
         st.n++;
         cam.getWorldDirection(st.tg); const steep = st.tg.y < -0.8;   /* looking almost straight down: Fresnel ~2%, the mirror is barely visible */
         const slow = perf.scale < 0.75 || steep;   /* adaptive: when the frame budget is tight (UHD 600 under load) the mirror drops to a third rate */
-        if (st.n % (PHONE_REFL || slow ? 3 : 2) === 0 || u.uUseRefl.value === 0) {   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
+        if (st.n % 3 === 0 || u.uUseRefl.value === 0) {   /* Shifat 3:49 PM subtle blurry reflections: third rate + phone res on every device (same look, cheaper) */   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
             worldBufferSize(gl, st.buf);
-            const k = PHONE_REFL ? 0.12 : (slow ? 0.15 : 0.22),   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
-            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H); u.uReflSoft.value.set((PHONE_REFL ? 0.8 : 0.6) / W, (PHONE_REFL ? 0.8 : 0.6) / H);   /* desktop too: the adaptive-res mirror otherwise shows neon / hero reflections as blocky squares */
+            const k = 0.12,   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
+            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H); u.uReflSoft.value.set(1.3 / W, 0.9 / H);   /* desktop too: the adaptive-res mirror otherwise shows neon / hero reflections as blocky squares */
             // mirror the camera about y = WATER_Y (three.js Reflector maths)
             cam.updateMatrixWorld(); st.cp.setFromMatrixPosition(cam.matrixWorld); st.rot.extractRotation(cam.matrixWorld);
             st.la.set(0, 0, -1).applyMatrix4(st.rot).add(st.cp);
             const vc = st.cam; vc.position.set(st.cp.x, 2 * WATER_Y - st.cp.y, st.cp.z);
             st.tg.set(st.la.x, 2 * WATER_Y - st.la.y, st.la.z);
             vc.up.set(0, 1, 0).applyMatrix4(st.rot); vc.up.y = -vc.up.y; vc.lookAt(st.tg);
-            vc.fov = cam.fov; vc.aspect = cam.aspect; vc.near = cam.near; vc.far = Math.min(cam.far, PHONE_REFL ? 420 : 620);   /* fog covers beyond this */ vc.updateProjectionMatrix(); vc.updateMatrixWorld();
+            vc.fov = cam.fov; vc.aspect = cam.aspect; vc.near = cam.near; vc.far = Math.min(cam.far, 420);   /* fog covers beyond this */ vc.updateProjectionMatrix(); vc.updateMatrixWorld();
             vc.layers.set(REFL_LAYER);
             const prev = gl.getRenderTarget(), ac = gl.autoClear, sh = gl.shadowMap.autoUpdate, cp = gl.clippingPlanes, cc = gl.getClearAlpha(); gl.getClearColor(st.col);
             try { gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.clippingPlanes = [st.plane]; gl.setClearColor(st.col, 0); gl.setRenderTarget(st.rt); gl.clear(true, true, true); gl.render(scene, vc); }
