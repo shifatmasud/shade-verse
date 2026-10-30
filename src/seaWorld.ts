@@ -31,9 +31,24 @@ function hillH(x: number, z: number) {
 const toPeak = (() => { const dx = PEAK.x - POOL.cx, dz = PEAK.z - POOL.cz, l = Math.hypot(dx, dz); return [dx / l, dz / l]; })();
 export const FALL_WALL = 10.2;   // metres from the pool centre (uphill) to the cliff face
 function cliffBump(x: number, z: number) { const cx = POOL.cx + toPeak[0] * (FALL_WALL + 5), cz = POOL.cz + toPeak[1] * (FALL_WALL + 5), d = Math.hypot(x - cx, z - cz); return 9 * Math.exp(-((d / 9) ** 2)); }
-export interface River { pts: [number, number][]; y0: number; y1: number; hw: number; hw1: number; len: number; acc: number[] }
+export interface River { pts: [number, number][]; y0: number; y1: number; hw: number; hw1: number; len: number; acc: number[]; tEnd?: number }
 export const RIVERS: River[] = [];
-function mkRiver(pts: [number, number][], y0: number, y1: number, hw: number, hw1 = hw) { const acc = [0]; for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); const r = { pts, y0, y1, hw, hw1, len: acc[acc.length - 1], acc }; RIVERS.push(r); return r; }
+// water blend (Shifat 6:39 PM "sharp water… connect & blend from water fall to river to sea"): the control points are run through a
+// Catmull-Rom spline sampled every ~1.5 m, so the carved channel and the water strip bend in smooth curves instead of hard corners.
+function smoothPts(cp: [number, number][], step = 1.5): [number, number][] {
+    const P = (i: number) => cp[Math.max(0, Math.min(cp.length - 1, i))], out: [number, number][] = [];
+    for (let i = 0; i < cp.length - 1; i++) {
+        const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2), n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+        for (let k = 0; k < n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t; out.push([0, 1].map((c) => 0.5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3)) as [number, number]); }
+    }
+    out.push(cp[cp.length - 1]); return out;
+}
+/** water height along a river at fraction t: eases into its end level with no kink (the old min(1, t*1.15) left a crease) */
+export function riverY(r: { y0: number; y1: number; tEnd?: number }, t: number) { const u = Math.min(1, t / (r.tEnd ?? 0.87)); return r.y0 + (r.y1 - r.y0) * u * u * (3 - 2 * u); }
+function mkRiver(cpts: [number, number][], y0: number, y1: number, hw: number, hw1 = hw) { const pts = smoothPts(cpts); const acc = [0]; for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); const r: River = { pts, y0, y1, hw, hw1, len: acc[acc.length - 1], acc };
+    // a river that runs out to sea reaches sea level AT the coastline (it used to still be ~1.4 m up there and stop on dry sand)
+    if (y1 < -0.5) { const i = pts.findIndex((p) => islandRR(p[0], p[1]) > 0.97); if (i > 0) r.tEnd = acc[i] / r.len; }
+    RIVERS.push(r); return r; }
 /** river half-width at fraction t of its length (2c: the sea reach widens into an estuary) */
 export function riverHW(r: River, t: number) { return r.hw + (r.hw1 - r.hw) * t * t; }
 /** nearest point on a river: distance, water height there and flow direction */
@@ -44,7 +59,7 @@ export function riverNear(x: number, z: number): { d: number; y: number; fx: num
         const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), d = Math.hypot(x - ax - dx * t, z - az - dz * t);
         if (d > r.hw1 * 3 || (best && d >= best.d)) continue;
         const sAlong = (r.acc[i] + Math.sqrt(l2) * t) / r.len, l = Math.sqrt(l2);
-        best = { d, y: r.y0 + (r.y1 - r.y0) * Math.min(1, sAlong * 1.15), fx: dx / l, fz: dz / l, hw: riverHW(r, sAlong) };
+        best = { d, y: riverY(r, sAlong), fx: dx / l, fz: dz / l, hw: riverHW(r, sAlong) };
     }
     return best;
 }
