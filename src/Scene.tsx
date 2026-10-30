@@ -1375,11 +1375,11 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec4 uHeroA, uHeroB;
+    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform vec4 uHeroA, uHeroB;
     // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
     float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
       float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0) return -1.0;
@@ -1462,17 +1462,19 @@ const waterMat = new THREE.ShaderMaterial({
       vec3 nGlow = vec3(0.0);   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
       if (uUseRefl > 0.5 && !below) {   // mirrored island / city / bridge shapes, rippled by the surface normal (more distortion with distance to the plane)
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
-        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
+        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); if (uReflSoft.x > 0.0) rs = (rs * 2.0 + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv + vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998))) / 6.0;   /* phone: soft 5-tap, reads smooth not pixelated */ refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
       }
+      float heroK = 0.0; vec3 heroC = vec3(0.0);
       if (!below && r.y > 0.0) {
         vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
         if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0) tA = capHit(vW, r, uHeroA.xyz + vec3(0.0, 0.25, 0.0), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34);
         if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0) tB = capHit(vW, r, uHeroB.xyz + vec3(0.0, 0.25, 0.0), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
         if (tA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = 1.0; }   // Shadow's dark suit
         if (tB > 0.0 && (tA < 0.0 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = 1.0; }   // Ghost's pale suit
-        refl = mix(refl, hc * mix(0.35, 1.0, uDay), hk * 0.9);
+        refl = mix(refl, hc * mix(0.35, 1.0, uDay), hk * 0.9); heroK = hk; heroC = hc * mix(0.35, 1.0, uDay);
       }
       vec3 col = mix(body, refl, fr);
+      col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.9);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
       // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
@@ -1648,7 +1650,7 @@ const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA
 const REFL_LAYER = 7;
 function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; sim: Sim; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
-    const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
+    const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: rtType(gl) }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
         rot: new THREE.Matrix4(), cp: new THREE.Vector3(), la: new THREE.Vector3(), tg: new THREE.Vector3(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
         bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1), col: new THREE.Color(), pv: new THREE.Matrix4(), fr: new THREE.Frustum() }), []);
     useEffect(() => () => st.rt.dispose(), [st]);
@@ -1675,8 +1677,8 @@ function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefO
         const slow = perf.scale < 0.75 || steep;   /* adaptive: when the frame budget is tight (UHD 600 under load) the mirror drops to a third rate */
         if (st.n % (PHONE_REFL || slow ? 3 : 2) === 0 || u.uUseRefl.value === 0) {   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
             worldBufferSize(gl, st.buf);
-            const k = PHONE_REFL ? 0.09 : (slow ? 0.15 : 0.22),   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
-            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H);
+            const k = PHONE_REFL ? 0.12 : (slow ? 0.15 : 0.22),   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
+            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H); if (PHONE_REFL) u.uReflSoft.value.set(0.8 / W, 0.8 / H);
             // mirror the camera about y = WATER_Y (three.js Reflector maths)
             cam.updateMatrixWorld(); st.cp.setFromMatrixPosition(cam.matrixWorld); st.rot.extractRotation(cam.matrixWorld);
             st.la.set(0, 0, -1).applyMatrix4(st.rot).add(st.cp);
@@ -1696,9 +1698,12 @@ function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefO
     return null;
 }
 const PHONE_REFL = QUALITY.coarse || LOWQ;
+// Phone GPUs (Adreno 506 etc.) often cannot RENDER into half-float targets (no EXT_color_buffer_half_float / _float): the copy came out empty, so on
+// Shifat's phone no reflections showed at all. Use half float only when the GPU can render to it, else plain 8-bit.
+function rtType(gl: THREE.WebGLRenderer) { const e = gl.extensions; return (e.has('EXT_color_buffer_float') || e.has('EXT_color_buffer_half_float')) && !(QUALITY.coarse || LOWQ) ? THREE.HalfFloatType : THREE.UnsignedByteType; }
 function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: React.MutableRefObject<THREE.Mesh | null>; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
-    const target = useMemo(() => { const t = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }); t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType; return t; }, []);
+    const target = useMemo(() => { const t = new THREE.WebGLRenderTarget(4, 4, { type: rtType(gl) }); t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType; return t; }, []);
     const st = useMemo(() => ({ fr: new THREE.Frustum(), pv: new THREE.Matrix4(), buf: new THREE.Vector2(), n: 0, copies: 0 }), []);
     useEffect(() => () => target.dispose(), [target]);
     useFrame(() => {
