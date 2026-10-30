@@ -32,6 +32,10 @@ import { SouthSea, CITY_LOD } from './SouthSea';
 import { ISLAND, islandH } from './seaWorld'
 import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM, HERO_REFL } from './caustics';
 import { OCEAN_VERT, OCEAN_FRAG } from './water/oceanShader';
+import { SKY_VS, SKY_FS } from './shaders/sky';
+import { CITY_VS, CITY_FS } from './shaders/city';
+import { FXAA_FS, FXAA_SHARP_FS, OUT_FS } from './shaders/post';
+import { GLOW_VS, GLOW_FS } from './shaders/glow';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -41,73 +45,6 @@ TOD.sunU = { value: TOD.sun };
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 const HERO_SC = 1.5, BOT_SC = HERO_SC * 1.2;   // user: humanoid bots are 1.2x the hero (same hero.json mesh at the same native height, so scales compare directly)
-const CITY_VS = `attribute vec3 aCol;attribute float aSeed;
-varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
-void main(){vPos=position;vNor=normal;vCol=aCol;vSeed=aSeed;gl_Position=projectionMatrix*viewMatrix*vec4(position,1.0);}`;
-const CITY_FS = `varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
-uniform vec3 uFog;uniform float uTime;uniform vec3 uSunV;uniform float uDay;uniform float uNoon;
-void main(){
- if(vSeed>10.0)discard;
- vec3 n=normalize(vNor);
- vec3 L=normalize(mix(-uSunV,uSunV,step(0.0,uSunV.y))*vec3(1.0,1.0,1.0)+vec3(0.0,0.35,0.0));
- float d=max(dot(n,L),0.0);
- vec3 lit=mix(vec3(0.2,0.24,0.42)+vec3(0.5,0.6,0.95)*d*0.3,vec3(0.62,0.6,0.64)+vec3(1.0,0.84,0.62)*d*0.8*(1.0-0.45*uNoon),uDay);
- vec3 col=vCol*lit;
- if(abs(n.y)<0.5&&vPos.y>0.01&&vSeed<1.5){
-  float u=abs(n.x)>0.5?vPos.z:vPos.x;float v=vPos.y;
-  vec2 c=vec2(u/2.4,v/3.4);vec2 f=fract(c);vec2 id=floor(c);
-  vec2 fwd=fwidth(c);float fa=clamp(max(fwd.x,fwd.y)*1.5,0.0,0.5);
-  float w=smoothstep(0.22-fa,0.22+fa+0.001,f.x)*(1.0-smoothstep(0.78-fa,0.78+fa+0.001,f.x))*smoothstep(0.26-fa,0.26+fa+0.001,f.y)*(1.0-smoothstep(0.74-fa,0.74+fa+0.001,f.y))*step(4.0,v);
-  vec2 hh=fract((id+floor(vSeed*2048.0+0.5)/2048.0*41.0)*vec2(0.1031,0.1030));hh+=dot(hh,hh.yx+33.33);float h=fract((hh.x+hh.y)*hh.x);
-  float on=step(mix(0.3,0.62,uDay),h);
-  float onA=mix(on,0.5,smoothstep(0.25,0.5,max(fwd.x,fwd.y)));
-  vec3 wc=mix(vec3(0.27,0.38,0.52)*(0.6+0.8*f.y),vec3(0.95,0.74,0.46)*(0.55+0.45*h)*(1.0+0.9*(1.0-uDay)),onA);
-  col*=0.82+0.18*step(0.12,f.y);col*=1.0-0.22*step(f.y,0.08)-0.12*step(f.x,0.06);
-  col=mix(col,wc+vec3(0.12,0.1,0.2)*(1.0-onA)*d,w);
- }
- if(vSeed>1.5){col=vCol*1.25;}
- if(vPos.y<0.01&&vPos.x>100.0&&vPos.x<260.0&&vPos.z>20.0&&vPos.z<180.0)discard;   // valley: the park floor mesh replaces the street slab here
- if(vPos.y<0.01){
-  col=vec3(0.26,0.27,0.31);
-  float fx=abs(mod(vPos.x,40.0)-20.0);float fz=abs(mod(vPos.z,40.0)-20.0);
-  float dash=step(2.0,mod(vPos.z,4.0));float dash2=step(2.0,mod(vPos.x,4.0));
-  col+=vec3(0.85,0.78,0.5)*(step(fx,0.2)*dash+step(fz,0.2)*dash2);
- }
- float q=length(vPos-cameraPosition)*0.0058;float fog=1.0-exp(-q*q*1.4);
- gl_FragColor=vec4(mix(col,uFog,clamp(fog,0.0,1.0)),1.0);
-}`;
-const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
-const SKY_FS = `varying vec3 vDir;uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;
-void main(){
- float t=clamp(vDir.y*1.6,0.0,1.0);
- vec3 top=mix(vec3(0.16,0.42,0.9),vec3(0.24,0.5,0.86),uWarm);vec3 mid=mix(vec3(0.6,0.8,0.96),vec3(0.96,0.72,0.68),uWarm);
- vec3 c=mix(uHor,mid,smoothstep(0.0,0.25,t));c=mix(c,top,smoothstep(0.2,0.9,t));
- vec3 sun=uSunV;float g=max(dot(normalize(vDir),sun),0.0);
- c+=mix(vec3(1.0,0.95,0.85),vec3(1.0,0.78,0.5),uWarm)*(pow(g,24.0)*0.45+pow(g,220.0)*0.9);
- c=mix(c,vec3(1.0,0.93,0.75)*1.6,smoothstep(0.9975,0.9992,g));
- c+=vec3(1.0,0.7,0.45)*0.28*uWarm*exp(-abs(vDir.y)*9.0)*(0.4+0.6*max(dot(normalize(vec3(vDir.x,0.0,vDir.z)),normalize(vec3(sun.x,0.0,sun.z))),0.0));
- {float ci=sin(vDir.x/(vDir.y+0.25)*3.0+uT*0.01)*0.5+0.5;c=mix(c,vec3(1.0,0.75,0.7),smoothstep(0.55,0.8,t)*smoothstep(0.7,1.0,ci)*0.18);}
- {vec2 st=floor(vDir.xz/(abs(vDir.y)+0.2)*90.0);float r=fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5);
- c+=vec3(1.0)*step(0.9965,r)*smoothstep(0.55,0.9,t)*0.5;}
- // golden-hour cloud deck: 4-octave value noise on a projected plane, lit warm toward the sun, dark undersides
- if(vDir.y>0.02){
-  vec2 cp=vDir.xz/(vDir.y+0.12)*1.6+vec2(uT*0.004,0.0);
-  float f=0.0,a=0.5;vec2 q=cp;
-  for(int i=0;i<4;i++){vec2 ip=floor(q),fp=fract(q);fp=fp*fp*(3.0-2.0*fp);
-   float n=mix(mix(fract(sin(dot(ip,vec2(127.1,311.7)))*43758.5),fract(sin(dot(ip+vec2(1,0),vec2(127.1,311.7)))*43758.5),fp.x),mix(fract(sin(dot(ip+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(ip+vec2(1,1),vec2(127.1,311.7)))*43758.5),fp.x),fp.y);
-   f+=n*a;a*=0.5;q=q*2.03+vec2(3.1,1.7);}
-  float cov=smoothstep(0.5,0.78,f)*smoothstep(0.02,0.22,vDir.y);
-  float sl=pow(max(dot(normalize(vDir),sun),0.0),3.0);
-  vec3 cc=mix(vec3(0.42,0.3,0.42),vec3(1.0,0.72,0.58),0.35+0.65*sl);
-  cc+=vec3(1.0,0.6,0.35)*pow(g,8.0)*0.4*(1.0-f);
-  c=mix(c,cc,cov*0.85);
- }
- {vec3 dn=normalize(vDir);vec3 nc=mix(vec3(0.07,0.08,0.19),vec3(0.012,0.02,0.07),smoothstep(0.0,0.6,dn.y));
-  vec2 sq=floor(dn.xz/(abs(dn.y)+0.2)*140.0);float rr=fract(sin(dot(sq,vec2(12.9898,78.233)))*43758.5);nc+=vec3(0.9,0.95,1.0)*step(0.992,rr)*smoothstep(0.05,0.4,dn.y)*0.8;
-  float mg=max(dot(dn,-sun),0.0);nc+=vec3(0.75,0.85,1.0)*(pow(mg,60.0)*0.25)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.2;
-  c=mix(nc,c,uDay);}
- gl_FragColor=vec4(c,1.0);
-}`;
 
 const DN_DUR = 300, DN_PH0 = Math.asin(0.22 / 0.95);
 const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _cn = new THREE.Color(0.035, 0.055, 0.13), _cnoon = new THREE.Color(0.76, 0.84, 0.93), _cwarm = new THREE.Color(FOG[0], FOG[1], FOG[2]);
@@ -137,40 +74,11 @@ function DayNight() {
 
 // optional post AA (FXAA, one fullscreen pass): can be switched on/off at runtime from measured frame time, unlike MSAA which is fixed at context creation
 const _v0 = new THREE.Vector2(0, 0);
-const FXAA_FS = `uniform sampler2D tDiffuse; uniform vec2 uRes; varying vec2 vUv;
-float lum(vec3 c){ return dot(sqrt(max(c, 0.0)), vec3(0.299, 0.587, 0.114)); }
-void main(){
-  vec2 px = 1.0 / uRes;
-  vec3 cM = texture2D(tDiffuse, vUv).rgb;
-  vec3 cNW = texture2D(tDiffuse, vUv + vec2(-1.0, -1.0) * px).rgb, cNE = texture2D(tDiffuse, vUv + vec2(1.0, -1.0) * px).rgb;
-  vec3 cSW = texture2D(tDiffuse, vUv + vec2(-1.0, 1.0) * px).rgb, cSE = texture2D(tDiffuse, vUv + vec2(1.0, 1.0) * px).rgb;
-  float lM = lum(cM), lNW = lum(cNW), lNE = lum(cNE), lSW = lum(cSW), lSE = lum(cSE);
-  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
-  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
-  float dr = max((lNW + lNE + lSW + lSE) * 0.25 * 0.125, 1.0 / 128.0);
-  float rcp = 1.0 / (min(abs(dir.x), abs(dir.y)) + dr);
-  dir = clamp(dir * rcp, vec2(-8.0), vec2(8.0)) * px;
-  vec3 a = 0.5 * (texture2D(tDiffuse, vUv + dir * (1.0 / 3.0 - 0.5)).rgb + texture2D(tDiffuse, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);
-  vec3 b = a * 0.5 + 0.25 * (texture2D(tDiffuse, vUv + dir * -0.5).rgb + texture2D(tDiffuse, vUv + dir * 0.5).rgb);
-  float lb = lum(b);
-  vec3 col = (lb < lMin || lb > lMax) ? a : b;
-  gl_FragColor = vec4(col, 1.0);
-}`;
 // env-iter3 near-field sharpen (Shifat Oct 29: "sharpen what's closer to view & keep same res what's not"). Same FXAA pass as above,
 // then a clamped unsharp mask on the world image (contrast-adaptive in the spirit of AMD FidelityFX CAS: limited to the local
 // min/max so it cannot halo, and backed off on hard geometric edges so FXAA's smoothing survives). Its strength comes from the
 // world depth: full within ~6 m of the camera, gone by ~28 m, never on the sky. One extra depth fetch + ~20 ALU per world pixel.
 // Heroes are redrawn afterwards at native resolution by the (locked) hero HD pass, so this only ever shows on the world.
-const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2 uRes; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uSharp;')
-    .replace('  gl_FragColor = vec4(col, 1.0);\n}', `  float sd = texture2D(tDepth, vUv).x;
-  float szn = sd * 2.0 - 1.0, sz = (2.0 * uNear * uFar) / (uFar + uNear - szn * (uFar - uNear));
-  float sk = uSharp * (1.0 - smoothstep(6.0, 28.0, sz)) * step(sd, 0.99999) * (1.0 - smoothstep(0.14, 0.38, lMax - lMin));
-  if (sk > 0.002) {
-    vec3 sMin = min(cM, min(min(cNW, cNE), min(cSW, cSE))), sMax = max(cM, max(max(cNW, cNE), max(cSW, cSE)));
-    col = clamp(col + (col - 0.25 * (cNW + cNE + cSW + cSE)) * sk, sMin, sMax);
-  }
-  gl_FragColor = vec4(col, 1.0);
-}`);
 export const SHARPEN = { amount: 0.7 };
 export const FXAA_STATE = { on: false };
 function FxaaPass({ enabled }: { enabled: boolean }) {
@@ -192,25 +100,6 @@ function FxaaPass({ enabled }: { enabled: boolean }) {
     return null;
 }
 
-const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; varying vec2 vUv;
-float vz(vec2 uv){ float d = texture2D(tDepth, uv).x; float zn = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - zn * (uFar - uNear)); }
-void main(){
-  vec4 c4 = texture2D(tColor, vUv); vec3 c = c4.rgb;
-  // alpha classes: >= 0.75 ordinary surfaces; 0.5 band = glowing lights (never inked); env-iter3: 0.25 = grass blades/flowers, 0.375 = park ground
-  float lightMask = 1.0 - step(0.45, c4.a) * (1.0 - step(0.75, c4.a)) - (1.0 - step(0.75, c4.a)) * step(c4.a, 0.18);
-  vec2 px = uTh / uRes;
-  float z = vz(vUv);
-  vec2 ox = vec2(px.x, 0.0), oy = vec2(0.0, px.y);
-  float zx1 = vz(vUv + ox), zx2 = vz(vUv - ox), zy1 = vz(vUv + oy), zy2 = vz(vUv - oy);
-  float e = max(max(zx1 - z, zx2 - z), max(zy1 - z, zy2 - z)) / z;   // one-sided: only the nearer pixel of a depth step is inked, so the line stays 1px and sits inside the near silhouette
-  if (abs(c4.a - 0.25) < 0.06) {   // env-iter3 (Shifat: "grass blades must not get outline solo, whole grass lands get outline as one"): a blade pixel only inks against what is neither grass nor park ground, so blade-on-blade and blade-on-ground steps vanish and only the meadow's outer silhouette remains
-    vec4 an = vec4(texture2D(tColor, vUv + ox).a, texture2D(tColor, vUv - ox).a, texture2D(tColor, vUv + oy).a, texture2D(tColor, vUv - oy).a);
-    vec4 land = step(an, vec4(0.43)) * step(vec4(0.19), an);   // neighbour is grass (0.25) or ground (0.375)
-    e = max(max((zx1 - z) * (1.0 - land.x), (zx2 - z) * (1.0 - land.y)), max((zy1 - z) * (1.0 - land.z), (zy2 - z) * (1.0 - land.w))) / z;
-  }
-  float k = smoothstep(0.12, 0.30, e) * (1.0 - smoothstep(22.0, 55.0, z)) * uOn * lightMask;
-  gl_FragColor = vec4(mix(c, vec3(0.04, 0.05, 0.10), k * 0.85), 1.0);
-}`;
 export const OUTLINE_STATE = { on: true };
 if (!OUTLINE_STATE.on) HD.enabled = false;   // the hero HD pass reuses the outline pass's world depth
 
@@ -252,16 +141,6 @@ function OutlinePass() {
 // env-iter3 F: Iron Man-style enemy fire, render side. One instanced additive "glow" mesh carries every bolt core, bolt streak,
 // palm-charge glow and boss chest-charge glow (2 draw calls total with the beam), fresnel-faded so each reads as a soft light.
 // No real lights on any tier; tagged for the existing selective bloom.
-const GLOW_VS = `varying vec3 vN; varying vec3 vV; varying vec3 vC;
-void main(){ vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * mat3(instanceMatrix) * normal); vV = -mv.xyz;
-#ifdef USE_INSTANCING_COLOR
-vC = instanceColor;
-#else
-vC = vec3(1.0);
-#endif
-gl_Position = projectionMatrix * mv; }`;
-const GLOW_FS = `uniform float uT; varying vec3 vN; varying vec3 vV; varying vec3 vC;
-void main(){ float f = abs(dot(normalize(vN), normalize(vV))); float k = f * f * 1.5 + 0.12 * f; gl_FragColor = vec4(vC * k * (0.92 + 0.08 * sin(uT * 47.0 + gl_FragCoord.x * 0.05)), 1.0); }`;
 const ES_GLOW_N = ESHOT.MAX * 2 + 64, ES_BEAM_N = 4;
 function EnemyShotsFx({ sim }: { sim: Sim }) {
     const glow = useRef<THREE.InstancedMesh>(null!), beam = useRef<THREE.InstancedMesh>(null!);
