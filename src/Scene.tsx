@@ -30,7 +30,7 @@ import { QUALITY, QK, HQ, AA_FXAA, LOWQ } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SouthSea, CITY_LOD } from './SouthSea';
 import { ISLAND, islandH } from './seaWorld'
-import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM } from './caustics';
+import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM, HERO_REFL } from './caustics';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -1315,7 +1315,14 @@ float wh(vec2 p, float t){
   h += sin(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42;
   h += sin(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12;
   h += sin(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035;
-  h += sin(dot(p, vec2(0.150, 0.085)) + t * 1.30) * 0.30 + sin(dot(p, vec2(-0.12, 0.23)) + t * 1.62) * 0.17;   // 2:58 AM: wind waves (35 m / 24 m) so the sea reads as waves, not a flat swell
+  // Shifat 3:17 AM 'waves must never tile': 4 wind-wave trains at golden-angle directions (irrational ratios, so crests never re-align), deep-water
+  // dispersion speeds, and each train's height modulated by its own slow envelope across the sea - the same trick AAA FFT oceans use to hide the tile.
+  { float m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); h += sin(dot(p, vec2(0.1464, 0.04529)) + t * 0.6744) * 0.26 * m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); h += sin(dot(p, vec2(-0.19587, 0.0926)) + t * 0.8018) * 0.18 * m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); h += sin(dot(p, vec2(0.10942, -0.26808)) + t * 0.927) * 0.12 * m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); h += sin(dot(p, vec2(0.13366, 0.36156)) + t * 1.0695) * 0.08 * m;
+  }
   return h * swellK(p);
 }
 vec2 wg(vec2 p, float t){
@@ -1324,12 +1331,17 @@ vec2 wg(vec2 p, float t){
   g += cos(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42 * vec2(-0.012, 0.009);
   g += cos(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12 * vec2(0.033, -0.023);
   g += cos(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035 * vec2(0.076, 0.054);
-  g += cos(dot(p, vec2(0.150, 0.085)) + t * 1.30) * 0.30 * vec2(0.150, 0.085) + cos(dot(p, vec2(-0.12, 0.23)) + t * 1.62) * 0.17 * vec2(-0.12, 0.23);
+  { float m;
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); g += cos(dot(p, vec2(0.1464, 0.04529)) + t * 0.6744) * 0.26 * m * vec2(0.1464, 0.04529);
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); g += cos(dot(p, vec2(-0.19587, 0.0926)) + t * 0.8018) * 0.18 * m * vec2(-0.19587, 0.0926);
+    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); g += cos(dot(p, vec2(0.10942, -0.26808)) + t * 0.927) * 0.12 * m * vec2(0.10942, -0.26808);
+    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); g += cos(dot(p, vec2(0.13366, 0.36156)) + t * 1.0695) * 0.08 * m * vec2(0.13366, 0.36156);
+  }
   return g * swellK(p);
 }`;
 function waveH(x: number, z: number, t: number) {
     const zk = Math.max(0, Math.min(1, (z + 300) / -450)), ik = Math.max(0, Math.min(1, (Math.hypot(x - ISLAND.cx, z - ISLAND.cz) - 105) / 110)), sk = (1 + 1.3 * zk * zk * (3 - 2 * zk)) * (0.22 + 0.78 * ik * ik * (3 - 2 * ik));
-    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035 + Math.sin(x * 0.150 + z * 0.085 + t * 1.30) * 0.30 + Math.sin(-x * 0.12 + z * 0.23 + t * 1.62) * 0.17);
+    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035 + Math.sin(x * 0.1464 + z * 0.04529 + t * 0.6744) * 0.26 * (0.55 + 0.45 * Math.sin(x * -0.0018 + z * 0.00583 + 0.0 + t * 0.03))+Math.sin(x * -0.19587 + z * 0.0926 + t * 0.8018) * 0.18 * (0.55 + 0.45 * Math.sin(x * -0.00261 + z * -0.00551 + 1.7 + t * 0.03))+Math.sin(x * 0.10942 + z * -0.26808 + t * 0.927) * 0.12 * (0.55 + 0.45 * Math.sin(x * 0.00565 + z * 0.00231 + 3.4 + t * 0.03))+Math.sin(x * 0.13366 + z * 0.36156 + t * 1.0695) * 0.08 * (0.55 + 0.45 * Math.sin(x * -0.00572 + z * 0.00212 + 5.1 + t * 0.03)));
 }
 function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
 function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }
@@ -1354,14 +1366,22 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl;
+    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec4 uHeroA, uHeroB;
+    // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
+    float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
+      float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0) return -1.0;
+      float t = (-b - sqrt(h)) / a, y = baoa + t * bard; if (y > 0.0 && y < baba) return t; vec3 oc = (y <= 0.0) ? oa : ro - pb; b = dot(rd, oc); c = dot(oc, oc) - ra * ra; h = b * b - c; return h > 0.0 ? -b - sqrt(h) : -1.0; }
     uniform sampler2D tScene; uniform sampler2D tDepth; uniform sampler2D uBed; uniform vec3 uBedC; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
     vec2 bedUV(vec2 xz){ return (xz - uBedC.xy) / (2.0 * uBedC.z) + 0.5; }
-    float bedY(vec2 xz){ return texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0; }
+    // open-sea bed = the sim's seabedAt profile (shelf -> slope -> trench + dunes); the baked island map blends into it at its edges (no square seam)
+    float seaBed(vec2 xz){ float d = -222.0 - xz.y; float y = -10.0 - 16.0 * smoothstep(110.0, 300.0, d) - 24.0 * smoothstep(420.0, 600.0, d) + 22.0 * smoothstep(760.0, 930.0, d);
+      return y + sin(xz.x * 0.045 + xz.y * 0.021) * 1.4 * smoothstep(30.0, 120.0, d) + sin(xz.x * 0.013 - xz.y * 0.032) * 2.2 * smoothstep(200.0, 400.0, d); }
+    float bedEdge(vec2 xz){ vec2 q = bedUV(xz); return smoothstep(0.0, 0.12, min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y))); }
+    float bedY(vec2 xz){ float e = bedEdge(xz); return mix(seaBed(xz), texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0, e); }
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
     vec3 sceneCol(vec2 uv){ return linearToOutputTexel(vec4(texture2D(tScene, uv).rgb, 1.0)).rgb; }
     void main(){
@@ -1371,8 +1391,9 @@ const waterMat = new THREE.ShaderMaterial({
       // AAA-style micro detail (Sea of Thieves / Uncharted use scrolling normal maps over the big waves): two layers of a tileable ripple normal
       // map drifting in different directions; mipmaps + a distance fade stop far-field shimmer. Above the surface only.
       float wDist = length(cameraPosition - vW);
-      if (gl_FrontFacing) { vec2 d1 = texture2D(uNrm, vW.xz * 0.045 + vec2(0.011, 0.006) * uTime).rg * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) d2 = texture2D(uNrm, mat2(0.8, -0.6, 0.6, 0.8) * vW.xz * 0.12 - vec2(0.008, -0.012) * uTime).rg * 2.0 - 1.0;   /* phones: one layer */
-        g += (d1 * 0.11 + d2 * 0.06) * mix(1.0, 0.4, smoothstep(40.0, 300.0, wDist)); }
+      if (gl_FrontFacing) { vec2 wq = vW.xz + 9.0 * vec2(sin(vW.z * 0.013 + uTime * 0.02), cos(vW.x * 0.011 - uTime * 0.017));   /* slow domain warp: the ripple tile never lines up into a grid */
+        vec2 d1 = texture2D(uNrm, wq * 0.045 + vec2(0.011, 0.006) * uTime).rg * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) d2 = texture2D(uNrm, mat2(0.743, -0.669, 0.669, 0.743) * wq * 0.1237 - vec2(0.008, -0.012) * uTime).rg * 2.0 - 1.0;   /* phones: one layer */
+        g += (d1 * 0.11 + d2 * 0.06) * mix(1.0, 0.12, smoothstep(30.0, 220.0, wDist)); }   /* far away the waves carry the shape; a tiled ripple there would read as a pattern */
       vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       bool below = !gl_FrontFacing;
@@ -1388,11 +1409,12 @@ const waterMat = new THREE.ShaderMaterial({
       body = mix(body, uDeep * 0.5, smoothstep(-300.0, -800.0, vW.z) * 0.55);   // deep offshore water reads darker blue
       float bedA = 0.0, bedShore = 0.0;   // how much of this pixel is the traced seabed (drives opacity below)
       vec2 bq = bedUV(vW.xz);
-      if (!below && uUseScene < 0.5 && bq.x > 0.01 && bq.x < 0.99 && bq.y > 0.01 && bq.y < 0.99) {
+      if (!below && uUseScene < 0.5 && vW.z < -222.0) {   /* whole open sea, not just the island square */
         // Snell: td is the refracted ray (air 1.0 -> water 1.333). Fixed-point march to where it meets the bed: t = (surface - bed(xz(t))) / -td.y
         float sy = -td.y; sy = max(sy, 0.08); float t0 = max(vW.y - bedY(vW.xz), 0.0) / sy, t1 = t0;
         t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = mix(t0, t1, 0.85);
-        vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, bedUV(hx)); float dep = max(vW.y - (bs.r * 40.0 - 30.0), 0.0);
+        vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, bedUV(hx)); float be = bedEdge(hx), byh = bedY(hx); float dep = max(vW.y - byh, 0.0);
+        float nn1 = sin(hx.x * 0.21 + hx.y * 0.13) * sin(hx.x * 0.07 - hx.y * 0.17); bs.g = mix(clamp((byh + 16.0 + nn1 * 4.0) / 9.0, 0.0, 1.0), bs.g, be); bs.b = mix(0.5 + 0.5 * nn1, bs.b, be);
         // bed albedo: white tropical sand shallow, darker rock / weed deeper, with soft ripple marks
         vec3 alb = mix(vec3(0.30, 0.34, 0.26), vec3(0.93, 0.87, 0.70), bs.g) * (0.86 + 0.14 * bs.b) * (0.93 + 0.07 * sin(hx.x * 1.7 + sin(hx.y * 0.9) * 2.0));
         // caustics: the wavy surface focuses sunlight into moving bright webs on the bed (two scrolling cell layers, min = sharp lines)
@@ -1425,6 +1447,14 @@ const waterMat = new THREE.ShaderMaterial({
       if (uUseRefl > 0.5 && uUseScene < 0.5 && !below) {   // mirrored island shapes, rippled by the surface normal (more distortion with distance to the plane)
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
         vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92);
+      }
+      if (!below && r.y > 0.0) {
+        vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0) tA = capHit(vW, r, uHeroA.xyz + vec3(0.0, 0.25, 0.0), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34);
+        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0) tB = capHit(vW, r, uHeroB.xyz + vec3(0.0, 0.25, 0.0), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
+        if (tA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = 1.0; }   // Shadow's dark suit
+        if (tB > 0.0 && (tA < 0.0 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = 1.0; }   // Ghost's pale suit
+        refl = mix(refl, hc * mix(0.35, 1.0, uDay), hk * 0.9);
       }
       vec3 col = mix(body, refl, fr);
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
@@ -1588,7 +1618,7 @@ const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA
 // A Reflector-style virtual camera mirrored about the sea plane renders ONLY those opaque shapes (layer 7, ~15 draw calls, no grass/water/fx)
 // into a small target (1/4 res desktop, 1/5 phone; phones every 2nd frame); the ocean shader samples it with wave distortion and Fresnel.
 const REFL_LAYER = 7;
-function IslandReflection({ waterRef }: { waterRef: React.MutableRefObject<THREE.Mesh | null> }) {
+function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; sim: Sim }) {
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
         rot: new THREE.Matrix4(), cp: new THREE.Vector3(), la: new THREE.Vector3(), tg: new THREE.Vector3(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
@@ -1596,6 +1626,7 @@ function IslandReflection({ waterRef }: { waterRef: React.MutableRefObject<THREE
     useEffect(() => () => st.rt.dispose(), [st]);
     useFrame(() => {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
+        HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost);   // analytic hero reflections (everywhere on the sea)
         const d = Math.hypot(cam.position.x - ISLAND.cx, cam.position.z - ISLAND.cz);
         const ok = !!w && u.uUseScene.value < 0.5 && d < 520 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 90 && !(UW as any).on;
         if (!ok) { u.uUseRefl.value = 0; return; }
@@ -2150,7 +2181,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
-        <IslandReflection waterRef={waterRef} />
+        <IslandReflection waterRef={waterRef} sim={sim} />
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}

@@ -7,6 +7,7 @@ import baseTexUrl from './basetex';
 import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
 import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, writeSnareRing, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
 import { BOSS_BODY_OFFSET } from './bossConfig';
+import { HERO_REFL } from './caustics';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const HERO_SCALE = 1.5;
@@ -253,6 +254,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             if (plasmaRef.current) plasmaRef.current.visible = false;
             if (morphRef.current) morphRef.current.visible = false;
             morphGeo.setDrawRange(0, 0);
+            HERO_REFL.ghost.w = 0;   /* reflection trace: Ghost hidden */
             if (DBG) (window as any).__ghostState = { visible: false, mode: sim.mode };
             return;
         }
@@ -337,6 +339,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             if (shockRef.current) shockRef.current.visible = false;
             shockGeo.setDrawRange(0, 0);
             if (plasmaRef.current) plasmaRef.current.visible = false;
+            HERO_REFL.ghost.set(actor.pos[0], actor.pos[1], actor.pos[2], 1);   /* reflection trace only; model/material untouched */
             if (DBG) (window as any).__ghostState = { visible: true, mode: sim.mode, position: [...actor.pos], target: [tx, ty, tz], action: 'transport', leaderTraversal: leaderWall ? 'wall' : sim.web ? 'swing' : leaderAir ? 'glide' : 'ground', ghostTraversal: 'transport', transport: st.morph.phase, morphReason: st.morph.reason, morphT: st.morph.t, morphFrom: [...st.morph.from], morphTo: [...st.morph.to], bodyOpacity, particles: MORPH_PARTICLES, grounded: actor.ground, wallB: actor.wallB, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1, targetSupportY: leaderWall ? null : floorAt(st.morph.to[0], st.morph.to[2]), leaderSurfaceY: leaderWall ? null : sim.pos[1] - 1, animation };
             return;
         }

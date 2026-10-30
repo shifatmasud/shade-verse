@@ -15,3 +15,6 @@ vec3 causRGB(vec2 xz, float t){
 // Tileable ripple normal map (public/waternormal.png): gradient of ~45 random integer-wavenumber waves, RG = slope. Scrolled in two layers for micro detail.
 export const WATER_NRM = new THREE.TextureLoader().load('/waternormal.png', (t) => { t.needsUpdate = true; });
 WATER_NRM.wrapS = WATER_NRM.wrapT = THREE.RepeatWrapping; WATER_NRM.minFilter = THREE.LinearMipmapLinearFilter; WATER_NRM.magFilter = THREE.LinearFilter; WATER_NRM.colorSpace = THREE.NoColorSpace; WATER_NRM.anisotropy = 4;
+
+// Hero positions for the analytic reflection trace (xyz = feet, w = 1 when present). Shadow is set by Scene, Ghost by Ghost.tsx.
+export const HERO_REFL = { shadow: new THREE.Vector4(0, -999, 0, 0), ghost: new THREE.Vector4(0, -999, 0, 0) };
