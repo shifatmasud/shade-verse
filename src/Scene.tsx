@@ -1459,9 +1459,10 @@ const waterMat = new THREE.ShaderMaterial({
         float th = clamp(wz - sz2, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
         body = sceneCol(uv2) * Tr + body * (1.0 - Tr);
       }
+      vec3 nGlow = vec3(0.0);   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
       if (uUseRefl > 0.5 && !below) {   // mirrored island / city / bridge shapes, rippled by the surface normal (more distortion with distance to the plane)
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
-        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92);
+        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
       }
       if (!below && r.y > 0.0) {
         vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
@@ -1472,6 +1473,7 @@ const waterMat = new THREE.ShaderMaterial({
         refl = mix(refl, hc * mix(0.35, 1.0, uDay), hk * 0.9);
       }
       vec3 col = mix(body, refl, fr);
+      col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
       // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
       vec3 sunC = mix(vec3(1.0, 0.42, 0.16), vec3(1.0, 0.93, 0.82), smoothstep(0.02, 0.35, uSun.y));
