@@ -629,7 +629,7 @@ const rayMat = new THREE.ShaderMaterial({
           s += (1.0 - smoothstep(w * 0.3, w, abs(x - c - 0.04 * sin(t * 0.35 + fk * 2.1)))) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }
         float edge = smoothstep(0.0, 0.12, x) * (1.0 - smoothstep(0.88, 1.0, x));
         float depth = uSurf - vY; float fade = exp(-max(depth, 0.0) * 0.055) * smoothstep(0.0, 1.2, depth);
-        float a = s * edge * fade * (0.25 + 0.75 * uDay) * 0.42;
+        float a = s * edge * fade * mix(0.04, 1.0, uDay * uDay) * 0.42;   /* night: only a faint moon trace of the shafts (they read as daylight at night) */
         gl_FragColor = vec4(vec3(0.62, 0.93, 1.0) * a, a);
       }`,
 });
