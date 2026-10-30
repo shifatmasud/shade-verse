@@ -45,8 +45,8 @@ export class SoundDirector {
         this.voGap = 2.2; this.voCd[kind] = o.cd ?? 6;
     }
     // ---- Ghost & Shadow banter (husband & wife): an exchange plays line by line, the reply 0.3 s after the line before it ends; never overlaps
-    // other voice lines; about one exchange every 30-60 s, combat ones throttled harder; music ducks a little; small fading captions ----
-    private bBusy = false; private bCd = 14; private bIdleT = 0; private bIdleAt = 28; private bCombatCd = 0; private bLast: Record<string, number> = {}; private lowWas = false;
+    // other voice lines; about one exchange every 10-20 s (talk more), combat ones throttled harder; music ducks a little; small fading captions ----
+    private bBusy = false; private bCd = 6; private bIdleT = 0; private bIdleAt = 10; private bCombatCd = 0; private bLast: Record<string, number> = {}; private lowWas = false;
     banter(trig: BanterTrig, force = false): boolean {
         if (this.bBusy || this.sim.mode !== 'play' || (!force && (this.bCd > 0 || this.voGap > 0))) return false;
         const opts = BANTER.map((x, i) => i).filter((i) => BANTER[i].t === trig); if (!opts.length) return false;
@@ -66,13 +66,13 @@ export class SoundDirector {
         });
         return true;
     }
-    private endBanter() { this.bBusy = false; this.voGap = 1.5; this.bCd = 30 + Math.random() * 30; this.voCd.ghost = Math.max(this.voCd.ghost, 6); this.voCd.shadow = Math.max(this.voCd.shadow, 6); audio.voDuck = 1; }
+    private endBanter() { this.bBusy = false; this.voGap = 1.5; this.bCd = 9 + Math.random() * 7;   /* Shifat 7:26 PM "they should talk more with each other": was 30-60 s */ this.voCd.ghost = Math.max(this.voCd.ghost, 6); this.voCd.shadow = Math.max(this.voCd.shadow, 6); audio.voDuck = 1; }
     private banterTick(dt: number, day: number, near: number) {
         const s = this.sim; this.bCd = Math.max(0, this.bCd - dt); this.bCombatCd = Math.max(0, this.bCombatCd - dt); if (this.bBusy) { this.voGap = Math.max(this.voGap, 0.5); return; }
         const low = s.hp > 0 && s.hp < 30; if (low && !this.lowWas) this.banter('low', true); this.lowWas = low;
-        if (this.combatT > 0 && near > 0) { this.bIdleT = 0; if (this.bCombatCd <= 0 && this.bCd <= 0 && Math.random() < dt * 0.12) { if (this.banter('combat')) this.bCombatCd = 45; } return; }
+        if (this.combatT > 0 && near > 0) { this.bIdleT = 0; if (this.bCombatCd <= 0 && this.bCd <= 0 && Math.random() < dt * 0.3) { if (this.banter('combat')) this.bCombatCd = 16; } return; }
         this.bIdleT += dt; if (this.bIdleT < this.bIdleAt) return;
-        this.bIdleT = 0; this.bIdleAt = 25 + Math.random() * 20;
+        this.bIdleT = 0; this.bIdleAt = 8 + Math.random() * 7;
         const x = s.pos[0], z = s.pos[2], ctx: BanterTrig[] = [];
         if (s.swim) ctx.push('swim'); if (isIsland(x, z, 1.05)) ctx.push('island'); if (inHarbor(x, z, 10)) ctx.push('harbor'); if (bridgeDeckY(x, z) !== null) ctx.push('bridge'); if (day < 0.3) ctx.push('night');
         this.banter(ctx.length && Math.random() < 0.7 ? ctx[Math.floor(Math.random() * ctx.length)] : 'idle');
@@ -89,7 +89,7 @@ export class SoundDirector {
     }
     onHit() { audio.play('punch', { gain: 0.7, rate: 0.85 + Math.random() * 0.3, prio: 3 }); this.combatT = 6; }
     onBlast(x: number, y: number, z: number) { audio.play('punch_heavy', { gain: 0.9, rate: 0.9 + Math.random() * 0.15, pos: [x, y, z], prio: 3 }); this.combatT = 6; }
-    onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.3 && this.banter('hurt')) return; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
+    onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.55 && this.banter('hurt')) return; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
     onOrb() { audio.play('orb', { gain: 0.45, rate: 1 + Math.min(this.sim.score, 20) * 0.012, prio: 2 }); }
     onFall() { audio.play('whoosh', { gain: 0.6, rate: 0.55, prio: 3 }); }
     onStart() { audio.playSoon('start_hit', { gain: 0.8, prio: 5 }); }
@@ -194,7 +194,7 @@ export class SoundDirector {
             // ---------- character voices ----------
             this.voGap = Math.max(0, this.voGap - dt); for (const k in this.voCd) this.voCd[k] = Math.max(0, this.voCd[k] - dt);
             if (s.web && !p.web && Math.random() < 0.18) this.vo('shadow', [0, 1, 2, 4, 10, 15], { cd: 9 });
-            if (((!s.web && p.web && p.speed > 30) || (s.dive && !p.dive)) && Math.random() < 0.3) this.banter('swing');   // big swing release or a dive: she teases, he shows off
+            if (((!s.web && p.web && p.speed > 30) || (s.dive && !p.dive)) && Math.random() < 0.5) this.banter('swing');   // big swing release or a dive: she teases, he shows off
             for (let i = 0; i < E.length; i++) {
                 const e = E[i], pos: Vec3 = [e.x, e.y + enemyBodyOffset(e), e.z], d = Math.hypot(e.x - x, e.z - z);
                 if (e.boss) {
