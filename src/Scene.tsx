@@ -1589,7 +1589,10 @@ const waterMat = new THREE.ShaderMaterial({
       if(below){float join=smoothstep(-230.0,-224.0,vW.z)*(1.0-smoothstep(0.20,0.65,abs(v.y)));
         vec3 junction=uWaterDisplay*(1.0+0.9*pow(1.0-clamp(abs(v.y),0.0,1.0),2.5));
         col=mix(col,junction,join);aOut=mix(aOut,1.0,join);}
-      float aAbove = mix(nearClear, 0.3, heroSee * (1.0 - fr * 0.5));
+      // Shifat 5:36 picked "clear water near you": within ~30 m the surface turns partly see-through (more when looking down, less at grazing
+      // angles where Fresnel reflection takes over), so fish, the swimmer and the real seabed show through everywhere close by, not only in a window.
+      float dCam = length(cameraPosition - vW); float nearK = (1.0 - smoothstep(12.0, 32.0, dCam)) * (1.0 - fr) * step(-222.0, -vW.z) * (1.0 - step(below ? 1.0 : 0.0, 0.5) * 0.0);
+      float aAbove = mix(nearClear, 0.3, heroSee * (1.0 - fr * 0.5)); aAbove = min(aAbove, mix(1.0, 0.5, nearK));
       gl_FragColor = vec4(col, below ? aOut : aAbove);
     }`,
 });
