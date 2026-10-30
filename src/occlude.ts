@@ -16,6 +16,5 @@ export function occludeFade(sh: any) {
       float t = clamp(dot(vOccW - oc, seg) / L2, 0.0, 1.0); float dseg = length(vOccW - (oc + seg * t));
       float behind = 1.0 - smoothstep(0.78, 0.95, t);   // only between the lens and the hero, not past the hero
       float f = max((1.0 - smoothstep(1.15, 1.6, dseg)) * behind, 1.0 - smoothstep(1.8, 2.6, length(vOccW - oc)));
-      vec2 q = floor(mod(gl_FragCoord.xy, 4.0)); float bay = mod(q.x * 2.0 + q.y * 3.0 + q.x * q.y, 4.0) / 4.0 + mod(q.x + q.y * 2.0, 2.0) * 0.125;
-      if (f > 0.97 || f * 0.9 > bay + 0.06) discard; }`);
+      if (f > 0.45) discard;   /* clean cut instead of a dither: the outline pass inked every dither hole as black speckle */ }`);
 }
