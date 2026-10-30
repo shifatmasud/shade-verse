@@ -1411,6 +1411,8 @@ const waterMat = new THREE.ShaderMaterial({
       
       #ifdef PHONE_W
       gChop = length(cameraPosition - vW) < 90.0;   /* phone: past 90 m the 3-12 m chop is sub-pixel (only shimmer), so its 5 wave trains are skipped */
+      #else
+      gChop = length(cameraPosition - vW) < 160.0;   /* desktop (Shifat 10:19 'help desktop too'): same skip, further out */
       #endif
       vec2 gW = wg(vW.xz, uTime); gChop = true; vec2 g = gW + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
