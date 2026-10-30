@@ -1485,7 +1485,15 @@ const waterMat = new THREE.ShaderMaterial({
           float sh = 1.0 - smoothstep(0.93, 1.5, irr);
           vec3 tq = mix(vec3(0.07, 0.55, 0.62), vec3(0.42, 0.9, 0.84), 1.0 - smoothstep(0.92, 1.18, irr)) * mix(0.25, 1.0, uDay);
           col = mix(col, mix(tq, col, fr * 0.55), sh * 0.85 * (1.0 - bedA * 0.9));
-          float fo = smoothstep(0.985, 0.93, irr) * smoothstep(0.86, 0.91, irr) * (0.5 + 0.5 * sin(irr * 140.0 - uTime * 1.7 + sin(ia * 11.0) * 2.0));
+          // shore foam (AAA swash zone, e.g. Sea of Thieves / Uncharted 4): driven by REAL water depth over the traced bed, not rings.
+          // Each wave set runs up the beach as a front that travels with depth (surge), leaves a lacy sheet (caustic-cell lace) that thins as it
+          // drains back, and the fronts are broken along the coast by low-frequency variation, so nothing repeats.
+          float wd = vW.y - bedY(vW.xz), cv = texture2D(uCaus, vW.xz * 0.011 + 0.2).r;
+          float ph = uTime * 0.18 + cv * 2.6 + sin(ia * 3.0) * 0.4, sw = fract(ph + wd * 0.45), swash = smoothstep(0.0, 0.12, sw) * (1.0 - smoothstep(0.12, 0.85, sw));
+          float lace = texture2D(uCaus, vW.xz * 0.21 + vec2(uTime * 0.02, -uTime * 0.013)).r + 0.6 * texture2D(uCaus, vW.xz * 0.53 - uTime * 0.03).g;
+          float zone = 1.0 - smoothstep(0.1, 2.4, wd), edge = smoothstep(-0.05, 0.06, wd) * (1.0 - smoothstep(0.1, 0.55, wd));
+          float fo = zone * smoothstep(0.42, 0.85, lace * (0.5 + swash) * zone + swash * 0.55 * zone) + edge * (0.6 + 0.4 * swash);
+          fo *= smoothstep(1.35, 1.0, irr);
           col = mix(col, vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), clamp(fo, 0.0, 1.0) * 0.75);
           aOut = mix(aOut, 0.62, (1.0 - smoothstep(0.9, 1.08, irr)) * (1.0 - fo) * (1.0 - bedA));
         }
