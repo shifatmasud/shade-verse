@@ -60,7 +60,8 @@ function beachShader(sh: any) {
       sc = mix(sc, sc * vec3(0.68, 0.64, 0.55), wet * 0.9);
       float foam = exp(-pow((yb - wash - 0.05) / 0.07, 2.0)) * (0.6 + 0.4 * sin(bxz.x * 1.7 + bxz.y * 1.3 + uBT * 2.0));
       sc = mix(sc, vec3(1.0), clamp(foam, 0.0, 1.0) * 0.75);
-      diffuseColor.rgb = mix(diffuseColor.rgb, sc, sandM); }`);
+      diffuseColor.rgb = mix(diffuseColor.rgb, sc, sandM); }
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.11, 0.17), smoothstep(-9.0, -14.0, vHzW.y));   /* deep shelf fades to the open-seabed tone: the terrain mesh ends at -14 m and its edge no longer draws a sawtooth through clear water */`);
 }
 // ---------------------------------------------------------------- island terrain
 function islandTerrainGeo() {
