@@ -1,3 +1,4 @@
+import { occludeFade } from './occlude';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ROBOTS } from './robots';
@@ -65,6 +66,7 @@ export function robotMat(parts: { m: number; piv?: number[]; s?: number }[], sca
     const sgn = Array.from({ length: 8 }, (_, i) => (parts[i] && parts[i].s) || 0);
     const m = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, blending: THREE.NoBlending });
     m.onBeforeCompile = (sh) => {
+        occludeFade(sh);
         sh.uniforms.uRT = time; sh.uniforms.uPiv = { value: piv }; sh.uniforms.uSgn = { value: sgn }; sh.uniforms.uSpd = { value: speed };
         sh.vertexShader = 'attribute float aPart;uniform float uRT;uniform vec4 uPiv[8];uniform float uSgn[8];uniform float uSpd;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
     int pi=int(aPart+.5);

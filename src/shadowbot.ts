@@ -1,3 +1,4 @@
+import { occludeFade } from './occlude';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import heroData from './hero.json';
@@ -63,6 +64,7 @@ export function shadowMat(time: { value: number }, rate: number, pedestrian = fa
         : `float wl = 1.0 - smoothstep(0.92, 1.02, y);
            float wa = smoothstep(0.26, 0.34, ax) * smoothstep(0.9, 1.0, y) * (1.0 - smoothstep(1.66, 1.74, y));`;
     m.onBeforeCompile = (sh) => {
+        occludeFade(sh);
         sh.uniforms.uT = time; sh.uniforms.uRate = { value: rate };
         sh.vertexShader = 'uniform float uT,uRate;\nvec3 rotX(vec3 p,vec3 c,float a){float s=sin(a),k=cos(a);vec3 d=p-c;return c+vec3(d.x,d.y*k-d.z*s,d.y*s+d.z*k);}\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
         { float ph = uT * uRate + instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.51, sd = transformed.x < 0.0 ? -1.0 : 1.0, y = transformed.y, ax = abs(transformed.x);

@@ -24,6 +24,7 @@ import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, 
 import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, SEA, seabedAt, BOATS, boatAt, BOAT_HX, BOAT_HZ, BOAT_DECK, BOAT_MAST, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, PED_VOICE, PILOT, type Unibeam, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { RoofProps } from './RoofProps';
+import { OCC } from './occlude';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SouthSea, CITY_LOD } from './SouthSea';
@@ -1814,6 +1815,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         camera.position.copy(cam.current); { const shk = (sim as any).shake || 0; if (shk > 0.001) { const a = shk * shk * 2.2, tt = sim.t * 61; camera.position.x += Math.sin(tt * 1.3) * a; camera.position.y += Math.sin(tt * 1.9 + 1.7) * a * 0.8; camera.position.z += Math.sin(tt * 1.1 + 4.1) * a; } } if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
         look.current.set(p[0], sim.swim ? p[1] + 0.7 : p[1] + 1.5, p[2]);
+        OCC.uOccHero.value.set(p[0], p[1] + 1.0, p[2]);   // robots/peds between lens and hero dissolve (occlude.ts)
         const ov = DBG ? (window as any).__camOv : null; if (ov) { camera.position.set(ov[0], ov[1], ov[2]); look.current.set(ov[3], ov[4], ov[5]); }
         camera.lookAt(look.current);
         const cp = camera as THREE.PerspectiveCamera;
