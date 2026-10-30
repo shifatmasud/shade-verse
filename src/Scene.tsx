@@ -1680,8 +1680,15 @@ function Fish({ sim }: { sim: Sim }) {
             o.position.set(px, py, pz); o.rotation.set(0, Math.atan2(-Math.sin(a), Math.cos(a)) + Math.PI / 2 * 0 , Math.sin(t * 9 + i) * 0.15); o.lookAt(sc.x + Math.cos(a + 0.2) * f.r, py, sc.z + Math.sin(a + 0.2) * f.r); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }
         m.count = N; m.instanceMatrix.needsUpdate = true;
     });
-    return <instancedMesh ref={ref} args={[geo, undefined, 130]} frustumCulled={false} userData={{ noRefl: true }}><meshLambertMaterial vertexColors={false} /></instancedMesh>;
+    return <instancedMesh ref={ref} args={[geo, undefined, 130]} frustumCulled={false} userData={{ noRefl: true }}><primitive object={fishMat} attach="material" /></instancedMesh>;
 }
+// fish seen through the sea get Beer-Lambert water colour by their path length in water (they read like paper cutouts on top of the surface before)
+const fishMat = (() => { const m = new THREE.MeshLambertMaterial(); m.onBeforeCompile = (s) => {
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vFW;').replace('#include <project_vertex>', '#include <project_vertex>\nvFW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vFW;').replace('#include <dithering_fragment>', `#include <dithering_fragment>
+      { float dep = max(${WATER_Y.toFixed(2)} - vFW.y, 0.0); float pl = dep + 0.22 * length(cameraPosition - vFW); vec3 T = exp(-vec3(0.46, 0.12, 0.075) * pl);
+        gl_FragColor.rgb = gl_FragColor.rgb * T + vec3(0.02, 0.13, 0.18) * (1.0 - T); }`); };
+    m.customProgramCacheKey = () => 'fishWater1'; return m; })();
 function Whale({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.Group>(null!), tail = useRef<THREE.Mesh>(null!);
     const body = useMemo(() => { const g = new THREE.SphereGeometry(1, 16, 10); g.scale(2.6, 2.2, 9); const p = g.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const z = p.getZ(i); if (z < 0) { const k = 1 + z / 14; p.setX(i, p.getX(i) * k); p.setY(i, p.getY(i) * k); } } g.computeVertexNormals(); return g; }, []);
