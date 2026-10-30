@@ -1,9 +1,19 @@
 // Sound director: reads the simulation every frame (no changes to sim.ts) and turns state changes into sound.
 // Ambient beds cross-fade by zone and position; hero / enemy one-shots fire on state edges; the score follows the action.
 import { audio, STEP_SPRITE, VO_N, type Vec3 } from './engine';
-import { FALLS, ISLAND } from '../seaWorld';
+import { FALLS, ISLAND, isIsland, inHarbor, bridgeDeckY } from '../seaWorld';
+import { BANTER, type BanterTrig } from './banter';
 import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, PED_VOICE, type Sim } from '../sim';
 
+// small fading caption at the bottom of the screen ("Ghost: ...", "Shadow: ...")
+let capEl: HTMLDivElement | null = null, capT = 0;
+function caption(who: string, text: string) {
+    if (typeof document === 'undefined') return;
+    if (!capEl) { capEl = document.createElement('div'); capEl.style.cssText = 'position:fixed;left:50%;bottom:9%;transform:translateX(-50%);max-width:80vw;padding:4px 10px;border-radius:8px;background:rgba(10,12,20,0.45);color:#fff;font:600 13px/1.3 system-ui,sans-serif;text-align:center;pointer-events:none;z-index:40;transition:opacity 0.4s;opacity:0;text-shadow:0 1px 2px #000'; document.body.appendChild(capEl); }
+    capEl.innerHTML = ''; const b = document.createElement('span'); b.style.color = who === 'Ghost' ? '#c9e7ff' : '#ffd29a'; b.textContent = who + ': '; capEl.appendChild(b); capEl.appendChild(document.createTextNode(text));
+    capEl.style.opacity = '1'; const my = ++capT; setTimeout(() => { if (my === capT && capEl) capEl.style.opacity = '0'; }, 2600 + text.length * 35);
+    if ((import.meta as any).env?.VITE_DBG) ((window as any).__captions ||= []).push(who + ': ' + text);
+}
 const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 // mirror of Scene's day/night clock (DN_DUR 300 s), so birds sing by day and crickets take over at night without touching Scene.tsx
@@ -34,6 +44,39 @@ export class SoundDirector {
         audio.playSoon(`vo_${kind}_${i}`, { gain: o.gain ?? 0.85, pos: o.pos ?? null, prio: 4, ref: 10, maxDist: 90 }, 1.2);
         this.voGap = 2.2; this.voCd[kind] = o.cd ?? 6;
     }
+    // ---- Ghost & Shadow banter (husband & wife): an exchange plays line by line, the reply 0.3 s after the line before it ends; never overlaps
+    // other voice lines; about one exchange every 30-60 s, combat ones throttled harder; music ducks a little; small fading captions ----
+    private bBusy = false; private bCd = 14; private bIdleT = 0; private bIdleAt = 28; private bCombatCd = 0; private bLast: Record<string, number> = {}; private lowWas = false;
+    banter(trig: BanterTrig, force = false): boolean {
+        if (this.bBusy || this.sim.mode !== 'play' || (!force && (this.bCd > 0 || this.voGap > 0))) return false;
+        const opts = BANTER.map((x, i) => i).filter((i) => BANTER[i].t === trig); if (!opts.length) return false;
+        let k = opts[Math.floor(Math.random() * opts.length)]; if (opts.length > 1 && k === this.bLast[trig]) k = opts[(opts.indexOf(k) + 1) % opts.length]; this.bLast[trig] = k;
+        const ex = BANTER[k], names = ex.l.map(([sp, i]) => `vo_${sp === 'g' ? 'cg' : 'cs'}_${i}`);
+        this.bBusy = true; this.voGap = 99; audio.voDuck = 0.7;
+        const t0 = performance.now();
+        void Promise.all(names.map((n) => audio.load(n))).then((bufs) => {
+            if (performance.now() - t0 > 2500 || bufs.some((b) => !b)) { this.endBanter(); return; }   // slow network: skip rather than talk late
+            let j = 0;
+            const next = () => {
+                if (j >= names.length || this.sim.mode !== 'play') { this.endBanter(); return; }
+                const [sp, , text] = ex.l[j]; audio.play(names[j], { gain: 0.85, prio: 4 }); caption(sp === 'g' ? 'Ghost' : 'Shadow', text);
+                const dur = bufs[j]!.duration; j++; setTimeout(next, (dur + 0.3) * 1000);
+            };
+            next();
+        });
+        return true;
+    }
+    private endBanter() { this.bBusy = false; this.voGap = 1.5; this.bCd = 30 + Math.random() * 30; this.voCd.ghost = Math.max(this.voCd.ghost, 6); this.voCd.shadow = Math.max(this.voCd.shadow, 6); audio.voDuck = 1; }
+    private banterTick(dt: number, day: number, near: number) {
+        const s = this.sim; this.bCd = Math.max(0, this.bCd - dt); this.bCombatCd = Math.max(0, this.bCombatCd - dt); if (this.bBusy) { this.voGap = Math.max(this.voGap, 0.5); return; }
+        const low = s.hp > 0 && s.hp < 30; if (low && !this.lowWas) this.banter('low', true); this.lowWas = low;
+        if (this.combatT > 0 && near > 0) { this.bIdleT = 0; if (this.bCombatCd <= 0 && this.bCd <= 0 && Math.random() < dt * 0.12) { if (this.banter('combat')) this.bCombatCd = 45; } return; }
+        this.bIdleT += dt; if (this.bIdleT < this.bIdleAt) return;
+        this.bIdleT = 0; this.bIdleAt = 25 + Math.random() * 20;
+        const x = s.pos[0], z = s.pos[2], ctx: BanterTrig[] = [];
+        if (s.swim) ctx.push('swim'); if (isIsland(x, z, 1.05)) ctx.push('island'); if (inHarbor(x, z, 10)) ctx.push('harbor'); if (bridgeDeckY(x, z) !== null) ctx.push('bridge'); if (day < 0.3) ctx.push('night');
+        this.banter(ctx.length && Math.random() < 0.7 ? ctx[Math.floor(Math.random() * ctx.length)] : 'idle');
+    }
     debug: Record<string, number | string> = {};
     constructor(private sim: Sim) { }
 
@@ -46,7 +89,7 @@ export class SoundDirector {
     }
     onHit() { audio.play('punch', { gain: 0.7, rate: 0.85 + Math.random() * 0.3, prio: 3 }); this.combatT = 6; }
     onBlast(x: number, y: number, z: number) { audio.play('punch_heavy', { gain: 0.9, rate: 0.9 + Math.random() * 0.15, pos: [x, y, z], prio: 3 }); this.combatT = 6; }
-    onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
+    onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.3 && this.banter('hurt')) return; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
     onOrb() { audio.play('orb', { gain: 0.45, rate: 1 + Math.min(this.sim.score, 20) * 0.012, prio: 2 }); }
     onFall() { audio.play('whoosh', { gain: 0.6, rate: 0.55, prio: 3 }); }
     onStart() { audio.playSoon('start_hit', { gain: 0.8, prio: 5 }); }
@@ -143,7 +186,7 @@ export class SoundDirector {
                 if (e.down <= 0 && Math.hypot(e.x - x, e.z - z) < 30) near++;
                 if (e.hit > ph + 0.25 && e.down <= 0) audio.play(e.boss ? 'boss_hit' : 'metal', { gain: e.boss ? 0.9 : 0.55, rate: 0.9 + Math.random() * 0.2, pos, prio: 2, ref: e.boss ? 14 : 8 });
                 if (e.hit > ph + 0.25 && e.down <= 0 && Math.random() < (e.boss ? 0.35 : 0.2)) this.vo(e.boss ? 'boss' : 'robot', e.boss ? [5] : [4], { pos, cd: 4 });
-                if (e.down > 0 && !(pd > 0)) { this.vo(e.boss ? 'boss' : 'robot', e.boss ? [6] : [6], { pos, force: e.boss, cd: 5 }); if (!e.boss && Math.random() < 0.5) setTimeout(() => this.vo('shadow', [0, 2, 9, 14], { cd: 6 }), 1300); else if (!e.boss && Math.random() < 0.3) setTimeout(() => this.vo('ghost', undefined, { cd: 12 }), 1500); }
+                if (e.down > 0 && !(pd > 0)) { this.vo(e.boss ? 'boss' : 'robot', e.boss ? [6] : [6], { pos, force: e.boss, cd: 5 }); if (e.boss) setTimeout(() => this.banter('boss', true), 3200); else if (Math.random() < 0.35) setTimeout(() => this.banter('kill'), 1300); else if (!e.boss && Math.random() < 0.5) setTimeout(() => this.vo('shadow', [0, 2, 9, 14], { cd: 6 }), 1300); else if (!e.boss && Math.random() < 0.3) setTimeout(() => this.vo('ghost', undefined, { cd: 12 }), 1500); }
                 if (e.down > 0 && !(pd > 0)) audio.play(e.boss ? 'boss_down' : 'enemy_down', { gain: e.boss ? 1 : 0.75, rate: 0.92 + Math.random() * 0.16, pos, prio: e.boss ? 5 : 3, ref: e.boss ? 20 : 10, maxDist: 200 });
                 p.hit[i] = e.hit; p.down[i] = e.down;
             }
@@ -151,6 +194,7 @@ export class SoundDirector {
             // ---------- character voices ----------
             this.voGap = Math.max(0, this.voGap - dt); for (const k in this.voCd) this.voCd[k] = Math.max(0, this.voCd[k] - dt);
             if (s.web && !p.web && Math.random() < 0.18) this.vo('shadow', [0, 1, 2, 4, 10, 15], { cd: 9 });
+            if (((!s.web && p.web && p.speed > 30) || (s.dive && !p.dive)) && Math.random() < 0.3) this.banter('swing');   // big swing release or a dive: she teases, he shows off
             for (let i = 0; i < E.length; i++) {
                 const e = E[i], pos: Vec3 = [e.x, e.y + enemyBodyOffset(e), e.z], d = Math.hypot(e.x - x, e.z - z);
                 if (e.boss) {
@@ -171,6 +215,7 @@ export class SoundDirector {
             this.intensity += (target - this.intensity) * Math.min(1, dt * (target > this.intensity ? 1.6 : 0.22));
             this.idleT = sp < 1.5 && !s.web ? this.idleT + dt : 0;
             audio.setMusic(this.intensity, 1 - sstep(6, 16, this.idleT));
+            this.banterTick(dt, day, near);
             this.debug = { ...this.debug, zoneCity: +cityW.toFixed(2), zonePark: +parkW.toFixed(2), zoneOcean: +oceanW.toFixed(2), zoneLake: +lakeW.toFixed(2), grove: +groveW.toFixed(2), day: +day.toFixed(2), alt: +alt.toFixed(2), under, music: +this.intensity.toFixed(2) };
         }
         p.web = s.web; p.spring = s.spring; p.shotT = s.shotT; p.atkT = s.atkT; p.snareT = sa.snareT || 0; p.swim = s.swim; p.dive = s.dive; p.glide = s.glideOn; p.mode = s.mode; p.speed = sp;

@@ -2,6 +2,13 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## Ghost & Shadow: husband & wife banter (Oct 30) — Shifat 6:01 PM: "Ghost & Shadow must communicate & talk to each other often… Ghost is female, Shadow is male. They are wife and husband."
+- 55 short exchanges (121 lines: Ghost 64, Shadow 57), warm, playful and family friendly. Triggers: idle chatter when calm (every 25-45 s), combat (worried for each other), after a KO, boss wins, big swing releases / dives, low health, getting hit, swimming, the island, Neon Harbor, the bridge, and night time. Data in src/audio/banter.ts.
+- Same voices and recipe as the existing lines: Shadow = his current voice, no FX; Ghost = her current voice with the same light echo. Same TTS settings, silence trim, loudnorm -16 LUFS, mono, mp3 64k + ogg q3 (public/audio/vo/cg_*, cs_*, 4 MB, lazy-loaded on demand).
+- Playback: each reply starts 0.3 s after the previous line ends (uses the clip's real length). Banter blocks all other voice lines while it plays. About one exchange every 30-60 s, with combat ones at most every 45 s. Music ducks to 70% during banter. If the clips take over 2.5 s to load, the exchange is skipped rather than played late. Ghost's existing meme lines still mix in after KOs.
+- Small fading captions at the bottom ("Ghost: …" in blue, "Shadow: …" in amber).
+- Headless check: a forced exchange played in order (reply exactly 0.3 s after the first line ended), captions shown, cooldown blocked the next one, no page errors.
+
 ## South Sea 2c: Shifat's fixes (Oct 30, 5:49–5:59 PM)
 - Island reshaped: an organic coastline with headlands, bays and a cove (five harmonics, matched by the ocean's turquoise shallows ring) and one long natural ridge with gentle foothills instead of a round cone. Vegetation now uses the city park's own assets: the park broadleaf tree (two seeds), the park shrub, and the park meadow grass with its shader and tint formula, plus palms on the beach. The custom fern and umbrella trees are gone, and only a few boulders remain at the waterline.
 - River mouth: the sea reach widens into a 13 m estuary and reaches sea level before the coast. Its surface fades out before the shoreline with soft banks, so there's no seam, step or strip on the ocean. The swell damping now covers the wider coastline.

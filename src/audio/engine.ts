@@ -15,7 +15,7 @@ const BASE = ((import.meta as any).env?.BASE_URL || '/') + 'audio/';
 // downloaded assets (all small; see public/audio/CREDITS.md)
 const FILES: Record<string, string> = { steps: 'steps', birds: 'birds', music_explore: 'music_explore', music_action: 'music_action', music_title: 'music_title' };
 // character voice lines (Shifat Oct 29: "funny popular family friendly meme voices for every character"): public/audio/vo/<kind>_<i>, lazy-loaded
-export const VO_N: Record<string, number> = { shadow: 16, ghost: 8, robot: 8, boss: 7, ped: 12 };
+export const VO_N: Record<string, number> = { shadow: 16, ghost: 8, robot: 8, boss: 7, ped: 12, cg: 64, cs: 57 };   // cg / cs: Ghost & Shadow couple banter (src/audio/banter.ts)
 for (const k in VO_N) for (let i = 0; i < VO_N[k]; i++) FILES[`vo_${k}_${i}`] = `vo/${k}_${i}`;
 // footstep sprite: 4 takes per surface, 0.32 s slots (mp3 has ~26 ms encoder delay, compensated at play time)
 export const STEP_SPRITE: Record<'concrete' | 'grass' | 'sand', number[]> = { concrete: [0, 0.32, 0.64, 0.96], grass: [1.28, 1.6, 1.92, 2.24], sand: [2.56, 2.88, 3.2, 3.52] };
@@ -197,12 +197,13 @@ export class AudioEngine {
 
     /** Underwater: world bus through a 600 Hz low-pass, score dips. */
     private uw = 0;
+    voDuck = 1;
     setUnderwater(k: number) { this.uw = k; }
     tick(dt: number) {
         const c = this.ctx; if (!c || c.state !== 'running') return;
         const now = c.currentTime;
         this.muffle.frequency.setTargetAtTime(this.uw > 0.5 ? 650 : 20000, now, this.uw > 0.5 ? 0.06 : 0.15);
-        this.music.gain.setTargetAtTime(this.uw > 0.5 ? 0.3 : 0.55, now, 0.3);
+        this.music.gain.setTargetAtTime((this.uw > 0.5 ? 0.3 : 0.55) * this.voDuck, now, 0.3);   // voDuck: music dips a little under the couple's banter
         this.tickBeds(dt); this.tickMusic();
     }
 }
