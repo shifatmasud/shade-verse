@@ -34,7 +34,7 @@ for (const [name, width, height, mobile] of cases) {
 
     const start = await page.evaluate(() => {
         const { sim, input } = window.__game;
-        const bosses = sim.enemies.filter((e) => e.boss);
+        const bosses = sim.enemies.filter((e) => e.boss && !e.mini);   // Neon Harbor's mini-boss is checked separately
         const boss = bosses[0];
         if (boss) {
             sim.enemies.forEach((e, i) => { if (e !== boss) { e.down = 10000; e.atk = 0; e.x = 10000 + i * 30; e.z = 10000; } });

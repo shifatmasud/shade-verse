@@ -24,7 +24,7 @@ import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSu
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
-import { SouthSea } from './SouthSea';
+import { SouthSea, CITY_LOD } from './SouthSea';
 import { ISLAND } from './seaWorld';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
@@ -1055,6 +1055,8 @@ function carGeo() {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 8), [0.15, 0.15, 0.18], sx * 1.0, -0.4, sz * 1.4), add(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8), [0.3, 2.0, 2.6], sx * 1.0, -0.5, sz * 1.4, 0.5);
     return mergeGeometries(parts, false)!;
 }
+// South Sea 4 phone safety: out at the island / Neon Harbor the full city is hidden; SouthSea draws it as plain hazy boxes instead.
+function CityGate({ children }: { children: React.ReactNode }) { const ref = useRef<THREE.Group>(null!); useFrame(() => { if (ref.current) ref.current.visible = !CITY_LOD.far; }); return <group ref={ref}>{children}</group>; }
 function FlyingCars({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.InstancedMesh>(null!);
     const geo = useMemo(carGeo, []);
@@ -2000,19 +2002,20 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <SelectiveBloomPass />
         {OUTLINE_STATE.on && HD.enabled ? <HeroHDPass /> : null}
         <Sky />
-        <City /><TenementBlock />
+        <CityGate><City /><TenementBlock />
         <ParkGround />
         <React.Suspense fallback={null}>
             <PolyforkBuildings />
             <PolyforkLakeBridge sim={sim} perf={perf} tod={TOD} />
-        </React.Suspense>
+        </React.Suspense></CityGate>
         <FlyingCars sim={sim} />
         {/* Rebuild park and city trees with authored forms and foliage; never overlay Polyfork tree canopies. */}
-        <Forest sim={sim} renderGround={false} />
-        <Meadow sim={sim} /><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} /><EnemyShotsFx sim={sim} />
+        <CityGate><Forest sim={sim} renderGround={false} />
+        <Meadow sim={sim} /></CityGate><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} /><EnemyShotsFx sim={sim} />
         <primitive object={rig.root} ref={hero} />
         <BossArenaMarker />
         <GiantBoss sim={sim} />
+        <GiantBoss sim={sim} mini />
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={webB} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>

@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Sim } from './sim';
-import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, islandPeakY, poolAt, RIVERS, riverNear, POOL, FALL_WALL, BRIDGE, BRIDGE_L, bridgeDeckU, cableY, CABLE_X, towerZ } from './seaWorld';
+import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, islandPeakY, poolAt, RIVERS, riverNear, POOL, FALL_WALL, BRIDGE, BRIDGE_L, bridgeDeckU, cableY, CABLE_X, towerZ, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, HBOSS, HCOLS, HROWS, AVENUE } from './seaWorld';
+import { buildings } from './sim';
 import { QUALITY, QK, LOWQ } from './quality';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -418,7 +419,156 @@ function Bridge({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     </group>;
 }
 
-export function SouthSea({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
-    return <group name="south-sea"><Island sim={sim} kit={kit} /><Bridge sim={sim} kit={kit} /></group>;
+// ---------------------------------------------------------------- STEP 4: Neon Harbor
+const NEON = ['#ff4fd8', '#3ff0ff', '#9b5cff', '#b6ff4a', '#ffb347', '#ff6b8b', '#4dffc3'];
+const PASTEL = ['#e79ac4', '#8fc6e6', '#b3a1ea', '#a3d9a0', '#efc28e', '#e6a2b2', '#92ddd0', '#c4c4dc'];
+function harborTowerGeo() {
+    const pos: number[] = [], nor: number[] = [], col: number[] = [], neon: number[] = [], misc: number[] = [], c = new THREE.Color(), n2 = new THREE.Color();
+    const face = (a: number[], b: number[], cc: number[], d: number[], n: number[], seed: number, top: number) => { for (const v of [a, b, cc, a, cc, d]) { pos.push(v[0], v[1], v[2]); nor.push(n[0], n[1], n[2]); col.push(c.r, c.g, c.b); neon.push(n2.r, n2.g, n2.b); misc.push(seed, top); } };
+    HTOWERS.forEach((t, i) => {
+        c.set(PASTEL[i % PASTEL.length]); n2.set(NEON[(i * 3) % NEON.length]); if (t.boss) { c.set('#2a2440'); n2.set('#ff2a6d'); }
+        const y0 = HARBOR.y, y1 = t.h, { x0, x1, z0, z1 } = t, sd = t.seed + i * 0.013;
+        face([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], sd, y1);
+        face([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], sd, y1);
+        face([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], sd, y1);
+        face([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], sd, y1);
+        face([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], sd, y1);
+    });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('aNeon', new THREE.Float32BufferAttribute(neon, 3)); g.setAttribute('aMisc', new THREE.Float32BufferAttribute(misc, 2)); return g;
 }
-void islandPeakY;
+function harborTowerMat(tod: SouthSeaKit['tod']) {
+    return new THREE.ShaderMaterial({
+        uniforms: { uFog: { value: tod.fog }, uSun: { value: tod.sun }, uDay: tod.day, uT: { value: 0 }, uHazeK: HAZE_K },
+        vertexShader: `attribute vec3 aCol; attribute vec3 aNeon; attribute vec2 aMisc; varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vNeon; varying vec2 vMisc;
+        void main(){ vP = position; vN = normal; vCol = aCol; vNeon = aNeon; vMisc = aMisc; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vNeon; varying vec2 vMisc; uniform vec3 uFog; uniform vec3 uSun; uniform float uDay; uniform float uT; uniform float uHazeK;
+        float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+        void main(){
+          vec3 n = normalize(vN); float night = 1.0 - uDay; vec3 L = normalize(uSun + vec3(0.0, 0.3, 0.0)); float dif = max(dot(n, L), 0.0);
+          vec3 lit = mix(vec3(0.16, 0.15, 0.3), vec3(0.5, 0.48, 0.56) + vec3(1.0, 0.86, 0.66) * dif * 0.55, uDay);
+          vec3 col = vCol * lit;
+          float top = vMisc.y, seed = vMisc.x;
+          if (n.y < 0.5) {
+            float u = (abs(n.x) > 0.5 ? vP.z : vP.x) / 2.4, fy = (vP.y - 8.0) / 3.4; vec2 f = fract(vec2(u, fy)); vec2 id = floor(vec2(u, fy));
+            vec2 fw = fwidth(vec2(u, fy)); float aa = clamp(max(fw.x, fw.y) * 1.5, 0.0, 0.5);
+            float win = smoothstep(0.16 - aa, 0.16 + aa + 0.001, f.x) * (1.0 - smoothstep(0.84 - aa, 0.84 + aa + 0.001, f.x)) * smoothstep(0.22 - aa, 0.22 + aa + 0.001, f.y) * (1.0 - smoothstep(0.8 - aa, 0.8 + aa + 0.001, f.y)) * step(1.0, fy);
+            float h = hash(vec3(id, seed * 97.0)); float on = step(mix(0.75, 0.38, night), h);
+            vec3 glass = mix(vec3(0.16, 0.22, 0.36), vec3(0.55, 0.68, 0.82), 0.4 + 0.3 * n.z) * mix(0.35, 1.0, uDay);
+            vec3 lamp = mix(vec3(1.0, 0.82, 0.55), vNeon, step(0.7, hash(vec3(id.yx, seed * 13.0)))) * (0.6 + 0.6 * night);
+            col = mix(col, mix(glass, lamp, on * mix(0.25, 1.0, night)), win * (1.0 - smoothstep(0.35, 0.6, max(fw.x, fw.y))));
+            float stripe = (1.0 - step(0.12, abs(fract(fy / 6.0 + seed) - 0.5) * 2.0 - 0.0) ) ;   // a neon belt every 6 floors
+            float belt = step(0.94, fract(fy / 6.0 + seed)) + step(top - 0.9, vP.y);   // belts + the roof rim
+            col = mix(col, vNeon * mix(0.85, 2.2, night), clamp(belt, 0.0, 1.0) * mix(0.55, 1.0, night));
+            col *= 1.0 - 0.18 * (1.0 - smoothstep(8.0, 12.0, vP.y));   // darker street level
+            stripe *= 0.0;
+          } else { col = mix(vec3(0.24, 0.22, 0.3), vec3(0.5, 0.48, 0.55), uDay); }
+          float d = length(vP - cameraPosition); float hz = cameraPosition.y > -0.6 ? min(0.9, 1.0 - exp(-d * uHazeK)) : 0.0;
+          gl_FragColor = vec4(mix(col, uFog, hz), 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+}
+function harborPlatformGeo() {
+    const parts: THREE.BufferGeometry[] = [], H = HARBOR.y;
+    for (const b of HBLOCKS) { const g = new THREE.BoxGeometry(b.x1 - b.x0, 1.6, b.z1 - b.z0); g.translate((b.x0 + b.x1) / 2, H - 0.8, (b.z0 + b.z1) / 2); parts.push(colorize(g, '#8e8aa3')); }
+    for (const b of HBRIDGES) { const g = new THREE.BoxGeometry(b.x1 - b.x0, 0.8, b.z1 - b.z0); g.translate((b.x0 + b.x1) / 2, H - 0.4 + 0.01, (b.z0 + b.z1) / 2); parts.push(colorize(g, b.x1 - b.x0 > 12 || b.z1 - b.z0 > 12 ? '#6f6b80' : '#a59bb8')); }
+    { const a = new THREE.BoxGeometry(AVENUE.hw * 2, 0.06, HARBOR.z1 - HARBOR.z0); a.translate(AVENUE.x, H + 0.03, (HARBOR.z0 + HARBOR.z1) / 2); parts.push(colorize(a, '#4a4658')); }   // the avenue the bridge lands on
+    return merged(parts);
+}
+function harborNeonTrimGeo() {   // glowing edge lines along every canal-side block edge and footbridge rail
+    const parts: THREE.BufferGeometry[] = [], H = HARBOR.y + 0.08;
+    HBLOCKS.forEach((b, i) => {
+        const c = NEON[i % NEON.length];
+        for (const [x0, z0, x1, z1] of [[b.x0, b.z0, b.x1, b.z0], [b.x0, b.z1, b.x1, b.z1], [b.x0, b.z0, b.x0, b.z1], [b.x1, b.z0, b.x1, b.z1]]) { const L = Math.hypot(x1 - x0, z1 - z0), g = new THREE.BoxGeometry(x1 === x0 ? 0.25 : L, 0.22, x1 === x0 ? L : 0.25); g.translate((x0 + x1) / 2, H, (z0 + z1) / 2); parts.push(colorize(g, c)); }
+    });
+    { const g = new THREE.BoxGeometry(0.3, 0.06, HARBOR.z1 - HARBOR.z0); g.translate(AVENUE.x, HARBOR.y + 0.09, (HARBOR.z0 + HARBOR.z1) / 2); parts.push(colorize(g, '#ff4fd8')); }
+    return merged(parts);
+}
+function harborSignsGeo() {
+    const pos: number[] = [], col: number[] = [], uv: number[] = [], c = new THREE.Color(); _seed = 4040;
+    HTOWERS.forEach((t, i) => {
+        if (t.boss || rnd() < 0.35) return;
+        const vertical = rnd() < 0.55, w = vertical ? 2.6 : 7 + rnd() * 4, h = vertical ? 8 + rnd() * 6 : 2.2 + rnd() * 1.2, side = Math.floor(rnd() * 4), y = HARBOR.y + 8 + rnd() * Math.max(2, Math.min(40, t.h - HARBOR.y - 20));
+        if (y + h > t.h - 2) return;
+        c.set(NEON[Math.floor(rnd() * NEON.length)]);
+        const cx = (t.x0 + t.x1) / 2, cz = (t.z0 + t.z1) / 2, off = 0.35;
+        let p0: number[], p1: number[], p2: number[], p3: number[];
+        if (side === 0) { const z = t.z1 + off, x = cx + (rnd() - 0.5) * (t.x1 - t.x0 - w - 1); p0 = [x - w / 2, y, z]; p1 = [x + w / 2, y, z]; p2 = [x + w / 2, y + h, z]; p3 = [x - w / 2, y + h, z]; }
+        else if (side === 1) { const z = t.z0 - off, x = cx + (rnd() - 0.5) * (t.x1 - t.x0 - w - 1); p0 = [x + w / 2, y, z]; p1 = [x - w / 2, y, z]; p2 = [x - w / 2, y + h, z]; p3 = [x + w / 2, y + h, z]; }
+        else if (side === 2) { const x = t.x1 + off, z = cz + (rnd() - 0.5) * (t.z1 - t.z0 - w - 1); p0 = [x, y, z + w / 2]; p1 = [x, y, z - w / 2]; p2 = [x, y + h, z - w / 2]; p3 = [x, y + h, z + w / 2]; }
+        else { const x = t.x0 - off, z = cz + (rnd() - 0.5) * (t.z1 - t.z0 - w - 1); p0 = [x, y, z - w / 2]; p1 = [x, y, z + w / 2]; p2 = [x, y + h, z + w / 2]; p3 = [x, y + h, z - w / 2]; }
+        const ph = rnd();
+        for (const [v, u0, v0] of [[p0, 0, 0], [p1, 1, 0], [p2, 1, 1], [p0, 0, 0], [p2, 1, 1], [p3, 0, 1]] as [number[], number, number][]) { pos.push(v[0], v[1], v[2]); col.push(c.r, c.g, c.b); uv.push(u0, v0 + ph * 10.0 * 0 + (vertical ? 2 : 0)); }
+    });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); return g;
+}
+const SIGN_MAT = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
+    vertexShader: `attribute vec3 color; varying vec3 vC; varying vec2 vUv; varying vec3 vW; void main(){ vC = color; vUv = uv; vW = position; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec3 vC; varying vec2 vUv; varying vec3 vW; uniform float uT; uniform float uDay;
+    float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5); }
+    void main(){ bool vert = vUv.y > 1.5; vec2 uv = vec2(vUv.x, vert ? vUv.y - 2.0 : vUv.y);
+      float border = 1.0 - step(0.07, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)) * (vert ? 2.0 : 1.0));
+      vec2 g = vert ? vec2(uv.x * 3.0, uv.y * 9.0) : vec2(uv.x * 12.0, uv.y * 3.0); vec2 id = floor(g), f = fract(g);
+      float glyph = step(0.45, h(id + floor(vW.xz))) * step(0.15, f.x) * step(f.x, 0.85) * step(0.2, f.y) * step(f.y, 0.8);
+      float flick = 0.85 + 0.15 * step(0.5, fract(sin(floor(uT * 6.0) + vW.x) * 91.3));
+      float night = 1.0 - uDay; vec3 base = vec3(0.05, 0.04, 0.09);
+      vec3 col = base + vC * (border * 1.6 + glyph * 1.15) * mix(0.7, 1.9, night) * flick;
+      gl_FragColor = vec4(col, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+});
+function harborStiltsGeo() {
+    const parts: THREE.BufferGeometry[] = [];
+    for (const b of HBLOCKS) for (let x = b.x0 + 4; x < b.x1; x += PHONE ? 18 : 13) for (let z = b.z0 + 4; z < b.z1; z += PHONE ? 18 : 13) { const g = new THREE.CylinderGeometry(0.7, 0.85, HARBOR.y - 1.6 + 30, 6, 1); g.translate(x, (HARBOR.y - 1.6 - 30) / 2, z); parts.push(colorize(g, '#5b5866')); }
+    return merged(parts);
+}
+function harborLampsGeo() {
+    const posts: THREE.BufferGeometry[] = [], heads: THREE.BufferGeometry[] = [];
+    for (let z = HARBOR.z1 - 6; z > HARBOR.z0; z -= 18) for (const sx of [-1, 1]) { const x = AVENUE.x + sx * (AVENUE.hw - 0.6); const p = new THREE.CylinderGeometry(0.08, 0.11, 5, 5); p.translate(x, HARBOR.y + 2.5, z); posts.push(colorize(p, '#3b3846')); const h = new THREE.SphereGeometry(0.32, 6, 4); h.translate(x, HARBOR.y + 5.1, z); heads.push(h); }
+    return { posts: merged(posts), heads: merged(heads) };
+}
+function cityImpostorGeo() {   // the main city as plain hazy boxes, for when the hero is out at Neon Harbor (the full city is hidden then)
+    const parts: THREE.BufferGeometry[] = [];
+    for (const b of buildings) { if ((b as any).sea || b.host !== undefined) continue; const g = new THREE.BoxGeometry(b.x1 - b.x0, b.h, b.z1 - b.z0); g.deleteAttribute('uv'); g.translate((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2); parts.push(colorize(g, '#b9b2b6')); }
+    return merged(parts);
+}
+const HCX = (HARBOR.x0 + HARBOR.x1) / 2, HCZ = (HARBOR.z0 + HARBOR.z1) / 2;
+export const CITY_LOD = { far: false };
+function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
+    const towers = useMemo(harborTowerGeo, []), tmat = useMemo(() => harborTowerMat(kit.tod), []);
+    const plat = useMemo(harborPlatformGeo, []), trim = useMemo(harborNeonTrimGeo, []), signs = useMemo(harborSignsGeo, []), stilts = useMemo(harborStiltsGeo, []), lamps = useMemo(harborLampsGeo, []), imp = useMemo(cityImpostorGeo, []);
+    const pmat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
+    const trimMat = useMemo(() => new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), []);
+    const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffd1f0' }), []);
+    const impMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
+    const near = useRef<THREE.Group>(null!), impRef = useRef<THREE.Mesh>(null!), ring = useRef<THREE.Mesh>(null!);
+    useFrame(({ camera, clock }) => {
+        const d = Math.hypot(camera.position.x - HCX, camera.position.z - HCZ), night = 1 - kit.tod.day.value;
+        if (near.current) near.current.visible = d < (PHONE ? 420 : 560);   // full detail only for the city the hero is in
+        CITY_LOD.far = camera.position.z < -760; if (impRef.current) impRef.current.visible = CITY_LOD.far;
+        SIGN_MAT.uniforms.uT.value = clock.elapsedTime; SIGN_MAT.uniforms.uDay.value = kit.tod.day.value;
+        trimMat.color.setScalar(0.55 + 0.9 * night); lampMat.color.setRGB(1, 0.82, 0.94).multiplyScalar(0.4 + 0.9 * night);
+        if (ring.current) { ring.current.rotation.z = clock.elapsedTime * 0.6; (ring.current.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.25 * Math.sin(clock.elapsedTime * 2.2); }
+    });
+    return <group name="neon-harbor">
+        <mesh geometry={towers} material={tmat} frustumCulled={false} />
+        <mesh geometry={plat} material={pmat} frustumCulled={false} />
+        <mesh geometry={trim} material={trimMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
+        <mesh ref={impRef} geometry={imp} material={impMat} visible={false} frustumCulled={false} />
+        <group ref={near}>
+            <mesh geometry={signs} material={SIGN_MAT} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
+            <mesh geometry={stilts} material={pmat} frustumCulled={false} />
+            <mesh geometry={lamps.posts} material={pmat} frustumCulled={false} />
+            <mesh geometry={lamps.heads} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
+            <mesh ref={ring} position={[HBOSS.x, HBOSS.y - 0.9, HBOSS.z]} rotation={[-Math.PI / 2, 0, 0]} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false}><ringGeometry args={[9, 10.2, 48]} /><meshBasicMaterial color="#ff2a6d" transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} /></mesh>
+        </group>
+    </group>;
+}
+
+export function SouthSea({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
+    return <group name="south-sea"><Island sim={sim} kit={kit} /><Bridge sim={sim} kit={kit} /><NeonHarbor kit={kit} /></group>;
+}
+void islandPeakY; void HCOLS; void HROWS;

@@ -2,6 +2,14 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## South Sea 4: Neon Harbor (Oct 30) — the 2nd city at the south end of the bridge
+- A pastel-and-neon harbor city on a raised platform (8 m) on stilts over the sea, at x 18..282, z -1010..-1242. There are 9 blocks split by canals, with footbridges over the canals and a central avenue where the bridge lands. 58 towers (up to ~150 m) with lit windows, neon belts and roof rims, about 40 flickering neon signs, glowing canal-edge trim, and avenue lamps. Pastel by day, neon by night.
+- All of it is solid. Towers are web anchors and their roofs are walkable. Canals are swimmable, and you can climb out of them onto the platform (tested).
+- Enemies: Neon Harbor spawns its own street, roof and drone bots, at most 9 around the hero, and ground bots never walk off into a canal. The open sea, the bridge and the island stay calm, with no spawns.
+- Mini-boss: a smaller (0.72x), 14 HP version of the giant boss on the tallest tower's roof, marked by a pulsing pink ring. It uses the same zone aggro, 90 m give-up, chase, volleys and chest beam as the main boss, and it stays inside the harbor. The boss voice line now fires per boss.
+- Phone safety: the harbor's signs, stilts and lamps only draw within ~420 m (560 on desktop). Out at the island or the harbor, the full main city is hidden and drawn as plain hazy boxes instead.
+- World edge moved south to z -1290 to make room.
+
 ## South Sea 2b: island polish + flying bridge traffic (Oct 29) — Shifat: "long grasses & more tree variations, river, better water fall", "make island from real images refs", "deck cars should be cars flying"
 - Look based on real tropical islands (Maldives / Bora Bora refs): turquoise shallows ring the white-sand beach, with an animated foam line at the shore (ocean shader, island-only), brighter sand, limestone boulders on the waterline and rock outcrops on the steep hill.
 - Lagoon + plunge pool: new shallow-water shader. Turquoise at the sandy edge deepening to teal, soft transparent rim, ripples, caustic glints, night-dim. This replaces the lake material that read as a flat grey slab on phones.

@@ -1,6 +1,6 @@
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
-import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, seaSurface, seaLift, poolAt, islandH, inCalmZone } from './seaWorld';
+import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, HBLOCKS, HBRIDGES, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone } from './seaWorld';
 export type V3 = [number, number, number];
 export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number; y0?: number; sea?: true; kind?: string }
 
@@ -66,7 +66,7 @@ export function lakeFloorAt(x: number, z: number) { return z < WATER_Z ? (island
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 // Greater ocean (Shifat Oct 29, step 1 of the South Sea plan): playable sea far beyond the old city-edge wall, with a real depth profile:
 // shallow shelf near the beach -> slope -> a deep trench -> rising again toward the future 2nd-city platform.
-export const SEA = { zMin: -1150, xMax: HALF + 180 };
+export const SEA = { zMin: -1290, xMax: HALF + 180 };   // South Sea 4: room for Neon Harbor (platform to z -1242) and the water around it
 const _sm = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export function seabedAt(x: number, z: number) {
     const d = WATER_Z - z;   // metres offshore
@@ -246,10 +246,30 @@ export const ENEMY_N = 26;   // was 10: user wants many enemies always in view (
 function spawnEnemy(s: Sim): Enemy {
     const kind = [0, 0, 1, 2, 2, 3][Math.floor(Math.random() * 6)];   // kind 2 = flying quad drone, kind 3 = Shadow-body heavy robot (the dome is retired)
     const e = spawnEnemy0(s, kind === 2); e.kind = kind; e.born = s.t;
-    if (kind === 2) { e.air = true; e.roof = undefined; e.y = 6 + Math.random() * 26; }   // hover drones patrol the street canyons at altitude
+    if (kind === 2) { e.air = true; e.roof = undefined; e.y = (inHarbor(e.x, e.z, 10) ? HARBOR.y : 0) + 6 + Math.random() * 26; }   // hover drones patrol the street canyons at altitude
     return e;
 }
+const PARKED = (): Enemy => ({ x: 20, y: 1, z: 20, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 });
+export const HARBOR_ENEMY_CAP = 9;   // Neon Harbor: "a few enemies" at a time around the hero; the rest wait parked in the city
+function spawnHarbor(s: Sim, noRoof: boolean): Enemy {
+    let n = 0; for (const q of s.enemies) if (!q.boss && q.down <= 0 && inHarbor(q.x, q.z, 30)) n++;
+    if (n >= HARBOR_ENEMY_CAP) return PARKED();
+    const hp = s.pos;
+    if (!noRoof && Math.random() < 0.4) {
+        const cand = blds.filter((b) => b.kind === 'harbor' && b.x1 - b.x0 > 10 && b.h - HARBOR.y < 70 && Math.hypot((b.x0 + b.x1) / 2 - hp[0], (b.z0 + b.z1) / 2 - hp[2]) > 25 && Math.hypot((b.x0 + b.x1) / 2 - hp[0], (b.z0 + b.z1) / 2 - hp[2]) < 140 && Math.abs((b.x0 + b.x1) / 2 - HBOSS.x) + Math.abs((b.z0 + b.z1) / 2 - HBOSS.z) > 1);
+        if (cand.length) { const b = cand[Math.floor(Math.random() * cand.length)]; return { roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 }, x: (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * 6, y: b.h + 1, z: (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * 6, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 }; }
+    }
+    for (let k = 0; k < 40; k++) {
+        const x = hp[0] + (Math.random() - 0.5) * 180, z = hp[2] + (Math.random() - 0.5) * 180;
+        if (!inHarbor(x, z) || harborVoid(x, z) || Math.hypot(x - hp[0], z - hp[2]) < 18 || Math.hypot(x - hp[0], z - hp[2]) > 95) continue;
+        let inside = false; for (const b of blds) if (b.sea && x > b.x0 - 1 && x < b.x1 + 1 && z > b.z0 - 1 && z < b.z1 + 1) { inside = true; break; }
+        if (!inside) return { x, y: HARBOR.y + 1, z, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 };
+    }
+    return PARKED();
+}
 function spawnEnemy0(s: Sim, noRoof = false): Enemy {
+    if (inHarbor(s.pos[0], s.pos[2], 40)) return spawnHarbor(s, noRoof);   // South Sea 4: Neon Harbor's own street / roof bots
+    if (s.pos[2] < WATER_Z - 30) return PARKED();   // open sea, the bridge and the island are calm: nothing spawns out there
     if (!noRoof && Math.random() < 0.4) {
         const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return b.x1 - b.x0 > 10 && d > 30 && d < 150 && b.h < 60 && (!b.sea || b.kind === 'harbor') && !inCalmZone((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2); });
         if (cand.length) { const b = cand[Math.floor(Math.random() * cand.length)]; return { roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 }, x: (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * 6, y: b.h + 1, z: (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * 6, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 }; }
@@ -274,6 +294,14 @@ function spawnBoss(s: Sim): Enemy {
     e.flight = { phase: 'grounded', phaseT: 0, baseY: e.y, startX: e.x, startZ: e.z, targetX: e.x, targetZ: e.z, cycle: 0 };
     return e;
 }
+// South Sea 4: Neon Harbor's mini-boss on the tallest tower. Same boss code path (zone aggro, 90 m give-up, hover-dash chase, volleys,
+// chest beam), with its own arena and a smaller body / fewer HP. It stays inside the harbor.
+function spawnMiniBoss(s: Sim): Enemy {
+    const e = spawnBoss(s) as any;
+    e.x = HBOSS.x; e.y = HBOSS.y; e.z = HBOSS.z; e.roof = { ...HBOSS.roof }; e.hp = 14; e.mini = true; e.arena = HBOSS;
+    e.flight = { phase: 'grounded', phaseT: 0, baseY: e.y, startX: e.x, startZ: e.z, targetX: e.x, targetZ: e.z, cycle: 0 };
+    return e;
+}
 export function resetSim(s: Sim) {
     const b = blds.reduce((best, c) => Math.hypot(c.x0, c.z0) < Math.hypot(best.x0, best.z0) ? c : best, blds[0]);
     s.pos = [(b.x0 + b.x1) / 2 + 4, b.h + 1, (b.z0 + b.z1) / 2 - 4]; s.vel = [0, 0, 0]; s.web = false; s.ground = true; s.safe = [...s.pos] as V3;
@@ -284,7 +312,7 @@ export function resetSim(s: Sim) {
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.plasma = []; s.blasts = []; s.eshots = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = [];
-    s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s)); s.enemies.push(spawnBoss(s));
+    s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s)); s.enemies.push(spawnBoss(s)); s.enemies.push(spawnMiniBoss(s));
 }
 
 
@@ -734,7 +762,7 @@ const targetY = (e: Enemy) => e.y + enemyBodyOffset(e);
 export const SNARE = { MAX_TARGETS: 5, RANGE: 24, VERTICAL_RANGE: 14, TOTAL: 1.65, GATHER_END: 0.9, SHOCK_START: 0.6, IMPACT: 0.15, HIT_RANGE: 5.5, GROUP_RADIUS: 2.4, PULL_SPEED: 30, DAMAGE: 3, KNOCKBACK: 18, HIT_STOP: 0.10, SHAKE: 0.34 } as const;
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
 const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
-const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };
+const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return z < -900 && harborVoid(x, z); };   // harbor bots never walk off the platform into a canal
 const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1 && x < e.roof.x1 - 1 && z > e.roof.z0 + 1 && z < e.roof.z1 - 1;
 // ===== COMBAT CHOREOGRAPHY (v0.77) =====
 // Move ids: 1 jab, 2 cross, 3 spin hook kick, 4 launcher (rising knee+uppercut), 5 aerial side-kick spike, 6 web-pull flying kick, 7 web-yank slam.
@@ -857,12 +885,14 @@ function bossRoofClamp(value: number, min: number, max: number) { return Math.ma
 function bossLandY(x: number, z: number): { y: number; roof?: { x0: number; x1: number; z0: number; z1: number } } {
     for (const b of blds) if (x > b.x0 + 0.4 && x < b.x1 - 0.4 && z > b.z0 + 0.4 && z < b.z1 - 0.4) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } };
     for (const b of blds) if (x > b.x0 - 1.2 && x < b.x1 + 1.2 && z > b.z0 - 1.2 && z < b.z1 + 1.2) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } };   // hugging a wall: stand on that roof instead of clipping into it
+    if (z < WATER_Z) { const sf = seaSurface(x, z, 1e9); return { y: (sf ?? HARBOR.y) + 1 }; }   // harbor platform / footbridges
     return { y: (inPk(x, z) ? parkH(x, z) : 0) + 1 };
 }
 function bossChaseTarget(e: Enemy, p: V3) {
     const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1, stand = 4.5;
     let tx = p[0] - dx / d * stand, tz = p[2] - dz / d * stand;
     if (isLakeWater(tx, tz)) { tx = p[0] - dx / d * 9; tz = p[2] - dz / d * 9; }
+    if ((e as any).mini) { tx = Math.max(HARBOR.x0 + 4, Math.min(HARBOR.x1 - 4, tx)); tz = Math.max(HARBOR.z0 + 4, Math.min(HARBOR.z1 - 4, tz)); if (harborVoid(tx, tz)) { tx = p[0]; tz = p[2]; } return { tx, tz }; }
     tz = Math.max(tz, WATER_Z + 4);
     return { tx: Math.max(-HALF + 4, Math.min(HALF - 4, tx)), tz };
 }
@@ -872,13 +902,14 @@ function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
     const fa = flight as any;
     // Shifat Oct 29: "Boss should only follow when we walk to boss zone". Aggro starts when the hero steps into the arena zone
     // (the arena roof plus 6 m, at roof height or above); it ends if the hero gets 90 m away, and the boss flies home to its roof.
-    const A = BOSS_ARENA.roof, inZone = p[0] > A.x0 - 6 && p[0] < A.x1 + 6 && p[2] > A.z0 - 6 && p[2] < A.z1 + 6 && p[1] > BOSS_ARENA.y - 5;
-    const ea = e as any; if (inZone) ea.aggro = true; else if (ea.aggro && Math.hypot(p[0] - e.x, p[2] - e.z) > 90) ea.aggro = false;
+    const ea = e as any, AR = (ea.arena || BOSS_ARENA) as typeof BOSS_ARENA;   // South Sea 4: the harbor mini-boss has its own arena roof
+    const A = AR.roof, inZone = p[0] > A.x0 - 6 && p[0] < A.x1 + 6 && p[2] > A.z0 - 6 && p[2] < A.z1 + 6 && p[1] > AR.y - 5;
+    if (inZone) ea.aggro = true; else if (ea.aggro && Math.hypot(p[0] - e.x, p[2] - e.z) > 90) ea.aggro = false;
     if (!ea.aggro) {
-        const home = Math.hypot(e.x - BOSS_ARENA.x, e.z - BOSS_ARENA.z) < 4 && Math.abs(e.y - BOSS_ARENA.y) < 1;
+        const home = Math.hypot(e.x - AR.x, e.z - AR.z) < 4 && Math.abs(e.y - AR.y) < 1;
         if (flight.phase === 'grounded') {
             e.y = flight.baseY; flight.phaseT += dt;
-            if (!home && flight.phaseT >= 0.7 && e.hit <= 0 && e.atk <= 0) { flight.startX = e.x; flight.startZ = e.z; flight.targetX = BOSS_ARENA.x; flight.targetZ = BOSS_ARENA.z; fa.cruise = Math.max(flight.baseY, BOSS_ARENA.y) + BOSS_FLIGHT.altitude; fa.fromY = e.y; fa.homing = true; flight.phase = 'takeoff'; flight.phaseT = 0; }
+            if (!home && flight.phaseT >= 0.7 && e.hit <= 0 && e.atk <= 0) { flight.startX = e.x; flight.startZ = e.z; flight.targetX = AR.x; flight.targetZ = AR.z; fa.cruise = Math.max(flight.baseY, AR.y) + BOSS_FLIGHT.altitude; fa.fromY = e.y; fa.homing = true; flight.phase = 'takeoff'; flight.phaseT = 0; }
             return;
         }
     } else fa.homing = false;
@@ -886,7 +917,7 @@ function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
     const heroOff = (() => { if (dH > 16 || Math.abs(dV) > 3.2) return true; if (e.roof) { const r = e.roof; return !(p[0] > r.x0 - 0.5 && p[0] < r.x1 + 0.5 && p[2] > r.z0 - 0.5 && p[2] < r.z1 + 0.5); } return false; })();
     if (flight.phase === 'grounded') {
         e.y = flight.baseY; flight.phaseT += dt;
-        if (s.mode === 'play' && e.hit <= 0 && e.atk <= 0 && !fa.uniBusy && heroOff && flight.phaseT >= 0.7 && p[2] > WATER_Z - 2) {
+        if (s.mode === 'play' && e.hit <= 0 && e.atk <= 0 && !fa.uniBusy && heroOff && flight.phaseT >= 0.7 && (ea.mini ? inHarbor(p[0], p[2], 6) : p[2] > WATER_Z - 2)) {
             const c = bossChaseTarget(e, p);
             flight.startX = e.x; flight.startZ = e.z; flight.targetX = c.tx; flight.targetZ = c.tz;
             fa.cruise = Math.max(flight.baseY, bossLandY(c.tx, c.tz).y, p[1]) + BOSS_FLIGHT.altitude * 0.8;
@@ -905,7 +936,7 @@ function stepBossFlight(s: Sim, e: Enemy, dt: number, p: V3, engaged: boolean) {
         if (flight.phaseT >= 0.25) { flight.phase = 'propel'; flight.phaseT = 0; }
     } else if (flight.phase === 'propel') {
         // re-aim at the hero every frame and close in (or head home when not aggro); fast when far so a swinging hero can't simply outrun it
-        const c = fa.homing ? { tx: BOSS_ARENA.x, tz: BOSS_ARENA.z } : bossChaseTarget(e, p); flight.targetX = c.tx; flight.targetZ = c.tz;
+        const c = fa.homing ? { tx: AR.x, tz: AR.z } : bossChaseTarget(e, p); flight.targetX = c.tx; flight.targetZ = c.tz;
         const tx = c.tx - e.x, tz = c.tz - e.z, td = Math.hypot(tx, tz), sp = Math.min(34, 9 + td * 0.6) * dt;
         if (td > 1e-3) { const k = Math.min(1, sp / td); e.x += tx * k; e.z += tz * k; e.ang = Math.atan2(p[0] - e.x, p[2] - e.z); }
         const want = Math.max(bossLandY(e.x, e.z).y + 2.5, Math.min(cruise + 10, Math.max(bossLandY(c.tx, c.tz).y, fa.homing ? 0 : p[1]) + BOSS_FLIGHT.altitude * 0.8));
@@ -1005,7 +1036,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         let boom = b.t > 1.4;
         if (!boom) for (const e of s.enemies) { if (e.down > 0) continue; if (Math.hypot(e.x - nx, e.z - nz) < (e.boss ? BOSS_HIT_RADIUS : 1.6) && Math.abs((e.y + enemyBodyOffset(e)) - ny) < (e.boss ? BOSS_HIT_HALF_HEIGHT : 2.4)) { boom = true; break; } }
         if (!boom) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { boom = true; break; } }
-        if (!boom) { const gy = nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.85) boom = true; }
+        if (!boom) { const sf = nz < WATER_Z ? seaSurface(nx, nz, ny) : null, gy = sf !== null ? sf + 1.0 : nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.85) boom = true; }
         if (boom) { detonate(s, nx, ny, nz, ev); s.plasma.splice(i, 1); } else { b.x = nx; b.y = ny; b.z = nz; }
     }
     if (options.updateEnemies !== false) stepEnemyShots(s, dt, ev);
@@ -1093,7 +1124,7 @@ function stepEnemyShots(s: Sim, dt: number, ev: Events) {
         if (!stop && shockOn && Math.hypot(nx - p[0], ny - (p[1] + 0.9), nz - p[2]) < 6.5) stop = true;
         if (!stop) { const cx = p[0], cy = p[1] + 0.9, cz = p[2]; const ax = b.x - cx, ay = b.y - cy, az = b.z - cz, bx = nx - b.x, by = ny - b.y, bz = nz - b.z, bb = bx * bx + by * by + bz * bz || 1; const tt = Math.max(0, Math.min(1, -(ax * bx + ay * by + az * bz) / bb)); if (Math.hypot(ax + bx * tt, ay + by * tt, az + bz * tt) < ESHOT.HIT_R && s.dodgeT <= 0) { hit = true; stop = true; } }   // swept test: fast bolts cannot tunnel through
         if (!stop) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { stop = true; break; } }
-        if (!stop) { const gy = nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.9) stop = true; }
+        if (!stop) { const sf = nz < WATER_Z ? seaSurface(nx, nz, ny) : null, gy = sf !== null ? sf + 1.0 : nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.9) stop = true; }
         if (hit) hurtHero(s, b.boss ? ESHOT.BOSS_DMG : ESHOT.DMG, ev);
         if (stop && b.t <= ESHOT.LIFE) ev.shot?.('impact', nx, ny, nz);
         if (stop) { b.dead = 0.0001; if (!hit) { b.x = nx; b.y = ny; b.z = nz; } } else { b.x = nx; b.y = ny; b.z = nz; }

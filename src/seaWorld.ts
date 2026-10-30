@@ -140,6 +140,57 @@ export const SEA_ANCHORS: [number, number, number][] = [];
 for (let u = 70; u < BRIDGE_L - 70; u += 14) for (const sx of [-1, 1]) { const y = cableY(u); if (y - bridgeDeckU(u) > 10) SEA_ANCHORS.push([BRIDGE.x + sx * CABLE_X, y, BRIDGE.z0 - u]); }
 for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) SEA_ANCHORS.push([BRIDGE.x + sx * BRIDGE.legX, BRIDGE.towerH + 1, towerZ(i)]);
 
+// ---------------------------------------------------------------- STEP 4: Neon Harbor, the 2nd city on stilts
+// A raised platform (top at HARBOR.y) on stilts over the sea, cut into 3x3 blocks by canals (the sea shows below). The bridge lands on
+// the central avenue (x=141). Tighter towers with neon/pastel styling (renderer), solid + webbable like the city.
+export const HCOLS: [number, number][] = [[HARBOR.x0, 86], [98, 184], [196, HARBOR.x1]];
+export const HROWS: [number, number][] = [[-1080, HARBOR.z1], [-1162, -1092], [HARBOR.z0, -1174]];   // [zMin, zMax] north row first
+export const AVENUE = { x: BRIDGE.x, hw: 9 };
+export const HBLOCKS: Deck[] = [];
+for (const [x0, x1] of HCOLS) for (const [z0, z1] of HROWS) HBLOCKS.push({ x0, x1, z0, z1, y: HARBOR.y });
+export const HBRIDGES: Deck[] = [];   // footbridges over the canals (and the avenue's wide crossings)
+for (let r = 0; r < 3; r++) { const zc = (HROWS[r][0] + HROWS[r][1]) / 2; HBRIDGES.push({ x0: HCOLS[0][1] - 0.5, x1: HCOLS[1][0] + 0.5, z0: zc - 3, z1: zc + 3, y: HARBOR.y }, { x0: HCOLS[1][1] - 0.5, x1: HCOLS[2][0] + 0.5, z0: zc - 3, z1: zc + 3, y: HARBOR.y }); }
+for (let c = 0; c < 3; c++) { const xc = c === 1 ? AVENUE.x : (HCOLS[c][0] + HCOLS[c][1]) / 2, hw = c === 1 ? AVENUE.hw : 3; HBRIDGES.push({ x0: xc - hw, x1: xc + hw, z0: HROWS[1][1] - 0.5, z1: HROWS[0][0] + 0.5, y: HARBOR.y }, { x0: xc - hw, x1: xc + hw, z0: HROWS[2][1] - 0.5, z1: HROWS[1][0] + 0.5, y: HARBOR.y }); }
+for (const d of [...HBLOCKS, ...HBRIDGES]) DECKS.push(d);
+export const HTOWERS: { x0: number; x1: number; z0: number; z1: number; h: number; seed: number; boss?: boolean }[] = [];
+{
+    let r = 777; const hr = () => (r = (r * 16807) % 2147483647) / 2147483647;
+    HBLOCKS.forEach((b, bi) => {
+        const m = 3.5, bx0 = b.x0 + m, bx1 = b.x1 - m, bz0 = b.z0 + m, bz1 = b.z1 - m;
+        const bossBlock = bi === 7;   // east column, middle row
+        if (bossBlock) {   // the tallest tower: the mini-boss roof
+            const cx = (bx0 + bx1) / 2, cz = (bz0 + bz1) / 2;
+            HTOWERS.push({ x0: cx - 12, x1: cx + 12, z0: cz - 12, z1: cz + 12, h: HARBOR.y + 142, seed: 0.5, boss: true });
+        }
+        for (let x = bx0; x < bx1 - 10; ) {
+            const w = 13 + hr() * 9, xe = Math.min(bx1, x + w);
+            if (xe - x < 10) break;
+            for (let z = bz0; z < bz1 - 10; ) {
+                const d = 13 + hr() * 9, ze = Math.min(bz1, z + d);
+                if (ze - z < 10) break;
+                const onAvenue = b.x0 === HCOLS[1][0] && xe > AVENUE.x - AVENUE.hw - 1 && x < AVENUE.x + AVENUE.hw + 1;
+                const overBoss = bossBlock && xe > (bx0 + bx1) / 2 - 15 && x < (bx0 + bx1) / 2 + 15 && ze > (bz0 + bz1) / 2 - 15 && z < (bz0 + bz1) / 2 + 15;
+                if (!onAvenue && !overBoss && hr() > 0.12) {
+                    const tall = Math.pow(hr(), 1.6), h = HARBOR.y + 26 + tall * 92;
+                    HTOWERS.push({ x0: x + 0.6, x1: xe - 0.6, z0: z + 0.6, z1: ze - 0.6, h, seed: hr() });
+                }
+                z = ze + 4 + hr() * 3;
+            }
+            x = xe + 4 + hr() * 3;
+        }
+    });
+    for (const t of HTOWERS) SEA_BLDS.push({ x0: t.x0, x1: t.x1, z0: t.z0, z1: t.z1, h: t.h, y0: HARBOR.y - 0.5, sea: true, kind: 'harbor' });
+}
+export const HBOSS = (() => { const t = HTOWERS.find((q) => q.boss)!; return { x: (t.x0 + t.x1) / 2, y: t.h + 1, z: (t.z0 + t.z1) / 2, roof: { x0: t.x0, x1: t.x1, z0: t.z0, z1: t.z1 } }; })();
+export function inHarbor(x: number, z: number, pad = 0) { return x > HARBOR.x0 - pad && x < HARBOR.x1 + pad && z > HARBOR.z0 - pad && z < HARBOR.z1 + pad; }
+/** inside the harbor footprint (+pad) but over a canal / off the platform */
+export function harborVoid(x: number, z: number) {
+    if (!inHarbor(x, z, 20)) return false;
+    for (const d of HBLOCKS) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) return false;
+    for (const d of HBRIDGES) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1) return false;
+    return true;
+}
+
 /** highest walkable surface under a foot at footY: island ground always counts; decks only from above (one-way) */
 export function seaSurface(x: number, z: number, footY: number): number | null {
     let best: number | null = null;

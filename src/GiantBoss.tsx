@@ -248,7 +248,7 @@ function buildBossRig(): BossRig {
     return { root, body, bones, byName, geometry, skin, outline, muscleGeometry, muscleMaterial, muscleOutline, armorGeometry, armorSphereGeometry, armorBandGeometry, armorMaterial, armorTrimMaterial, eyeMaterial, armorMeshes, thrusterGroup, thrusterOuterGeometry, thrusterCoreGeometry, thrusterOuterMaterial, thrusterCoreMaterial, thrusterOuter, thrusterCore };
 }
 
-export function GiantBoss({ sim }: { sim: Sim }) {
+export function GiantBoss({ sim, mini = false }: { sim: Sim; mini?: boolean }) {
     const rig = useMemo(buildBossRig, []);
     const root = rig.root;
     const state = useRef({ x: 0, z: 0, phase: 0, ready: false });
@@ -262,9 +262,9 @@ export function GiantBoss({ sim }: { sim: Sim }) {
 
     useFrame((_, rawDt) => {
         const dt = Math.max(0.001, Math.min(0.05, rawDt));
-        const boss = sim.enemies.find((e) => e.boss);
+        const boss = sim.enemies.find((e) => e.boss && !!(e as any).mini === mini);   // South Sea 4: a second rig draws Neon Harbor's mini-boss
         if (!boss || sim.mode !== 'play') { root.visible = false; return; }
-        if (DBG) (window as any).__giantBossRoot = root;
+        if (DBG && !mini) (window as any).__giantBossRoot = root;
 
         const motion = state.current;
         const speed = motion.ready ? Math.hypot(boss.x - motion.x, boss.z - motion.z) / dt : 0;
@@ -288,7 +288,7 @@ export function GiantBoss({ sim }: { sim: Sim }) {
         root.visible = true;
         root.position.set(boss.x, boss.y + ((boss as any).ly || 0), boss.z);
         root.rotation.set(-fall * 0.18, boss.ang, fall * 0.76);
-        root.scale.setScalar(BOSS_ROOT_SCALE * Math.max(0.002, 1 - fall * 0.78));
+        root.scale.setScalar(BOSS_ROOT_SCALE * (mini ? 0.72 : 1) * Math.max(0.002, 1 - fall * 0.78));
 
         rig.bones.forEach((bone) => bone.rotation.set(0, 0, 0));
         const airborne = flightPhase !== 'grounded';

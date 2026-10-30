@@ -155,8 +155,8 @@ export class SoundDirector {
                 const e = E[i], pos: Vec3 = [e.x, e.y + enemyBodyOffset(e), e.z], d = Math.hypot(e.x - x, e.z - z);
                 if (e.boss) {
                     const ag = !!(e as any).aggro;
-                    if (ag && !this.bossAggro && e.down <= 0) this.vo('boss', [0, 4], { pos, gain: 1, cd: 10, force: true });
-                    this.bossAggro = ag;
+                    if (ag && !(e as any)._voAg && e.down <= 0) this.vo('boss', [0, 4], { pos, gain: 1, cd: 10, force: true });
+                    (e as any)._voAg = ag; this.bossAggro = ag || this.bossAggro && E.some((q) => q.boss && (q as any).aggro);   // per boss (Neon Harbor adds a mini-boss)
                     if (e.down > 0 && (p.down[i] ?? 0) <= 0) {}
                     if (ag && e.down <= 0 && d < 70) this.vo('boss', [1, 2, 3], { pos, gain: 1, cd: 11 });
                 } else if (e.down <= 0 && d < 22) this.vo('robot', [0, 1, 2, 3, 5, 7], { pos, cd: 7 });
