@@ -699,7 +699,9 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
         <IslandReflection waterRef={waterRef} sim={sim} perf={perf} />
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
-        <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
+        <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * HALF, -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
+        {/* the 200 m wall extensions past the city run along open sea: top kept 0.4 m under the still-water line (at 0 m it read as a dark line on the horizon from the island) */}
+        {[-1, 1].map((s) => <mesh key={s} position={[s * (HALF + 100), (SEABED + WATER_Y - 0.4) / 2, WATER_Z - 0.3]}><boxGeometry args={[200, WATER_Y - 0.4 - SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>)}
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
         <instancedMesh ref={cores} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" transparent opacity={0.5} blending={THREE.NoBlending} /></instancedMesh>
         <instancedMesh ref={glows} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
