@@ -151,15 +151,20 @@ function fallsMat(speed: number, alpha: number, bright: number) {
 }
 const FALLS_MATS = [fallsMat(0.55, 0.38, 0.6), fallsMat(0.85, 0.22, 0.9), fallsMat(1.25, 0.1, 1.2)];
 const FOAM_MAT = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
+    transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uCaus: { value: CAUSTIC_TEX } },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay;
-    float n2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
-    float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(n2(i), n2(i + vec2(1, 0)), f.x), mix(n2(i + vec2(0, 1)), n2(i + vec2(1, 1)), f.x), f.y); }
-    void main(){ vec2 q = vUv - 0.5; float r = length(q) * 2.0;
-      float foam = (1.0 - smoothstep(0.15, 0.62, r)) * smoothstep(0.35, 0.75, vn(q * 9.0 + vec2(uT * 0.7, -uT * 0.9)) * 0.6 + vn(q * 23.0 - uT * 1.3) * 0.5);
-      float ring = pow(0.5 + 0.5 * sin(r * 26.0 - uT * 5.5), 6.0) * smoothstep(1.0, 0.45, r) * smoothstep(0.2, 0.4, r);
-      float a = clamp(foam * 0.95 + ring * 0.35, 0.0, 1.0);
+    // Plunge-pool foam (ref: Ghost of Tsushima / RDR2 falls): a boiling white core, then lacy foam sheets carried outward by the
+    // radial current - laced by the same caustic-cell network as the sea foam, irregular edge, no regular sine rings.
+    fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay; uniform sampler2D uCaus;
+    void main(){ vec2 q = vUv - 0.5; float r = length(q) * 2.0, a0 = atan(q.y, q.x);
+      float edge = 0.62 + 0.12 * sin(a0 * 3.0 + uT * 0.4) + 0.07 * sin(a0 * 7.0 - uT * 0.9);
+      vec2 flow = q * (1.0 + fract(uT * 0.18) * 0.0); float t1 = fract(uT * 0.22), t2 = fract(uT * 0.22 + 0.5);
+      vec2 dir = normalize(q + 1e-4);
+      float l1 = texture2D(uCaus, q * 3.2 - dir * t1 * 0.9 + 0.13).r, l2 = texture2D(uCaus, q * 3.2 - dir * t2 * 0.9 + 0.57).r;
+      float lace = mix(l1, l2, abs(t1 * 2.0 - 1.0)) + 0.6 * texture2D(uCaus, q * 7.7 + vec2(uT * 0.05, -uT * 0.07)).g;
+      float core = 1.0 - smoothstep(0.0, 0.34, r);
+      float sheet = (1.0 - smoothstep(edge - 0.25, edge, r)) * smoothstep(0.35, 0.95, lace + core * 0.8);
+      float a = clamp(core * 0.9 + sheet * 0.85, 0.0, 1.0);
       gl_FragColor = vec4(vec3(0.96, 0.99, 1.0) * mix(0.35, 1.0, uDay), a); }`,
 });
 function sprayGeo(n: number, spread: number) {
@@ -169,10 +174,12 @@ function sprayGeo(n: number, spread: number) {
 }
 function sprayMat(rise: number, size: number, alpha: number, rate: number) {
     return new THREE.ShaderMaterial({
-        transparent: true, depthWrite: false, uniforms: { uT: { value: 0 } },
-        vertexShader: `attribute float ph; uniform float uT; varying float vA; void main(){ float life = fract(uT * ${rate.toFixed(2)} + ph); vec3 p = position; p.y += life * ${rise.toFixed(1)} - life * life * ${(rise * 0.45).toFixed(1)}; p.x += sin(ph * 40.0) * life * 3.0; p.z += cos(ph * 23.0) * life * 3.0;
+        transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uCaus: { value: CAUSTIC_TEX } },
+        vertexShader: `attribute float ph; uniform float uT; varying float vA; varying float vPh; void main(){ vPh = ph; float life = fract(uT * ${rate.toFixed(2)} + ph); vec3 p = position; p.y += life * ${rise.toFixed(1)} - life * life * ${(rise * 0.45).toFixed(1)}; p.x += sin(ph * 40.0) * life * 3.0; p.z += cos(ph * 23.0) * life * 3.0;
           vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vA = (1.0 - life) * smoothstep(0.0, 0.12, life); gl_PointSize = (${size.toFixed(1)} * (0.6 + life)) * 60.0 / max(-mv.z, 1.0); }`,
-        fragmentShader: `varying float vA; void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(0.95, 0.99, 1.0, vA * ${alpha.toFixed(2)} * (1.0 - smoothstep(0.15, 0.5, d))); }`,
+        fragmentShader: `varying float vA; varying float vPh; uniform sampler2D uCaus; void main(){ vec2 pc = gl_PointCoord - 0.5; float d = length(pc);   /* clumpy droplet puffs, not flat discs */
+          float clump = texture2D(uCaus, pc * 0.55 + vec2(vPh * 7.3, vPh * 3.1)).r * 0.9 + 0.35; float m = (1.0 - smoothstep(0.12, 0.5, d)) * smoothstep(0.25, 0.75, clump - d * 0.6);
+          gl_FragColor = vec4(0.95, 0.99, 1.0, vA * ${alpha.toFixed(2)} * 1.25 * m); }`,
     });
 }
 const SPRAY_MAT = sprayMat(4.5, 7, 0.45, 0.65), MIST_MAT = sprayMat(9, 26, 0.12, 0.22);
@@ -306,7 +313,7 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
             vec3 cs = causRGB(hx * 0.5, uT * 0.8) * 2.6 * exp(-dep * 0.10)   /* identical to the sea (scale, speed, gain, depth fade) */ * uDay * (1.0 - smoothstep(20.0, 70.0, length(cameraPosition - vW)));
             vec3 Tb = exp(-vec3(0.24, 0.055, 0.040) * (t1 + dep * 0.6));
             vec3 scat = mix(vec3(0.10, 0.55, 0.56), vec3(0.03, 0.36, 0.44), smoothstep(1.0, 7.0, dep));
-            vec3 seen = alb * (0.82 + cs) * Tb + scat * (1.0 - Tb);
+            vec3 seen = alb * (0.74 + cs * 0.55 / (1.0 + cs * 0.55)) * Tb + scat * (1.0 - Tb);   /* soft-compressed: bright shallow sand no longer blows out into white blotches */
             traced = 1.0 - og * 0.6; body = mix(body, seen, traced); caus *= 1.0 - traced;
           }
           vec3 r = reflect(-v, n); float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay;
