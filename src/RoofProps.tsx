@@ -14,16 +14,19 @@ function h01(a: number, b: number) { const s = Math.sin(a * 127.1 + b * 311.7) *
 export function RoofProps() {
     const spotsRaw = useMemo(() => {
         const ac: P[] = [], fan: P[] = [], vent: P[] = [], hatch: P[] = [], tank: P[] = [], legs: P[] = [];
-        const spots: { x: number; z: number; top: number; pcs: P[]; lists: P[][]; foot: number }[] = [];
-        const spot = (x: number, z: number, top: number, foot: number, items: [P[], P][]) => spots.push({ x, z, top, foot, pcs: items.map((i) => i[1]), lists: items.map((i) => i[0]) });
+        const spots: { x: number; z: number; top: number; pcs: P[]; lists: P[][]; foot: number; core?: boolean }[] = [];
+        let curCore = false; const spot = (x: number, z: number, top: number, foot: number, items: [P[], P][]) => Math.hypot(x - 4, z + 4) < 8 ? 0 : spots.push({ x, z, top, foot, core: curCore, pcs: items.map((i) => i[1]), lists: items.map((i) => i[0]) } as any);
         buildings.forEach((b: any, bi: number) => {
             if (b.host !== undefined || b.sea) return;
             const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, w = b.x1 - b.x0, d = b.z1 - b.z0;
-            if (isLegacyCityCore(cx, cz) || w < 9 || d < 9) return;
+            const core = isLegacyCityCore(cx, cz);   // sweep 11:40 PM: the centre city (spawn roof!) was still bare slabs; its roofs are flat boxes, so no ray needed
+            if (w < 9 || d < 9) return;
+            if (core && Math.abs(cx - 40) < 3 && Math.abs(cz) < 3) return;   // boss arena roof stays clear
             if (cx >= -251 && cx <= -229 && cz >= 69 && cz <= 92) return;
+            curCore = core;
             const y = b.h, r = (k: number) => h01(bi * 13.7 + k, cx * 0.13 + cz * 0.071 + k * 0.37);
             const edge = (k: number): [number, number] => {   // anywhere on the roof except a clear landing disc in the middle
-                for (let t = 0; t < 6; t++) { const u = r(k + t * 7.1) - 0.5, v = r(k + t * 7.1 + 0.5) - 0.5; if (Math.hypot(u, v) > 0.2) return [cx + u * w * 0.78, cz + v * d * 0.78]; }
+                for (let t = 0; t < 6; t++) { const u = r(k + t * 7.1) - 0.5, v = r(k + t * 7.1 + 0.5) - 0.5; if (Math.hypot(u, v) > (core ? 0.28 : 0.2)) { const sx = core ? (w - 7) / w : 0.78, sz = core ? (d - 7) / d : 0.78; return [cx + u * w * sx, cz + v * d * sz]; } }
                 return [cx + w * 0.3, cz + d * 0.3];
             };
             const nAc = 5 + Math.floor(r(1) * 4);
@@ -33,7 +36,7 @@ export function RoofProps() {
             for (let k = 0; k < nV; k++) { const [x, z] = edge(40 + k), s = 1.1 + r(50 + k) * 0.7; spot(x, z, y, 0.5 * s, [[vent, { x, y: y + 0.6 * s, z, sx: s, sy: s, sz: s, ry: 0 }]]); }
             if (r(3) < 0.7) { const [x, z] = edge(60); spot(x, z, y, 0.9, [[hatch, { x, y: y + 0.45, z, sx: 1.8, sy: 0.9, sz: 1.4, ry: r(61) > 0.5 ? 0 : Math.PI / 2 }]]); }
             if (r(4) < 0.6 && w > 14 && d > 14) {   // water tank in one corner
-                const qx = r(70) > 0.5 ? 1 : -1, qz = r(71) > 0.5 ? 1 : -1, x = cx + qx * (w * 0.5 - 4.2), z = cz + qz * (d * 0.5 - 4.2);
+                const qx = r(70) > 0.5 ? 1 : -1, qz = r(71) > 0.5 ? 1 : -1, x = cx + qx * (w * 0.5 - (core ? 6.5 : 4.2)), z = cz + qz * (d * 0.5 - (core ? 6.5 : 4.2));
                 spot(x, z, y, 1.6, [[tank, { x, y: y + 3.6, z, sx: 1, sy: 1, sz: 1, ry: 0 }], ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([lx, lz]) => [legs, { x: x + lx * 1.3, y: y + 1.1, z: z + lz * 1.3, sx: 1, sy: 1, sz: 1, ry: 0 }] as [P[], P])]);
             }
         });
@@ -51,6 +54,7 @@ export function RoofProps() {
             const out: Record<string, P[]> = { ac: [], fan: [], vent: [], hatch: [], tank: [], legs: [] }, names = new Map<P[], string>([[spotsRaw.ac, 'ac'], [spotsRaw.fan, 'fan'], [spotsRaw.vent, 'vent'], [spotsRaw.hatch, 'hatch'], [spotsRaw.tank, 'tank'], [spotsRaw.legs, 'legs']]);
             ray.far = 14;
             for (const sp of spotsRaw.spots) {
+                if (sp.core) { sp.pcs.forEach((p, k) => out[names.get(sp.lists[k])!].push({ ...p })); continue; }
                 const ys: number[] = [];
                 for (const [dx, dz] of [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) { o.set(sp.x + dx * sp.foot, sp.top + 4, sp.z + dz * sp.foot); ray.set(o, dn); const h = ray.intersectObjects(meshes, false)[0]; if (!h || !h.face || h.face.normal.y < 0.85) { ys.length = 0; break; } ys.push(h.point.y); }
                 if (ys.length < 5 || Math.max(...ys) - Math.min(...ys) > 0.25) continue;   // sloped, curved, edge or gap: no prop here
