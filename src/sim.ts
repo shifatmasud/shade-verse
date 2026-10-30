@@ -6,7 +6,7 @@ export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number
 
 export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
 export const FOG: V3 = [0.84, 0.77, 0.74];
-const G = 60, G_FALL = 100, G_WEB = 27;   /* Oct 29 10:07 PM 'jump should be faster & faster to fall': snappier rise (27 -> 60) and a heavier fall (100); 10:14 PM 'even faster'; web swings keep the old 27 */
+const G = 60, G_FALL = 80, G_WEB = 27;   /* Oct 29 10:07 PM 'jump should be faster & faster to fall': snappier rise (27 -> 60) and a heavier fall (100 -> 80 at 10:37 PM 'fall a little bit slower'); 10:14 PM 'even faster'; web swings keep the old 27 */
 export const WALK_V = 22;
 export const JUMP_V = 24;   // was 16: same ~5 m height, reached in ~0.4 s (was ~0.6 s); whole jump ~0.7 s (was ~1.19 s)
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
