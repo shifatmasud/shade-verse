@@ -1693,6 +1693,20 @@ const fishMat = (() => { const m = new THREE.MeshLambertMaterial(); m.onBeforeCo
       { float dep = max(${WATER_Y.toFixed(2)} - vFW.y, 0.0); float pl = dep + 0.22 * length(cameraPosition - vFW); vec3 T = exp(-vec3(0.46, 0.12, 0.075) * pl);
         gl_FragColor.rgb = gl_FragColor.rgb * T + vec3(0.02, 0.13, 0.18) * (1.0 - T); }`); };
     m.customProgramCacheKey = () => 'fishWater1'; return m; })();
+
+// marine snow (AAA underwater: Subnautica / Sea of Thieves): drifting specks in a 24 m box wrapped around the camera, only while the camera is under the sea.
+// One Points draw, positions wrapped in the vertex shader (no per-frame CPU), fades with distance; fewer specks on phones.
+const SNOW_N = (QUALITY as any).coarse || LOWQ ? 220 : 700;
+const SNOW_GEO = (() => { const g = new THREE.BufferGeometry(), p = new Float32Array(SNOW_N * 3); for (let i = 0; i < SNOW_N * 3; i++) p[i] = Math.random() * 24; g.setAttribute('position', new THREE.BufferAttribute(p, 3)); return g; })();
+const SNOW_MAT = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: TOD.day },
+    vertexShader: `uniform float uT; varying float vA; void main(){ vec3 p = position + vec3(uT * 0.15, -uT * 0.08, uT * 0.1);
+      vec3 w = cameraPosition + mod(p - cameraPosition, 24.0) - 12.0; float d = length(w - cameraPosition);
+      vA = (1.0 - smoothstep(4.0, 12.0, d)) * smoothstep(0.6, 1.5, d) * step(w.y, ${WATER_Y.toFixed(1)} - 0.3);
+      vec4 mv = viewMatrix * vec4(w, 1.0); gl_Position = projectionMatrix * mv; gl_PointSize = clamp(110.0 / -mv.z, 1.5, 9.0); }`,
+    fragmentShader: `uniform float uDay; varying float vA; void main(){ vec2 c = gl_PointCoord - 0.5; float a = vA * (1.0 - smoothstep(0.2, 0.5, length(c))); if (a < 0.02) discard; gl_FragColor = vec4(vec3(0.75, 0.9, 0.95) * mix(0.2, 1.0, uDay), a * 0.8); }` });
+function MarineSnow() { const ref = useRef<THREE.Points>(null!);
+    useFrame(({ camera, clock }) => { const p = ref.current; if (!p) return; p.visible = camera.position.y < WATER_Y - 0.3; SNOW_MAT.uniforms.uT.value = clock.elapsedTime; });
+    return <points ref={ref} geometry={SNOW_GEO} material={SNOW_MAT} frustumCulled={false} userData={{ noRefl: true }} />; }
 function Whale({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.Group>(null!), tail = useRef<THREE.Mesh>(null!);
     const body = useMemo(() => { const g = new THREE.SphereGeometry(1, 16, 10); g.scale(2.6, 2.2, 9); const p = g.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const z = p.getZ(i); if (z < 0) { const k = 1 + z / 14; p.setX(i, p.getX(i) * k); p.setY(i, p.getY(i) * k); } } g.computeVertexNormals(); return g; }, []);
@@ -2279,7 +2293,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}><ringGeometry args={[1.0, 1.09, 48]} /><meshBasicMaterial color="#eefbff" transparent opacity={0.4} depthWrite={false} /></mesh>)}</group>
         <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
         <OceanFollow waterRef={waterRef} />
-        <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} />
+        <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
         <IslandReflection waterRef={waterRef} sim={sim} perf={perf} />
