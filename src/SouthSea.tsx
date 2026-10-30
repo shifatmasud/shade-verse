@@ -194,7 +194,7 @@ function riverGeo() {
             const a = P[Math.max(0, i - 1)], b = P[Math.min(N - 1, i + 1)], tl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, px = -(b[1] - a[1]) / tl, pz = (b[0] - a[0]) / tl;
             const [x, z] = P[i], s = A[i], tt = Math.max(0, Math.min(1, s / r.len)), y = riverY(r, tt) + 0.04 * (1 - tt), w = riverHW(r, tt) * 1.38;
             const te = r.tEnd ?? 1, calm = r.y1 < -0.5 ? sm(te * 0.45, te * 0.95, tt) : 0, fade = (r.y1 < -0.5 ? (1 - sm(te * 0.62, te * 1.12, tt)) * sm(1.12, 0.9, islandRR(x, z)) : 1) * inPool(x, z);   // the sea reach fades out over the estuary into the ocean (no seam)
-            const dC = Math.max(0.4, Math.min(6, y - (islandH(x, z) ?? (y - RIVER_DEEP))));   // real carved depth at the centreline (for the refraction trace)
+            const dC = Math.max(0.4, Math.min(3.2, y - (islandH(x, z) ?? (y - RIVER_DEEP))));   // real carved depth at the centreline (for the refraction trace)
             for (let k = 0; k <= X; k++) { const sg = (k / X) * 2 - 1, bw = 1 - 0.35 * sg * sg; pos.push(x + px * w * sg, y + 0.05 * bw, z + pz * w * sg); uv.push(k / X, s); sl.push(slope); fd.push(fade); cm.push(calm); ac.push(px, pz, w, dC); }
             if (i > 0) for (let k = 0; k < X; k++) { const c = base + (i - 1) * (X + 1) + k, d = c + X + 1; idx.push(c, d, c + 1, c + 1, d, d + 1); }
         }
@@ -225,16 +225,17 @@ const RIVER_MAT = new THREE.ShaderMaterial({
         u = u0 + dU * dep; dep = vAcr.w * max(1.0 - u * u, 0.0); u = u0 + dU * dep; dep = vAcr.w * max(1.0 - u * u, 0.0);
         float t1 = dep / sy; vec2 hx = vW.xz + td.xz * t1;
         float peb = vn(hx * 2.3) * 0.6 + vn(hx * 6.1 + 2.0) * 0.4;
-        vec3 alb = mix(vec3(0.42, 0.40, 0.32), vec3(0.86, 0.80, 0.64), smoothstep(2.5, 0.3, dep)) * (0.75 + 0.35 * peb);
+        vec3 alb = mix(vec3(0.62, 0.60, 0.48), vec3(0.93, 0.87, 0.70), smoothstep(3.0, 0.3, dep)) * (0.78 + 0.3 * peb);
         vec3 cs = causRGB(hx, uT * 1.8) * 1.9 * exp(-dep * 0.2) * uDay * (1.0 - smoothstep(20.0, 60.0, length(cameraPosition - vW)));   // faster drift: moving water
-        vec3 Tb = exp(-vec3(0.19, 0.045, 0.035) * (t1 + dep * 0.5));
-        vec3 seen = alb * (0.82 + cs) * Tb + vec3(0.06, 0.45, 0.47) * (1.0 - Tb);
-        body = mix(body, seen, 0.95);
+        vec3 Tb = exp(-vec3(0.17, 0.040, 0.026) * (t1 + dep * 0.6));   /* same water as the sea it runs into */
+        vec3 seen = alb * (0.82 + cs) * Tb + vec3(0.06, 0.52, 0.58) * (1.0 - Tb);
+        float sea = max(vCalm, 1.0 - smoothstep(-0.6, 1.2, vW.y));   /* reach that lies on the sea */
+        body = mix(body, seen, 0.95 * (1.0 - sea));   /* toward the mouth the sea's own refraction takes over (no colour seam) */
       }
       white *= 1.0 - 0.95 * vCalm; body = mix(body, vec3(0.16, 0.62, 0.66), vCalm);   /* mouth: foam dies down and the colour turns to the shallow sea's, so river and ocean read as one surface */
       vec3 c = mix(mix(body, uSky, fr * 0.6), vec3(0.95, 0.99, 1.0), white) * mix(0.3, 1.0, uDay);
       float soft = smoothstep(0.0, 0.24, min(vUv.x, 1.0 - vUv.x));   // soft banks, no hard edge on the sand
-      float a = (mix(0.93, 0.78, vCalm) + 0.07 * white) * soft * vFade; if (a < 0.03) discard;   /* traced bed drawn here, so the strip is near-opaque */
+      float sea2 = max(vCalm, 1.0 - smoothstep(-0.6, 1.2, vW.y)); float a = (mix(0.93, 0.0, smoothstep(0.0, 0.85, sea2)) + 0.5 * white) * soft * vFade;   /* Shifat 2:34 AM seam: the mouth fades to clear so only the flowing foam remains over the sea */ if (a < 0.03) discard;   /* traced bed drawn here, so the strip is near-opaque */
       gl_FragColor = vec4(c, a); }`,
 });
 // long grass (2b): clumps of three crossed blades, swaying in the vertex shader; only on the meadow/jungle ground, never on sand
