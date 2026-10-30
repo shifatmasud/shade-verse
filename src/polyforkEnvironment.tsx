@@ -4,6 +4,7 @@ import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { QUALITY, QK, LOWQ } from './quality';
+import { CAUSTIC_TEX, CAUSTIC_GLSL } from './caustics';
 import {
     buildings, world, PARK, parkH, PARK_POND, PARK_POND_Y, PARK_BRIDGE,
     bridgeSurfaceAt, isLegacyCityCore, LAKE_SHORE, BEACH_DIR, type Sim,
@@ -507,7 +508,7 @@ void main(){
    tp=t;}}
  vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0))refl=heroCol(hn);
  // refraction / transmission
- vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.80,0.30,0.20);
+ vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.17,0.04,0.026)*1.6;/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
  vec3 trans;float alpha=1.0;
  if(uUseScene>0.5&&!below){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
   float sz2=sceneZ(uv2);if(sz2>wz){uv2=suv;sz2=sceneZ(suv);}float th=clamp(wz-sz2,0.0,12.0)*1.15;vec3 T=exp(-absorb*th);
@@ -523,7 +524,12 @@ void main(){
 #include <colorspace_fragment>
 }`;
 const LAKE_CAUSTICS_VS = `varying vec2 vUv; varying vec3 vWorld; void main(){vUv=uv;vec4 w=modelMatrix*vec4(position,1.0);vWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
-const LAKE_CAUSTICS_FS = `uniform float uTime; uniform float uWaterY; varying vec2 vUv; varying vec3 vWorld;float c(vec2 uv){vec2 p=mod(uv*0.115*6.28318,6.28318)-250.0;vec2 i=p;float cc=1.0;float tm=uTime*0.45+11.0;for(int n=0;n<4;n++){float t=tm*(1.0-(3.5/float(n+1)));i=p+vec2(cos(t-i.x)+sin(t+i.y),sin(t-i.y)+cos(t+i.x));cc+=1.0/length(vec2(p.x/(sin(i.x+t)/0.005),p.y/(cos(i.y+t)/0.005)));}cc/=4.0;cc=1.17-pow(cc,1.4);return clamp(pow(abs(cc),8.0),0.0,2.0);}void main(){vec2 p=vWorld.xz*0.78;float k=c(p)+0.55*c(p*1.63+2.1);float edge=1.0-smoothstep(0.68,1.0,length((vUv-0.5)*2.0));float under=1.0-smoothstep(uWaterY-0.35,uWaterY+0.15,cameraPosition.y);float a=edge*under*clamp(k*0.42,0.0,0.58);vec3 sand=mix(vec3(0.34,0.46,0.37),vec3(0.77,0.87,0.65),clamp(k,0.0,1.0));gl_FragColor=vec4(sand,a);}`;
+// Shifat 3:43 AM 'refracted caustic patterns are best, use them everywhere': the park pond's floor uses the SAME simulated caustic tile + causRGB as
+// the sea (scale, speed, gain), lit only by day, and now visible from above too (it sits on the pond bed, so the lake's refraction copy carries it).
+const LAKE_CAUSTICS_FS = `uniform float uTime; uniform float uWaterY; uniform float uDayC; varying vec2 vUv; varying vec3 vWorld;
+${CAUSTIC_GLSL}
+void main(){vec3 k=causRGB(vWorld.xz*0.5,uTime*0.8)*2.6;float edge=1.0-smoothstep(0.68,1.0,length((vUv-0.5)*2.0));float dep=max(uWaterY-vWorld.y,0.0);
+gl_FragColor=vec4(k*edge*exp(-dep*0.10)*uDayC*0.7,1.0);}`;
 
 const FOAM_VS = `uniform float uTime; varying vec2 vUv; void main(){ vUv=uv; vec3 p=position; p.y+=0.016*sin(uv.x*35.0+uTime*1.3); gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0); }`;
 const FOAM_FS = `uniform float uTime; varying vec2 vUv; float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} void main(){ float n=sin(vUv.x*151.0+uTime*1.8)*0.42+sin(vUv.x*67.0-uTime*1.1)*0.33+sin(vUv.x*311.0+vUv.y*6.0+uTime*2.7)*0.25; float fleck=smoothstep(-0.18,0.52,n+h(vec2(floor(vUv.x*85.0),floor(uTime*2.0)))*0.28); float edge=smoothstep(0.02,0.28,vUv.y)*(1.0-smoothstep(0.74,1.0,vUv.y)); float a=fleck*edge*(0.18+0.68*(0.5+0.5*sin(vUv.x*31.0-uTime*1.4))); gl_FragColor=vec4(vec3(0.83,0.95,0.92),a); }`;
@@ -587,9 +593,9 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
     const bufSize = useMemo(() => new THREE.Vector2(), []);
     const causticsGeometry = useMemo(() => new THREE.CircleGeometry(1, 64), []);
     const causticsMaterial = useMemo(() => new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uWaterY: { value: PARK_POND_Y } },
+        uniforms: { uTime: { value: 0 }, uWaterY: { value: PARK_POND_Y }, uDayC: { value: 1 }, uCaus: { value: CAUSTIC_TEX } },
         vertexShader: LAKE_CAUSTICS_VS, fragmentShader: LAKE_CAUSTICS_FS,
-        transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
     }), []);
     const shoreGeo = useMemo(() => shorelineFoamGeometry(PARK_POND.rx * LAKE_SHORE, PARK_POND.rz * LAKE_SHORE), []);
     const shoreMaterial = useMemo(() => new THREE.ShaderMaterial({
@@ -625,7 +631,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         causticsMaterial.uniforms.uTime.value = t;
         u.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]);
         if (tod) {
-            const d = tod.day.value; u.uDay.value = d; u.uHor.value.copy(tod.fog).lerp(_skyBlue, 0.45).multiplyScalar(0.92);
+            const d = tod.day.value; u.uDay.value = d; causticsMaterial.uniforms.uDayC.value = d; u.uHor.value.copy(tod.fog).lerp(_skyBlue, 0.45).multiplyScalar(0.92);
             u.uZen.value.setRGB(0.30, 0.50, 0.78).multiplyScalar(0.12 + 0.88 * d).lerp(tod.sky, 0.25 * d); u.uSun.value.copy(tod.sun);
         }
         const cam = camera as THREE.PerspectiveCamera;
