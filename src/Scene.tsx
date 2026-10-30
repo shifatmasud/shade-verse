@@ -1564,8 +1564,10 @@ const waterMat = new THREE.ShaderMaterial({
           under *= 1.0 + (rl * 0.55 - 0.3) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW))); }
         vec3 tr = refract(-v, n, 1.3310), tg = refract(-v, n, 1.3330), tb = refract(-v, n, 1.3375);
         bool tir = dot(tg, tg) < 0.0001;
-        vec3 sr = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tr.y)), sg = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tg.y)), sb = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tb.y));
+        vec3 zc = vec3(0.55, 0.76, 0.96) * mix(0.12, 1.0, uDay);   /* AAA Snell window: a bright sky disc overhead (was a dull dark-blue zenith) with the sun blazing through it */
+        vec3 sr = mix(uSky, zc, smoothstep(0.0, 0.45, tr.y)), sg = mix(uSky, zc, smoothstep(0.0, 0.45, tg.y)), sb = mix(uSky, zc, smoothstep(0.0, 0.45, tb.y));
         vec3 win = vec3(sr.r, sg.g, sb.b);
+        if (!tir) win += vec3(1.0, 0.95, 0.82) * (pow(max(dot(normalize(tg), uSun), 0.0), 220.0) * 3.0 + pow(max(dot(normalize(tg), uSun), 0.0), 12.0) * 0.25) * uDay;
         // A narrow rough-surface critical-angle transition avoids a binary colour/alpha rim.
         float critical = smoothstep(0.84, 1.04, s2);
         col = mix(mix(win, under, clamp(fr, 0.0, 1.0)), under, critical);
