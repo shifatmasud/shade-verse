@@ -2017,7 +2017,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <React.Suspense fallback={null}>
             <PolyforkBuildings />
             <RoofProps />
-            <StreetProps />
+            <StreetProps tod={TOD} />
             <PolyforkLakeBridge sim={sim} perf={perf} tod={TOD} />
         </React.Suspense></CityGate>
         <FlyingCars sim={sim} />

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 import * as THREE from 'three';
 import { buildings, parkH } from './sim';
 
@@ -12,7 +14,7 @@ function inside(x: number, z: number, pad: number) {
     for (const b of buildings as any[]) if (x > b.x0 - pad && x < b.x1 + pad && z > b.z0 - pad && z < b.z1 + pad && (b.y0 ?? 0) < 3) return true;
     return false;
 }
-function Inst({ list, geo, mat }: { list: P[]; geo: THREE.BufferGeometry; mat: THREE.Material }) {
+function Inst({ list, geo, mat, bloom = false }: { list: P[]; geo: THREE.BufferGeometry; mat: THREE.Material; bloom?: boolean }) {
     const ref = useRef<THREE.InstancedMesh>(null!);
     useEffect(() => {
         if (!ref.current) return;
@@ -21,12 +23,12 @@ function Inst({ list, geo, mat }: { list: P[]; geo: THREE.BufferGeometry; mat: T
         ref.current.instanceMatrix.needsUpdate = true; ref.current.computeBoundingSphere();
     }, [list]);
     if (!list.length) return null;
-    return <instancedMesh ref={ref} args={[geo, mat, list.length]} castShadow={false} receiveShadow={false} />;
+    return <instancedMesh ref={ref} args={[geo, mat, list.length]} castShadow={false} receiveShadow={false} renderOrder={bloom ? 0 : undefined} onUpdate={bloom ? (o: any) => o.layers.enable(SELECTIVE_BLOOM_LAYER) : undefined} />;
 }
 export const STREET_GLOW = { value: 0 };
-export function StreetProps() {
+export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /* 12:14 AM: lamp heads glow + warm light pools at night */
     const d = useMemo(() => {
-        const pole: P[] = [], head: P[] = [], bench: P[] = [], bin: P[] = [], hyd: P[] = [], boll: P[] = [];
+        const pole: P[] = [], head: P[] = [], pool: P[] = [], bench: P[] = [], bin: P[] = [], hyd: P[] = [], boll: P[] = [];
         const add = (l: P[], x: number, y: number, z: number, sx: number, sy: number, sz: number, ry: number) => l.push({ x, y, z, sx, sy, sz, ry });
         (buildings as any[]).forEach((b, bi) => {
             if (b.host !== undefined || b.sea || (b.y0 ?? 0) > 1 || b.h < 6) return;
@@ -41,7 +43,7 @@ export function StreetProps() {
                     if (inside(x, z, 0.6)) continue;
                     const y = parkH(x, z);
                     if (!Number.isFinite(y) || y > 2.5) continue;
-                    if (r < 0.3) { { add(pole, x, y + 2.6, z, 1, 1, 1, ry); add(head, x - nx * 0.7, y + 5.15, z - nz * 0.7, 1, 1, 1, ry); } }
+                    if (r < 0.3) { { add(pole, x, y + 2.6, z, 1, 1, 1, ry); add(head, x - nx * 0.7, y + 5.15, z - nz * 0.7, 1, 1, 1, ry); add(pool, x - nx * 0.9, y + 0.06, z - nz * 0.9, 1, 1, 1, 0); } }
                     else if (r < 0.48) add(bench, x, y + 0.25, z, 1, 1, 1, ry);
                     else if (r < 0.62) add(bin, x, y + 0.5, z, 1, 1, 1, 0);
                     else if (r < 0.7) add(hyd, x, y + 0.4, z, 1, 1, 1, 0);
@@ -50,7 +52,7 @@ export function StreetProps() {
             });
         });
         if (DBG) (window as any).__streetProps = { near: [...pole, ...bench, ...bin].filter((p) => p.x > 5 && p.x < 40 && p.z > 10 && p.z < 70).slice(0, 10).map((p) => [p.x.toFixed(1), p.y.toFixed(1), p.z.toFixed(1)]), nb: (buildings as any[]).length, pole: pole.length, bench: bench.length, bin: bin.length, hyd: hyd.length, boll: boll.length };
-        return { pole, head, bench, bin, hyd, boll };
+        return { pole, head, pool, bench, bin, hyd, boll };
     }, []);
     const g = useMemo(() => {
         const bench = new THREE.BoxGeometry(1.8, 0.12, 0.5); bench.translate(0, 0.2, 0);
@@ -59,17 +61,21 @@ export function StreetProps() {
         const merge = (gs: THREE.BufferGeometry[]) => { const ps: number[] = [], ns: number[] = []; for (const q of gs) { const a = q.toNonIndexed(); ps.push(...(a.getAttribute('position').array as any)); ns.push(...(a.getAttribute('normal').array as any)); } const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(ps, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(ns, 3)); return o; };
         const hydB = new THREE.CylinderGeometry(0.16, 0.2, 0.7, 8), hydT = new THREE.SphereGeometry(0.17, 8, 6); hydT.translate(0, 0.36, 0); const hydS = new THREE.CylinderGeometry(0.07, 0.07, 0.5, 6); hydS.rotateZ(Math.PI / 2); hydS.translate(0, 0.12, 0);
         return {
-            pole: new THREE.CylinderGeometry(0.07, 0.1, 5.2, 6), head: new THREE.BoxGeometry(0.35, 0.16, 1.6),
+            pole: new THREE.CylinderGeometry(0.07, 0.1, 5.2, 6), pool: (() => { const c = new THREE.CircleGeometry(3.2, 20); c.rotateX(-Math.PI / 2); return c; })(), head: new THREE.BoxGeometry(0.35, 0.16, 1.6),
             bench: merge([bench, back, l1, l2]), bin: new THREE.CylinderGeometry(0.3, 0.26, 1.0, 10), hyd: merge([hydB, hydT, hydS]), boll: new THREE.CylinderGeometry(0.1, 0.12, 0.9, 6),
         };
     }, []);
     const m = useMemo(() => ({
-        pole: new THREE.MeshLambertMaterial({ color: '#3a3f47' }), head: new THREE.MeshBasicMaterial({ color: '#ffe2a8' }),
+        pole: new THREE.MeshLambertMaterial({ color: '#3a3f47' }), head: new THREE.MeshBasicMaterial({ color: '#ffe2a8', toneMapped: false }),
+        pool: new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uN: { value: 0 } },
+            vertexShader: 'varying vec2 vU; void main(){ vU = position.xz; vec4 p = vec4(position,1.0); \n#ifdef USE_INSTANCING\n p = instanceMatrix * p; \n#endif\n gl_Position = projectionMatrix * modelViewMatrix * p; }',
+            fragmentShader: 'uniform float uN; varying vec2 vU; void main(){ float r = length(vU) / 3.2; float a = (1.0 - smoothstep(0.0, 1.0, r)); gl_FragColor = vec4(vec3(1.0, 0.72, 0.38) * a * a * 0.55 * uN, 1.0); }' }),
         bench: new THREE.MeshLambertMaterial({ color: '#8a5a3a' }), bin: new THREE.MeshLambertMaterial({ color: '#2f5a44' }),
         hyd: new THREE.MeshLambertMaterial({ color: '#c8332b' }), boll: new THREE.MeshLambertMaterial({ color: '#d8d4cc' }),
     }), []);
+    useFrame(() => { const n = Math.max(0, Math.min(1, (0.6 - tod.day.value) / 0.45)); (m.head as THREE.MeshBasicMaterial).color.setRGB(1, 0.86, 0.62).multiplyScalar(0.45 + 1.6 * n); (m.pool as THREE.ShaderMaterial).uniforms.uN.value = n; });
     return <group name="street-props">
-        <Inst list={d.pole} geo={g.pole} mat={m.pole} /><Inst list={d.head} geo={g.head} mat={m.head} />
+        <Inst list={d.pole} geo={g.pole} mat={m.pole} /><Inst list={d.head} geo={g.head} mat={m.head} bloom /><Inst list={d.pool} geo={g.pool} mat={m.pool} />
         <Inst list={d.bench} geo={g.bench} mat={m.bench} /><Inst list={d.bin} geo={g.bin} mat={m.bin} />
         <Inst list={d.hyd} geo={g.hyd} mat={m.hyd} /><Inst list={d.boll} geo={g.boll} mat={m.boll} />
     </group>;
