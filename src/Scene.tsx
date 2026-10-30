@@ -1330,14 +1330,33 @@ function waveH(x: number, z: number, t: number) {
 }
 function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
 function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }
+
+// Shifat 2:07 AM Oct 30 "must implement water transparency & refraction law": a baked bed map (height + sand/rock) around the island so
+// the ocean shader can trace each view ray through the surface by Snell's law (n 1.333) to the real seabed and absorb it by path length.
+// One 256x256 RGBA8 texture, built once; the shader does 3 fetches (fixed-point ray/bed intersection) instead of a second scene render.
+const BED_C = { x: -160, z: -820, h: 260 }, BED_N = 256;
+const BED_TEX = (() => {
+    const d = new Uint8Array(BED_N * BED_N * 4);
+    for (let j = 0; j < BED_N; j++) for (let i = 0; i < BED_N; i++) {
+        const x = BED_C.x - BED_C.h + (i + 0.5) / BED_N * 2 * BED_C.h, z = BED_C.z - BED_C.h + (j + 0.5) / BED_N * 2 * BED_C.h;
+        const ih = islandH(x, z), y = ih !== null ? ih : seabedAt(x, z), o = (j * BED_N + i) * 4;
+        const n1 = Math.sin(x * 0.21 + z * 0.13) * Math.sin(x * 0.07 - z * 0.17);
+        d[o] = Math.round(Math.max(0, Math.min(1, (y + 30) / 40)) * 255);                                 // height -30..+10 m
+        d[o + 1] = Math.round(Math.max(0, Math.min(1, (y + 16 + n1 * 4) / 9)) * 255);                    // sand (shallow) -> rock/weed (deep)
+        d[o + 2] = Math.round((0.5 + 0.5 * n1) * 255); d[o + 3] = 255;
+    }
+    const t = new THREE.DataTexture(d, BED_N, BED_N, THREE.RGBAFormat); t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; return t;
+})();
 const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
-    uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
+    uniform sampler2D tScene; uniform sampler2D tDepth; uniform sampler2D uBed; uniform vec3 uBedC; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
+    vec2 bedUV(vec2 xz){ return (xz - uBedC.xy) / (2.0 * uBedC.z) + 0.5; }
+    float bedY(vec2 xz){ return texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0; }
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
     vec3 sceneCol(vec2 uv){ return linearToOutputTexel(vec4(texture2D(tScene, uv).rgb, 1.0)).rgb; }
     void main(){
@@ -1357,6 +1376,28 @@ const waterMat = new THREE.ShaderMaterial({
       vec3 absorb = vec3(0.45, 0.07, 0.02), Tw = exp(-absorb * path);
       vec3 body = vec3(0.62, 0.72, 0.62) * 0.9 * Tw + mix(uShallow, uDeep, depthMix * 0.7) * (1.0 - exp(-0.02 * path)) * 0.9;
       body = mix(body, uDeep * 0.5, smoothstep(-300.0, -800.0, vW.z) * 0.55);   // deep offshore water reads darker blue
+      float bedA = 0.0, bedShore = 0.0;   // how much of this pixel is the traced seabed (drives opacity below)
+      vec2 bq = bedUV(vW.xz);
+      if (!below && uUseScene < 0.5 && bq.x > 0.01 && bq.x < 0.99 && bq.y > 0.01 && bq.y < 0.99) {
+        // Snell: td is the refracted ray (air 1.0 -> water 1.333). Fixed-point march to where it meets the bed: t = (surface - bed(xz(t))) / -td.y
+        float sy = -td.y; sy = max(sy, 0.08); float t0 = max(vW.y - bedY(vW.xz), 0.0) / sy, t1 = t0;
+        t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = mix(t0, t1, 0.85);
+        vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, bedUV(hx)); float dep = max(vW.y - (bs.r * 40.0 - 30.0), 0.0);
+        // bed albedo: white tropical sand shallow, darker rock / weed deeper, with soft ripple marks
+        vec3 alb = mix(vec3(0.30, 0.34, 0.26), vec3(0.93, 0.87, 0.70), bs.g) * (0.86 + 0.14 * bs.b) * (0.93 + 0.07 * sin(hx.x * 1.7 + sin(hx.y * 0.9) * 2.0));
+        // caustics: the wavy surface focuses sunlight into moving bright webs on the bed (two scrolling cell layers, min = sharp lines)
+        vec2 cq = hx * 1.05; float c1 = abs(sin(cq.x + sin(cq.y * 1.3 + uTime * 0.9) * 1.1 + uTime * 0.5) * sin(cq.y * 0.9 + sin(cq.x * 1.1 - uTime * 0.7) * 1.2));
+        vec2 cr = hx * 1.55 + 3.7; float c2 = abs(sin(cr.x * 1.1 - sin(cr.y + uTime * 1.1) * 1.3 - uTime * 0.4) * sin(cr.y - sin(cr.x * 1.2 + uTime * 0.8) * 1.0));
+        float caus = pow(1.0 - min(c1, c2), 9.0) * exp(-dep * 0.12) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW)));   // faded with distance (no shimmer/aliasing far away)
+        float sunK = mix(0.25, 1.0, uDay) * (0.75 + 0.25 * max(uSun.y, 0.0));
+        vec3 bedL = alb * sunK * (1.0 + caus * 1.1);
+        // Beer-Lambert along the real path: down to the bed along the sunlight (~depth) and back up along the refracted view ray (t1); red dies first
+        vec3 Tb = exp(-vec3(0.17, 0.040, 0.026) * (t1 + dep * 0.6));
+        vec3 scat = mix(vec3(0.06, 0.52, 0.58), uDeep * 0.85, smoothstep(4.0, 24.0, dep)) * mix(0.25, 1.0, uDay);
+        vec3 seen = bedL * Tb + scat * (1.0 - Tb);
+        bedA = 1.0 - smoothstep(18.0, 34.0, dep); bedShore = smoothstep(0.1, 1.1, vW.y - bedY(vW.xz));   // at the waterline let the real beach mesh show through so there is no seam
+        body = mix(body, seen, bedA);
+      }
       vec3 r = reflect(-v, n);
       vec3 refl = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, r.y)) + vec3(1.0, 0.55, 0.3) * 0.25 * pow(max(dot(normalize(r), uSun), 0.0), 6.0);
       if (uUseScene > 0.5 && !below) {
@@ -1380,16 +1421,16 @@ const waterMat = new THREE.ShaderMaterial({
       col = mix(col, vec3(1.0), crest * 0.11);
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
       col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
-      float aOut = mix(0.82, 1.0, max(fr, 0.0));
+      float aOut = mix(0.82, 1.0, max(fr, 0.0)); aOut = mix(aOut, 1.0, bedA * bedShore);
       { // South Sea 2b (real tropical refs: Maldives / Bora Bora): turquoise shallows around the island's white sand + a foam line at the shore
         vec2 iq = vW.xz - vec2(-160.0, -820.0); float ia = atan(iq.y, iq.x); float irr = length(iq) / (92.0 * (1.0 + 0.13 * sin(2.0 * ia + 3.16) + 0.085 * sin(3.0 * ia + 5.06) + 0.05 * sin(5.0 * ia + 0.83) + 0.03 * sin(8.0 * ia + 4.71) + 0.018 * sin(13.0 * ia + 2.25)));   // = seaWorld coastK
         if (irr < 1.6 && !below) {
           float sh = 1.0 - smoothstep(0.93, 1.5, irr);
           vec3 tq = mix(vec3(0.07, 0.55, 0.62), vec3(0.42, 0.9, 0.84), 1.0 - smoothstep(0.92, 1.18, irr)) * mix(0.25, 1.0, uDay);
-          col = mix(col, mix(tq, col, fr * 0.55), sh * 0.85);
+          col = mix(col, mix(tq, col, fr * 0.55), sh * 0.85 * (1.0 - bedA * 0.9));
           float fo = smoothstep(0.985, 0.93, irr) * smoothstep(0.86, 0.91, irr) * (0.5 + 0.5 * sin(irr * 140.0 - uTime * 1.7 + sin(ia * 11.0) * 2.0));
           col = mix(col, vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), clamp(fo, 0.0, 1.0) * 0.75);
-          aOut = mix(aOut, 0.62, (1.0 - smoothstep(0.9, 1.08, irr)) * (1.0 - fo));
+          aOut = mix(aOut, 0.62, (1.0 - smoothstep(0.9, 1.08, irr)) * (1.0 - fo) * (1.0 - bedA));
         }
       }
       vec3 uWaterDisplay=mix(uUWF,linearToOutputTexel(vec4(uUWF,1.0)).rgb,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y)));
