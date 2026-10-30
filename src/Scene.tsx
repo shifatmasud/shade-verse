@@ -1467,6 +1467,7 @@ const waterMat = new THREE.ShaderMaterial({
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
         vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); if (uReflSoft.x > 0.0) rs = (rs * 2.0 + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv + vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998))) / 6.0;   /* phone: soft 5-tap, reads smooth not pixelated */ refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
       }
+      float heroSee = 0.0;
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
         // their capsules, so a swimming / diving hero is seen bent, tinted and absorbed through the water (red dies first), shifting with the waves.
         vec3 tdr = refract(-v, n, 1.0 / 1.333); float rA = -1.0, rB = -1.0;
@@ -1475,6 +1476,16 @@ const waterMat = new THREE.ShaderMaterial({
         float rt = -1.0; vec3 rc = vec3(0.0);
         if (rA > 0.0) { rt = rA; rc = vec3(0.09, 0.11, 0.21); }
         if (rB > 0.0 && (rA < 0.0 || rB < rA)) { rt = rB; rc = vec3(0.78, 0.82, 0.92); }
+        // Shifat 5:05: 'when swimming at some angles I can't see part of their bodies' - the surface is drawn opaque, so the submerged body was
+        // hidden. Where the straight view ray hits a hero capsule below the surface, open the surface up (low alpha) so the real body shows
+        // through, tinted by the water it is seen through.
+        float sA = -1.0, sB = -1.0;
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 12.0) sA = capHit(vW, -v, uHeroA.xyz + vec3(0.0, -0.2, 0.0), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.4);
+        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 12.0) sB = capHit(vW, -v, uHeroB.xyz + vec3(0.0, -0.2, 0.0), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.36);
+        float st = sA > 0.0 && (sB < 0.0 || sA < sB) ? sA : sB; if (st > 0.0 && st < 8.0) heroSee = exp(-st * 0.18) * 0.5;
+        float sA2 = uHeroA.w > 0.5 && sA > 0.0 ? capHit(vW, -v, uHeroA.xyz + vec3(0.0, 0.05, 0.0), uHeroA.xyz + vec3(0.0, 1.5, 0.0), 0.32) : -1.0;
+        float sB2 = uHeroB.w > 0.5 && sB > 0.0 ? capHit(vW, -v, uHeroB.xyz + vec3(0.0, 0.05, 0.0), uHeroB.xyz + vec3(0.0, 1.45, 0.0), 0.29) : -1.0;
+        if (max(sA2, sB2) > 0.0) heroSee *= 2.0;   /* two nested capsules: soft edge, no hard window */
         if (rt > 0.0 && rt < 14.0) { vec3 Th = exp(-vec3(0.45, 0.07, 0.02) * rt * 1.6); body = mix(body, rc * mix(0.35, 1.0, uDay) * (0.55 + 0.45 * uDay) * Th + body * (1.0 - Th) * 0.6, 0.9); }
       }
       float heroK = 0.0; vec3 heroC = vec3(0.0);
@@ -1578,7 +1589,8 @@ const waterMat = new THREE.ShaderMaterial({
       if(below){float join=smoothstep(-230.0,-224.0,vW.z)*(1.0-smoothstep(0.20,0.65,abs(v.y)));
         vec3 junction=uWaterDisplay*(1.0+0.9*pow(1.0-clamp(abs(v.y),0.0,1.0),2.5));
         col=mix(col,junction,join);aOut=mix(aOut,1.0,join);}
-      gl_FragColor = vec4(col, below ? aOut : nearClear);
+      float aAbove = mix(nearClear, 0.3, heroSee * (1.0 - fr * 0.5));
+      gl_FragColor = vec4(col, below ? aOut : aAbove);
     }`,
 });
 
