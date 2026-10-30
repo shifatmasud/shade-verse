@@ -2,6 +2,10 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## Banter v2: caring, not romantic (Oct 29) — Shifat 6:27 PM: "Too romantic it seems. I wanted more caring bit. Not romance heavy", then "Keep love you one."
+- All Ghost & Shadow lines rewritten: 55 exchanges (119 lines: Ghost 62, Shadow 57). Still husband and wife, but the talk is caring partners: checking on each other ("You okay? That hit looked bad."), watching each other's back in fights, teamwork calls, encouragement, pride after wins, worry at low health, light teasing, sightseeing (island, Neon Harbor, bridge, night sky) and practical chat. No dates, flirting or "my husband/my wife". The one "Love you, Ghost." / "Love you more, Shadow." exchange is kept by request (its original clips reused); "partner" appears twice.
+- Every trigger still covered (idle 10, combat 7, KO 6, swing/dive 6, low health 4, hurt 4, boss 3, swim 3, island 3, harbor 3, bridge 3, night 3). Playback system unchanged (0.3 s reply gap, no overlap, music duck, captions, lazy loading). Clips regenerated with the same voices and recipe; the two unused old clips (cg_62, cg_63) deleted.
+
 ## Ghost & Shadow: husband & wife banter (Oct 30) — Shifat 6:01 PM: "Ghost & Shadow must communicate & talk to each other often… Ghost is female, Shadow is male. They are wife and husband."
 - 55 short exchanges (121 lines: Ghost 64, Shadow 57), warm, playful and family friendly. Triggers: idle chatter when calm (every 25-45 s), combat (worried for each other), after a KO, boss wins, big swing releases / dives, low health, getting hit, swimming, the island, Neon Harbor, the bridge, and night time. Data in src/audio/banter.ts.
 - Same voices and recipe as the existing lines: Shadow = his current voice, no FX; Ghost = her current voice with the same light echo. Same TTS settings, silence trim, loudnorm -16 LUFS, mono, mp3 64k + ogg q3 (public/audio/vo/cg_*, cs_*, 4 MB, lazy-loaded on demand).
