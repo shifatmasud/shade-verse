@@ -514,6 +514,22 @@ function harborTowerMat(tod: SouthSeaKit['tod']) {
         }`,
     });
 }
+
+/* Oct 29 sweep 11:47 PM: Neon Harbor by DAY read as flat lilac slabs. Day-only paving on the platform tops (2 m stone tiles, grout,
+   per-tile tint); it fades out with daylight so the locked night look is untouched. */
+const PAVE_DAY = { value: 1 };
+function paveShader(sh: any) {
+    sh.uniforms.uPaveDay = PAVE_DAY;
+    sh.vertexShader = 'varying vec3 vPvN;\n' + sh.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n vPvN = objectNormal;');
+    sh.fragmentShader = 'uniform float uPaveDay; varying vec3 vPvN;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    { float top = step(0.9, vPvN.y) * step(0.16, dot(diffuseColor.rgb, vec3(0.3, 0.5, 0.2)));   /* tops only; the dark avenue stays road */
+      vec2 tp = vHzW.xz / 2.0; vec2 cell = floor(tp), f = fract(tp);
+      float grout = 1.0 - smoothstep(0.03, 0.07, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+      float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5);
+      vec3 stone = mix(vec3(0.66, 0.6, 0.55), vec3(0.56, 0.54, 0.6), h) * (0.88 + 0.16 * h);
+      vec3 paved = mix(stone, stone * 0.5, grout);
+      diffuseColor.rgb = mix(diffuseColor.rgb, paved, top * uPaveDay * 0.85); }`);
+}
 function harborPlatformGeo() {
     const parts: THREE.BufferGeometry[] = [], H = HARBOR.y;
     for (const b of HBLOCKS) { const g = new THREE.BoxGeometry(b.x1 - b.x0, 1.6, b.z1 - b.z0); g.translate((b.x0 + b.x1) / 2, H - 0.8, (b.z0 + b.z1) / 2); parts.push(colorize(g, '#8e8aa3')); }
@@ -586,6 +602,7 @@ function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
     const towers = useMemo(harborTowerGeo, []), tmat = useMemo(() => harborTowerMat(kit.tod), []);
     const plat = useMemo(harborPlatformGeo, []), trim = useMemo(harborNeonTrimGeo, []), signs = useMemo(harborSignsGeo, []), stilts = useMemo(harborStiltsGeo, []), lamps = useMemo(harborLampsGeo, []), imp = useMemo(cityImpostorGeo, []);
     const pmat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
+    const platMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod, paveShader); m.customProgramCacheKey = () => 'harbor-pave'; return m; }, []);   /* own cache key: the shared hazeShader closure would reuse pmat's program */
     const trimMat = useMemo(() => new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), []);
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffd1f0' }), []);
     const impMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
@@ -594,12 +611,12 @@ function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
         const d = Math.hypot(camera.position.x - HCX, camera.position.z - HCZ), night = 1 - kit.tod.day.value;
         if (near.current) near.current.visible = d < (PHONE ? 420 : 560);   // full detail only for the city the hero is in
         CITY_LOD.far = camera.position.z < -760; if (impRef.current) impRef.current.visible = CITY_LOD.far;
-        SIGN_MAT.uniforms.uT.value = clock.elapsedTime; SIGN_MAT.uniforms.uDay.value = kit.tod.day.value;
+        SIGN_MAT.uniforms.uT.value = clock.elapsedTime; SIGN_MAT.uniforms.uDay.value = kit.tod.day.value; PAVE_DAY.value = Math.max(0, Math.min(1, (kit.tod.day.value - 0.35) / 0.4));
         trimMat.color.setScalar(0.22 + 1.23 * night); lampMat.color.setRGB(1, 0.82, 0.94).multiplyScalar(0.4 + 0.9 * night);
     });
     return <group name="neon-harbor">
         <mesh geometry={towers} material={tmat} frustumCulled={false} />
-        <mesh geometry={plat} material={pmat} frustumCulled={false} />
+        <mesh geometry={plat} material={platMat} frustumCulled={false} />
         <mesh geometry={trim} material={trimMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
         <mesh ref={impRef} geometry={imp} material={impMat} visible={false} frustumCulled={false} />
         <group ref={near}>
