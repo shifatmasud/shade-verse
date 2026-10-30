@@ -1728,7 +1728,7 @@ function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefO
         if (st.n % (PHONE_REFL || slow ? 3 : 2) === 0 || u.uUseRefl.value === 0) {   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
             worldBufferSize(gl, st.buf);
             const k = PHONE_REFL ? 0.12 : (slow ? 0.15 : 0.22),   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
-            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H); if (PHONE_REFL) u.uReflSoft.value.set(0.8 / W, 0.8 / H);
+            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H); u.uReflSoft.value.set((PHONE_REFL ? 0.8 : 0.6) / W, (PHONE_REFL ? 0.8 : 0.6) / H);   /* desktop too: the adaptive-res mirror otherwise shows neon / hero reflections as blocky squares */
             // mirror the camera about y = WATER_Y (three.js Reflector maths)
             cam.updateMatrixWorld(); st.cp.setFromMatrixPosition(cam.matrixWorld); st.rot.extractRotation(cam.matrixWorld);
             st.la.set(0, 0, -1).applyMatrix4(st.rot).add(st.cp);
