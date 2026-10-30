@@ -1560,6 +1560,8 @@ const waterMat = new THREE.ShaderMaterial({
       if (below) {
         // Snell's window: refract view ray water -> air with a slightly different index per colour channel (dispersion); beyond the critical angle (48.6 deg) total internal reflection shows the water, not the sky
         vec3 under = mix(uDeep, uShallow, 0.35 + 0.4 * pow(max(dot(-n, v), 0.0), 2.0));
+        { float rl = texture2D(uCaus, vW.xz * 0.11 + vec2(uTime * 0.013, -uTime * 0.009)).g + 0.6 * texture2D(uCaus, vW.xz * 0.29 - uTime * 0.017).r;   /* AAA underside: the total-internal-reflection mirror shimmers with the rippled lit water instead of one flat sheet */
+          under *= 1.0 + (rl * 0.55 - 0.3) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW))); }
         vec3 tr = refract(-v, n, 1.3310), tg = refract(-v, n, 1.3330), tb = refract(-v, n, 1.3375);
         bool tir = dot(tg, tg) < 0.0001;
         vec3 sr = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tr.y)), sg = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tg.y)), sb = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, tb.y));
