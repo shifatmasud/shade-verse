@@ -1285,20 +1285,17 @@ export function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[
 // seabed: sand with animated caustic light lines, fading into teal haze with distance (reference: two underwater game shots - sandy floor with web-like caustic lines, cyan fading to deeper teal)
 const UWF = { value: new THREE.Color('#176e8c') }, UW = { on: false };   // underwater far colour (seabed haze = background, so the seabed plane has no visible far edge) and flag
 const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uFog: UWF },
+    uniforms: { uTime: { value: 0 }, uFog: UWF, uCaus: { value: CAUSTIC_TEX } },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `varying vec3 vW; uniform float uTime; uniform vec3 uFog;
-    // Shifat Oct 29 "caustics can be better, ref real images": sharp, bright, web-like light network (iterated warp, after the
-    // well-known tileable water-caustic construction), sampled 3x with tiny offsets per colour channel for the chromatic fringe seen in photos.
-    float cauN(vec2 uv, float tm){ vec2 p = mod(uv * 6.28318, 6.28318) - 250.0; vec2 i = p; float c = 1.0; float inten = 0.005;
-      for (int n = 0; n < 4; n++) { float t = tm * (1.0 - (3.5 / float(n + 1))); i = p + vec2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x)); c += 1.0 / length(vec2(p.x / (sin(i.x + t) / inten), p.y / (cos(i.y + t) / inten))); }
-      c /= 4.0; c = 1.17 - pow(c, 1.4); return clamp(pow(abs(c), 8.0), 0.0, 2.0); }
-    float cau(vec2 p){ return cauN(p * 0.09, uTime * 0.45 + 23.0); }
-    vec3 cau3(vec2 p){ vec2 q = p * 0.09; float tm = uTime * 0.45 + 23.0; return vec3(cauN(q + vec2(0.0035, 0.0), tm), cauN(q, tm), cauN(q - vec2(0.0035, 0.0), tm)); }
+    // Shifat 3:43 AM 'refracted caustic patterns are best, use them underwater too': the SAME simulated ray-splat caustic tile + causRGB the
+    // ocean's refracted view uses (same scale, speed, gain), so the seabed looks identical from above and below. Also far cheaper than the old 24-call warp.
+    ${CAUSTIC_GLSL}
+    vec3 cau3(vec2 p){ return causRGB(p * 0.5 / 0.9, uTime * 0.8) * 2.6; }
     float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-    void main(){ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y))); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float depthK = mix(1.0, 0.3, smoothstep(-10.0, -48.0, vW.y)); vec3 c3 = (cau3(p) + 0.45 * cau3(p * 1.9 + 7.0)) * depthK; float c = dot(c3, vec3(0.333));
+    void main(){ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y))); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float depthK = mix(1.0, 0.3, smoothstep(-10.0, -48.0, vW.y)); vec3 c3 = cau3(p) * exp(-max(-1.0 - vW.y, 0.0) * 0.10) * 1.25; float c = dot(c3, vec3(0.333));
       vec3 sand = mix(vec3(0.46, 0.62, 0.58), vec3(0.58, 0.70, 0.62), h(floor(${xy ? 'vW.xy' : 'vW.xz'} * 3.0)) * 0.6);
-      vec3 col = sand * 0.7 + vec3(0.85, 1.0, 0.95) * c3 * 0.75;
+      vec3 col = sand * 0.7 * (0.82 + c3);   /* same light model as the refracted bed: albedo * (0.82 + caustics) */
       float d = length(vW - cameraPosition); vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.12); col = col * Tb; float fg = smoothstep(45.0, 190.0, d);   /* far-only underwater fog (Shifat Oct 29) */ ${xy ? 'fg = fg * 0.8;' : ''} col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
       ${xy ? `// Match grazing rays at the wall/surface junction without changing the deeper sand wall.
       vec3 ray=normalize(cameraPosition-vW);vec3 junction=fogUsed*(1.0+0.9*pow(1.0-clamp(abs(ray.y),0.0,1.0),2.5));

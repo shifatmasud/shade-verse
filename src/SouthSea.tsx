@@ -47,8 +47,10 @@ let _seed = 4242; const rnd = () => (_seed = (_seed * 16807) % 2147483647) / 214
    creeps up and back with a thin foam line at its edge, and wind ripples on the dry sand. Sand-coloured pixels only. */
 const BEACH_T = { value: 0 };
 function beachShader(sh: any) {
-    sh.uniforms.uBT = BEACH_T;
-    sh.fragmentShader = 'uniform float uBT;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    sh.uniforms.uBT = BEACH_T; sh.uniforms.uCaus = { value: CAUSTIC_TEX };
+    sh.fragmentShader = 'uniform float uBT;\n' + CAUSTIC_GLSL + '\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    /* Shifat 3:43 AM: seen from underwater, the island's submerged sand carries the SAME simulated caustics as the refracted view from above */
+    if (cameraPosition.y < -1.0 && vHzW.y < -1.0) diffuseColor.rgb *= 0.74 + causRGB(vHzW.xz * 0.5, uBT * 0.8) * 3.4 * exp(-(-1.0 - vHzW.y) * 0.10) * smoothstep(-1.0, -1.6, vHzW.y);
     { vec2 bxz = vHzW.xz; float yb = vHzW.y;
       float sandM = smoothstep(0.5, 0.62, diffuseColor.r) * smoothstep(0.02, 0.08, diffuseColor.r - diffuseColor.b) * smoothstep(-2.4, -1.4, yb) * (1.0 - smoothstep(1.6, 2.4, yb));
       float wash = -0.85 + 0.32 * sin(uBT * 0.55 + bxz.x * 0.045 + bxz.y * 0.03) + 0.08 * sin(uBT * 1.3 + bxz.y * 0.21);
