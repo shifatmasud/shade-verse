@@ -6,6 +6,23 @@ import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 
+/* Upgrade #2 (Oct 29): the beam used to be a near-opaque red tube that hid the boss standing inside it.
+   Now a see-through energy column: bright fresnel rim, clear centre, faded near the roof (so the boss reads
+   clearly) and at the top, with slow rising bands. Additive, so it still glows from across the city. */
+const BEAM_MAT = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uPulse: { value: 0.5 }, uCol: { value: new THREE.Color('#ff1030') } },
+    vertexShader: `varying vec3 vN; varying vec3 vV; varying float vY;
+        void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - wp.xyz); vY = position.y / 84.0 + 0.5; gl_Position = projectionMatrix * viewMatrix * wp; }`,
+    fragmentShader: `uniform float uTime; uniform float uPulse; uniform vec3 uCol; varying vec3 vN; varying vec3 vV; varying float vY;
+        void main(){ float f = 1.0 - abs(dot(normalize(vN), vV)); float rim = pow(f, 2.2);
+            float bands = 0.5 + 0.5 * sin(vY * 70.0 - uTime * 3.0);
+            float a = (0.07 + rim * 0.85) * (0.75 + 0.25 * bands) * (0.8 + 0.4 * uPulse);
+            a *= smoothstep(0.02, 0.17, vY) * (1.0 - smoothstep(0.82, 1.0, vY));
+            gl_FragColor = vec4(uCol * (0.6 + rim * 0.9), a); }`,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+});
+
+
 export function BossArenaMarker({ arena = BOSS_ARENA }: { arena?: { x: number; y: number; z: number } }) {   // 2c: also marks Neon Harbor's mini-boss roof (same red zone)
     const root = useRef<THREE.Group>(null!);
     const beam = useRef<THREE.Mesh>(null!);
@@ -14,7 +31,7 @@ export function BossArenaMarker({ arena = BOSS_ARENA }: { arena?: { x: number; y
 
     useFrame(({ clock }) => {
         const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 2.4);
-        if (beam.current) (beam.current.material as THREE.MeshBasicMaterial).opacity = 0.54 + pulse * 0.2;
+        BEAM_MAT.uniforms.uTime.value = clock.elapsedTime; BEAM_MAT.uniforms.uPulse.value = pulse;
         if (core.current) {
             (core.current.material as THREE.MeshBasicMaterial).opacity = 0.72 + pulse * 0.24;
             core.current.scale.setScalar(0.92 + pulse * 0.12);
@@ -25,8 +42,8 @@ export function BossArenaMarker({ arena = BOSS_ARENA }: { arena?: { x: number; y
 
     return <group ref={root} position={[arena.x, arena.y, arena.z]} userData={{ bossArena: true }} frustumCulled={false}>
         <mesh ref={beam} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} position={[0, 42, 0]} frustumCulled={false}>
-            <cylinderGeometry args={[3.5, 3.5, 84, 12, 1, true]} />
-            <meshBasicMaterial color="#ed001f" transparent opacity={0.66} blending={THREE.NormalBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} />
+            <cylinderGeometry args={[3.5, 3.5, 84, 24, 1, true]} />
+            <primitive object={BEAM_MAT} attach="material" />
         </mesh>
         <mesh ref={core} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} position={[0, 83, 0]} frustumCulled={false}>
             <icosahedronGeometry args={[2.1, 1]} />
