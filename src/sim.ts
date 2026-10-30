@@ -6,8 +6,8 @@ export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number
 
 export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
 export const FOG: V3 = [0.84, 0.77, 0.74];
-const G = 44, G_FALL = 70, G_WEB = 27;   /* Oct 29 10:07 PM 'jump should be faster & faster to fall': snappier rise (27 -> 44) and a heavier fall (70); web swings keep the old 27 */
-export const JUMP_V = 21;   // was 16: same ~5 m height, reached in ~0.48 s (was ~0.6 s); whole jump ~0.86 s (was ~1.19 s)
+const G = 60, G_FALL = 100, G_WEB = 27;   /* Oct 29 10:07 PM 'jump should be faster & faster to fall': snappier rise (27 -> 60) and a heavier fall (100); 10:14 PM 'even faster'; web swings keep the old 27 */
+export const JUMP_V = 24;   // was 16: same ~5 m height, reached in ~0.4 s (was ~0.6 s); whole jump ~0.7 s (was ~1.19 s)
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
 export const PARK_POND = { cx: 180, cz: 100, rx: 14, rz: 14 }; // circular lake (env-iter1)
 // Valley topography remains unchanged outside the pond; the pond itself is a deeper bowl for swimming and underwater light.
@@ -627,7 +627,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         input.jumpQ = false; s.grappleFlight = false;
         if (s.swim) { s.dive = !s.dive; }   // jump on the surface dives (user message 10:18, WhatsApp); underwater it surfaces. Shore exit: swim into the shore (below).
         else
-        if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 19; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
+        if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 21.5; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
         else if (s.ground) { v[1] = JUMP_V; s.ground = false; const g0 = s as any; g0.pressT = 0; g0.pressGl = false; g0.pressGround = true; g0.dblUsed = false; g0.glideMode = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
         else { const g0 = s as any; g0.pressT = 0; g0.pressGl = !!g0.glideMode; g0.pressGround = false; }   // air press: tap/hold decided on release (see Space scheme below)
