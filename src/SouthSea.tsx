@@ -295,7 +295,7 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
           float fr = 0.03 + 0.97 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
           float deep = smoothstep(1.0, 0.35, rr);
           vec3 body = mix(mix(vec3(0.52, 0.9, 0.84), vec3(0.04, 0.46, 0.52), deep), vec3(0.1, 0.53, 0.53), og * 0.7);   // matches the river body at an outlet
-          float caus = pow(0.5 + 0.5 * sin(q.x * 2.3 + sin(q.y * 1.7 + uT) * 1.4 + uT * 0.7) * sin(q.y * 2.1 + sin(q.x * 1.3 - uT * 0.8) * 1.6), 6.0) * (1.0 - deep) * 0.35;
+          float caus = dot(causRGB(q * 0.5, uT * 0.8), vec3(0.333)) * (1.0 - deep) * 0.6 * uDay;
           float traced = 0.0;
           if (!below) {
             // Snell refraction (air 1.0 -> water 1.333), fixed-point march to the carved floor, Beer-Lambert over the real path (red dies first)
@@ -303,7 +303,7 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
             float t1 = max(bedD(vW.xz), 0.0) / sy; t1 = max(bedD(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(bedD(vW.xz + td.xz * t1), 0.0) / sy;
             vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, (hx - uBB.xy) / (2.0 * uBB.z) + 0.5); float dep = max(bs.r * 12.0 - 1.0, 0.0);
             vec3 alb = mix(vec3(0.55, 0.52, 0.40), vec3(0.92, 0.86, 0.70), smoothstep(5.5, 0.5, dep)) * (0.85 + 0.15 * bs.g);
-            vec3 cs = causRGB(hx, uT) * 1.9 * exp(-dep * 0.15) * uDay * (1.0 - smoothstep(20.0, 70.0, length(cameraPosition - vW)));
+            vec3 cs = causRGB(hx * 0.5, uT * 0.8) * 2.6 * exp(-dep * 0.10)   /* identical to the sea (scale, speed, gain, depth fade) */ * uDay * (1.0 - smoothstep(20.0, 70.0, length(cameraPosition - vW)));
             vec3 Tb = exp(-vec3(0.24, 0.055, 0.040) * (t1 + dep * 0.6));
             vec3 scat = mix(vec3(0.10, 0.55, 0.56), vec3(0.03, 0.36, 0.44), smoothstep(1.0, 7.0, dep));
             vec3 seen = alb * (0.82 + cs) * Tb + scat * (1.0 - Tb);
@@ -311,7 +311,9 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: nu
           }
           vec3 r = reflect(-v, n); float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay;
           vec3 col = mix(body + caus, uSky, below ? 0.1 : fr * 0.75) + sp;
-          float edgeFoam = smoothstep(0.86, 0.97, rr) * (0.55 + 0.45 * sin(rr * 60.0 - uT * 2.0)) * 0.5 * (1.0 - og);
+          float lz = texture2D(uCaus, q * 0.21 + vec2(uT * 0.012, -uT * 0.02)).r + 0.6 * texture2D(uCaus, q * 0.53 - uT * 0.03).g;   /* lacy swash, same language as the island shore */
+          float ph = fract(uT * 0.16 + 0.4 * sin(atan(vW.z - uC.y, vW.x - uC.x) * 3.0) + 0.15 * lz), run = smoothstep(0.0, 0.15, ph) * (1.0 - smoothstep(0.15, 0.9, ph));
+          float edgeFoam = smoothstep(0.84 - 0.06 * run, 0.97, rr) * smoothstep(0.45, 0.9, lz * (0.55 + run) + 0.25 * smoothstep(0.95, 0.99, rr)) * 0.75 * (1.0 - og);
           col = mix(col, vec3(0.97, 1.0, 1.0), edgeFoam) * mix(0.28, 1.0, uDay);
           float a = mix(0.42, 0.9, deep) * mix(1.0 - smoothstep(0.9, 1.0, rr), 1.0, og * 0.6) + fr * 0.2 * (1.0 - smoothstep(0.92, 1.0, rr));
           a = mix(a, 0.97 * (1.0 - smoothstep(0.93, 1.0, rr)) + fr * 0.03, traced * (1.0 - og * 0.5));   /* traced floor drawn here; only the rim fades to the real bank */
