@@ -2086,6 +2086,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         {   // water: animate, and split view (waterline across the screen when the camera is at the surface)
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
             const uw = document.getElementById('uw');
+            if (uw) { const dq = Math.round(TOD.day.value * 20); if (uw.dataset.dq !== String(dq)) { uw.dataset.dq = String(dq); const d = dq / 20, k = 0.12 + 0.88 * d, c = (r: number, g: number, b: number, a: number) => `rgba(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)},${(a + (1 - d) * 0.25).toFixed(2)})`;
+                uw.style.background = `linear-gradient(180deg, ${c(110, 215, 235, 0.24)}, ${c(30, 140, 175, 0.3)} 45%, ${c(8, 70, 105, 0.5)})`; } }   // underwater tint follows the light: the fixed bright-teal wash used to light up the night sea from inside
             const inBay = camera.position.z < WATER_Z + 2, inLake = isLakeWater(camera.position.x, camera.position.z), inWater = inBay || inLake;
             const surfaceY = inLake ? waterSurfaceAt(camera.position.x, camera.position.z, sim.t) : waterRenderY(camera.position.x, camera.position.z, sim.t); const dy = camera.position.y - surfaceY; const under = inWater && dy < 0;   // env-iter3: ocean uses the real swell height (was the flat sea level, so troughs read as underwater)
             // Shifat Oct 29 "use underwater fogs inside ocean": these statements had slipped into the comment above, so the underwater
