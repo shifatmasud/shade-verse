@@ -214,7 +214,7 @@ function riverGeo() {
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
 const RIVER_MAT = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX } },
+    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX } },
     vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `${CAUSTIC_GLSL}
     varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky;
