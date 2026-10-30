@@ -32,6 +32,7 @@ import { SouthSea, CITY_LOD } from './SouthSea';
 import { ISLAND, islandH } from './seaWorld'
 import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM, HERO_REFL } from './caustics';
 import { OCEAN_VERT, OCEAN_FRAG } from './water/oceanShader';
+import { waveSumJS } from './water/waves';
 import { SKY_VS, SKY_FS } from './shaders/sky';
 import { CITY_VS, CITY_FS } from './shaders/city';
 import { FXAA_FS, FXAA_SHARP_FS, OUT_FS } from './shaders/post';
@@ -1188,7 +1189,7 @@ const seabedMat = mkSea(false), wallMat = mkSea(true);
 
 function waveH(x: number, z: number, t: number) {
     const zk = Math.max(0, Math.min(1, (z + 300) / -450)), ik = Math.max(0, Math.min(1, (Math.hypot(x - ISLAND.cx, z - ISLAND.cz) - 105) / 110)), sk = (1 + 1.3 * zk * zk * (3 - 2 * zk)) * (0.22 + 0.78 * ik * ik * (3 - 2 * ik));
-    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035 + Math.sin(x * 0.1464 + z * 0.04529 + 1.3 * Math.sin(x * -0.00317 + z * 0.01025 + 0.0 * 2.3) + t * 0.6744) * 0.26 * (0.55 + 0.45 * Math.sin(x * -0.0018 + z * 0.00583 + 0.0 + t * 0.03))+Math.sin(x * -0.19587 + z * 0.0926 + 1.3 * Math.sin(x * -0.00648 + z * -0.01371 + 1.7 * 2.3) + t * 0.8018) * 0.18 * (0.55 + 0.45 * Math.sin(x * -0.00261 + z * -0.00551 + 1.7 + t * 0.03))+Math.sin(x * 0.10942 + z * -0.26808 + 1.3 * Math.sin(x * 0.01877 + z * 0.00766 + 3.4 * 2.3) + t * 0.927) * 0.12 * (0.55 + 0.45 * Math.sin(x * 0.00565 + z * 0.00231 + 3.4 + t * 0.03))+Math.sin(x * 0.13366 + z * 0.36156 + 1.3 * Math.sin(x * -0.02531 + z * 0.00936 + 5.1 * 2.3) + t * 1.0695) * 0.08 * (0.55 + 0.45 * Math.sin(x * -0.00572 + z * 0.00212 + 5.1 + t * 0.03)));
+    return sk * waveSumJS(x, z, t);   /* same table + summation order as the shader's wh() (src/water/waves.ts) */
 }
 function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
 function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }

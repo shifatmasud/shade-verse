@@ -1,57 +1,12 @@
 // Sea surface shader for the ocean + lakes (waterMat in Scene.tsx).
-// WAVES is the shared GLSL wave field (height wh / gradient wg); keep it in step with waveH() in Scene.tsx,
-// which drives swimming and boats on the CPU side.
+// WAVES is the shared GLSL wave field (height wh / gradient wg), generated in ./waves.ts from the same table as the
+// CPU waveH() in Scene.tsx (swimming + boats), so the two cannot drift apart.
 import { QUALITY, LOWQ } from '../quality';
 import { CAUSTIC_GLSL } from '../caustics';
+import { WAVES_GLSL } from './waves';
 
-export const WAVES = `
-float swellK(vec2 p){ return (1.0 + 1.3 * smoothstep(-300.0, -750.0, p.y)) * mix(0.22, 1.0, smoothstep(105.0, 215.0, length(p - vec2(-160.0, -820.0)))); }   // bigger swell offshore (greater ocean), calm around the island so waves lap its beach
-float wh(vec2 p, float t){
-  float h = 0.0;
-  h += sin(dot(p, vec2(0.008, 0.005)) + t * 0.32) * 0.78;
-  h += sin(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42;
-  h += sin(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12;
-  h += sin(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035;
-  // Shifat 3:17/3:30 AM 'waves must never tile' (+ phase warp: crests bend, never straight parallel rows): 4 wind-wave trains at golden-angle directions (irrational ratios, so crests never re-align), deep-water
-  // dispersion speeds, and each train's height modulated by its own slow envelope across the sea - the same trick AAA FFT oceans use to hide the tile.
-  { float m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); h += sin(dot(p, vec2(0.1464, 0.04529)) + 1.3 * sin(dot(p, vec2(-0.00317, 0.01025)) + 0.0 * 2.3) + t * 0.6744) * 0.26 * m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); h += sin(dot(p, vec2(-0.19587, 0.0926)) + 1.3 * sin(dot(p, vec2(-0.00648, -0.01371)) + 1.7 * 2.3) + t * 0.8018) * 0.18 * m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); h += sin(dot(p, vec2(0.10942, -0.26808)) + 1.3 * sin(dot(p, vec2(0.01877, 0.00766)) + 3.4 * 2.3) + t * 0.927) * 0.12 * m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); h += sin(dot(p, vec2(0.13366, 0.36156)) + 1.3 * sin(dot(p, vec2(-0.02531, 0.00936)) + 5.1 * 2.3) + t * 1.0695) * 0.08 * m;
-    /* 5 short chop trains (12-3 m, golden-angle, warped, own envelopes): visual only, too small to matter to the swim physics */
-    m = 0.5 + 0.5 * sin(dot(p, vec2(0.0038, -0.00738)) + 6.8 + t * 0.04); h += sin(dot(p, vec2(-0.45426, -0.23365)) + 1.1 * sin(dot(p, vec2(0.01168, -0.02271)) + 6.8) + t * 1.2312) * 0.05 * m;
-    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00219, 0.00801)) + 8.5 + t * 0.04); h += sin(dot(p, vec2(0.6967, -0.19024)) + 1.1 * sin(dot(p, vec2(0.00951, 0.03483)) + 8.5) + t * 1.464) * 0.032 * m;
-    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00702, -0.00443)) + 10.2 + t * 0.04); h += sin(dot(p, vec2(-0.54941, 0.87127)) + 1.1 * sin(dot(p, vec2(-0.04356, -0.02747)) + 10.2) + t * 1.7483) * 0.02 * m;
-    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00817, -0.00148)) + 11.9 + t * 0.04); h += sin(dot(p, vec2(-0.25427, -1.40518)) + 1.1 * sin(dot(p, vec2(0.07026, -0.01271)) + 11.9) + t * 2.0585) * 0.013 * m;
-    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00502, 0.00661)) + 13.6 + t * 0.04); h += sin(dot(p, vec2(1.51557, 1.1525)) + 1.1 * sin(dot(p, vec2(-0.05763, 0.07578)) + 13.6) + t * 2.377) * 0.009 * m;
-  }
-  return h * swellK(p);
-}
-#ifndef WG_CHOP
-#define WG_CHOP true
-#endif
-vec2 wg(vec2 p, float t){
-  vec2 g = vec2(0.0);
-  g += cos(dot(p, vec2(0.008, 0.005)) + t * 0.32) * 0.78 * vec2(0.008, 0.005);
-  g += cos(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42 * vec2(-0.012, 0.009);
-  g += cos(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12 * vec2(0.033, -0.023);
-  g += cos(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035 * vec2(0.076, 0.054);
-  { float m;
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.0018, 0.00583)) + 0.0 + t * 0.03); g += cos(dot(p, vec2(0.1464, 0.04529)) + 1.3 * sin(dot(p, vec2(-0.00317, 0.01025)) + 0.0 * 2.3) + t * 0.6744) * 0.26 * m * vec2(0.1464, 0.04529);
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00261, -0.00551)) + 1.7 + t * 0.03); g += cos(dot(p, vec2(-0.19587, 0.0926)) + 1.3 * sin(dot(p, vec2(-0.00648, -0.01371)) + 1.7 * 2.3) + t * 0.8018) * 0.18 * m * vec2(-0.19587, 0.0926);
-    m = 0.55 + 0.45 * sin(dot(p, vec2(0.00565, 0.00231)) + 3.4 + t * 0.03); g += cos(dot(p, vec2(0.10942, -0.26808)) + 1.3 * sin(dot(p, vec2(0.01877, 0.00766)) + 3.4 * 2.3) + t * 0.927) * 0.12 * m * vec2(0.10942, -0.26808);
-    m = 0.55 + 0.45 * sin(dot(p, vec2(-0.00572, 0.00212)) + 5.1 + t * 0.03); g += cos(dot(p, vec2(0.13366, 0.36156)) + 1.3 * sin(dot(p, vec2(-0.02531, 0.00936)) + 5.1 * 2.3) + t * 1.0695) * 0.08 * m * vec2(0.13366, 0.36156);
-    if (WG_CHOP) {   /* 5 short chop trains (12-3 m) */
-    m = 0.5 + 0.5 * sin(dot(p, vec2(0.0038, -0.00738)) + 6.8 + t * 0.04); g += cos(dot(p, vec2(-0.45426, -0.23365)) + 1.1 * sin(dot(p, vec2(0.01168, -0.02271)) + 6.8) + t * 1.2312) * 0.05 * m * vec2(-0.45426, -0.23365);
-    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00219, 0.00801)) + 8.5 + t * 0.04); g += cos(dot(p, vec2(0.6967, -0.19024)) + 1.1 * sin(dot(p, vec2(0.00951, 0.03483)) + 8.5) + t * 1.464) * 0.032 * m * vec2(0.6967, -0.19024);
-    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00702, -0.00443)) + 10.2 + t * 0.04); g += cos(dot(p, vec2(-0.54941, 0.87127)) + 1.1 * sin(dot(p, vec2(-0.04356, -0.02747)) + 10.2) + t * 1.7483) * 0.02 * m * vec2(-0.54941, 0.87127);
-    m = 0.5 + 0.5 * sin(dot(p, vec2(0.00817, -0.00148)) + 11.9 + t * 0.04); g += cos(dot(p, vec2(-0.25427, -1.40518)) + 1.1 * sin(dot(p, vec2(0.07026, -0.01271)) + 11.9) + t * 2.0585) * 0.013 * m * vec2(-0.25427, -1.40518);
-    m = 0.5 + 0.5 * sin(dot(p, vec2(-0.00502, 0.00661)) + 13.6 + t * 0.04); g += cos(dot(p, vec2(1.51557, 1.1525)) + 1.1 * sin(dot(p, vec2(-0.05763, 0.07578)) + 13.6) + t * 2.377) * 0.009 * m * vec2(1.51557, 1.1525);
-    }
-  }
-  return g * swellK(p);
-}`;
+/** Shared GLSL wave field, generated from the single wave table in ./waves.ts (also drives the CPU waveH). */
+export const WAVES = WAVES_GLSL;
 
 /** Ocean vertex shader: camera-following warped grid displaced by the wave field. */
 export const OCEAN_VERT = WAVES + `uniform float uTime; uniform vec4 uHeroA, uHeroB; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw; void main(){ vHw = vec3(wh(uHeroA.xz, uTime), wh(uHeroB.xz, uTime), wh(cameraPosition.xz, uTime));   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);');
