@@ -641,7 +641,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         causticsMaterial.uniforms.uTime.value = t;
         u.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]);
         if (tod) {
-            const d = tod.day.value; u.uDay.value = d; causticsMaterial.uniforms.uDayC.value = d; u.uHor.value.copy(tod.fog).lerp(_skyBlue, 0.45).multiplyScalar(0.92);
+            const d = tod.day.value; u.uDay.value = d; causticsMaterial.uniforms.uDayC.value = d; u.uHor.value.copy(tod.fog).lerp(_skyBlue, 0.45 * d).multiplyScalar(0.92 * (0.3 + 0.7 * d));   /* night: the pond mirrors the dark night horizon, not a fixed day-blue (it glowed cyan at night) */
             u.uZen.value.setRGB(0.30, 0.50, 0.78).multiplyScalar(0.12 + 0.88 * d).lerp(tod.sky, 0.25 * d); u.uSun.value.copy(tod.sun);
         }
         const cam = camera as THREE.PerspectiveCamera;
