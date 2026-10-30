@@ -55,10 +55,14 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         // uses and blends neighbours, so the 22 m tile never shows as a repeat
         float kk = texture2D(uCaus, wq * 0.0031 + 0.37).r * 0.6 + 0.4 * (0.5 + 0.5 * sin(wq.x * 0.0071 + sin(wq.y * 0.0053) * 2.0));
         float lv = kk * 8.0, fv = fract(lv), ia = floor(lv); vec2 uv1 = wq * 0.045 + vec2(0.011, 0.006) * uTime;
-        vec2 ca = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * ia)).rg, cb = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * (ia + 1.0))).rg;
-        vec2 d1 = mix(ca, cb, smoothstep(0.2, 0.8, fv - 0.1 * (ca.x - cb.x + ca.y - cb.y))) * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) { vec2 uv2b = mat2(0.743, -0.669, 0.669, 0.743) * wq * 0.1237 - vec2(0.008, -0.012) * uTime; float l2v = kk * 5.0 + 0.5, f2v = fract(l2v), i2v = floor(l2v);
-          vec2 ea = texture2D(uNrm, uv2b + sin(vec2(5.0, 2.0) * i2v)).rg, eb = texture2D(uNrm, uv2b + sin(vec2(5.0, 2.0) * (i2v + 1.0))).rg; d2 = mix(ea, eb, smoothstep(0.2, 0.8, f2v)) * 2.0 - 1.0; }   /* phones: one layer */
-        g += (d1 * 0.11 + d2 * 0.06) * mix(1.0, 0.12, smoothstep(30.0, 220.0, wDist)); }   /* far away the waves carry the shape; a tiled ripple there would read as a pattern */
+        vec4 ca4 = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * ia)), cb4 = texture2D(uNrm, uv1 + sin(vec2(3.0, 7.0) * (ia + 1.0)));
+        /* FFT detail (Shifat 3:23/3:30 PM 'fft ... ultra fast, same on all devices'): public/waterfft.png is a real Tessendorf/Phillips FFT sea baked offline,
+           RG = slopes at time 0, BA = the same sea 1.9 s later; one fetch carries both and the shader cross-fades them (variance kept), so the ripples
+           evolve instead of sliding as a frozen picture. One layer on every device (phone = desktop). */
+        float wt = 0.5 + 0.5 * sin(uTime * 0.83), wr = inversesqrt(wt * wt + (1.0 - wt) * (1.0 - wt));
+        vec2 ca = (mix(ca4.rg, ca4.ba, wt) - 0.5) * wr + 0.5, cb = (mix(cb4.rg, cb4.ba, wt) - 0.5) * wr + 0.5;
+        vec2 d1 = mix(ca, cb, smoothstep(0.2, 0.8, fv - 0.1 * (ca.x - cb.x + ca.y - cb.y))) * 2.0 - 1.0, d2 = vec2(0.0); 
+        g += (d1 * 0.125 + d2) * mix(1.0, 0.12, smoothstep(30.0, 220.0, wDist)); }   /* far away the waves carry the shape; a tiled ripple there would read as a pattern */
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       bool below = !gl_FrontFacing;

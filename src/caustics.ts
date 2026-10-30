@@ -13,7 +13,8 @@ vec3 causRGB(vec2 xz, float t){
   return vec3(min(texture2D(uCaus, a + o).r, l2), min(texture2D(uCaus, a).r, l2), min(texture2D(uCaus, a - o).r, l2));
 }`;
 // Tileable ripple normal map (public/waternormal.png): gradient of ~45 random integer-wavenumber waves, RG = slope. Scrolled in two layers for micro detail.
-export const WATER_NRM = new THREE.TextureLoader().load('/waternormal.png', (t) => { t.needsUpdate = true; });
+// Shifat 3:23 PM: replaced by an offline FFT ocean tile (public/waterfft.png, RG = slopes at t0, BA = 1.9 s later). Old map kept in public/ for reference.
+export const WATER_NRM = new THREE.TextureLoader().load('/waterfft.png', (t) => { t.needsUpdate = true; });
 WATER_NRM.wrapS = WATER_NRM.wrapT = THREE.RepeatWrapping; WATER_NRM.minFilter = THREE.LinearMipmapLinearFilter; WATER_NRM.magFilter = THREE.LinearFilter; WATER_NRM.colorSpace = THREE.NoColorSpace; WATER_NRM.anisotropy = 4;
 
 // Hero positions for the analytic reflection trace (xyz = feet, w = 1 when present). Shadow is set by Scene, Ghost by Ghost.tsx.
