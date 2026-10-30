@@ -506,15 +506,15 @@ void main(){
     if(uSteps>12.0){float a0=tp,a1=t;for(int j=0;j<4;j++){float m=0.5*(a0+a1);vec3 M=vView+Rv*m;vec4 cm=uProj*vec4(M,1.0);vec2 um=cm.xy/cm.w*0.5+0.5;if(M.z<sceneZ(um)){a1=m;uv=um;}else a0=m;}}
     float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);refl=mix(refl,texture2D(tScene,uv).rgb,e);reflDist=t;break;}
    tp=t;}}
- vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0))refl=heroCol(hn);
+ vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0)&&(vWorld+R*ht).y>vWorld.y)refl=heroCol(hn);/* Shifat 5:12: only the part above the surface reflects */
  // refraction / transmission
  vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.46,0.12,0.075);/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
  vec3 trans;float alpha=1.0;
  if(uUseScene>0.5&&!below){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
   float sz2=sceneZ(uv2);if(sz2>wz){uv2=suv;sz2=sceneZ(suv);}float th=clamp(wz-sz2,0.0,12.0)*1.15;vec3 T=exp(-absorb*th);
-  vec3 behind=texture2D(tScene,uv2).rgb;vec3 hn2;if(hero(vWorld,Td,hn2)<th+0.5)behind=mix(behind,heroCol(hn2),0.85);trans=behind*T+deepCol*(1.0-T);}
+  vec3 behind=texture2D(tScene,uv2).rgb;vec3 hn2;float th2=hero(vWorld,Td,hn2);if(th2<th+0.5&&(vWorld+Td*th2).y<vWorld.y)behind=mix(behind,heroCol(hn2),0.85);trans=behind*T+deepCol*(1.0-T);trans=trans*vec3(0.78,1.0,0.97)+vec3(0.0,0.025,0.03)*uDay;}/* clear-pond green-turquoise cast even in the shallows (was reading grey) */
  else{float th=bedDepth/max(abs(Td.y),0.25);vec3 T=exp(-absorb*th);float Ts=clamp(dot(T,vec3(0.2,0.4,0.4)),0.0,1.0);
-  vec3 hn2;float hk=hero(vWorld,Td,hn2)<th+0.5?0.85:0.0;trans=mix(deepCol*(1.0-T)/max(1.0-Ts,0.05),heroCol(hn2),hk);alpha=max(1.0-Ts*(1.0-hk),0.0);}
+  vec3 hn2;float th2=hero(vWorld,Td,hn2);float hk=(th2<th+0.5&&(vWorld+Td*th2).y<vWorld.y)?0.85:0.0;/* only the submerged part refracts */trans=mix(deepCol*(1.0-T)/max(1.0-Ts,0.05),heroCol(hn2),hk);alpha=max(1.0-Ts*(1.0-hk),0.42);}/* keep the turquoise body tint when looking straight down (was going grey) */
  float f=below?max(F,0.12):F;vec3 col=mix(trans,refl,f);
  if(alpha<1.0){col=(refl*f+trans*(1.0-f)*alpha)/max(f+(1.0-f)*alpha,0.001);alpha=f+(1.0-f)*alpha;}
  if(below){float haze=1.0-exp(-dist*0.045);col=mix(col,vec3(0.035,0.23,0.30),haze*0.72);alpha=1.0;}
@@ -529,7 +529,8 @@ const LAKE_CAUSTICS_VS = `varying vec2 vUv; varying vec3 vWorld; void main(){vUv
 const LAKE_CAUSTICS_FS = `uniform float uTime; uniform float uWaterY; uniform float uDayC; varying vec2 vUv; varying vec3 vWorld;
 ${CAUSTIC_GLSL}
 void main(){vec3 k=causRGB(vWorld.xz*0.5,uTime*0.8)*2.6;float edge=1.0-smoothstep(0.68,1.0,length((vUv-0.5)*2.0));float dep=max(uWaterY-vWorld.y,0.0);
-gl_FragColor=vec4(k*edge*exp(-dep*0.10)*uDayC*0.7,1.0);}`;
+k=k*0.9/(1.0+k*0.9);/* soft-compressed like the lagoon: light lines, no white blotches */
+gl_FragColor=vec4(k*edge*exp(-dep*0.10)*uDayC*0.55,1.0);}`;
 
 const FOAM_VS = `uniform float uTime; varying vec2 vUv; void main(){ vUv=uv; vec3 p=position; p.y+=0.016*sin(uv.x*35.0+uTime*1.3); gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0); }`;
 // pond shore foam, same language as the island swash (Shifat 3:17 AM 'never tile'): caustic-cell lace (bombed along the ring), a soft run-up pulse
