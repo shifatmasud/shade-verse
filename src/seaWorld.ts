@@ -73,7 +73,7 @@ function islandRaw(x: number, z: number, pools = true): number | null {
     else y += (hillH(x, z) + cliffBump(x, z)) * sm(0.8, 0.42, rr);   // long gentle foothills down to the beach
     if (pools) {
         const dl = Math.hypot(x - LAGOON.cx, z - LAGOON.cz) / LAGOON.r;
-        if (dl < 1.7) y = y + (LAGOON.y + 0.5 - 3.4 * sm(0.95, 0.5, dl) - y) * sm(1.7, 1.0, dl);
+        if (dl < 1.7) y = y + (LAGOON.y + 0.5 - 7.5 * sm(0.95, 0.35, dl) - y)   /* 9:28 PM 'increase the depth of the lake': 3.4 -> 7.5 m */ * sm(1.7, 1.0, dl);
         const dp = Math.hypot(x - POOL.cx, z - POOL.cz) / POOL.r;
         if (dp < 1.8) y = y + (POOL.y + 0.5 - 5.0 * sm(0.95, 0.5, dp) - y) * sm(1.8, 1.0, dp);
         {   // waterfall notch: flat at pool level up to the cliff face, then a near-vertical wall up to the ledge
