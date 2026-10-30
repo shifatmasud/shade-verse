@@ -6,8 +6,8 @@ export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number
 
 export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
 export const FOG: V3 = [0.84, 0.77, 0.74];
-const G = 27;
-export const JUMP_V = 16;
+const G = 44, G_FALL = 70, G_WEB = 27;   /* Oct 29 10:07 PM 'jump should be faster & faster to fall': snappier rise (27 -> 44) and a heavier fall (70); web swings keep the old 27 */
+export const JUMP_V = 21;   // was 16: same ~5 m height, reached in ~0.48 s (was ~0.6 s); whole jump ~0.86 s (was ~1.19 s)
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
 export const PARK_POND = { cx: 180, cz: 100, rx: 14, rz: 14 }; // circular lake (env-iter1)
 // Valley topography remains unchanged outside the pond; the pond itself is a deeper bowl for swimming and underwater light.
@@ -627,7 +627,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         input.jumpQ = false; s.grappleFlight = false;
         if (s.swim) { s.dive = !s.dive; }   // jump on the surface dives (user message 10:18, WhatsApp); underwater it surfaces. Shore exit: swim into the shore (below).
         else
-        if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
+        if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 19; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
         else if (s.ground) { v[1] = JUMP_V; s.ground = false; const g0 = s as any; g0.pressT = 0; g0.pressGl = false; g0.pressGround = true; g0.dblUsed = false; g0.glideMode = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
         else { const g0 = s as any; g0.pressT = 0; g0.pressGl = !!g0.glideMode; g0.pressGround = false; }   // air press: tap/hold decided on release (see Space scheme below)
@@ -697,7 +697,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         // Glide lift balances gravity during descent; keep ordinary gravity through the rising launch.
         if (s.glideOn && (s as any).flightBoost) v[1] += (12 - v[1]) * (1 - Math.exp(-3.5 * dt));   // flight climbs faster (was 8)
         else if (s.glideOn && v[1] <= 0) v[1] += (-4.2 - v[1]) * (1 - Math.exp(-6 * dt));
-        else v[1] -= G * dt;
+        else v[1] -= (s.web ? G_WEB : v[1] > 0 ? G : G_FALL) * dt;
         const air = s.web ? 12 : 7; v[0] += wx * air * dt; v[2] += wz * air * dt;
         if (s.web) { const hs0 = Math.hypot(v[0], v[2]); const px = hs0 > 2 ? v[0] / hs0 : fx, pz = hs0 > 2 ? v[2] / hs0 : fz; const boost = hs0 < FLY_SWING_CAP ? FLY_SWING_BOOST : 0; v[0] += px * boost * dt; v[2] += pz * boost * dt; }
         if (!s.web) { const dr = Math.pow(0.992, dt * 60); v[0] *= dr; v[2] *= dr; }
