@@ -77,7 +77,7 @@ function islandRaw(x: number, z: number, pools = true): number | null {
         if (dp < 1.8) y = y + (POOL.y + 0.5 - 2.9 * sm(0.95, 0.5, dp) - y) * sm(1.8, 1.0, dp);
         {   // waterfall notch: flat at pool level up to the cliff face, then a near-vertical wall up to the ledge
             const rx = x - POOL.cx, rz = z - POOL.cz, along = rx * toPeak[0] + rz * toPeak[1], perp = Math.abs(-rx * toPeak[1] + rz * toPeak[0]);
-            if (along > 0 && along < 30 && perp < 11) { const floor = POOL.y + 0.5 + Math.max(0, along - FALL_WALL) * 7, wf = sm(11, 7, perp); y = y + (Math.min(y, floor) - y) * wf; }
+            if (along > 0 && along < 30 && perp < 11) { const floor = POOL.y + 0.5 + Math.max(0, along - FALL_WALL) * 7, wf = sm(14, 6.5, perp); /* water blend: wider, softer notch sides (rounded gorge, not a sharp shelf) */ y = y + (Math.min(y, floor) - y) * wf; }
         }
         const rv = riverNear(x, z);
         if (rv && rv.d < rv.hw * 2.6) { const bed = rv.y - 1.4 + 1.9 * sm(rv.hw * 0.75, rv.hw * 1.6, rv.d); y = y + (bed - y) * sm(rv.hw * 2.6, rv.hw * 1.6, rv.d); }
