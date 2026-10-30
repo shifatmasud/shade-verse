@@ -29,7 +29,7 @@ import { OCC } from './occlude';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SouthSea, CITY_LOD } from './SouthSea';
-import { ISLAND } from './seaWorld';
+import { ISLAND, islandH } from './seaWorld';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -1811,7 +1811,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
                 for(let k=0;k<3;k++){if(Math.abs(delta[k])<1e-7){if(origin[k]<mn[k]||origin[k]>mx[k]){hit=false;break;}}else{let a=(mn[k]-origin[k])/delta[k],c=(mx[k]-origin[k])/delta[k];if(a>c){const t=a;a=c;c=t;}lo=Math.max(lo,a);hi=Math.min(hi,c);if(lo>hi){hit=false;break;}}}
                 if(hit&&lo>0)safe=Math.max(0,lo-.025);
             }
-            for(let i=1;i<=32;i++){const f=safe*i/32,x=ax+dx*f,y=ay+dy*f,z=az+dz*f;const floor=z<WATER_Z?seabedAt(x,z):Math.min(0,parkH(x,z));if(y<floor+.35){safe=safe*(i-1)/32;break;}}
+            for(let i=1;i<=32;i++){const f=safe*i/32,x=ax+dx*f,y=ay+dy*f,z=az+dz*f;const ihc=z<WATER_Z?islandH(x,z):null;const floor=z<WATER_Z?(ihc!==null?ihc:seabedAt(x,z)):Math.min(0,parkH(x,z));   /* 1:21 AM Shifat 'island lake camera bug': seabedAt ignores the carved lake/river/pool, so the arm hit 'ground' above the water and collapsed into the swimmer */if(y<floor+.35){safe=safe*(i-1)/32;break;}}
             if(safe<1)q.set(ax+dx*safe,ay+dy*safe,az+dz*safe);
         }
         camera.position.copy(cam.current); { const shk = (sim as any).shake || 0; if (shk > 0.001) { const a = shk * shk * 2.2, tt = sim.t * 61; camera.position.x += Math.sin(tt * 1.3) * a; camera.position.y += Math.sin(tt * 1.9 + 1.7) * a * 0.8; camera.position.z += Math.sin(tt * 1.1 + 4.1) * a; } } if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
