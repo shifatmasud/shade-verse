@@ -308,7 +308,7 @@ export function resetSim(s: Sim) {
     s.camHeld = false; s.score = 0; s.time = 0; s.yaw = 0; s.swings = 0; s.maxSpeed = 0; s.ang = 0;
     s.orbs = []; for (let i = 0; i < 18; i++) s.orbs.push(newOrb(s));
     s.beaconN = 0; s.beacon = newBeacon(s);
-    s.glideOn = false; s.airT = 0; (s as any).flightPress = undefined; (s as any).flightBoost = false; (s as any).flightTapCancel = false;
+    s.glideOn = false; s.airT = 0; (s as any).pressT = undefined; (s as any).flightBoost = false; (s as any).glideMode = false; (s as any).dblUsed = false;
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.plasma = []; s.blasts = []; s.eshots = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = [];
@@ -582,8 +582,8 @@ function collide(s: Sim, prevY: number) {
     if (p[2] > lim) { p[2] = lim; v[2] = Math.min(v[2], 0); } if (p[2] < SEA.zMin) { p[2] = SEA.zMin; v[2] = Math.max(v[2], 0); }
 }
 
-export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 22, glideAcc: 14 };   // traversal tuning knobs
-const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 22, FLY_GLIDE_ACC = 14;   // traversal tuning (was 34 / 14 / 14 / 10): user asked for faster flight
+export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 32, glideAcc: 22 };   // traversal tuning knobs
+const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 32, FLY_GLIDE_ACC = 22, FLY_FLIGHT_CAP = 44, FLY_FLIGHT_ACC = 30;   /* Oct 29 9:15 PM 'speed up the glide, flight too': glide 22/14 -> 32/22, flight own cap 44/30 */   // traversal tuning (was 34 / 14 / 14 / 10): user asked for faster flight
 export interface StepOptions { updateEnemies?: boolean; }
 export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
     stepSimInner(s, dt, ev, controls, options);
@@ -628,33 +628,39 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         if (s.swim) { s.dive = !s.dive; }   // jump on the surface dives (user message 10:18, WhatsApp); underwater it surfaces. Shore exit: swim into the shore (below).
         else
         if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 15; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
-        else if (s.ground) { v[1] = JUMP_V; s.ground = false; (s as any).flightPress = 0; (s as any).flightTapCancel = false; ev.jump(); }
+        else if (s.ground) { v[1] = JUMP_V; s.ground = false; const g0 = s as any; g0.pressT = 0; g0.pressGl = false; g0.pressGround = true; g0.dblUsed = false; g0.glideMode = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
-        else if (!s.grappleFlight && s.spring <= 0) { (s as any).flightPress = 0; (s as any).flightTapCancel = true; }
-        else if (!s.ground) { (s as any).glideBlocked = true; s.glideOn = false; ev.jump(); }   // mid-air JUMP cancels automatic glide for the rest of this flight
+        else { const g0 = s as any; g0.pressT = 0; g0.pressGl = !!g0.glideMode; g0.pressGround = false; }   // air press: tap/hold decided on release (see Space scheme below)
     }
     const gl = s as any;
-    if (input.jumpCancelled) { input.jumpCancelled = false; gl.flightPress = undefined; }
-    if (gl.flightPress !== undefined) {
-        if (s.web || s.swim || s.wall || s.ground || s.grappleFlight || s.spring > 0) gl.flightPress = undefined;
+    /* Space scheme (Shifat Oct 29 9:15 PM): tap = jump, double tap = double jump, hold = glide,
+       hold while gliding = flight, tap while gliding = cancel glide + direct jump. Glide stays on after release until a tap or landing. */
+    const HOLD = 0.18, heldNow = !!(input.jumpHeld || k[' ']);
+    if (input.jumpCancelled) { input.jumpCancelled = false; gl.pressT = undefined; }
+    if (s.ground || s.web || s.wall || s.swim) { gl.glideMode = false; if (!s.ground || s.web) gl.dblUsed = false; if (s.ground) gl.dblUsed = false; }
+    if (gl.pressT !== undefined) {
+        if (s.web || s.swim || s.wall || (s.ground && !gl.pressGround)) gl.pressT = undefined;
         else {
-            if (input.jumpHeld || k[' ']) gl.flightPress += dt;
-            if (gl.flightPress >= 0.18) gl.glideBlocked = false;
-            if (input.jumpReleased) {
-                if (gl.flightPress < 0.18 && gl.flightTapCancel) { gl.glideBlocked = true; s.glideOn = false; ev.jump(); }
-                gl.flightPress = undefined;
+            if (heldNow) gl.pressT += dt;
+            if (!gl.pressGl && gl.pressT >= HOLD && !s.ground) gl.glideMode = true;   // hold = glide (from a ground jump too)
+            if (input.jumpReleased || !heldNow) {
+                if (gl.pressT < HOLD && !gl.pressGround) {
+                    if (gl.pressGl) { gl.glideMode = false; v[1] = Math.max(v[1], 0) + JUMP_V * 0.8; s.grappleFlight = false; ev.jump(); }   // tap while gliding: cancel + direct jump
+                    else if (!gl.dblUsed) { gl.dblUsed = true; v[1] = Math.max(v[1], 0) * 0.3 + JUMP_V * 0.92; s.grappleFlight = false; ev.jump(); }   // second tap: double jump
+                }
+                gl.pressT = undefined;
             }
         }
     }
     input.jumpReleased = false;
-    gl.flightBoost = gl.flightPress !== undefined && gl.flightPress >= 0.18 && !!(input.jumpHeld || k[' ']);
+    gl.flightBoost = gl.pressT !== undefined && !!gl.pressGl && gl.pressT >= HOLD && heldNow && !!gl.glideMode;   // hold while gliding = flight
     const prevY = p[1];
     s.spring = Math.max(0, s.spring - dt); s.shotT = Math.max(0, s.shotT - dt);
     s.airT = (!s.ground && !s.swim && !s.wall && !s.web) ? s.airT + dt : 0;
     // Auto-glide during free flight after the launch beat. Mid-air JUMP cancels until the next flight.
     if (s.ground || s.web || s.wall || s.swim || s.spring > 0) (s as any).glideBlocked = false;
-    s.glideOn = !s.ground && !s.web && !s.wall && !s.swim && !s.grappleFlight && s.spring <= 0 &&
-        (s.airT > 0.35 || gl.flightBoost) && !(s as any).glideBlocked;
+    s.glideOn = !s.ground && !s.web && !s.wall && !s.swim && s.spring <= 0 && !!gl.glideMode;
+    if (s.glideOn) s.grappleFlight = false;
     const wasGround = s.ground, landVy = v[1];
     if (s.landHard > 0) s.landHard -= dt;
     s.wallT = Math.max(0, s.wallT - dt);
@@ -689,7 +695,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         const a = Math.min(1, dt * 10); v[0] += (wx * 15 - v[0]) * a; v[2] += (wz * 15 - v[2]) * a; v[1] = 0;
     } else {
         // Glide lift balances gravity during descent; keep ordinary gravity through the rising launch.
-        if (s.glideOn && (s as any).flightBoost) v[1] += (8 - v[1]) * (1 - Math.exp(-3 * dt));
+        if (s.glideOn && (s as any).flightBoost) v[1] += (12 - v[1]) * (1 - Math.exp(-3.5 * dt));   // flight climbs faster (was 8)
         else if (s.glideOn && v[1] <= 0) v[1] += (-4.2 - v[1]) * (1 - Math.exp(-6 * dt));
         else v[1] -= G * dt;
         const air = s.web ? 12 : 7; v[0] += wx * air * dt; v[2] += wz * air * dt;
@@ -710,7 +716,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
             if (vn > 0) { v[0] -= n[0] * vn; v[1] -= n[1] * vn; v[2] -= n[2] * vn; }
         }
     }
-    if (s.glideOn) { const hs = Math.hypot(v[0], v[2]); if (hs < FLY_GLIDE_CAP) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * FLY_GLIDE_ACC * dt; v[2] += fz2 * FLY_GLIDE_ACC * dt; } }
+    if (s.glideOn) { const fl = !!(s as any).flightBoost, cap = fl ? FLY_FLIGHT_CAP : FLY_GLIDE_CAP, acc = fl ? FLY_FLIGHT_ACC : FLY_GLIDE_ACC; const hs = Math.hypot(v[0], v[2]); if (hs < cap) { const fx2 = Math.sin(s.yaw), fz2 = Math.cos(s.yaw); v[0] += fx2 * acc * dt; v[2] += fz2 * acc * dt; } }
 
     collide(s, prevY);
     (s as any).onCar = -1; collideCars(s, prevY, dt);
