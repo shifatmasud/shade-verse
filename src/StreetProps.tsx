@@ -60,7 +60,7 @@ export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /*
                     if (inside(x, z, 0.6)) continue;
                     const y = parkH(x, z);
                     if (!Number.isFinite(y) || y > 2.5) continue;
-                    if (r < 0.3) { { add(pole, x, y + 2.6, z, 1, 1, 1, ry); add(head, x - nx * 0.7, y + 5.15, z - nz * 0.7, 1, 1, 1, ry); add(pool, x - nx * 0.9, y + 0.06, z - nz * 0.9, 1, 1, 1, 0); } }
+                    if (r < 0.3) { { add(pole, x, y + 2.6, z, 1, 1, 1, ry); add(head, x + nx * 0.7, y + 5.15, z + nz * 0.7, 1, 1, 1, ry); add(pool, x + nx * 0.9, y + 0.06, z + nz * 0.9, 1, 1, 1, 0);   /* 1:03 AM Shifat 'they should be flipped': arm reaches over the road, not back at the wall */ } }
                     else if (r < 0.48) add(bench, x, y + 0.25, z, 1, 1, 1, ry);
                     else if (r < 0.62) add(bin, x, y + 0.5, z, 1, 1, 1, 0);
                     else if (r < 0.7) add(hyd, x, y + 0.4, z, 1, 1, 1, 0);
