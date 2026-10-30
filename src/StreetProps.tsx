@@ -25,6 +25,23 @@ function Inst({ list, geo, mat, bloom = false }: { list: P[]; geo: THREE.BufferG
     if (!list.length) return null;
     return <instancedMesh ref={ref} args={[geo, mat, list.length]} castShadow={false} receiveShadow={false} renderOrder={bloom ? 0 : undefined} onUpdate={bloom ? (o: any) => o.layers.enable(SELECTIVE_BLOOM_LAYER) : undefined} />;
 }
+function bake(parts: { list: P[]; geo: THREE.BufferGeometry; color: string }[]) {   /* perf: one static mesh for all furniture = 1 draw call instead of 5 */
+    let n = 0; const srcs = parts.map((p) => { const g = p.geo.index ? p.geo.toNonIndexed() : p.geo; n += g.getAttribute('position').count * p.list.length; return g; });
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3); let o = 0;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p3 = new THREE.Vector3(), v = new THREE.Vector3(), nm = new THREE.Matrix3(), c = new THREE.Color();
+    parts.forEach((pt, k) => {
+        const g = srcs[k], P = g.getAttribute('position'), N = g.getAttribute('normal'); c.set(pt.color).convertSRGBToLinear();
+        for (const it of pt.list) {
+            e.set(0, it.ry, 0); q.setFromEuler(e); m.compose(p3.set(it.x, it.y, it.z), q, s.set(it.sx, it.sy, it.sz)); nm.getNormalMatrix(m);
+            for (let i = 0; i < P.count; i++, o++) {
+                v.fromBufferAttribute(P, i).applyMatrix4(m); pos[o * 3] = v.x; pos[o * 3 + 1] = v.y; pos[o * 3 + 2] = v.z;
+                v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nor[o * 3] = v.x; nor[o * 3 + 1] = v.y; nor[o * 3 + 2] = v.z;
+                col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b;
+            }
+        }
+    });
+    const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); out.setAttribute('color', new THREE.BufferAttribute(col, 3)); out.computeBoundingSphere(); return out;
+}
 export const STREET_GLOW = { value: 0 };
 export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /* 12:14 AM: lamp heads glow + warm light pools at night */
     const d = useMemo(() => {
@@ -47,7 +64,7 @@ export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /*
                     else if (r < 0.48) add(bench, x, y + 0.25, z, 1, 1, 1, ry);
                     else if (r < 0.62) add(bin, x, y + 0.5, z, 1, 1, 1, 0);
                     else if (r < 0.7) add(hyd, x, y + 0.4, z, 1, 1, 1, 0);
-                    else { for (const s of [-1.2, 0, 1.2]) add(boll, x + nz * s, y + 0.45, z - nx * s, 1, 1, 1, 0); }
+                    else { for (const s of [-0.9, 0.9]) add(boll, x + nz * s, y + 0.45, z - nx * s, 1, 1, 1, 0); }
                 }
             });
         });
@@ -59,10 +76,10 @@ export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /*
         const back = new THREE.BoxGeometry(1.8, 0.5, 0.08); back.translate(0, 0.5, -0.22);
         const legs = new THREE.BoxGeometry(0.1, 0.45, 0.45); const l1 = legs.clone().translate(-0.75, -0.02, 0), l2 = legs.clone().translate(0.75, -0.02, 0);
         const merge = (gs: THREE.BufferGeometry[]) => { const ps: number[] = [], ns: number[] = []; for (const q of gs) { const a = q.toNonIndexed(); ps.push(...(a.getAttribute('position').array as any)); ns.push(...(a.getAttribute('normal').array as any)); } const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(ps, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(ns, 3)); return o; };
-        const hydB = new THREE.CylinderGeometry(0.16, 0.2, 0.7, 8), hydT = new THREE.SphereGeometry(0.17, 8, 6); hydT.translate(0, 0.36, 0); const hydS = new THREE.CylinderGeometry(0.07, 0.07, 0.5, 6); hydS.rotateZ(Math.PI / 2); hydS.translate(0, 0.12, 0);
+        const hydB = new THREE.CylinderGeometry(0.16, 0.2, 0.7, 6, 1, true), hydT = new THREE.SphereGeometry(0.17, 6, 4); hydT.translate(0, 0.36, 0); const hydS = new THREE.CylinderGeometry(0.07, 0.07, 0.5, 6); hydS.rotateZ(Math.PI / 2); hydS.translate(0, 0.12, 0);
         return {
             pole: new THREE.CylinderGeometry(0.07, 0.1, 5.2, 6), pool: (() => { const c = new THREE.CircleGeometry(3.2, 20); c.rotateX(-Math.PI / 2); return c; })(), head: new THREE.BoxGeometry(0.35, 0.16, 1.6),
-            bench: merge([bench, back, l1, l2]), bin: new THREE.CylinderGeometry(0.3, 0.26, 1.0, 10), hyd: merge([hydB, hydT, hydS]), boll: new THREE.CylinderGeometry(0.1, 0.12, 0.9, 6),
+            bench: merge([bench, back, l1, l2]), bin: new THREE.CylinderGeometry(0.3, 0.26, 1.0, 10), hyd: merge([hydB, hydT, hydS]), boll: new THREE.CylinderGeometry(0.1, 0.12, 0.9, 5, 1, true),
         };
     }, []);
     const m = useMemo(() => ({
@@ -73,10 +90,15 @@ export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /*
         bench: new THREE.MeshLambertMaterial({ color: '#8a5a3a' }), bin: new THREE.MeshLambertMaterial({ color: '#2f5a44' }),
         hyd: new THREE.MeshLambertMaterial({ color: '#c8332b' }), boll: new THREE.MeshLambertMaterial({ color: '#d8d4cc' }),
     }), []);
-    useFrame(() => { const n = Math.max(0, Math.min(1, (0.6 - tod.day.value) / 0.45)); (m.head as THREE.MeshBasicMaterial).color.setRGB(1, 0.86, 0.62).multiplyScalar(0.45 + 1.6 * n); (m.pool as THREE.ShaderMaterial).uniforms.uN.value = n; });
+    const furn = useMemo(() => {   /* baked per 140 m cell so off-screen cells are frustum-culled */
+        const cells = new Map<string, Record<string, P[]>>(), key = (p: P) => Math.floor(p.x / 140) + ',' + Math.floor(p.z / 140);
+        for (const k of ['pole', 'bench', 'bin', 'hyd', 'boll'] as const) for (const p of (d as any)[k] as P[]) { const c = key(p); if (!cells.has(c)) cells.set(c, { pole: [], bench: [], bin: [], hyd: [], boll: [] }); cells.get(c)![k].push(p); }
+        return [...cells.values()].map((c) => bake([{ list: c.pole, geo: g.pole, color: '#3a3f47' }, { list: c.bench, geo: g.bench, color: '#8a5a3a' }, { list: c.bin, geo: g.bin, color: '#2f5a44' }, { list: c.hyd, geo: g.hyd, color: '#c8332b' }, { list: c.boll, geo: g.boll, color: '#d8d4cc' }]));
+    }, []);
+    const furnMat = useMemo(() => new THREE.MeshLambertMaterial({ vertexColors: true }), []);
+    useFrame(() => { const n = Math.max(0, Math.min(1, (0.6 - tod.day.value) / 0.45)); (m.head as THREE.MeshBasicMaterial).color.setRGB(1, 0.86, 0.62).multiplyScalar(0.45 + 1.6 * n); (m.pool as THREE.ShaderMaterial).uniforms.uN.value = n; m.pool.visible = n > 0.01; });   /* perf: the additive pools cost fill-rate even when black; skip them by day */
     return <group name="street-props">
-        <Inst list={d.pole} geo={g.pole} mat={m.pole} /><Inst list={d.head} geo={g.head} mat={m.head} bloom /><Inst list={d.pool} geo={g.pool} mat={m.pool} />
-        <Inst list={d.bench} geo={g.bench} mat={m.bench} /><Inst list={d.bin} geo={g.bin} mat={m.bin} />
-        <Inst list={d.hyd} geo={g.hyd} mat={m.hyd} /><Inst list={d.boll} geo={g.boll} mat={m.boll} />
+        {furn.map((f, i) => <mesh key={i} geometry={f} material={furnMat} />)}
+        <Inst list={d.head} geo={g.head} mat={m.head} bloom /><Inst list={d.pool} geo={g.pool} mat={m.pool} />
     </group>;
 }
