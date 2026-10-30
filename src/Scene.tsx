@@ -1459,7 +1459,7 @@ const waterMat = new THREE.ShaderMaterial({
         float dd = max(wz - oceanZ(suv), 0.0); vec3 Nv = (viewMatrix * vec4(n, 0.0)).xyz; vec2 uv2 = suv + Nv.xy * 0.04 * clamp(dd * 0.3, 0.0, 1.0);
         float sz2 = oceanZ(uv2); if (sz2 > wz) { uv2 = suv; sz2 = oceanZ(suv); }
         float th = clamp(wz - sz2, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
-        body = sceneCol(uv2) * Tr + body * (1.0 - Tr);
+        body = mix(sceneCol(uv2) * Tr + body * (1.0 - Tr), body, (1.0 - smoothstep(12.0, 32.0, length(cameraPosition - vW))) * 0.85);   /* near you the real fish/bed already show through (clear water); the low-res scene copy would only add blocky doubles */
       }
       vec3 nGlow = vec3(0.0);   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
       float fdE = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK;
@@ -1673,7 +1673,7 @@ function Fish({ sim }: { sim: Sim }) {
             o.position.set(px, py, pz); o.rotation.set(0, Math.atan2(-Math.sin(a), Math.cos(a)) + Math.PI / 2 * 0 , Math.sin(t * 9 + i) * 0.15); o.lookAt(sc.x + Math.cos(a + 0.2) * f.r, py, sc.z + Math.sin(a + 0.2) * f.r); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }
         m.count = N; m.instanceMatrix.needsUpdate = true;
     });
-    return <instancedMesh ref={ref} args={[geo, undefined, 130]} frustumCulled={false}><meshLambertMaterial vertexColors={false} /></instancedMesh>;
+    return <instancedMesh ref={ref} args={[geo, undefined, 130]} frustumCulled={false} userData={{ noRefl: true }}><meshLambertMaterial vertexColors={false} /></instancedMesh>;
 }
 function Whale({ sim }: { sim: Sim }) {
     const ref = useRef<THREE.Group>(null!), tail = useRef<THREE.Mesh>(null!);
@@ -1710,7 +1710,7 @@ function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefO
         if (!st.tagged || st.n % 300 === 0) {   // (re)tag big opaque shapes - island, city blocks, bridges, harbor - plus lights (three culls lights by layer too)
             const sp = new THREE.Sphere(); let nT = 0;
             scene.traverse((o: any) => { if (o.isLight) { o.layers.enable(REFL_LAYER); return; } if (!o.isMesh || o.isPoints || o.isSkinnedMesh || o.layers.isEnabled(REFL_LAYER)) return;
-                const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || (o.isInstancedMesh && o.count > 3000)) return;   /* custom-shader city/blocks included; water, sky, fx excluded */
+                const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || o.userData.noRefl || (o.isInstancedMesh && o.count > 3000)) return;   /* custom-shader city/blocks included; water, sky, fx excluded */
                 const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); sp.copy(g.boundingSphere!).applyMatrix4(o.matrixWorld); if (!o.isInstancedMesh && (sp.radius < 3.5 || sp.radius > 3000 || sp.center.y + sp.radius < WATER_Y + 0.5)) return; o.layers.enable(REFL_LAYER); nT++; });
             if (DBG) (window as any).__reflTagged = ((window as any).__reflTagged || 0) + nT;
             st.tagged = true;
