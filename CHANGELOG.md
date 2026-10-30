@@ -2,6 +2,14 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## South Sea 2b: island polish + flying bridge traffic (Oct 29) — Shifat: "long grasses & more tree variations, river, better water fall", "make island from real images refs", "deck cars should be cars flying"
+- Look based on real tropical islands (Maldives / Bora Bora refs): turquoise shallows ring the white-sand beach, with an animated foam line at the shore (ocean shader, island-only), brighter sand, limestone boulders on the waterline and rock outcrops on the steep hill.
+- Lagoon + plunge pool: new shallow-water shader. Turquoise at the sandy edge deepening to teal, soft transparent rim, ripples, caustic glints, night-dim. This replaces the lake material that read as a flat grey slab on phones.
+- Waterfall rebuilt: a carved cliff notch with a ~15 m free fall, three layered sheets scrolling at different speeds, foam + expanding ripples where it hits the pool, spray and mist; a waterfall roar (lake bed pitched up) plus jungle birds by day / crickets at night on the island.
+- River: carved channel from the plunge pool down through the jungle into the lagoon, then a second reach from the lagoon out to the sea; flowing streaks + white water, swimmable, and the current carries you downstream.
+- Long grass: dense swaying blades in a hero-centred patch (6500 / 2600 on phone), grown only on the meadow / jungle ground (1 m mask, no per-frame allocation); 6 plant types: tall coconut palms leaning out to sea, short bushy palms, jungle broadleaves, tall thin canopy trees, bushes, ferns; random scale / rotation / tint; denser layered jungle.
+- Bridge traffic: the wheeled deck cars are gone. 14 of the game's own flying cars now hover along the bridge (low lanes ~5-8 m above the deck, higher ones ~10-15 m between the towers), looping south on the east side and back north on the west side. Same sim as the city cars: solid, roof-rideable (tested), and webbable.
+
 ## Fix: island sea life (Oct 29) — Shifat's phone screenshot
 - The red / blue "shards" on the island's sand and hillside were fish schools: they followed the old seabed depth, which the island now lifts above the sea. Fish now only show while the hero is over real water (>2 m deep), schools over the island's shallows are hidden, and any fish that would sit above the surface or inside the ground is dropped.
 - Two sailboat loops moved: one crossed the island, one brushed the bridge piers.

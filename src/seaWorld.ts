@@ -10,7 +10,7 @@ const sm = (a: number, b: number, v: number) => { const t = Math.max(0, Math.min
 export const ISLAND = { cx: -160, cz: -820, R: 92 };
 export const LAGOON = { cx: ISLAND.cx + 40, cz: ISLAND.cz - 30, r: 17, y: 0.9 };
 export const PEAK = { x: ISLAND.cx - 12, z: ISLAND.cz + 14 };
-export const POOL = { cx: ISLAND.cx + 12, cz: ISLAND.cz - 14, r: 7.5, y: 0 };   // y filled below (waterfall plunge pool on the hill's flank)
+export const POOL = { cx: ISLAND.cx + 12, cz: ISLAND.cz - 14, r: 9, y: 0 };   // y filled below (waterfall plunge pool on the hill's flank)
 function islandRR(x: number, z: number) {
     const dx = x - ISLAND.cx, dz = z - ISLAND.cz, a = Math.atan2(dz, dx);
     return Math.hypot(dx, dz) / (ISLAND.R * (1 + 0.075 * Math.sin(3 * a + 1.0) + 0.045 * Math.sin(5 * a - 0.7)));
@@ -19,34 +19,66 @@ function hillH(x: number, z: number) {
     const d1 = Math.hypot(x - PEAK.x, z - PEAK.z), d2 = Math.hypot(x - (ISLAND.cx - 38), z - (ISLAND.cz - 22));
     return 30 * Math.exp(-((d1 / 33) ** 2)) + 9 * Math.exp(-((d2 / 20) ** 2)) + 1.1 * Math.sin(x * 0.21 + 0.4) * Math.cos(z * 0.17) + 0.7 * Math.sin(x * 0.47 - z * 0.39);
 }
+// South Sea 2b (Shifat 5:13 PM "long grasses, more tree variations, river, better water fall"): a cliff notch behind the plunge pool
+// for a real free-falling waterfall, and a river (pool -> lagoon -> sea) carved into the terrain.
+const toPeak = (() => { const dx = PEAK.x - POOL.cx, dz = PEAK.z - POOL.cz, l = Math.hypot(dx, dz); return [dx / l, dz / l]; })();
+export const FALL_WALL = 10.2;   // metres from the pool centre (uphill) to the cliff face
+function cliffBump(x: number, z: number) { const cx = POOL.cx + toPeak[0] * (FALL_WALL + 5), cz = POOL.cz + toPeak[1] * (FALL_WALL + 5), d = Math.hypot(x - cx, z - cz); return 9 * Math.exp(-((d / 9) ** 2)); }
+export interface River { pts: [number, number][]; y0: number; y1: number; hw: number; len: number; acc: number[] }
+export const RIVERS: River[] = [];
+function mkRiver(pts: [number, number][], y0: number, y1: number, hw: number) { const acc = [0]; for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); const r = { pts, y0, y1, hw, len: acc[acc.length - 1], acc }; RIVERS.push(r); return r; }
+/** nearest point on a river: distance, water height there and flow direction */
+export function riverNear(x: number, z: number): { d: number; y: number; fx: number; fz: number; hw: number } | null {
+    let best: { d: number; y: number; fx: number; fz: number; hw: number } | null = null;
+    for (const r of RIVERS) for (let i = 0; i < r.pts.length - 1; i++) {
+        const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+        if (d > r.hw * 3 || (best && d >= best.d)) continue;
+        const sAlong = (r.acc[i] + Math.sqrt(l2) * t) / r.len, l = Math.sqrt(l2);
+        best = { d, y: r.y0 + (r.y1 - r.y0) * sAlong, fx: dx / l, fz: dz / l, hw: r.hw };
+    }
+    return best;
+}
 function islandRaw(x: number, z: number, pools = true): number | null {
     const rr = islandRR(x, z);
     if (rr > 1.6) return null;
-    if (rr >= 1.0) return -2.6 - 42 * (rr - 1.0);
+    if (rr >= 1.0) { let y = -2.6 - 42 * (rr - 1.0); if (pools && rr < 1.25) { const rv = riverNear(x, z); if (rv && rv.d < rv.hw * 2.6) y = Math.min(y, rv.y - 1.4); } return y; }
     let y = 1.5 + 0.25 * Math.sin(x * 0.3 + z * 0.2);
-    if (rr >= 0.8) return y + (-2.6 - y) * sm(0.8, 1.0, rr);   // white-sand beach sloping into the sea
-    y += hillH(x, z) * sm(0.8, 0.6, rr);
+    if (rr >= 0.8) y = y + (-2.6 - y) * sm(0.8, 1.0, rr);   // white-sand beach sloping into the sea
+    else y += (hillH(x, z) + cliffBump(x, z)) * sm(0.8, 0.6, rr);
     if (pools) {
         const dl = Math.hypot(x - LAGOON.cx, z - LAGOON.cz) / LAGOON.r;
         if (dl < 1.7) y = y + (LAGOON.y + 0.5 - 3.4 * sm(0.95, 0.5, dl) - y) * sm(1.7, 1.0, dl);
         const dp = Math.hypot(x - POOL.cx, z - POOL.cz) / POOL.r;
         if (dp < 1.8) y = y + (POOL.y + 0.5 - 2.9 * sm(0.95, 0.5, dp) - y) * sm(1.8, 1.0, dp);
+        {   // waterfall notch: flat at pool level up to the cliff face, then a near-vertical wall up to the ledge
+            const rx = x - POOL.cx, rz = z - POOL.cz, along = rx * toPeak[0] + rz * toPeak[1], perp = Math.abs(-rx * toPeak[1] + rz * toPeak[0]);
+            if (along > 0 && along < 30 && perp < 11) { const floor = POOL.y + 0.5 + Math.max(0, along - FALL_WALL) * 7, wf = sm(11, 7, perp); y = y + (Math.min(y, floor) - y) * wf; }
+        }
+        const rv = riverNear(x, z);
+        if (rv && rv.d < rv.hw * 2.6) { const bed = rv.y - 1.4 + 1.9 * sm(rv.hw * 0.75, rv.hw * 1.6, rv.d); y = y + (bed - y) * sm(rv.hw * 2.6, rv.hw * 1.6, rv.d); }
     }
     return y;
 }
 POOL.y = (islandRaw(POOL.cx, POOL.cz, false) as number) - 1.2;
+mkRiver([[POOL.cx + 3, POOL.cz - 8], [POOL.cx + 1, POOL.cz - 18], [POOL.cx + 8, POOL.cz - 29], [POOL.cx + 20, POOL.cz - 33], [LAGOON.cx - 1, LAGOON.cz - 15]], POOL.y, LAGOON.y, 3.2);
+mkRiver([[LAGOON.cx + 15, LAGOON.cz + 4], [LAGOON.cx + 30, LAGOON.cz + 8], [LAGOON.cx + 44, LAGOON.cz + 11], [LAGOON.cx + 60, LAGOON.cz + 14], [LAGOON.cx + 72, LAGOON.cz + 15]], LAGOON.y, -1.0, 4.0);
 export const LAGOON_RIM = 0.93, POOL_RIM = 0.9;
 /** island ground height (may be under the sea near the edge), or null away from the island */
 export function islandH(x: number, z: number): number | null { return islandRaw(x, z); }
 export function isIsland(x: number, z: number, pad = 1.3) { return Math.hypot(x - ISLAND.cx, z - ISLAND.cz) < ISLAND.R * pad; }
 export function islandPeakY() { return islandRaw(PEAK.x, PEAK.z) as number; }
-// waterfall: from a ledge up the hill down to the plunge pool (sampled along the terrain so the sheet hugs the slope)
-const wfDir = (() => { const dx = PEAK.x - POOL.cx, dz = PEAK.z - POOL.cz, l = Math.hypot(dx, dz); return [dx / l, dz / l]; })();
-export const FALLS = { x0: POOL.cx + wfDir[0] * 21, z0: POOL.cz + wfDir[1] * 21, x1: POOL.cx + wfDir[0] * POOL.r * 0.55, z1: POOL.cz + wfDir[1] * POOL.r * 0.55, w: 5 };
+// waterfall: a free-falling sheet just in front of the cliff face, from the ledge down into the plunge pool
+export const FALLS = { x: POOL.cx + toPeak[0] * (FALL_WALL - 0.7), z: POOL.cz + toPeak[1] * (FALL_WALL - 0.7), dx: -toPeak[0], dz: -toPeak[1], top: 0, w: 9 };
+FALLS.top = (islandRaw(POOL.cx + toPeak[0] * (FALL_WALL + 3.5), POOL.cz + toPeak[1] * (FALL_WALL + 3.5)) as number);
 
 // inland pools (lake-style water, swimmable): lagoon + waterfall pool
 export const POOLS = [{ ...LAGOON, rim: LAGOON_RIM }, { cx: POOL.cx, cz: POOL.cz, r: POOL.r, y: POOL.y, rim: POOL_RIM }];
-export function poolAt(x: number, z: number) { for (const p of POOLS) { const dx = (x - p.cx) / p.r, dz = (z - p.cz) / p.r; if (dx * dx + dz * dz < p.rim * p.rim) return p; } return null; }
+export function poolAt(x: number, z: number): { y: number; fx?: number; fz?: number } | null {
+    for (const p of POOLS) { const dx = (x - p.cx) / p.r, dz = (z - p.cz) / p.r; if (dx * dx + dz * dz < p.rim * p.rim) return p; }
+    if (Math.hypot(x - ISLAND.cx, z - ISLAND.cz) < ISLAND.R * 1.15) { const rv = riverNear(x, z); if (rv && rv.d < rv.hw * 1.2 && rv.y > -0.9) return { y: rv.y, fx: rv.fx, fz: rv.fz }; }   // the river swims too (with a current)
+    return null;
+}
 
 // ---------------------------------------------------------------- walkable decks (dock now; bridge + harbor platform later)
 export interface Deck { x0: number; x1: number; z0: number; z1: number; y: number }

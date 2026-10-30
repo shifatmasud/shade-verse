@@ -1371,6 +1371,17 @@ const waterMat = new THREE.ShaderMaterial({
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
       col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
       float aOut = mix(0.82, 1.0, max(fr, 0.0));
+      { // South Sea 2b (real tropical refs: Maldives / Bora Bora): turquoise shallows around the island's white sand + a foam line at the shore
+        vec2 iq = vW.xz - vec2(-160.0, -820.0); float ia = atan(iq.y, iq.x); float irr = length(iq) / (92.0 * (1.0 + 0.075 * sin(3.0 * ia + 1.0) + 0.045 * sin(5.0 * ia - 0.7)));
+        if (irr < 1.6 && !below) {
+          float sh = 1.0 - smoothstep(0.93, 1.5, irr);
+          vec3 tq = mix(vec3(0.07, 0.55, 0.62), vec3(0.42, 0.9, 0.84), 1.0 - smoothstep(0.92, 1.18, irr)) * mix(0.25, 1.0, uDay);
+          col = mix(col, mix(tq, col, fr * 0.55), sh * 0.85);
+          float fo = smoothstep(0.985, 0.93, irr) * smoothstep(0.86, 0.91, irr) * (0.5 + 0.5 * sin(irr * 140.0 - uTime * 1.7 + sin(ia * 11.0) * 2.0));
+          col = mix(col, vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), clamp(fo, 0.0, 1.0) * 0.75);
+          aOut = mix(aOut, 0.62, (1.0 - smoothstep(0.9, 1.08, irr)) * (1.0 - fo));
+        }
+      }
       vec3 uWaterDisplay=mix(uUWF,linearToOutputTexel(vec4(uUWF,1.0)).rgb,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y)));
       if (below) {
         // Snell's window: refract view ray water -> air with a slightly different index per colour channel (dispersion); beyond the critical angle (48.6 deg) total internal reflection shows the water, not the sky

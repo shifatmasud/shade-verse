@@ -1,6 +1,7 @@
 // Sound director: reads the simulation every frame (no changes to sim.ts) and turns state changes into sound.
 // Ambient beds cross-fade by zone and position; hero / enemy one-shots fire on state edges; the score follows the action.
 import { audio, STEP_SPRITE, VO_N, type Vec3 } from './engine';
+import { FALLS, ISLAND } from '../seaWorld';
 import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, PED_VOICE, type Sim } from '../sim';
 
 const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -91,6 +92,7 @@ export class SoundDirector {
         const lakeW = sstep(55, 13, pondD);
         const groveW = sstep(48, 20, pondD) * (pondD > 9 ? 1 : 0.5);   // cherry blossom ring + beach palms around the lake
         const lowW = 1 - alt * 0.85;
+        const fallsW = sstep(75, 12, Math.hypot(x - FALLS.x, z - FALLS.z)), isleW = sstep(150, 75, Math.hypot(x - ISLAND.cx, z - ISLAND.cz));   // South Sea 2b: waterfall roar + jungle birds/crickets on the island
 
         // ---------- beds ----------
         if (true) {
@@ -101,10 +103,11 @@ export class SoundDirector {
             const op = audio.spatial([x, 0, WATER_Z - 4]);
             audio.bed('waves', oceanW * lowW * (1 - under), op.pan * 0.7, 1);
             const lp = audio.spatial([PARK_POND.cx, y, PARK_POND.cz]);
-            audio.bed('lake', lakeW * lowW * (1 - under), pondD > 16 ? lp.pan * 0.8 : 0, 1);
-            audio.bed('birds', Math.max(parkW * 0.75, groveW) * day * lowW * (1 - under) * (menu ? 0 : 1), 0, 1);
-            audio.bed('crickets', Math.max(parkW, groveW) * (1 - day) * lowW * (1 - under), 0, 1);
-            audio.bed('leaves', groveW * lowW * (0.55 + 0.45 * clamp01(sp / 30)) * (1 - under), 0, 1);
+            if (fallsW > lakeW) { const fp = audio.spatial([FALLS.x, y, FALLS.z]); audio.bed('lake', fallsW * (1 - under * 0.5), fp.pan * 0.6, 1.45); }
+            else audio.bed('lake', lakeW * lowW * (1 - under), pondD > 16 ? lp.pan * 0.8 : 0, 1);
+            audio.bed('birds', Math.max(parkW * 0.75, groveW, isleW * 0.8) * day * lowW * (1 - under) * (menu ? 0 : 1), 0, 1);
+            audio.bed('crickets', Math.max(parkW, groveW, isleW) * (1 - day) * lowW * (1 - under), 0, 1);
+            audio.bed('leaves', Math.max(groveW, isleW * 0.6) * lowW * (0.55 + 0.45 * clamp01(sp / 30)) * (1 - under), 0, 1);
             audio.bed('underwater', under, 0, 1);
             // swinging: continuous air rush whose pitch follows speed, plus a doppler-ish lift while accelerating
             const acc = (sp - p.speed) / Math.max(dt, 1e-3); this.swingVol += ((s.web ? clamp01((sp - 6) / 30) : 0) - this.swingVol) * Math.min(1, dt * 6);
@@ -115,7 +118,7 @@ export class SoundDirector {
         }
         audio.setUnderwater(under);
         // lazy-load the zone beds only when the hero is getting close to them
-        if (oceanW > 0.01) audio.preload(['waves', 'splash']); if (lakeW > 0.01 || parkW > 0.01) audio.preload(['lake', 'birds', 'leaves', 'crickets', 'splash', 'underwater']);
+        if (oceanW > 0.01) audio.preload(['waves', 'splash']); if (lakeW > 0.01 || parkW > 0.01 || fallsW > 0.01 || isleW > 0.01) audio.preload(['lake', 'birds', 'leaves', 'crickets', 'splash', 'underwater']);
         if (play && s.enemies.some((e) => e.boss && e.down <= 0 && Math.hypot(e.x - x, e.z - z) < 120)) audio.preload(['boss_hit', 'boss_down']);
 
         if (play) {
