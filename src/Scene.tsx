@@ -1315,6 +1315,7 @@ float wh(vec2 p, float t){
   h += sin(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42;
   h += sin(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12;
   h += sin(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035;
+  h += sin(dot(p, vec2(0.150, 0.085)) + t * 1.30) * 0.30 + sin(dot(p, vec2(-0.12, 0.23)) + t * 1.62) * 0.17;   // 2:58 AM: wind waves (35 m / 24 m) so the sea reads as waves, not a flat swell
   return h * swellK(p);
 }
 vec2 wg(vec2 p, float t){
@@ -1323,11 +1324,12 @@ vec2 wg(vec2 p, float t){
   g += cos(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42 * vec2(-0.012, 0.009);
   g += cos(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12 * vec2(0.033, -0.023);
   g += cos(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035 * vec2(0.076, 0.054);
+  g += cos(dot(p, vec2(0.150, 0.085)) + t * 1.30) * 0.30 * vec2(0.150, 0.085) + cos(dot(p, vec2(-0.12, 0.23)) + t * 1.62) * 0.17 * vec2(-0.12, 0.23);
   return g * swellK(p);
 }`;
 function waveH(x: number, z: number, t: number) {
     const zk = Math.max(0, Math.min(1, (z + 300) / -450)), ik = Math.max(0, Math.min(1, (Math.hypot(x - ISLAND.cx, z - ISLAND.cz) - 105) / 110)), sk = (1 + 1.3 * zk * zk * (3 - 2 * zk)) * (0.22 + 0.78 * ik * ik * (3 - 2 * ik));
-    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035);
+    return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035 + Math.sin(x * 0.150 + z * 0.085 + t * 1.30) * 0.30 + Math.sin(-x * 0.12 + z * 0.23 + t * 1.62) * 0.17);
 }
 function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
 function waterRenderY(x: number, z: number, t: number) { return isLakeWater(x, z) ? waterSurfaceAt(x, z, t) : WATER_Y + waveH(x, z, t); }
@@ -1427,8 +1429,14 @@ const waterMat = new THREE.ShaderMaterial({
       float ndh = max(dot(n, normalize(uSun + v)), 0.0), shin = mix(700.0, 40.0, smoothstep(15.0, 380.0, wDist)), rs = max(dot(r, uSun), 0.0);
       vec3 sunSpec = sunC * min(pow(ndh, shin) * shin * 0.0075 + pow(rs, 40.0) * 0.3 + pow(rs, 8.0) * 0.12 * (1.0 - smoothstep(0.1, 0.5, uSun.y)), 2.2) * smoothstep(-0.05, 0.04, uSun.y);   // + a broad warm sheen when the sun is low
       col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, wh(vW.xz, uTime)) * 0.25 * (1.0 - fr);
-      float crest = smoothstep(0.95, 1.22, wh(vW.xz, uTime) + sin(vW.x * 0.07) * sin(vW.z * 0.06) * 0.035);
-      col = mix(col, vec3(1.0), crest * 0.11);
+      // Whitecaps (ref: Sea of Thieves / AC Black Flag): foam where the wind-wave crests peak, broken into lacy cells by the caustic network
+      // (same thin-line structure as real crest foam), drifting with the wave; thin streaks trail behind. One extra fetch; fades with distance.
+      float crest = 0.0;
+      if (gl_FrontFacing) { float hh = wh(vW.xz, uTime) / max(swellK(vW.xz), 0.05);
+        float lace = texture2D(uCaus, vW.xz * 0.16 + vec2(0.0, uTime * 0.02)).r;
+        float gust = smoothstep(0.15, 0.75, sin(dot(vW.xz, vec2(0.0113, -0.0171)) + uTime * 0.07) * sin(dot(vW.xz, vec2(0.0191, 0.0067)) - uTime * 0.05) + 0.25 * sin(dot(vW.xz, vec2(-0.031, 0.024))));   /* wind gusts: breaks the regular crest grid into irregular patches */
+        crest = smoothstep(0.8, 1.3, hh) * smoothstep(0.06, 0.3, lace) * gust * smoothstep(0.35, 0.75, swellK(vW.xz)) * (1.0 - smoothstep(90.0, 320.0, wDist));
+        col = mix(col, vec3(0.97, 0.99, 1.0), crest * 0.75); }
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
       col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
       float aOut = mix(0.82, 1.0, max(fr, 0.0)); aOut = mix(aOut, 1.0, bedA * bedShore);
