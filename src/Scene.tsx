@@ -1376,11 +1376,12 @@ const waterMat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
         tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uSceneTx: { value: new THREE.Vector2(0.004, 0.007) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uBoat: { value: [0, 1, 2, 3, 4].map(() => new THREE.Vector4(0, 1e5, 0, 0)) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroDA: { value: new THREE.Vector4(0, 0, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
-    vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
-    fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
+    vertexShader: WAVES + `uniform float uTime; uniform vec4 uHeroA, uHeroB; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec2 vHw; void main(){ vHw = vec2(wh(uHeroA.xz, uTime), wh(uHeroB.xz, uTime));   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
+    fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec2 vHw;
     ${CAUSTIC_GLSL}
     uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform vec2 uSceneTx; uniform float uFogK;
     #define WATER_LVL -1.0
+    ${(QUALITY.coarse || LOWQ) ? '#define PHONE_W' : ''}
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
     // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
     float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
@@ -1396,7 +1397,11 @@ const waterMat = new THREE.ShaderMaterial({
     float bedEdge(vec2 xz){ vec2 q = bedUV(xz); return smoothstep(0.0, 0.12, min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y))); }
     float bedY(vec2 xz){ float e = bedEdge(xz); return mix(seaBed(xz), texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0, e); }
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
-    vec3 sceneCol(vec2 uv){ vec2 o = uSceneTx * 0.7; vec3 c = texture2D(tScene, uv + vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv - vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv + vec2(-o.x * 0.35, o.y)).rgb + texture2D(tScene, uv - vec2(-o.x * 0.35, o.y)).rgb; return linearToOutputTexel(vec4(c * 0.25, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
+    vec3 sceneCol(vec2 uv){
+    #ifdef PHONE_W
+      return linearToOutputTexel(vec4(texture2D(tScene, uv).rgb, 1.0)).rgb;
+    #endif
+      vec2 o = uSceneTx * 0.7; vec3 c = texture2D(tScene, uv + vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv - vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv + vec2(-o.x * 0.35, o.y)).rgb + texture2D(tScene, uv - vec2(-o.x * 0.35, o.y)).rgb; return linearToOutputTexel(vec4(c * 0.25, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
     void main(){
       vec2 g = wg(vW.xz, uTime) + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
@@ -1428,7 +1433,7 @@ const waterMat = new THREE.ShaderMaterial({
       body = mix(body, uDeep * 0.5, smoothstep(-300.0, -800.0, vW.z) * 0.55);   // deep offshore water reads darker blue
       float bedA = 0.0, bedShore = 0.0;   // how much of this pixel is the traced seabed (drives opacity below)
       vec2 bq = bedUV(vW.xz);
-      if (!below && uUseScene < 0.5 && vW.z < -222.0) {   /* whole open sea, not just the island square */
+      if (!below && uUseScene < 0.5 && vW.z < -222.0 && vW.y - bedY(vW.xz) < 40.0) {   /* Shifat 9:16 AM phone fps: deep water (bed > 40 m down) shows no bed anyway (bedA = 0 past 34 m), so most of the open sea skips the whole refraction trace */   /* whole open sea, not just the island square */
         // Snell: td is the refracted ray (air 1.0 -> water 1.333). Fixed-point march to where it meets the bed: t = (surface - bed(xz(t))) / -td.y
         float sy = -td.y; sy = max(sy, 0.08); float t0 = max(vW.y - bedY(vW.xz), 0.0) / sy, t1 = t0;
         t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = mix(t0, t1, 0.85);
@@ -1467,9 +1472,15 @@ const waterMat = new THREE.ShaderMaterial({
       float fdE = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK;
       if (uUseRefl > 0.5 && !below && fdE < 1.9) {   // mirrored island / city / bridge shapes (skipped where the fog has swallowed them), rippled by the surface normal (more distortion with distance to the plane)
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
-        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); if (uReflSoft.x > 0.0) rs = (rs * 2.0 + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv + vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998))) / 6.0;   /* phone: soft 5-tap, reads smooth not pixelated */ refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
+        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); 
+        #ifdef PHONE_W
+        rs = (rs + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998))) * 0.5;   /* phone: 2 taps + bilinear, same softness at phone resolution */
+        #else
+        if (uReflSoft.x > 0.0) rs = (rs * 2.0 + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv + vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998))) / 6.0;
+        #endif
+        /* desktop: soft 5-tap, reads smooth not pixelated */ refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
       }
-      float heroSee = 0.0; float hwA = wh(uHeroA.xz, uTime), hwB = wh(uHeroB.xz, uTime);   // the live wave surface at each hero
+      float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
         // their capsules, so a swimming / diving hero is seen bent, tinted and absorbed through the water (red dies first), shifting with the waves.
         vec3 tdr = refract(-v, n, 1.0 / 1.333); float rA = -1.0, rB = -1.0;
@@ -1550,7 +1561,7 @@ const waterMat = new THREE.ShaderMaterial({
           float wd = vW.y - bedY(vW.xz), cv = texture2D(uCaus, vW.xz * 0.011 + 0.2).r;
           float ph = uTime * 0.18 + cv * 2.6 + sin(ia * 3.0) * 0.4, sw = fract(ph + wd * 0.45), swash = smoothstep(0.0, 0.12, sw) * (1.0 - smoothstep(0.12, 0.85, sw));
           float lace = texture2D(uCaus, vW.xz * 0.21 + vec2(uTime * 0.02, -uTime * 0.013)).r + 0.6 * texture2D(uCaus, vW.xz * 0.53 - uTime * 0.03).g;
-          float zone = (1.0 - smoothstep(0.1, 1.2, wd)) * smoothstep(0.02, 0.12, length(vec2(bedY(vW.xz + vec2(1.5, 0.0)) - bedY(vW.xz - vec2(1.5, 0.0)), bedY(vW.xz + vec2(0.0, 1.5)) - bedY(vW.xz - vec2(0.0, 1.5)))) / 3.0), edge = smoothstep(-0.05, 0.06, wd) * (1.0 - smoothstep(0.1, 0.55, wd));
+          float zone = wd < 1.2 ? (1.0 - smoothstep(0.1, 1.2, wd)) * smoothstep(0.02, 0.12, length(vec2(bedY(vW.xz + vec2(1.5, 0.0)) - bedY(vW.xz - vec2(1.5, 0.0)), bedY(vW.xz + vec2(0.0, 1.5)) - bedY(vW.xz - vec2(0.0, 1.5)))) / 3.0) : 0.0, edge = smoothstep(-0.05, 0.06, wd) * (1.0 - smoothstep(0.1, 0.55, wd));
           float fo = zone * smoothstep(0.42, 0.85, lace * (0.5 + swash) * zone + swash * 0.55 * zone) + edge * (0.6 + 0.4 * swash);
           fo *= smoothstep(1.35, 1.0, irr);   /* swash only on a sloping beach band (bed gradient), not across wide shallow flats where it read as giant white blotches */
           col = mix(col, vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), clamp(fo, 0.0, 1.0) * 0.75);
@@ -1787,10 +1798,11 @@ function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: React.M
         u.uProj.value.copy(cam.projectionMatrix); u.uNear.value = cam.near; u.uFar.value = cam.far; u.uSteps.value = QK.lakeSteps;
         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
         const near = cam.position.z < WATER_Z + 170 && cam.position.y > WATER_Y - 0.5 && cam.position.y < 140, scale = perf.scale;
-        const ok = !!w && near && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;
+        const phoneFar = PHONE_REFL && cam.position.z < WATER_Z - 320;   /* Shifat 9:16 AM phone fps: the copy is a second full scene render; out at sea the bed is analytic and near water is see-through, so phones skip it there */
+        const ok = !!w && near && !phoneFar && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;
         if (!ok) { u.uUseScene.value = 0; return; }
         st.n++;
-        if (scale > 0.6 || st.n % 2 === 0 || st.copies === 0) {
+        if ((scale > 0.6 && !PHONE_REFL) || st.n % 2 === 0 || st.copies === 0) {   /* phones: half rate (one frame of lag under rippled water is invisible) */
             worldBufferSize(gl, st.buf);
             const W = Math.max(160, Math.round(st.buf.x * QK.lakeCopyScale)), H = Math.max(90, Math.round(st.buf.y * QK.lakeCopyScale));
             if (target.width !== W || target.height !== H) target.setSize(W, H); u.uSceneTx.value.set(1 / W, 1 / H);
