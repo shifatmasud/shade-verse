@@ -251,16 +251,22 @@ function fernGeo() {
 }
 // Lagoon + plunge pool water (Shifat's screenshot: the lake material read as a flat grey slab). Own shallow-water look: white-sand
 // turquoise at the edge deepening to teal in the middle, soft transparent rim (no hard edge on the sand), ripples, sky fresnel, night-dim.
-function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number }) {
+function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number; y: number }) {
     // water blend: where a river leaves or enters, the rim neither fades nor foams, so the pool flows straight into the river
     const outs: THREE.Vector3[] = [];
     for (const r of RIVERS) for (const e of [r.pts[0], r.pts[r.pts.length - 1]]) if (Math.hypot(e[0] - p.cx, e[1] - p.cz) < p.r * 1.3) outs.push(new THREE.Vector3(e[0], e[1], riverHW(r, e === r.pts[0] ? 0 : 1) * 1.38));
     while (outs.length < 3) outs.push(new THREE.Vector3(1e5, 1e5, 1));
+    // Shifat 2:07 AM Oct 30 "water transparency & refraction law": a 64x64 bed map of the carved pool floor, so the shader can bend each view ray by
+    // Snell's law (1.333), trace it to the real floor and absorb it by its true path length (3 fetches, no scene copy).
+    const BN = 64, bh = p.r * 1.08, bd = new Uint8Array(BN * BN * 4);
+    for (let j = 0; j < BN; j++) for (let i = 0; i < BN; i++) { const x = p.cx - bh + (i + 0.5) / BN * 2 * bh, z = p.cz - bh + (j + 0.5) / BN * 2 * bh, y = islandH(x, z) ?? (p.y - 6), dd = Math.max(0, Math.min(1, (p.y + 1 - y) / 12)), o = (j * BN + i) * 4; bd[o] = Math.round(dd * 255); bd[o + 1] = Math.round((0.5 + 0.5 * Math.sin(x * 0.9 + z * 0.6) * Math.sin(x * 0.37 - z * 0.71)) * 255); bd[o + 2] = 0; bd[o + 3] = 255; }
+    const bedTex = new THREE.DataTexture(bd, BN, BN, THREE.RGBAFormat); bedTex.magFilter = bedTex.minFilter = THREE.LinearFilter; bedTex.wrapS = bedTex.wrapT = THREE.ClampToEdgeWrapping; bedTex.needsUpdate = true;
     return new THREE.ShaderMaterial({
         transparent: true, depthWrite: true, side: THREE.DoubleSide,
-        uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) } },
+        uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) } },
         vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-        fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3];
+        fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3]; uniform sampler2D uBed; uniform vec4 uBB;
+        float bedD(vec2 xz){ return texture2D(uBed, (xz - uBB.xy) / (2.0 * uBB.z) + 0.5).r * 12.0 - 1.0; }   // depth of the floor below the surface
         void main(){ float rr = length(vW.xz - uC) / uR; if (rr > 1.0) discard;
           float og = 0.0; for (int i = 0; i < 3; i++) og = max(og, 1.0 - smoothstep(uOut[i].z * 0.5, uOut[i].z * 1.3, length(vW.xz - uOut[i].xy)));
           vec2 q = vW.xz; vec2 g = vec2(cos(q.x * 1.7 + uT * 1.3) * 0.5 + cos(q.x * 0.9 - q.y * 1.3 + uT * 0.9) * 0.4, cos(q.y * 1.9 - uT * 1.1) * 0.5 + cos(q.y * 0.7 + q.x * 1.1 + uT * 0.8) * 0.4) * 0.06;
@@ -269,11 +275,27 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number }) {
           float deep = smoothstep(1.0, 0.35, rr);
           vec3 body = mix(mix(vec3(0.52, 0.9, 0.84), vec3(0.04, 0.46, 0.52), deep), vec3(0.1, 0.53, 0.53), og * 0.7);   // matches the river body at an outlet
           float caus = pow(0.5 + 0.5 * sin(q.x * 2.3 + sin(q.y * 1.7 + uT) * 1.4 + uT * 0.7) * sin(q.y * 2.1 + sin(q.x * 1.3 - uT * 0.8) * 1.6), 6.0) * (1.0 - deep) * 0.35;
+          float traced = 0.0;
+          if (!below) {
+            // Snell refraction (air 1.0 -> water 1.333), fixed-point march to the carved floor, Beer-Lambert over the real path (red dies first)
+            vec3 td = refract(-v, n, 1.0 / 1.333); float sy = max(-td.y, 0.1);
+            float t1 = max(bedD(vW.xz), 0.0) / sy; t1 = max(bedD(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(bedD(vW.xz + td.xz * t1), 0.0) / sy;
+            vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, (hx - uBB.xy) / (2.0 * uBB.z) + 0.5); float dep = max(bs.r * 12.0 - 1.0, 0.0);
+            vec3 alb = mix(vec3(0.55, 0.52, 0.40), vec3(0.92, 0.86, 0.70), smoothstep(5.5, 0.5, dep)) * (0.85 + 0.15 * bs.g);
+            vec2 cq = hx * 1.6; float c1 = abs(sin(cq.x + sin(cq.y * 1.3 + uT * 1.1) * 1.2 + uT * 0.6) * sin(cq.y * 0.9 + sin(cq.x * 1.1 - uT * 0.9) * 1.3));
+            vec2 cr = hx * 2.3 + 1.9; float c2 = abs(sin(cr.x * 1.1 - sin(cr.y + uT * 1.3) * 1.3 - uT * 0.5) * sin(cr.y - sin(cr.x * 1.2 + uT) * 1.1));
+            float cs = pow(1.0 - min(c1, c2), 9.0) * exp(-dep * 0.15) * uDay * (1.0 - smoothstep(20.0, 70.0, length(cameraPosition - vW)));
+            vec3 Tb = exp(-vec3(0.24, 0.055, 0.040) * (t1 + dep * 0.6));
+            vec3 scat = mix(vec3(0.10, 0.55, 0.56), vec3(0.03, 0.36, 0.44), smoothstep(1.0, 7.0, dep));
+            vec3 seen = alb * (1.0 + cs * 0.6) * Tb + scat * (1.0 - Tb);
+            traced = 1.0 - og * 0.6; body = mix(body, seen, traced); caus *= 1.0 - traced;
+          }
           vec3 r = reflect(-v, n); float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay;
           vec3 col = mix(body + caus, uSky, below ? 0.1 : fr * 0.75) + sp;
           float edgeFoam = smoothstep(0.86, 0.97, rr) * (0.55 + 0.45 * sin(rr * 60.0 - uT * 2.0)) * 0.5 * (1.0 - og);
           col = mix(col, vec3(0.97, 1.0, 1.0), edgeFoam) * mix(0.28, 1.0, uDay);
           float a = mix(0.42, 0.9, deep) * mix(1.0 - smoothstep(0.9, 1.0, rr), 1.0, og * 0.6) + fr * 0.2 * (1.0 - smoothstep(0.92, 1.0, rr));
+          a = mix(a, 0.97 * (1.0 - smoothstep(0.93, 1.0, rr)) + fr * 0.03, traced * (1.0 - og * 0.5));   /* traced floor drawn here; only the rim fades to the real bank */
           a = clamp(below ? 0.7 : a, 0.0, 1.0); if (a < 0.03) discard;
           gl_FragColor = vec4(col, a); }`,
     });
