@@ -1354,11 +1354,11 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2;
+    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl;
     uniform sampler2D tScene; uniform sampler2D tDepth; uniform sampler2D uBed; uniform vec3 uBedC; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
     vec2 bedUV(vec2 xz){ return (xz - uBedC.xy) / (2.0 * uBedC.z) + 0.5; }
     float bedY(vec2 xz){ return texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0; }
@@ -1421,6 +1421,10 @@ const waterMat = new THREE.ShaderMaterial({
         float sz2 = oceanZ(uv2); if (sz2 > wz) { uv2 = suv; sz2 = oceanZ(suv); }
         float th = clamp(wz - sz2, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
         body = sceneCol(uv2) * Tr + body * (1.0 - Tr);
+      }
+      if (uUseRefl > 0.5 && uUseScene < 0.5 && !below) {   // mirrored island shapes, rippled by the surface normal (more distortion with distance to the plane)
+        vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
+        vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92);
       }
       vec3 col = mix(body, refl, fr);
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
@@ -1580,6 +1584,52 @@ function Whale({ sim }: { sim: Sim }) {
 // Ocean screen-space copy (same technique as the park lake): a low-res colour+depth copy of the scene without the sea, taken only
 // while the sea is on screen and near enough to matter; skipped when the frame budget is tight.
 const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA.zMin - 600), new THREE.Vector3(HALF + 700, WATER_Y + 4, WATER_Z + 2));
+// Shifat 2:58 AM "reflection when?": real mirrored reflections of the island (terrain, palms, trees, rocks, lighthouse, shacks, dock) in the sea.
+// A Reflector-style virtual camera mirrored about the sea plane renders ONLY those opaque shapes (layer 7, ~15 draw calls, no grass/water/fx)
+// into a small target (1/4 res desktop, 1/5 phone; phones every 2nd frame); the ocean shader samples it with wave distortion and Fresnel.
+const REFL_LAYER = 7;
+function IslandReflection({ waterRef }: { waterRef: React.MutableRefObject<THREE.Mesh | null> }) {
+    const { gl, scene, camera } = useThree();
+    const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
+        rot: new THREE.Matrix4(), cp: new THREE.Vector3(), la: new THREE.Vector3(), tg: new THREE.Vector3(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
+        bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1), col: new THREE.Color() }), []);
+    useEffect(() => () => st.rt.dispose(), [st]);
+    useFrame(() => {
+        const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
+        const d = Math.hypot(cam.position.x - ISLAND.cx, cam.position.z - ISLAND.cz);
+        const ok = !!w && u.uUseScene.value < 0.5 && d < 520 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 90 && !(UW as any).on;
+        if (!ok) { u.uUseRefl.value = 0; return; }
+        if (!st.tagged) {   // tag the island's opaque shapes (and the lights, which three culls by layer too) for the reflection pass
+            const isl = scene.getObjectByName('south-sea-island');
+            if (!isl) return;
+            isl.traverse((o: any) => { if (!o.isMesh || o.isPoints) return; const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || (o.isInstancedMesh && o.count > 3000) || m.isShaderMaterial || m.isMeshBasicMaterial) return; o.layers.enable(REFL_LAYER); });
+            scene.traverse((o: any) => { if (o.isLight) o.layers.enable(REFL_LAYER); });
+            st.tagged = true;
+        }
+        st.n++;
+        if (st.n % (PHONE_REFL ? 3 : 2) === 0 || u.uUseRefl.value === 0) {   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
+            worldBufferSize(gl, st.buf);
+            const k = PHONE_REFL ? 0.16 : 0.22, W = Math.max(128, Math.round(st.buf.x * k)), H = Math.max(72, Math.round(st.buf.y * k));
+            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H);
+            // mirror the camera about y = WATER_Y (three.js Reflector maths)
+            cam.updateMatrixWorld(); st.cp.setFromMatrixPosition(cam.matrixWorld); st.rot.extractRotation(cam.matrixWorld);
+            st.la.set(0, 0, -1).applyMatrix4(st.rot).add(st.cp);
+            const vc = st.cam; vc.position.set(st.cp.x, 2 * WATER_Y - st.cp.y, st.cp.z);
+            st.tg.set(st.la.x, 2 * WATER_Y - st.la.y, st.la.z);
+            vc.up.set(0, 1, 0).applyMatrix4(st.rot); vc.up.y = -vc.up.y; vc.lookAt(st.tg);
+            vc.fov = cam.fov; vc.aspect = cam.aspect; vc.near = cam.near; vc.far = Math.min(cam.far, 900); vc.updateProjectionMatrix(); vc.updateMatrixWorld();
+            vc.layers.set(REFL_LAYER);
+            const prev = gl.getRenderTarget(), ac = gl.autoClear, sh = gl.shadowMap.autoUpdate, cp = gl.clippingPlanes, cc = gl.getClearAlpha(); gl.getClearColor(st.col);
+            try { gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.clippingPlanes = [st.plane]; gl.setClearColor(st.col, 0); gl.setRenderTarget(st.rt); gl.clear(true, true, true); gl.render(scene, vc); }
+            finally { gl.setRenderTarget(prev); gl.autoClear = ac; gl.shadowMap.autoUpdate = sh; gl.clippingPlanes = cp; gl.setClearColor(st.col, cc); }
+            u.uRefMat.value.multiplyMatrices(st.bias, vc.projectionMatrix).multiply(vc.matrixWorldInverse);
+        }
+        u.tRefl.value = st.rt.texture; u.uUseRefl.value = 1;
+        if (DBG) (window as any).__refl = { n: st.n, w: st.rt.width };
+    });
+    return null;
+}
+const PHONE_REFL = QUALITY.coarse || LOWQ;
 function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: React.MutableRefObject<THREE.Mesh | null>; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
     const target = useMemo(() => { const t = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }); t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType; return t; }, []);
@@ -2100,6 +2150,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
+        <IslandReflection waterRef={waterRef} />
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
