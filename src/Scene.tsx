@@ -1658,14 +1658,14 @@ function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<
         const d = Math.hypot(cam.position.x - ISLAND.cx, cam.position.z - ISLAND.cz);
         // Shifat 3:39 AM "cities & bridges must reflect on water too": the mirror pass now runs near the island, along the city shore, and around the
         // east bridge / harbor; it replaces the screen-space march there (which could never show what is off-screen, like the tops of towers).
-        const zone = d < 520 || (!PHONE_REFL && (cam.position.z > WATER_Z - 320 || (cam.position.x > -40 && cam.position.z < -760)));   /* phones: island mirror only (frame time) */
+        const zone = d < 520 || cam.position.z > WATER_Z - 320 || (cam.position.x > -40 && cam.position.z < -760);
         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
         const ok = !!w && zone && cam.position.z < WATER_Z + 40 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 110 && !(UW as any).on && st.fr.intersectsBox(_oceanBox);   /* only when the sea is actually in view */
         if (!ok) { u.uUseRefl.value = 0; return; }
         if (!st.tagged || st.n % 300 === 0) {   // (re)tag big opaque shapes - island, city blocks, bridges, harbor - plus lights (three culls lights by layer too)
             const sp = new THREE.Sphere(); let nT = 0;
             scene.traverse((o: any) => { if (o.isLight) { o.layers.enable(REFL_LAYER); return; } if (!o.isMesh || o.isPoints || o.isSkinnedMesh || o.layers.isEnabled(REFL_LAYER)) return;
-                const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || (o.isInstancedMesh && o.count > 3000) || (PHONE_REFL && m.isShaderMaterial)) return;   /* phones skip the whole-city mesh */   /* custom-shader city/blocks included; water, sky, fx excluded */
+                const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || (o.isInstancedMesh && o.count > 3000))) return;   /* custom-shader city/blocks included; water, sky, fx excluded */
                 const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); sp.copy(g.boundingSphere!).applyMatrix4(o.matrixWorld); if (!o.isInstancedMesh && (sp.radius < 3.5 || sp.radius > 3000 || sp.center.y + sp.radius < WATER_Y + 0.5)) return; o.layers.enable(REFL_LAYER); nT++; });
             if (DBG) (window as any).__reflTagged = ((window as any).__reflTagged || 0) + nT;
             st.tagged = true;
@@ -1673,7 +1673,7 @@ function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<
         st.n++;
         if (st.n % (PHONE_REFL ? 3 : 2) === 0 || u.uUseRefl.value === 0) {   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
             worldBufferSize(gl, st.buf);
-            const k = PHONE_REFL ? 0.16 : 0.22, W = Math.max(128, Math.round(st.buf.x * k)), H = Math.max(72, Math.round(st.buf.y * k));
+            const k = PHONE_REFL ? 0.09 : 0.22,   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
             if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H);
             // mirror the camera about y = WATER_Y (three.js Reflector maths)
             cam.updateMatrixWorld(); st.cp.setFromMatrixPosition(cam.matrixWorld); st.rot.extractRotation(cam.matrixWorld);
