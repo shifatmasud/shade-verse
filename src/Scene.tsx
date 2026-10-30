@@ -1646,7 +1646,7 @@ const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA
 // A Reflector-style virtual camera mirrored about the sea plane renders ONLY those opaque shapes (layer 7, ~15 draw calls, no grass/water/fx)
 // into a small target (1/4 res desktop, 1/5 phone; phones every 2nd frame); the ocean shader samples it with wave distortion and Fresnel.
 const REFL_LAYER = 7;
-function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; sim: Sim }) {
+function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; sim: Sim; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
         rot: new THREE.Matrix4(), cp: new THREE.Vector3(), la: new THREE.Vector3(), tg: new THREE.Vector3(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
@@ -1671,9 +1671,11 @@ function IslandReflection({ waterRef, sim }: { waterRef: React.MutableRefObject<
             st.tagged = true;
         }
         st.n++;
-        if (st.n % (PHONE_REFL ? 3 : 2) === 0 || u.uUseRefl.value === 0) {   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
+        cam.getWorldDirection(st.tg); const steep = st.tg.y < -0.8;   /* looking almost straight down: Fresnel ~2%, the mirror is barely visible */
+        const slow = perf.scale < 0.75 || steep;   /* adaptive: when the frame budget is tight (UHD 600 under load) the mirror drops to a third rate */
+        if (st.n % (PHONE_REFL || slow ? 3 : 2) === 0 || u.uUseRefl.value === 0) {   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
             worldBufferSize(gl, st.buf);
-            const k = PHONE_REFL ? 0.09 : 0.22,   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
+            const k = PHONE_REFL ? 0.09 : (slow ? 0.15 : 0.22),   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
             if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H);
             // mirror the camera about y = WATER_Y (three.js Reflector maths)
             cam.updateMatrixWorld(); st.cp.setFromMatrixPosition(cam.matrixWorld); st.rot.extractRotation(cam.matrixWorld);
@@ -2214,7 +2216,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
-        <IslandReflection waterRef={waterRef} sim={sim} />
+        <IslandReflection waterRef={waterRef} sim={sim} perf={perf} />
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
