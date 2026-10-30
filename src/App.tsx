@@ -163,10 +163,10 @@ export function App() {
     return <div className={(hud.mode === 'play' ? 'stage' : 'stage menu') + (desk ? ' desk' : '')} onContextMenu={(e) => e.preventDefault()}>
         <div id="uw" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, opacity: 0, transition: 'opacity .15s', background: 'linear-gradient(180deg, rgba(110,215,235,.24), rgba(30,140,175,.30) 45%, rgba(8,70,105,.5))' }} />
         <Canvas
-            dpr={[1, coarse ? 1.5 : QK.dprCap]}
+            dpr={[1, QK.dprCap]}
             gl={{ antialias: AA_MSAA, powerPreference: 'high-performance', alpha: false, stencil: false }}
             camera={{ fov: 62, near: 0.5, far: 1600, position: [0, 40, -10] }}
-            onCreated={({ gl }) => { gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * perf.scale); GL2 = gl.capabilities.isWebGL2; }}
+            onCreated={({ gl }) => { gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, QK.dprCap) * perf.scale); GL2 = gl.capabilities.isWebGL2; }}
             onPointerDown={(e) => { if (drag.current.id !== -1 || document.pointerLockElement) return; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; sim.camHeld = true; sim.lastDrag = sim.t; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
             onPointerMove={(e) => {
                 if (e.pointerId !== drag.current.id) return;

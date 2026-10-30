@@ -32,7 +32,7 @@ export const HQ = QUALITY.tier === 'high';
 export const LOWQ = QUALITY.tier === 'low';
 // Per-tier knobs used across the scene.
 export const QK = {
-    dprCap: HQ ? 2 : QUALITY.coarse ? 1.5 : LOWQ ? 1 : 2,
+    dprCap: HQ ? 2 : QUALITY.coarse ? 1.25 : LOWQ ? 1 : 2,
     maxScale: HQ ? 1.25 : 1.34,
     anisotropy: HQ ? 8 : 4,
     grass: HQ ? 9500 : LOWQ ? 3500 : 6500,

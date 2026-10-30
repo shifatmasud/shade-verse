@@ -2027,12 +2027,12 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
-        { const want = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * curScale.current; applyRatio(gl, want); }   // world ratio unchanged; the canvas runs at native for the hero HD pass
+        { const want = Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * curScale.current; applyRatio(gl, want); }   // world ratio unchanged; the canvas runs at native for the hero HD pass
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
             if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current > 16 && ns > 1) ns = Math.max(1, ns - 0.05); else if (ema.current < 12.5 && ns >= 1 && ns < QK.maxScale && (coarse || HQ)) ns += 0.05; else if (ema.current < 18 && ns < 1) ns += 0.05;   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : QK.dprCap) * ns); }
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns); }
         }
         if (sim.mode === 'play') {
             for (let i = 0; i < 2; i++) stepSim(sim, dt / 2, ev);
