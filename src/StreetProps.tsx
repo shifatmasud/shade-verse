@@ -55,7 +55,7 @@ export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /*
             edges.forEach(([x0, z0, x1, z1, nx, nz], ei) => {
                 const L = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(L / 4.5), ry = Math.atan2(nx, nz);
                 for (let k = 1; k < n; k++) {
-                    const t = k / n, r = h01(bi * 7.3 + ei, k * 1.91), off = r < 0.3 ? 4.8 : 3.0;   /* the drawn facades sit ~1.5 m outside the collision boxes */   // lamps at the kerb, the rest by the wall
+                    const t = k / n, r = h01(bi * 7.3 + ei, k * 1.91), off = r < 0.3 ? 2.6 : 3.0;   /* 1:06 AM Shifat: lamps hug the buildings, not mid-street */   /* the drawn facades sit ~1.5 m outside the collision boxes */   // lamps at the kerb, the rest by the wall
                     const x = x0 + (x1 - x0) * t + nx * off, z = z0 + (z1 - z0) * t + nz * off;
                     if (inside(x, z, 0.6)) continue;
                     const y = parkH(x, z);
