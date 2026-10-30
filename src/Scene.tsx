@@ -38,6 +38,7 @@ import { OceanFollow, IslandReflection, OceanScreenSpace } from './water/OceanPa
 import { Boats, Gulls, Fish, MarineSnow, Whale } from './world/sealife';
 import { buildEnemy, PlasmaFx, EnemyDeathFx, EnemyShotsFx } from './world/enemies';
 import { DayNight } from './world/dayNight';
+import { FarPropGate, CityGate } from './world/gates';
 import { HERO_SC, BOT_SC } from './world/scale';
 import { WindLines, Civilians } from './world/civilians';
 import { FlyingCars } from './world/flyingCars';
@@ -152,11 +153,6 @@ export function SnareLines({ sim }: { sim: Sim }) {
         <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false}><lineBasicMaterial ref={shockMat} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} /></lineSegments>
     </>;
 }
-// South Sea 4 phone safety: out at the island / Neon Harbor the full city is hidden; SouthSea draws it as plain hazy boxes instead.
-// Small city props (benches, lamps, rooftop clutter: a few metres each) drawn as city-wide instanced batches that frustum culling can never skip.
-// Once the camera is >340 m out to sea they are under ~2 px on every device and inside the haze, so the whole batch is skipped there.
-function FarPropGate({ children }: { children: React.ReactNode }) { const ref = useRef<THREE.Group>(null!); useFrame(({ camera }) => { if (ref.current) ref.current.visible = camera.position.z > WATER_Z - 340; }); return <group ref={ref}>{children}</group>; }
-function CityGate({ children }: { children: React.ReactNode }) { const ref = useRef<THREE.Group>(null!); useFrame(() => { if (ref.current) ref.current.visible = !CITY_LOD.far; }); return <group ref={ref}>{children}</group>; }
 const Y = new THREE.Vector3(0, 1, 0);
 
 const _gq = new THREE.Quaternion(), _gz = new THREE.Vector3(0, 0, 1), _hp = new THREE.Vector3(), _fp = new THREE.Vector3(), _wd2 = new THREE.Vector3();
