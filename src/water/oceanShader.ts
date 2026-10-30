@@ -32,18 +32,11 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
     float bedEdge(vec2 xz){ vec2 q = bedUV(xz); return smoothstep(0.0, 0.12, min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y))); }
     float bedY(vec2 xz){ float e = bedEdge(xz); return mix(seaBed(xz), texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0, e); }
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
-    vec3 sceneCol(vec2 uv){
-    #ifdef PHONE_W
-      return linearToOutputTexel(vec4(texture2D(tScene, uv).rgb, 1.0)).rgb;
-    #endif
-      vec2 o = uSceneTx * 0.7; vec3 c = texture2D(tScene, uv + vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv - vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv + vec2(-o.x * 0.35, o.y)).rgb + texture2D(tScene, uv - vec2(-o.x * 0.35, o.y)).rgb; return linearToOutputTexel(vec4(c * 0.25, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
+    vec3 sceneCol(vec2 uv){   /* Shifat 3:30 PM 'same on all devices': one 2-tap soft read everywhere (phone was 1 tap, desktop 4) */
+      vec2 o = uSceneTx * vec2(0.7, 0.45); vec3 c = texture2D(tScene, uv + o).rgb + texture2D(tScene, uv - o).rgb; return linearToOutputTexel(vec4(c * 0.5, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
     void main(){
       
-      #ifdef PHONE_W
-      gChop = length(cameraPosition - vW) < 90.0;   /* phone: past 90 m the 3-12 m chop is sub-pixel (only shimmer), so its 5 wave trains are skipped */
-      #else
-      gChop = length(cameraPosition - vW) < 160.0;   /* desktop (Shifat 10:19 'help desktop too'): same skip, further out */
-      #endif
+      gChop = length(cameraPosition - vW) < 120.0;   /* every device: past 120 m the 3-12 m chop is sub-pixel shimmer, so its 5 trains are skipped (phone was 90 m, desktop 160 m) */
       vec3 gj = wgj(vP0, uTime); vec2 gW = gj.xy; gChop = true;   /* Gerstner: gradient + crest Jacobian at the undisplaced point */ vec2 g = gW + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
       g = mix(g, gW, smoothstep(15.0, 70.0, length(cameraPosition.xz - vW.xz)));
