@@ -6,7 +6,7 @@ import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 
-export function BossArenaMarker() {
+export function BossArenaMarker({ arena = BOSS_ARENA }: { arena?: { x: number; y: number; z: number } }) {   // 2c: also marks Neon Harbor's mini-boss roof (same red zone)
     const root = useRef<THREE.Group>(null!);
     const beam = useRef<THREE.Mesh>(null!);
     const core = useRef<THREE.Mesh>(null!);
@@ -20,10 +20,10 @@ export function BossArenaMarker() {
             core.current.scale.setScalar(0.92 + pulse * 0.12);
         }
         if (ring.current) (ring.current.material as THREE.MeshBasicMaterial).opacity = 0.42 + pulse * 0.23;
-        if (DBG) (window as any).__bossArenaMarker = root.current;
+        if (DBG && arena === BOSS_ARENA) (window as any).__bossArenaMarker = root.current;
     });
 
-    return <group ref={root} position={[BOSS_ARENA.x, BOSS_ARENA.y, BOSS_ARENA.z]} userData={{ bossArena: true }} frustumCulled={false}>
+    return <group ref={root} position={[arena.x, arena.y, arena.z]} userData={{ bossArena: true }} frustumCulled={false}>
         <mesh ref={beam} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} position={[0, 42, 0]} frustumCulled={false}>
             <cylinderGeometry args={[3.5, 3.5, 84, 12, 1, true]} />
             <meshBasicMaterial color="#ed001f" transparent opacity={0.66} blending={THREE.NormalBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} />

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Sim } from './sim';
-import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, islandPeakY, poolAt, RIVERS, riverNear, POOL, FALL_WALL, BRIDGE, BRIDGE_L, bridgeDeckU, cableY, CABLE_X, towerZ, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, HBOSS, HCOLS, HROWS, AVENUE } from './seaWorld';
+import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, islandPeakY, coastK, islandRR, poolAt, RIVERS, riverNear, riverHW, POOL, FALL_WALL, BRIDGE, BRIDGE_L, bridgeDeckU, cableY, CABLE_X, towerZ, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, HBOSS, HCOLS, HROWS, AVENUE } from './seaWorld';
 import { buildings } from './sim';
 import { QUALITY, QK, LOWQ } from './quality';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
@@ -16,6 +16,7 @@ export interface SouthSeaKit {
     treeGeo: (kind: 'broad' | 'umbrella' | 'poplar' | 'cherry', seed: number, leafN: number, scaleMul?: number) => { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry };
     palmTrunkTex: () => THREE.Texture; palmFrondTex: () => THREE.Texture;
     palmFrondShader: (sh: any) => void; trunkWindShader: (sh: any) => void; leafWindShader: (sh: any) => void;
+    tuftGeo: () => THREE.BufferGeometry; parkBushGeo: () => THREE.BufferGeometry; parkGrassOnCompile: (uni: { uTime: { value: number }; uHero: { value: THREE.Vector3 }; uCam: { value: THREE.Vector3 } }) => (sh: any) => void;
 }
 const PHONE = QUALITY.coarse || (QUALITY as any).weakGpu || LOWQ;
 const HAZE_K = { value: 0.0021 };
@@ -152,25 +153,25 @@ function sprayMat(rise: number, size: number, alpha: number, rate: number) {
 }
 const SPRAY_MAT = sprayMat(4.5, 7, 0.45, 0.65), MIST_MAT = sprayMat(9, 26, 0.12, 0.22);
 // river (2b): a strip along each carved channel, flow streaks scroll downstream, white water where it drops fastest
+const sm = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 function riverGeo() {
-    const pos: number[] = [], uv: number[] = [], sl: number[] = [], idx: number[] = [];
+    const pos: number[] = [], uv: number[] = [], sl: number[] = [], fd: number[] = [], idx: number[] = [];
     for (const r of RIVERS) {
         const base = pos.length / 3; let k = 0;
         for (let s = 0; s <= r.len + 0.01; s += 1.5) {
             let i = 0; while (i < r.acc.length - 2 && r.acc[i + 1] < s) i++;
             const t = (s - r.acc[i]) / (r.acc[i + 1] - r.acc[i]), [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], x = ax + (bx - ax) * t, z = az + (bz - az) * t, l = Math.hypot(bx - ax, bz - az), px = -(bz - az) / l, pz = (bx - ax) / l;
-            const y = r.y0 + (r.y1 - r.y0) * (s / r.len) + 0.04, w = r.hw * 1.38, slope = Math.abs(r.y1 - r.y0) / r.len;
-            if (y < -0.62) break;   // stop at the shoreline (no turquoise strip out on the open sea)
-            for (const sg of [-1, 1]) { pos.push(x + px * w * sg, y, z + pz * w * sg); uv.push((sg + 1) / 2, s); sl.push(slope); }
+            const tt = s / r.len, y = r.y0 + (r.y1 - r.y0) * Math.min(1, tt * 1.15) + 0.04 * (1 - tt), w = riverHW(r, tt) * 1.38, slope = Math.abs(r.y1 - r.y0) / r.len, fade = r.y1 < -0.5 ? (1 - sm(0.55, 0.9, tt)) * sm(1.0, 0.86, islandRR(x, z)) : 1;   // gone before the coastline   // 2c: the sea reach fades out over the estuary into the ocean (no seam)
+            for (const sg of [-1, 1]) { pos.push(x + px * w * sg, y, z + pz * w * sg); uv.push((sg + 1) / 2, s); sl.push(slope); fd.push(fade); }
             if (k > 0) { const a = base + (k - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } k++;
         }
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('aSlope', new THREE.Float32BufferAttribute(sl, 1)); g.setIndex(idx); return g;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('aSlope', new THREE.Float32BufferAttribute(sl, 1)); g.setAttribute('aFade', new THREE.Float32BufferAttribute(fd, 1)); g.setIndex(idx); return g;
 }
 const RIVER_MAT = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') } },
-    vertexShader: `attribute float aSlope; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vUv = uv; vSl = aSlope; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-    fragmentShader: `varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky;
+    vertexShader: `attribute float aSlope; attribute float aFade; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vUv = uv; vSl = aSlope; vFade = aFade; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky;
     float n2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
     float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(n2(i), n2(i + vec2(1, 0)), f.x), mix(n2(i + vec2(0, 1)), n2(i + vec2(1, 1)), f.x), f.y); }
     void main(){ float sp = 1.6 + vSl * 40.0; vec2 f = vec2(vUv.x * 4.0, vUv.y * 0.55 - uT * sp);
@@ -180,10 +181,12 @@ const RIVER_MAT = new THREE.ShaderMaterial({
       vec3 V = normalize(cameraPosition - vW); float fr = 0.03 + 0.97 * pow(1.0 - max(V.y, 0.0), 5.0);
       vec3 body = mix(vec3(0.05, 0.42, 0.45), vec3(0.18, 0.66, 0.62), 0.5 + 0.5 * streak);
       vec3 c = mix(mix(body, uSky, fr * 0.6), vec3(0.95, 0.99, 1.0), white) * mix(0.3, 1.0, uDay);
-      gl_FragColor = vec4(c, 0.78 + 0.18 * white); }`,
+      float soft = smoothstep(0.0, 0.16, min(vUv.x, 1.0 - vUv.x));   // soft banks, no hard edge on the sand
+      gl_FragColor = vec4(c, (0.78 + 0.18 * white) * soft * vFade); }`,
 });
 // long grass (2b): clumps of three crossed blades, swaying in the vertex shader; only on the meadow/jungle ground, never on sand
 const GRASS_T = { value: 0 };
+const GRASS_U = { uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uCam: { value: new THREE.Vector3() } };
 function grassClumpGeo() {
     const pos: number[] = [], col: number[] = [], idx: number[] = [];
     for (let b = 0; b < 6; b++) {
@@ -244,8 +247,6 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     const foamPos = useMemo(() => [POOL.cx + (-FALLS.dx) * (FALL_WALL - 2.2), POOL.y + 0.06, POOL.cz + (-FALLS.dz) * (FALL_WALL - 2.2)] as [number, number, number], []);
     const propMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fff3c4' }), []);
-    const beamMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fff1b8', transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }), []);
-    const beamGeo = useMemo(() => { const g = new THREE.ConeGeometry(5, 70, 16, 1, true); g.translate(0, -35, 0); g.rotateZ(Math.PI / 2); return g; }, []);
     const waters = useMemo(() => POOLS.map((p) => { const g = new THREE.CircleGeometry(p.r * p.rim, 48); g.rotateX(-Math.PI / 2); const m = new THREE.Mesh(g, poolWaterMat(p)); m.position.set(p.cx, p.y, p.cz); m.renderOrder = 2; return m; }), []);
     // vegetation (2b: more variety): tall curved palms, short bushy palms, jungle broadleaves, tall thin canopy trees, ferns, bushes
     const veg = useMemo(() => {
@@ -262,40 +263,38 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
                 out[key].push(it); if (gap > 0) all.push(it);
             }
         };
-        const ring = (a0: number, a1: number): (() => [number, number]) => () => { const a = rnd() * Math.PI * 2, rr = a0 + rnd() * (a1 - a0); return [ISLAND.cx + Math.cos(a) * ISLAND.R * rr, ISLAND.cz + Math.sin(a) * ISLAND.R * rr]; };
-        const disc = (r: number): (() => [number, number]) => () => { const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * r; return [ISLAND.cx + Math.cos(a) * ISLAND.R * rr, ISLAND.cz + Math.sin(a) * ISLAND.R * rr]; };
+        const ring = (a0: number, a1: number): (() => [number, number]) => () => { const a = rnd() * Math.PI * 2, rr = (a0 + rnd() * (a1 - a0)) * coastK(a); return [ISLAND.cx + Math.cos(a) * ISLAND.R * rr, ISLAND.cz + Math.sin(a) * ISLAND.R * rr]; };   // relative to the organic coastline
+        const disc = (r: number): (() => [number, number]) => () => { const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * r * coastK(a); return [ISLAND.cx + Math.cos(a) * ISLAND.R * rr, ISLAND.cz + Math.sin(a) * ISLAND.R * rr]; };
         const F = PHONE ? 0.65 : 1;
         put('palmA', Math.round(28 * F), 900, ring(0.62, 0.84), (y) => y > 1.2 && y < 4.5, 5.5, [1.0, 1.4], undefined, true);   // coconut palms lean out toward the sea
         put('palmB', Math.round(18 * F), 900, ring(0.55, 0.8), (y) => y > 1.4 && y < 7, 4.5, [0.95, 1.2], [0.5, 0.65], true);
         put('broad', Math.round(56 * F), 3000, disc(0.66), (y, x, z) => y > 3.2 && slopeAt(x, z) < 1.4, 7, [0.9, 1.4]);
-        put('tall', Math.round(26 * F), 3000, disc(0.62), (y, x, z) => y > 5 && slopeAt(x, z) < 1.2, 6, [0.9, 1.2], [1.5, 1.9]);
-        put('bush', Math.round(60 * F), 3000, disc(0.72), (y) => y > 2.4, 2.2, [0.28, 0.55]);
-        put('rock', 20, 900, ring(0.86, 1.02), (y) => y > -2.2 && y < 1.4, 6, [0.9, 2.4], [0.6, 1.0]);   // limestone boulders on the waterline
-        put('rock', 34, 2500, disc(0.7), (y, x, z) => y > 6 && slopeAt(x, z) > 0.7, 7, [1.6, 3.6], [0.8, 1.6]);   // outcrops on the steep hill
-        put('fern', Math.round(95 * F), 3500, disc(0.74), (y) => y > 2.2, 0, [0.8, 1.4]);
+        put('tall', Math.round(30 * F), 3000, disc(0.66), (y, x, z) => y > 4 && slopeAt(x, z) < 1.3, 6, [0.85, 1.25]);   // 2c: park broadleaf (second seed) instead of the custom umbrella tree
+        put('bush', Math.round(70 * F), 3000, disc(0.74), (y) => y > 2.4, 2.2, [1.4, 2.4]);   // the park's shrub
+        put('rock', 14, 900, ring(0.88, 1.0), (y) => y > -2.0 && y < 1.2, 8, [0.8, 1.9], [0.55, 0.85]);   // a few weathered boulders at the waterline
         // long grass: a 1 m mask of where it may grow (height or NaN), so the hero-centred patch re-places with plain lookups
         const half = 110, n = 220, mask = new Float32Array(n * n).fill(NaN);
-        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = ISLAND.cx - half + i + 0.5, z = ISLAND.cz - half + j + 0.5, y = islandH(x, z); if (y === null || y < 2.7 || Math.hypot(x - ISLAND.cx, z - ISLAND.cz) > ISLAND.R * 0.8) continue; if (slopeAt(x, z) > 1.3 || !clear(x, z, 0.5)) continue; mask[j * n + i] = y; }
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = ISLAND.cx - half + i + 0.5, z = ISLAND.cz - half + j + 0.5, y = islandH(x, z); if (y === null || y < 2.7) continue; if (slopeAt(x, z) > 1.3 || !clear(x, z, 0.5)) continue; mask[j * n + i] = y; }
         (out as any).mask = { half, n, mask };
         return out;
     }, []);
     const geos = useMemo(() => {
-        const pA = kit.palmGeo(97), pB = kit.palmGeo(41), t = kit.treeGeo('broad', 23, Math.round(260 * (PHONE ? 0.8 : 1)), 1.45), u = kit.treeGeo('umbrella', 61, Math.round(200 * (PHONE ? 0.8 : 1)), 1.3), b = kit.treeGeo('broad', 7, Math.round(120 * (PHONE ? 0.7 : 1)), 2.0);
+        const pA = kit.palmGeo(97), pB = kit.palmGeo(41), t = kit.treeGeo('broad', 23, Math.round(260 * (PHONE ? 0.8 : 1)), 1.45), u = kit.treeGeo('broad', 11, Math.round(460 * QK.foliage), 1.45), b = { leaves: kit.parkBushGeo() };   // 2c: the city park's own broadleaf + shrub
         const rock = (() => { const g = new THREE.DodecahedronGeometry(1, 1).toNonIndexed(); const pa = g.attributes.position as THREE.BufferAttribute; let r = 31; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; const seen = new Map<string, number>(); for (let i = 0; i < pa.count; i++) { const k = pa.getX(i).toFixed(3) + pa.getY(i).toFixed(3) + pa.getZ(i).toFixed(3); if (!seen.has(k)) seen.set(k, 0.75 + rn() * 0.5); const f = seen.get(k)!; pa.setXYZ(i, pa.getX(i) * f, pa.getY(i) * f * 0.8, pa.getZ(i) * f); } g.computeVertexNormals(); return colorize(g, '#ffffff'); })();
-        return { pA, pB, t, u, b, fern: fernGeo(), grass: grassClumpGeo(), rock };
+        return { pA, pB, t, u, b, grass: kit.tuftGeo(), rock };
     }, []);
-    const tex = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; }; return { leaf: mk('/spray145.png'), bark: mk('/bark.jpg', true) }; }, []);
+    const tex = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; }; return { leaf: mk('/spray145.png'), bark: mk('/bark.jpg', true), bush: mk('/shrub134.png') }; }, []);
     const mats = useMemo(() => ({
         palmTrunk: Object.assign(new THREE.MeshLambertMaterial({ map: kit.palmTrunkTex(), bumpMap: kit.palmTrunkTex(), bumpScale: 1.6, vertexColors: true, color: '#a89274', emissive: '#3a3024', side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.trunkWindShader) }),
         palmLeaf: Object.assign(new THREE.MeshLambertMaterial({ map: kit.palmFrondTex(), vertexColors: true, emissive: '#2a3a14', alphaTest: 0.5, side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.palmFrondShader) }),
         trunk: Object.assign(new THREE.MeshLambertMaterial({ map: tex.bark, bumpMap: tex.bark, bumpScale: 2.2, vertexColors: true, emissive: '#4a3a2c', side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.trunkWindShader) }),
         leaf: Object.assign(new THREE.MeshLambertMaterial({ map: tex.leaf, vertexColors: true, color: '#8fd06a', emissive: '#2e5a26', alphaTest: 0.5, side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.leafWindShader) }),
         leafDeep: Object.assign(new THREE.MeshLambertMaterial({ map: tex.leaf, vertexColors: true, color: '#5fae55', emissive: '#1f4a22', alphaTest: 0.5, side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.leafWindShader) }),
-        fern: Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: '#10260e' }), { onBeforeCompile: hazeShader(kit.tod, kit.leafWindShader) }),
-        grass: Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: '#0f200a' }), { onBeforeCompile: grassShader(kit.tod) }),
+        bush: Object.assign(new THREE.MeshLambertMaterial({ map: tex.bush, color: '#dce1cd', emissive: '#182510', alphaTest: 0.5, side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.leafWindShader) }),
+        grass: Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: '#1c3410' }), { onBeforeCompile: kit.parkGrassOnCompile(GRASS_U) }),   // 2c: the park meadow's grass + its shader
         rock: Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, color: '#d4ccba', emissive: '#1a1814', flatShading: true }), { onBeforeCompile: hazeShader(kit.tod) }),
     }), []);
-    const vegRef = useRef<THREE.Group>(null!), nearRef = useRef<THREE.Group>(null!), grassRef = useRef<THREE.Group>(null!), beam = useRef<THREE.Mesh>(null!);
+    const vegRef = useRef<THREE.Group>(null!), nearRef = useRef<THREE.Group>(null!), grassRef = useRef<THREE.Group>(null!);
     const inst = useRef<Record<string, THREE.InstancedMesh | null>>({});
     useEffect(() => {
         const o = new THREE.Object3D(), c = new THREE.Color();
@@ -303,8 +302,8 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         fill('pAt', veg.palmA, '#ffffff', '#e8dccb'); fill('pAl', veg.palmA, '#ffffff', '#d8e8a8');
         fill('pBt', veg.palmB, '#f0e6d6', '#ffffff'); fill('pBl', veg.palmB, '#c8f0a0', '#ffffff');
         fill('bt', veg.broad, '#ffffff', '#d8cfc4'); fill('bl', veg.broad, '#ffffff', '#b8e890');
-        fill('ut', veg.tall, '#ffffff', '#e0d8d0'); fill('ul', veg.tall, '#d8ffc0', '#9fcf7a');
-        fill('bush', veg.bush, '#cfe8b0', '#ffffff'); fill('fern', veg.fern, '#ffffff', '#c8e6a0'); fill('rock', veg.rock, '#ffffff', '#b8b0a0');
+        fill('ut', veg.tall, '#ffffff', '#e0d8d0'); fill('ul', veg.tall, '#ffffff', '#c8e8a8');
+        fill('bush', veg.bush, '#e6f0d6', '#ffffff'); fill('rock', veg.rock, '#ffffff', '#b8b0a0');
     }, []);
     const grassPool = useMemo(() => { _seed = 555; const N = PHONE ? 2600 : 6500, R0 = PHONE ? 34 : 44, a = new Float32Array(N * 5); for (let i = 0; i < N; i++) { const r = R0 * Math.sqrt(rnd()), t = rnd() * 6.283; a[i * 5] = Math.cos(t) * r; a[i * 5 + 1] = Math.sin(t) * r; a[i * 5 + 2] = rnd() * 6.283; a[i * 5 + 3] = 0.75 + rnd() * 0.7; a[i * 5 + 4] = rnd(); } return { N, a }; }, []);
     const grassAt = useRef([1e9, 1e9]);
@@ -313,7 +312,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         for (let i = 0; i < grassPool.N; i++) {
             const q = grassPool.a, x = hx + q[i * 5], z = hz + q[i * 5 + 1], gi = Math.floor(x - ISLAND.cx + half), gj = Math.floor(z - ISLAND.cz + half);
             if (gi < 0 || gj < 0 || gi >= n || gj >= n) continue; const y = mask[gj * n + gi]; if (y !== y) continue;
-            o.position.set(x, y - 0.05, z); o.rotation.set(0, q[i * 5 + 2], 0); o.scale.set(q[i * 5 + 3], q[i * 5 + 3] * (0.8 + q[i * 5 + 4] * 0.9), q[i * 5 + 3]); o.updateMatrix(); m.setMatrixAt(k, o.matrix); m.setColorAt(k, c.copy(cA).lerp(cB, q[i * 5 + 4])); k++;
+            o.position.set(x, y - 0.05, z); o.rotation.set(0, q[i * 5 + 2], 0); o.scale.set(q[i * 5 + 3], q[i * 5 + 3] * (0.8 + q[i * 5 + 4] * 0.9), q[i * 5 + 3]); o.updateMatrix(); m.setMatrixAt(k, o.matrix); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09); m.setColorAt(k, c.setHSL(0.22 + q[i * 5 + 4] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.30 + 0.06 * cl, 0.34 + q[i * 5 + 4] * 0.10 + 0.065 * cl)); k++;   // the park meadow's tint formula
         }
         m.count = k; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
     };
@@ -323,30 +322,30 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         if (vegRef.current) vegRef.current.visible = d < (PHONE ? 330 : 430);
         if (nearRef.current) nearRef.current.visible = d < 260;
         if (grassRef.current) grassRef.current.visible = d < 170;
-        const t = sim.t, day = kit.tod.day.value; GRASS_T.value = t;
+        const t = sim.t, day = kit.tod.day.value; GRASS_T.value = t; GRASS_U.uTime.value = t; GRASS_U.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); GRASS_U.uCam.value.copy(camera.position);
         for (const m of FALLS_MATS) { m.uniforms.uT.value = t; m.uniforms.uDay.value = day; }
         FOAM_MAT.uniforms.uT.value = t; FOAM_MAT.uniforms.uDay.value = day; SPRAY_MAT.uniforms.uT.value = t; MIST_MAT.uniforms.uT.value = t;
         RIVER_MAT.uniforms.uT.value = t; RIVER_MAT.uniforms.uDay.value = day; (RIVER_MAT.uniforms.uSky.value as THREE.Color).copy(kit.tod.fog).lerp(SKY_BLUE, 0.45);
         for (const w of waters) { const u = (w.material as THREE.ShaderMaterial).uniforms; u.uT.value = t; u.uDay.value = day; u.uSky.value.copy(kit.tod.fog).lerp(SKY_BLUE, 0.45); u.uSun.value.copy(kit.tod.sun); }
-        if (beam.current) { const night = 1 - day; beam.current.rotation.y = t * 0.9; beamMat.opacity = 0.05 + 0.2 * night; beam.current.visible = night > 0.15; lampMat.color.setRGB(1, 0.95, 0.75).multiplyScalar(0.8 + 0.6 * night); }
+        { const night = 1 - day; lampMat.color.setRGB(1, 0.95, 0.75).multiplyScalar(0.8 + 0.6 * night); }
     });
     const I = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, n: number) => <instancedMesh ref={(m) => { inst.current[key] = m; }} args={[geo, mat, Math.max(1, n)]} frustumCulled={false} />;
     return <group name="south-sea-island">
         <mesh geometry={terrain} material={terrainMat} frustumCulled={false} />
         <mesh geometry={lh.body} material={propMat} />
         <mesh geometry={lh.lamp} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
-        <mesh ref={beam} geometry={beamGeo} material={beamMat} position={[LIGHTHOUSE.x, lh.lampY, LIGHTHOUSE.z]} frustumCulled={false} />
+        <LightShafts kit={kit} lampY={lh.lampY} />
         <mesh geometry={shacks} material={propMat} />
         <mesh geometry={dock} material={propMat} />
         <group ref={vegRef}>
             {I('pAt', geos.pA.trunk, mats.palmTrunk, veg.palmA.length)}{I('pAl', PHONE ? geos.pA.lo : geos.pA.leaves, mats.palmLeaf, veg.palmA.length)}
             {I('pBt', geos.pB.trunk, mats.palmTrunk, veg.palmB.length)}{I('pBl', geos.pB.lo, mats.palmLeaf, veg.palmB.length)}
             {I('bt', geos.t.trunk, mats.trunk, veg.broad.length)}{I('bl', geos.t.leaves, mats.leaf, veg.broad.length)}
-            {I('ut', geos.u.trunk, mats.trunk, veg.tall.length)}{I('ul', geos.u.leaves, mats.leafDeep, veg.tall.length)}
-            {I('bush', geos.b.leaves, mats.leafDeep, veg.bush.length)}
+            {I('ut', geos.u.trunk, mats.trunk, veg.tall.length)}{I('ul', geos.u.leaves, mats.leaf, veg.tall.length)}
+            {I('bush', geos.b.leaves, mats.bush, veg.bush.length)}
             {I('rock', geos.rock, mats.rock, veg.rock.length)}
         </group>
-        <group ref={grassRef}><instancedMesh ref={(m) => { inst.current['grass'] = m; }} userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geos.grass, mats.grass, grassPool.N]} frustumCulled={false} />{I('fern', geos.fern, mats.fern, veg.fern.length)}</group>
+        <group ref={grassRef}><instancedMesh ref={(m) => { inst.current['grass'] = m; }} userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geos.grass, mats.grass, grassPool.N]} frustumCulled={false} /></group>
         <mesh geometry={river} material={RIVER_MAT} renderOrder={2} frustumCulled={false} />
         <group ref={nearRef}>
             {waters.map((w, i) => <primitive key={i} object={w} />)}
@@ -421,12 +420,13 @@ function Bridge({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
 
 // ---------------------------------------------------------------- STEP 4: Neon Harbor
 const NEON = ['#ff4fd8', '#3ff0ff', '#9b5cff', '#b6ff4a', '#ffb347', '#ff6b8b', '#4dffc3'];
-const PASTEL = ['#e79ac4', '#8fc6e6', '#b3a1ea', '#a3d9a0', '#efc28e', '#e6a2b2', '#92ddd0', '#c4c4dc'];
+const PASTEL = ['#e79ac4', '#8fc6e6', '#b3a1ea', '#a3d9a0', '#efc28e', '#e6a2b2', '#92ddd0', '#c4c4dc'];   // night facade tint (unchanged: Shifat 'night time is perfect')
+const DEEP = ['#9c3f73', '#1f6688', '#4c3c96', '#2d7256', '#a8622a', '#8c3a55', '#1b7670', '#26406a'];   // 2c day facades: richer, darker mid-tones (Shifat 5:58 PM 'washed out in day time')
 function harborTowerGeo() {
-    const pos: number[] = [], nor: number[] = [], col: number[] = [], neon: number[] = [], misc: number[] = [], c = new THREE.Color(), n2 = new THREE.Color();
-    const face = (a: number[], b: number[], cc: number[], d: number[], n: number[], seed: number, top: number) => { for (const v of [a, b, cc, a, cc, d]) { pos.push(v[0], v[1], v[2]); nor.push(n[0], n[1], n[2]); col.push(c.r, c.g, c.b); neon.push(n2.r, n2.g, n2.b); misc.push(seed, top); } };
+    const pos: number[] = [], nor: number[] = [], col: number[] = [], dcol: number[] = [], neon: number[] = [], misc: number[] = [], c = new THREE.Color(), cd = new THREE.Color(), n2 = new THREE.Color();
+    const face = (a: number[], b: number[], cc: number[], d: number[], n: number[], seed: number, top: number) => { for (const v of [a, b, cc, a, cc, d]) { pos.push(v[0], v[1], v[2]); nor.push(n[0], n[1], n[2]); col.push(c.r, c.g, c.b); dcol.push(cd.r, cd.g, cd.b); neon.push(n2.r, n2.g, n2.b); misc.push(seed, top); } };
     HTOWERS.forEach((t, i) => {
-        c.set(PASTEL[i % PASTEL.length]); n2.set(NEON[(i * 3) % NEON.length]); if (t.boss) { c.set('#2a2440'); n2.set('#ff2a6d'); }
+        c.set(PASTEL[i % PASTEL.length]); cd.set(DEEP[i % DEEP.length]); n2.set(NEON[(i * 3) % NEON.length]); if (t.boss) { c.set('#2a2440'); cd.set('#2a2440'); n2.set('#ff2a6d'); }
         const y0 = HARBOR.y, y1 = t.h, { x0, x1, z0, z1 } = t, sd = t.seed + i * 0.013;
         face([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], sd, y1);
         face([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], sd, y1);
@@ -434,35 +434,37 @@ function harborTowerGeo() {
         face([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], sd, y1);
         face([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], sd, y1);
     });
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('aNeon', new THREE.Float32BufferAttribute(neon, 3)); g.setAttribute('aMisc', new THREE.Float32BufferAttribute(misc, 2)); return g;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('aColD', new THREE.Float32BufferAttribute(dcol, 3)); g.setAttribute('aNeon', new THREE.Float32BufferAttribute(neon, 3)); g.setAttribute('aMisc', new THREE.Float32BufferAttribute(misc, 2)); return g;
 }
 function harborTowerMat(tod: SouthSeaKit['tod']) {
     return new THREE.ShaderMaterial({
         uniforms: { uFog: { value: tod.fog }, uSun: { value: tod.sun }, uDay: tod.day, uT: { value: 0 }, uHazeK: HAZE_K },
-        vertexShader: `attribute vec3 aCol; attribute vec3 aNeon; attribute vec2 aMisc; varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vNeon; varying vec2 vMisc;
-        void main(){ vP = position; vN = normal; vCol = aCol; vNeon = aNeon; vMisc = aMisc; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vNeon; varying vec2 vMisc; uniform vec3 uFog; uniform vec3 uSun; uniform float uDay; uniform float uT; uniform float uHazeK;
+        vertexShader: `attribute vec3 aCol; attribute vec3 aColD; attribute vec3 aNeon; attribute vec2 aMisc; varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vColD; varying vec3 vNeon; varying vec2 vMisc;
+        void main(){ vP = position; vN = normal; vCol = aCol; vColD = aColD; vNeon = aNeon; vMisc = aMisc; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vColD; varying vec3 vNeon; varying vec2 vMisc; uniform vec3 uFog; uniform vec3 uSun; uniform float uDay; uniform float uT; uniform float uHazeK;
         float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
         void main(){
           vec3 n = normalize(vN); float night = 1.0 - uDay; vec3 L = normalize(uSun + vec3(0.0, 0.3, 0.0)); float dif = max(dot(n, L), 0.0);
-          vec3 lit = mix(vec3(0.16, 0.15, 0.3), vec3(0.5, 0.48, 0.56) + vec3(1.0, 0.86, 0.66) * dif * 0.55, uDay);
-          vec3 col = vCol * lit;
+          vec3 lit = mix(vec3(0.16, 0.15, 0.3), vec3(0.44, 0.42, 0.5) + vec3(1.0, 0.86, 0.66) * dif * 0.6, uDay);
+          vec3 col = mix(vCol, vColD, uDay) * lit;
           float top = vMisc.y, seed = vMisc.x;
           if (n.y < 0.5) {
             float u = (abs(n.x) > 0.5 ? vP.z : vP.x) / 2.4, fy = (vP.y - 8.0) / 3.4; vec2 f = fract(vec2(u, fy)); vec2 id = floor(vec2(u, fy));
             vec2 fw = fwidth(vec2(u, fy)); float aa = clamp(max(fw.x, fw.y) * 1.5, 0.0, 0.5);
             float win = smoothstep(0.16 - aa, 0.16 + aa + 0.001, f.x) * (1.0 - smoothstep(0.84 - aa, 0.84 + aa + 0.001, f.x)) * smoothstep(0.22 - aa, 0.22 + aa + 0.001, f.y) * (1.0 - smoothstep(0.8 - aa, 0.8 + aa + 0.001, f.y)) * step(1.0, fy);
             float h = hash(vec3(id, seed * 97.0)); float on = step(mix(0.75, 0.38, night), h);
-            vec3 glass = mix(vec3(0.16, 0.22, 0.36), vec3(0.55, 0.68, 0.82), 0.4 + 0.3 * n.z) * mix(0.35, 1.0, uDay);
+            vec3 glassN = mix(vec3(0.16, 0.22, 0.36), vec3(0.55, 0.68, 0.82), 0.4 + 0.3 * n.z) * 0.35;
+            vec3 glassD = mix(vec3(0.07, 0.11, 0.19), vec3(0.42, 0.56, 0.72), clamp(0.15 + 0.45 * fract(id.y * 0.37 + id.x * 0.11) + 0.25 * n.z, 0.0, 1.0));   // day glass: dark with sky glints, real contrast
+            vec3 glass = mix(glassN, glassD, uDay);
             vec3 lamp = mix(vec3(1.0, 0.82, 0.55), vNeon, step(0.7, hash(vec3(id.yx, seed * 13.0)))) * (0.6 + 0.6 * night);
             col = mix(col, mix(glass, lamp, on * mix(0.25, 1.0, night)), win * (1.0 - smoothstep(0.35, 0.6, max(fw.x, fw.y))));
             float stripe = (1.0 - step(0.12, abs(fract(fy / 6.0 + seed) - 0.5) * 2.0 - 0.0) ) ;   // a neon belt every 6 floors
             float belt = step(0.94, fract(fy / 6.0 + seed)) + step(top - 0.9, vP.y);   // belts + the roof rim
-            col = mix(col, vNeon * mix(0.85, 2.2, night), clamp(belt, 0.0, 1.0) * mix(0.55, 1.0, night));
+            col = mix(col, vNeon * mix(0.5, 2.2, night), clamp(belt, 0.0, 1.0) * mix(0.3, 1.0, night));   // neon belts subtle by day, full at night
             col *= 1.0 - 0.18 * (1.0 - smoothstep(8.0, 12.0, vP.y));   // darker street level
             stripe *= 0.0;
           } else { col = mix(vec3(0.24, 0.22, 0.3), vec3(0.5, 0.48, 0.55), uDay); }
-          float d = length(vP - cameraPosition); float hz = cameraPosition.y > -0.6 ? min(0.9, 1.0 - exp(-d * uHazeK)) : 0.0;
+          float d = length(vP - cameraPosition); float hz = cameraPosition.y > -0.6 ? min(mix(0.9, 0.55, uDay), 1.0 - exp(-d * uHazeK * mix(1.0, 0.55, uDay))) : 0.0;
           gl_FragColor = vec4(mix(col, uFog, hz), 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -514,7 +516,7 @@ const SIGN_MAT = new THREE.ShaderMaterial({
       float glyph = step(0.45, h(id + floor(vW.xz))) * step(0.15, f.x) * step(f.x, 0.85) * step(0.2, f.y) * step(f.y, 0.8);
       float flick = 0.85 + 0.15 * step(0.5, fract(sin(floor(uT * 6.0) + vW.x) * 91.3));
       float night = 1.0 - uDay; vec3 base = vec3(0.05, 0.04, 0.09);
-      vec3 col = base + vC * (border * 1.6 + glyph * 1.15) * mix(0.7, 1.9, night) * flick;
+      vec3 col = base + vC * (border * 1.6 + glyph * 1.15) * mix(0.32, 1.9, night) * flick;
       gl_FragColor = vec4(col, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -544,14 +546,13 @@ function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
     const trimMat = useMemo(() => new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), []);
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffd1f0' }), []);
     const impMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
-    const near = useRef<THREE.Group>(null!), impRef = useRef<THREE.Mesh>(null!), ring = useRef<THREE.Mesh>(null!);
+    const near = useRef<THREE.Group>(null!), impRef = useRef<THREE.Mesh>(null!);
     useFrame(({ camera, clock }) => {
         const d = Math.hypot(camera.position.x - HCX, camera.position.z - HCZ), night = 1 - kit.tod.day.value;
         if (near.current) near.current.visible = d < (PHONE ? 420 : 560);   // full detail only for the city the hero is in
         CITY_LOD.far = camera.position.z < -760; if (impRef.current) impRef.current.visible = CITY_LOD.far;
         SIGN_MAT.uniforms.uT.value = clock.elapsedTime; SIGN_MAT.uniforms.uDay.value = kit.tod.day.value;
-        trimMat.color.setScalar(0.55 + 0.9 * night); lampMat.color.setRGB(1, 0.82, 0.94).multiplyScalar(0.4 + 0.9 * night);
-        if (ring.current) { ring.current.rotation.z = clock.elapsedTime * 0.6; (ring.current.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.25 * Math.sin(clock.elapsedTime * 2.2); }
+        trimMat.color.setScalar(0.22 + 1.23 * night); lampMat.color.setRGB(1, 0.82, 0.94).multiplyScalar(0.4 + 0.9 * night);
     });
     return <group name="neon-harbor">
         <mesh geometry={towers} material={tmat} frustumCulled={false} />
@@ -563,8 +564,48 @@ function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
             <mesh geometry={stilts} material={pmat} frustumCulled={false} />
             <mesh geometry={lamps.posts} material={pmat} frustumCulled={false} />
             <mesh geometry={lamps.heads} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
-            <mesh ref={ring} position={[HBOSS.x, HBOSS.y - 0.9, HBOSS.z]} rotation={[-Math.PI / 2, 0, 0]} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false}><ringGeometry args={[9, 10.2, 48]} /><meshBasicMaterial color="#ff2a6d" transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} /></mesh>
         </group>
+    </group>;
+}
+
+// 2c (Shifat 5:49 PM "lighthouse light must be soft god rays, not sharp geometry"): two soft light shafts, each a camera-facing ribbon
+// around the beam axis with a gaussian falloff across, fading along its length (no hard edges at any angle), plus a soft glow sprite that
+// flares when the sweeping beam points toward the camera. Night only; 2 quads + 1 sprite, cheap on phones.
+const SHAFT_MAT = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { uI: { value: 0 }, uT: { value: 0 } },
+    vertexShader: `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vW = position; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; varying vec3 vW; uniform float uI; uniform float uT;
+      float n2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
+      float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(n2(i), n2(i + vec2(1, 0)), f.x), mix(n2(i + vec2(0, 1)), n2(i + vec2(1, 1)), f.x), f.y); }
+      void main(){ float u = vUv.x * 2.0 - 1.0, v = vUv.y;
+        float across = exp(-u * u * 4.5), along = pow(1.0 - v, 1.7) * smoothstep(0.0, 0.05, v);
+        float dust = 0.75 + 0.25 * vn(vec2(v * 18.0 - uT * 0.3, u * 2.0 + uT * 0.1));
+        gl_FragColor = vec4(vec3(1.0, 0.93, 0.72) * across * along * dust * uI, 1.0); }`,
+});
+function glowTex() { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!; const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,246,220,1)'); gr.addColorStop(0.25, 'rgba(255,230,170,0.55)'); gr.addColorStop(1, 'rgba(255,220,150,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+const _sa = new THREE.Vector3(), _sc = new THREE.Vector3(), _ss = new THREE.Vector3(), _sl = new THREE.Vector3();
+function LightShafts({ kit, lampY }: { kit: SouthSeaKit; lampY: number }) {
+    const geo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(8 * 3), 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1], 2)); g.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]); return g; }, []);
+    const sprite = useMemo(() => new THREE.SpriteMaterial({ map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: '#fff2cc' }), []);
+    const mesh = useRef<THREE.Mesh>(null!), spr = useRef<THREE.Sprite>(null!);
+    useFrame(({ camera, clock }) => {
+        const night = Math.max(0, Math.min(1, (0.85 - kit.tod.day.value) / 0.6)), on = night > 0.02; if (mesh.current) mesh.current.visible = on; if (spr.current) spr.current.visible = on; if (!on) return;
+        const t = clock.elapsedTime, pa = geo.attributes.position as THREE.BufferAttribute, L = PHONE ? 90 : 120, w0 = 0.9, w1 = 16; _sl.set(LIGHTHOUSE.x, lampY, LIGHTHOUSE.z);
+        let flare = 0;
+        for (let b = 0; b < 2; b++) {
+            const th = t * 0.55 + b * Math.PI; _sa.set(Math.cos(th), -0.07, Math.sin(th)).normalize();
+            _sc.copy(camera.position).sub(_sl); const toCam = _sc.clone().normalize(); flare = Math.max(flare, Math.pow(Math.max(0, _sa.dot(toCam)), 10));
+            _ss.crossVectors(_sa, _sc).normalize();
+            const set = (k: number, along: number, side: number) => pa.setXYZ(b * 4 + k, _sl.x + _sa.x * along + _ss.x * side, _sl.y + _sa.y * along + _ss.y * side, _sl.z + _sa.z * along + _ss.z * side);
+            set(0, 0, -w0); set(1, 0, w0); set(2, L, w1); set(3, L, -w1);
+        }
+        pa.needsUpdate = true; geo.computeBoundingSphere();
+        SHAFT_MAT.uniforms.uI.value = 0.42 * night; SHAFT_MAT.uniforms.uT.value = t;
+        if (spr.current) { spr.current.scale.setScalar((5 + 16 * flare) * (0.6 + 0.4 * night)); sprite.opacity = (0.55 + 0.45 * flare) * night; }
+    });
+    return <group>
+        <mesh ref={mesh} geometry={geo} material={SHAFT_MAT} frustumCulled={false} renderOrder={5} />
+        <sprite ref={spr} material={sprite} position={[LIGHTHOUSE.x, lampY, LIGHTHOUSE.z]} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} renderOrder={6} />
     </group>;
 }
 

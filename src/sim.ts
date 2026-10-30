@@ -322,7 +322,7 @@ export function resetSim(s: Sim) {
 export const CITY_CAR_N = 36, BRIDGE_CAR_N = 14, CAR_N = CITY_CAR_N + BRIDGE_CAR_N, CAR_SCALE = 2.4;   // South Sea 3b: 14 more flying cars hover along the long bridge
 /** Nearest street ped to the hero, published by the renderer each frame (for ped voice lines). */
 export const PED_VOICE = { x: 0, y: 0, z: 0, d: 1e9, t: 0 };
-export const CARS = [...Array.from({ length: CITY_CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 })), ...Array.from({ length: BRIDGE_CAR_N }, (_, i) => ({ axis: 2, lane: i % 3, y: i % 2 ? 5 + (i % 3) * 1.5 : 10 + (i * 7) % 6, sp: 13 + (i * 5) % 9, off: (i * 211) % 1500 }))];
+export const CARS = [...Array.from({ length: CITY_CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 })), ...Array.from({ length: BRIDGE_CAR_N }, (_, i) => ({ axis: 2, lane: i % 3, y: i % 2 ? 5 + (i % 3) * 1.5 : 10 + (i * 7) % 6, sp: 13 + (i * 5) % 9, off: (i * 211) % 1500 }))];   // bridge cars: off spreads them over the ~2.9 km loop
 const CAR_HX = 1.0 * CAR_SCALE, CAR_HZ = 2.2 * CAR_SCALE, CAR_BOT = -0.5 * CAR_SCALE, CAR_TOP = 1.01 * CAR_SCALE;
 /** World position, velocity and half extents of car i at sim time t. */
 /** The car the player is flying (Shifat Oct 29: "let us ride flying cars", "Enter when close to vehicle to ride"). i = -1: none.
@@ -332,9 +332,20 @@ export const RIDE_RANGE = 9;
 export function carAt(i: number, t: number) {
     if (PILOT.i === i) { const hx = Math.abs(Math.sin(PILOT.yaw)) > 0.7 ? CAR_HZ : CAR_HX, hz = hx === CAR_HZ ? CAR_HX : CAR_HZ; return { x: PILOT.x, y: PILOT.y, z: PILOT.z, vx: PILOT.vx, vy: PILOT.vy, vz: PILOT.vz, hx, hz, wrap: false, yaw: PILOT.yaw }; }
     const c = CARS[i];
-    if (c.axis === 2) {   // bridge lanes (Shifat 5:22 PM: deck traffic flies): a loop south on the east lanes, back north on the west lanes
-        const span = BRIDGE_L - 60, loop = ((c.off + t * c.sp) % (2 * span) + 2 * span) % (2 * span), south = loop < span, u = 30 + (south ? loop : 2 * span - loop), lat = (south ? 1 : -1) * (2.2 + c.lane * 0.8);
-        return { x: BRIDGE.x + lat, y: bridgeDeckU(u) + c.y + Math.sin(t * 1.1 + i) * 0.5, z: BRIDGE.z0 - u, vx: 0, vy: Math.cos(t * 1.1 + i) * 0.55, vz: south ? -c.sp : c.sp, hx: CAR_HX, hz: CAR_HZ, wrap: false, yaw: south ? Math.PI : 0 };
+    if (c.axis === 2) {   // bridge traffic (2c, Shifat 5:49 PM "cars must move to each city instead of popping"): one continuous loop with no pops:
+        // south down the x=140 city street (descending from city-traffic height), along the bridge, onto Neon Harbor's avenue, a U-turn among
+        // the towers, back north the same way on the west lanes, and a U-turn at the city's north edge.
+        const wMin = -(HALF - 4) + BRIDGE.z0, wMax = BRIDGE_L + 128, S = wMax - wMin, RT = 6, P = 2 * S + 2 * Math.PI * RT, lane = 2.2 + c.lane * 0.8;
+        const q = ((c.off * 2 + t * c.sp) % P + P) % P;
+        const baseY = (w: number) => w < 0 ? 0.05 + 12 * sm(-25, -170, w) : w > BRIDGE_L ? HARBOR.y : bridgeDeckU(w);
+        const latAt = (w: number) => lane + (RT - lane) * (sm(wMax - 30, wMax, w) + sm(wMin + 30, wMin, w));
+        let x: number, w: number, yaw: number, vx: number, vz: number;
+        if (q < S) { w = wMin + q; x = BRIDGE.x + latAt(w); yaw = Math.PI; vx = 0; vz = -c.sp; }
+        else if (q < S + Math.PI * RT) { const th = (q - S) / RT; x = BRIDGE.x + RT * Math.cos(th); w = wMax + RT * Math.sin(th); vx = -Math.sin(th) * c.sp; vz = -Math.cos(th) * c.sp; yaw = Math.atan2(vx, vz); }
+        else if (q < 2 * S + Math.PI * RT) { w = wMax - (q - S - Math.PI * RT); x = BRIDGE.x - latAt(w); yaw = 0; vx = 0; vz = c.sp; }
+        else { const th = Math.PI + (q - 2 * S - Math.PI * RT) / RT; x = BRIDGE.x + RT * Math.cos(th); w = wMin + RT * Math.sin(th); vx = -Math.sin(th) * c.sp; vz = -Math.cos(th) * c.sp; yaw = Math.atan2(vx, vz); }
+        const turning = Math.abs(vx) > 0.3 * c.sp;
+        return { x, y: baseY(w) + c.y + Math.sin(t * 1.1 + i) * 0.5, z: BRIDGE.z0 - w, vx, vy: Math.cos(t * 1.1 + i) * 0.55, vz, hx: turning ? CAR_HZ : CAR_HX, hz: CAR_HZ, wrap: false, yaw };
     }
     const u = ((c.off + t * c.sp) % 640 + 640) % 640 - 320, l = c.lane * CELL + CELL / 2, y = c.y + Math.sin(t + i) * 0.6, vy = Math.cos(t + i) * 0.6;
     return c.axis === 0 ? { x: l, y, z: u, vx: 0, vy, vz: c.sp, hx: CAR_HX, hz: CAR_HZ, wrap: Math.abs(u) > 316, yaw: c.sp > 0 ? 0 : Math.PI } : { x: u, y, z: l, vx: c.sp, vy, vz: 0, hx: CAR_HZ, hz: CAR_HX, wrap: Math.abs(u) > 316, yaw: c.sp > 0 ? Math.PI / 2 : -Math.PI / 2 };

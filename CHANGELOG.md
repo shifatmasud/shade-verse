@@ -2,6 +2,15 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## South Sea 2c: Shifat's fixes (Oct 30, 5:49–5:59 PM)
+- Island reshaped: an organic coastline with headlands, bays and a cove (five harmonics, matched by the ocean's turquoise shallows ring) and one long natural ridge with gentle foothills instead of a round cone. Vegetation now uses the city park's own assets: the park broadleaf tree (two seeds), the park shrub, and the park meadow grass with its shader and tint formula, plus palms on the beach. The custom fern and umbrella trees are gone, and only a few boulders remain at the waterline.
+- River mouth: the sea reach widens into a 13 m estuary and reaches sea level before the coast. Its surface fades out before the shoreline with soft banks, so there's no seam, step or strip on the ocean. The swell damping now covers the wider coastline.
+- Bridge connects to Neon Harbor: the deck now runs 1.5 m onto the avenue, flat and flush at 8 m (it used to stop 2 m short with water in between). Headless walk: deck to avenue at a constant height, no step.
+- Bridge cars run the full route as one continuous loop, with no popping: down the x=140 city street from the north edge, across the bridge, onto the harbor avenue, a U-turn among the towers, back north on the west lanes, and a U-turn at the city's north edge. Tested: max movement per 0.05 s = 1.09 m (just the car's speed).
+- Lighthouse: the hard cone beam is replaced with soft god-ray shafts (camera-facing ribbons with gaussian falloff, fading along their length, dust shimmer) and a glow sprite that flares as the beam sweeps toward you. Night only, cheap on phones.
+- Neon Harbor by day: richer, darker facade colours, darker glass with real contrast, neon belts, signs and canal trim much dimmer by day, and lighter daytime haze. Night look unchanged.
+- The mini-boss has the same red boss zone as the city boss (same component: red beam, core, ground ring, torus) instead of the pink ring.
+
 ## South Sea 4: Neon Harbor (Oct 30) — the 2nd city at the south end of the bridge
 - A pastel-and-neon harbor city on a raised platform (8 m) on stilts over the sea, at x 18..282, z -1010..-1242. There are 9 blocks split by canals, with footbridges over the canals and a central avenue where the bridge lands. 58 towers (up to ~150 m) with lit windows, neon belts and roof rims, about 40 flickering neon signs, glowing canal-edge trim, and avenue lamps. Pastel by day, neon by night.
 - All of it is solid. Towers are web anchors and their roofs are walkable. Canals are swimmable, and you can climb out of them onto the platform (tested).
