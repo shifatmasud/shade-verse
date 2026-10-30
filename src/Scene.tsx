@@ -1379,7 +1379,9 @@ const waterMat = new THREE.ShaderMaterial({
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform float uFogK; uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB;
+    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform float uFogK;
+    #define WATER_LVL -1.0
+    uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB;
     // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
     float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
       float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0) return -1.0;
@@ -1464,6 +1466,16 @@ const waterMat = new THREE.ShaderMaterial({
       if (uUseRefl > 0.5 && !below && fdE < 1.9) {   // mirrored island / city / bridge shapes (skipped where the fog has swallowed them), rippled by the surface normal (more distortion with distance to the plane)
         vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.05;
         vec4 rs = texture2D(tRefl, clamp(ruv, 0.002, 0.998)); if (uReflSoft.x > 0.0) rs = (rs * 2.0 + texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv + vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - vec2(uReflSoft.x, -uReflSoft.y), 0.002, 0.998))) / 6.0;   /* phone: soft 5-tap, reads smooth not pixelated */ refl = mix(refl, linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb, rs.a * 0.92); nGlow = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb * rs.a;
+      }
+      if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
+        // their capsules, so a swimming / diving hero is seen bent, tinted and absorbed through the water (red dies first), shifting with the waves.
+        vec3 tdr = refract(-v, n, 1.0 / 1.333); float rA = -1.0, rB = -1.0;
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 30.0 && uHeroA.y < WATER_LVL + 0.6) rA = capHit(vW, tdr, uHeroA.xyz + vec3(0.0, 0.25, 0.0), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34);
+        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 30.0 && uHeroB.y < WATER_LVL + 0.6) rB = capHit(vW, tdr, uHeroB.xyz + vec3(0.0, 0.25, 0.0), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
+        float rt = -1.0; vec3 rc = vec3(0.0);
+        if (rA > 0.0) { rt = rA; rc = vec3(0.09, 0.11, 0.21); }
+        if (rB > 0.0 && (rA < 0.0 || rB < rA)) { rt = rB; rc = vec3(0.78, 0.82, 0.92); }
+        if (rt > 0.0 && rt < 14.0) { vec3 Th = exp(-vec3(0.45, 0.07, 0.02) * rt * 1.6); body = mix(body, rc * mix(0.35, 1.0, uDay) * (0.55 + 0.45 * uDay) * Th + body * (1.0 - Th) * 0.6, 0.9); }
       }
       float heroK = 0.0; vec3 heroC = vec3(0.0);
       if (!below && r.y > 0.0) {
