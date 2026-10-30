@@ -24,6 +24,7 @@ import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, 
 import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, SEA, seabedAt, BOATS, boatAt, BOAT_HX, BOAT_HZ, BOAT_DECK, BOAT_MAST, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, PED_VOICE, PILOT, type Unibeam, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { RoofProps } from './RoofProps';
+import { StreetProps } from './StreetProps';
 import { OCC } from './occlude';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
@@ -2016,6 +2017,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <React.Suspense fallback={null}>
             <PolyforkBuildings />
             <RoofProps />
+            <StreetProps />
             <PolyforkLakeBridge sim={sim} perf={perf} tod={TOD} />
         </React.Suspense></CityGate>
         <FlyingCars sim={sim} />
