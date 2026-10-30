@@ -2,6 +2,13 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## South Sea 3: bridge (Oct 29)
+- ~810 m suspension bridge on the EAST side (street x=141), clear of the island (~300 m away, bridge-free island per Shifat): from the city's south beach straight south over the ocean to the future 2nd-city edge (z -1008, deck lands at the harbor platform height, 8 m).
+- Walkable deck (`seaWorld.ts` bridgeDeckY used by sim ground): ramps up from the beach street to ~22 m, gentle arch, ramps down at the far end; one-way from above, so you can still swim under it. Railings, centre line, lamp posts that glow at night, 14 cars driving both ways on the deck (render only).
+- 3 towers (96 m, solid legs from the seabed, wall-runnable) with cross beams and concrete piers; 2 main cables + hangers. Towers and points along the cables are web anchors (tested: a swing from the deck anchored on the cable).
+- Ocean sheet extended (900 -> 1500 m half-size, same draw call) so no seabed band shows at the horizon with the raised far plane.
+- Renamed `src/southsea.ts` -> `src/seaWorld.ts` (it clashed with `SouthSea.tsx` on case-insensitive disks).
+
 ## South Sea 2: island (Oct 29) — Shifat: "Go. Don't ask... keep working"
 - Jungle island ~600 m offshore, west of the bridge corridor (centre -160,-820, ~185 m across), bridge-free per Shifat ("Jungle Island shouldn't have bridge"): reach it by swimming, gliding or riding a boat deck.
 - Real terrain: one heightfield (`src/southsea.ts` islandH) drives both the mesh and the sim: walk, run and land anywhere on it; the seabed and swim floor rise with its underwater slopes; swimming into the beach walks you out (shore exit), and a generic ladder exit climbs onto the dock / pool banks. Ocean swell is damped around the island so waves lap the sand instead of washing over it.

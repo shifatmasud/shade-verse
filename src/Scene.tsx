@@ -25,7 +25,7 @@ import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnv
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SouthSea } from './SouthSea';
-import { ISLAND } from './southsea';
+import { ISLAND } from './seaWorld';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -1413,10 +1413,10 @@ const waterMat = new THREE.ShaderMaterial({
 
 // Greater ocean: a camera-following sea sheet whose grid is dense under the camera and coarse toward the horizon (one mesh, no extra
 // draw calls). The vertex shader folds anything north of the shoreline onto it, so the sheet never covers land.
-const OCEAN_HALF = 900, OCEAN_SNAP = 8;
+const OCEAN_HALF = 1500, OCEAN_SNAP = 8;   // South Sea 3: 900 -> 1500 so the sheet reaches past the raised far plane (no seabed band at the horizon)
 function oceanGeo() {
-    const n = 150, pos: number[] = [], idx: number[] = [];
-    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), 1.9) * OCEAN_HALF;
+    const n = 170, pos: number[] = [], idx: number[] = [];
+    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), 2.1) * OCEAN_HALF;
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(warp(i / n * 2 - 1), 0, warp(j / n * 2 - 1));
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i, b = a + n + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;

@@ -75,12 +75,46 @@ for (const [a, c] of [[2.3, 0], [2.75, 1], [3.6, 2], [4.4, 3], [5.6, 4]] as [num
     SEA_BLDS.push({ x0: x - 2.4, x1: x + 2.4, z0: z - 2.4, z1: z + 2.4, h: y + 3.4, sea: true, kind: 'shack' });
 }
 
+// ---------------------------------------------------------------- STEP 3: the long bridge (east side, clear of the island)
+// From the city's south beach (street at x=141) straight south over the ocean into Neon Harbor's north edge. Suspension bridge:
+// 3 towers, two main cables + hangers. Deck is walkable (one-way from above, so you can swim under it); towers are solid; towers and
+// cable points take webs.
+export const HARBOR = { x0: 18, x1: 282, z0: -1242, z1: -1010, y: 8 };
+export const BRIDGE = { x: 141, hw: 6, z0: -196, z1: HARBOR.z1 + 2, top: 22, towerH: 96, towerU: [235, 425, 615], legX: 9.6, legW: 2.6 };
+export const BRIDGE_L = BRIDGE.z0 - BRIDGE.z1;
+/** deck height at distance u (m) from the beach end */
+export function bridgeDeckU(u: number) { return 0.05 + (BRIDGE.top - 0.05) * sm(0, 125, u) - (BRIDGE.top - HARBOR.y) * sm(BRIDGE_L - 125, BRIDGE_L, u) + 1.2 * Math.sin(Math.PI * Math.max(0, Math.min(1, (u - 125) / (BRIDGE_L - 250)))); }
+export function bridgeDeckY(x: number, z: number): number | null { if (Math.abs(x - BRIDGE.x) > BRIDGE.hw || z > BRIDGE.z0 || z < BRIDGE.z1) return null; return bridgeDeckU(BRIDGE.z0 - z); }
+export const towerZ = (i: number) => BRIDGE.z0 - BRIDGE.towerU[i];
+for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) {
+    const cx = BRIDGE.x + sx * BRIDGE.legX, cz = towerZ(i), hw = BRIDGE.legW / 2;
+    SEA_BLDS.push({ x0: cx - hw, x1: cx + hw, z0: cz - hw * 1.3, z1: cz + hw * 1.3, h: BRIDGE.towerH, y0: -60, sea: true, kind: 'tower' });
+}
+// main cables: end anchors near each end, up over the 3 tower tops, sagging to just above the deck mid-span
+export function cableY(u: number) {
+    const keys = [55, ...BRIDGE.towerU, BRIDGE_L - 55], top = BRIDGE.towerH - 1;
+    if (u <= keys[0] || u >= keys[keys.length - 1]) return bridgeDeckU(u) + 1.5;
+    for (let k = 0; k < keys.length - 1; k++) {
+        const a = keys[k], b = keys[k + 1]; if (u < a || u > b) continue;
+        const ya = k === 0 ? bridgeDeckU(a) + 1.5 : top, yb = k === keys.length - 2 ? bridgeDeckU(b) + 1.5 : top;
+        const t = (u - a) / (b - a), mid = bridgeDeckU((a + b) / 2) + 4.5;
+        if (k === 0 || k === keys.length - 2) { const lin = ya + (yb - ya) * t; return lin - (lin - (bridgeDeckU(u) + 3)) * 0.55 * Math.sin(Math.PI * t); }
+        const s2 = (2 * t - 1) ** 2; return mid + (top - mid) * s2;
+    }
+    return top;
+}
+export const CABLE_X = BRIDGE.hw + 0.6;
+export const SEA_ANCHORS: [number, number, number][] = [];
+for (let u = 70; u < BRIDGE_L - 70; u += 14) for (const sx of [-1, 1]) { const y = cableY(u); if (y - bridgeDeckU(u) > 10) SEA_ANCHORS.push([BRIDGE.x + sx * CABLE_X, y, BRIDGE.z0 - u]); }
+for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) SEA_ANCHORS.push([BRIDGE.x + sx * BRIDGE.legX, BRIDGE.towerH + 1, towerZ(i)]);
+
 /** highest walkable surface under a foot at footY: island ground always counts; decks only from above (one-way) */
 export function seaSurface(x: number, z: number, footY: number): number | null {
     let best: number | null = null;
     const ih = islandRaw(x, z);
     if (ih !== null && ih > W_Y - 0.6 && !poolAt(x, z)) best = ih;
     for (const d of DECKS) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1 && footY >= d.y - 0.7 && (best === null || d.y > best)) best = d.y;
+    const by = bridgeDeckY(x, z); if (by !== null && footY >= by - 0.7 && (best === null || by > best)) best = by;
     return best;
 }
 /** seabed lifted by the island so the swim floor and the seabed mesh follow its underwater slopes */

@@ -1,6 +1,6 @@
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
-import { SEA_BLDS, seaSurface, seaLift, poolAt, islandH, inCalmZone } from './southsea';
+import { SEA_BLDS, SEA_ANCHORS, BRIDGE, seaSurface, seaLift, poolAt, islandH, inCalmZone } from './seaWorld';
 export type V3 = [number, number, number];
 export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number; y0?: number; sea?: true; kind?: string }
 
@@ -443,6 +443,14 @@ function findAnchor(s: Sim, strict = false): V3 {
         if (dot < 0.3) continue;
         const sc = Math.abs(dist - 40) + (1 - dot) * 50 + (dy > 75 ? 25 : 0);
         if (sc < bs) { bs = sc; const ox = -dx / dh, oz = -dz / dh; best = [qx + ox * 10, b.h + 3, qz + oz * 10]; }
+    }
+    if (Math.abs(p[0] - BRIDGE.x) < 150) for (const a of SEA_ANCHORS) {   // South Sea 3: bridge cables + tower tops take webs
+        const dx = a[0] - p[0], dz = a[2] - p[2], dh = Math.hypot(dx, dz), dy = a[1] - p[1];
+        if (dy < 8 || dh < 6) continue;
+        const dist = Math.hypot(dh, dy); if (dist < 16 || dist > 85) continue;
+        const dot = (dx * fx + dz * fz) / dh; if (dot < 0.3) continue;
+        const sc = Math.abs(dist - 40) + (1 - dot) * 50;
+        if (sc < bs) { bs = sc; best = [a[0], a[1], a[2]]; }
     }
     const car = findCarAnchor(s, bs);
     if (car) { const a = car.a as any; a.car = car.i; return a; }
