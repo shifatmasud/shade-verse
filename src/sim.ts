@@ -326,8 +326,8 @@ function collideCars(s: Sim, prevY: number, dt: number) {
 // Drifting boats (South Sea step 1b): slow loops offshore; solid (stand on the deck and ride, bump the hull) and their mast top is a web anchor.
 export const BOATS = [
     { cx: -120, cz: -330, r: 55, w: 0.045, ph: 0.0, kind: 0 }, { cx: 140, cz: -380, r: 70, w: -0.035, ph: 2.0, kind: 1 },
-    { cx: -40, cz: -520, r: 90, w: 0.028, ph: 4.1, kind: 0 }, { cx: 230, cz: -640, r: 80, w: -0.03, ph: 1.2, kind: 1 },
-    { cx: -260, cz: -720, r: 100, w: 0.022, ph: 3.3, kind: 0 }, { cx: 60, cz: -880, r: 120, w: -0.02, ph: 5.0, kind: 1 },
+    { cx: -40, cz: -520, r: 90, w: 0.028, ph: 4.1, kind: 0 }, { cx: 262, cz: -600, r: 72, w: -0.03, ph: 1.2, kind: 1 },   // South Sea: kept east of the bridge piers
+    { cx: -330, cz: -640, r: 90, w: 0.022, ph: 3.3, kind: 0 },   // South Sea: kept clear of the island { cx: 60, cz: -880, r: 120, w: -0.02, ph: 5.0, kind: 1 },
 ];
 export const BOAT_HX = 2.3, BOAT_HZ = 6.2, BOAT_DECK = 1.5, BOAT_MAST = 11;
 export function boatAt(i: number, t: number) {

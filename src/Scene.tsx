@@ -1476,10 +1476,12 @@ function Fish({ sim }: { sim: Sim }) {
     useEffect(() => { const m = ref.current; for (let i = 0; i < N; i++) m.setColorAt(i, cols[fish[i].s]); m.instanceColor!.needsUpdate = true; }, [N]);
     useFrame(({ camera }) => {
         const m = ref.current; if (!m) return; const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2];
-        const show = hz < WATER_Z - 4 && camera.position.y < WATER_Y + 6; m.visible = show; if (!show) return;
+        const show = hz < WATER_Z - 4 && camera.position.y < WATER_Y + 6 && seabedAt(hx, hz) < WATER_Y - 2; m.visible = show; if (!show) return;   // never on the island's land / shallows
         schools.forEach((sc, k) => { const a = t * 0.12 + k * 1.26, R = 6 + k * 2.5, tx = hx + Math.cos(a) * R, tz = hz + Math.sin(a) * R, fl = seabedAt(tx, tz) + 2, ty = Math.max(fl, Math.min(WATER_Y - 1.5, hy - 2 + Math.sin(t * 0.3 + k) * 3));
-            if (!sc.set || Math.hypot(sc.x - hx, sc.z - hz) > 60) { sc.x = tx; sc.y = ty; sc.z = tz; sc.set = true; } else { sc.x += (tx - sc.x) * 0.01; sc.y += (ty - sc.y) * 0.01; sc.z += (tz - sc.z) * 0.01; } });
+            if (!sc.set || Math.hypot(sc.x - hx, sc.z - hz) > 60) { sc.x = tx; sc.y = ty; sc.z = tz; sc.set = true; } else { sc.x += (tx - sc.x) * 0.01; sc.y += (ty - sc.y) * 0.01; sc.z += (tz - sc.z) * 0.01; }
+            (sc as any).ok = seabedAt(sc.x, sc.z) < WATER_Y - 3.5; });   // Shifat's bug report: schools over the island's shallows/land are hidden
         for (let i = 0; i < N; i++) { const f = fish[i], sc = schools[f.s], a = f.ph + t * f.w, px = sc.x + Math.cos(a) * f.r, pz = sc.z + Math.sin(a) * f.r, py = sc.y + f.yo + Math.sin(t * 1.3 + i) * 0.2;
+            if (!(sc as any).ok || py > WATER_Y - 0.6 || seabedAt(px, pz) > py - 0.4) { o.position.set(px, -500, pz); o.scale.setScalar(0); o.updateMatrix(); m.setMatrixAt(i, o.matrix); o.scale.setScalar(1); continue; }
             o.position.set(px, py, pz); o.rotation.set(0, Math.atan2(-Math.sin(a), Math.cos(a)) + Math.PI / 2 * 0 , Math.sin(t * 9 + i) * 0.15); o.lookAt(sc.x + Math.cos(a + 0.2) * f.r, py, sc.z + Math.sin(a + 0.2) * f.r); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }
         m.count = N; m.instanceMatrix.needsUpdate = true;
     });

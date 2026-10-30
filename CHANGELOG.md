@@ -2,6 +2,10 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## Fix: island sea life (Oct 29) — Shifat's phone screenshot
+- The red / blue "shards" on the island's sand and hillside were fish schools: they followed the old seabed depth, which the island now lifts above the sea. Fish now only show while the hero is over real water (>2 m deep), schools over the island's shallows are hidden, and any fish that would sit above the surface or inside the ground is dropped.
+- Two sailboat loops moved: one crossed the island, one brushed the bridge piers.
+
 ## South Sea 3: bridge (Oct 29)
 - ~810 m suspension bridge on the EAST side (street x=141), clear of the island (~300 m away, bridge-free island per Shifat): from the city's south beach straight south over the ocean to the future 2nd-city edge (z -1008, deck lands at the harbor platform height, 8 m).
 - Walkable deck (`seaWorld.ts` bridgeDeckY used by sim ground): ramps up from the beach street to ~22 m, gentle arch, ramps down at the far end; one-way from above, so you can still swim under it. Railings, centre line, lamp posts that glow at night, 14 cars driving both ways on the deck (render only).
