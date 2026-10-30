@@ -1375,17 +1375,19 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uBoat: { value: [0, 1, 2, 3, 4].map(() => new THREE.Vector4(0, 1e5, 0, 0)) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uBoat: { value: [0, 1, 2, 3, 4].map(() => new THREE.Vector4(0, 1e5, 0, 0)) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroDA: { value: new THREE.Vector4(0, 0, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
     uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform float uFogK;
     #define WATER_LVL -1.0
-    uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB;
+    uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
     // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
     float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
       float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0) return -1.0;
       float t = (-b - sqrt(h)) / a, y = baoa + t * bard; if (y > 0.0 && y < baba) return t; vec3 oc = (y <= 0.0) ? oa : ro - pb; b = dot(rd, oc); c = dot(oc, oc) - ra * ra; h = b * b - c; return h > 0.0 ? -b - sqrt(h) : -1.0; }
+       // swimming: the body lies flat along the facing direction, so the trace uses a horizontal capsule (no tall upright 'pill' under the swimmer)
+       float capH(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra, vec4 D){ if (D.w > 0.5) { vec3 c = vec3(uHeroA.x, uHeroA.y - 0.05, uHeroA.z), d = vec3(D.x, 0.0, D.z) * 0.8; return capHit(ro, rd, c - d, c + d, ra * 0.7); } return capHit(ro, rd, pa, pb, ra); }
     uniform sampler2D tScene; uniform sampler2D tDepth; uniform sampler2D uBed; uniform vec3 uBedC; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
     vec2 bedUV(vec2 xz){ return (xz - uBedC.xy) / (2.0 * uBedC.z) + 0.5; }
     // open-sea bed = the sim's seabedAt profile (shelf -> slope -> trench + dunes); the baked island map blends into it at its edges (no square seam)
@@ -1471,7 +1473,7 @@ const waterMat = new THREE.ShaderMaterial({
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
         // their capsules, so a swimming / diving hero is seen bent, tinted and absorbed through the water (red dies first), shifting with the waves.
         vec3 tdr = refract(-v, n, 1.0 / 1.333); float rA = -1.0, rB = -1.0;
-        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 30.0 && uHeroA.y + 0.25 < hwA) rA = capHit(vW, tdr, uHeroA.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroA.x, min(uHeroA.y + 1.55, hwA), uHeroA.z), 0.34);   /* only the submerged part refracts; flying = none */
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 30.0 && uHeroA.y + 0.25 < hwA) rA = capH(vW, tdr, uHeroA.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroA.x, min(uHeroA.y + 1.55, hwA), uHeroA.z), 0.34, uHeroDA);   /* only the submerged part refracts; flying = none */
         if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 30.0 && uHeroB.y + 0.25 < hwB) rB = capHit(vW, tdr, uHeroB.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroB.x, min(uHeroB.y + 1.5, hwB), uHeroB.z), 0.3);
         float rt = -1.0; vec3 rc = vec3(0.0);
         if (rA > 0.0) { rt = rA; rc = vec3(0.09, 0.11, 0.21); }
@@ -1480,10 +1482,10 @@ const waterMat = new THREE.ShaderMaterial({
         // hidden. Where the straight view ray hits a hero capsule below the surface, open the surface up (low alpha) so the real body shows
         // through, tinted by the water it is seen through.
         float sA = -1.0, sB = -1.0;
-        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 12.0 && uHeroA.y - 0.2 < hwA) sA = capHit(vW, -v, uHeroA.xyz + vec3(0.0, -0.2, 0.0), vec3(uHeroA.x, min(uHeroA.y + 1.7, hwA + 0.3), uHeroA.z), 0.4);
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 12.0 && uHeroA.y - 0.2 < hwA) sA = capH(vW, -v, uHeroA.xyz + vec3(0.0, -0.2, 0.0), vec3(uHeroA.x, min(uHeroA.y + 1.7, hwA + 0.3), uHeroA.z), 0.4, uHeroDA);
         if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 12.0 && uHeroB.y - 0.2 < hwB) sB = capHit(vW, -v, uHeroB.xyz + vec3(0.0, -0.2, 0.0), vec3(uHeroB.x, min(uHeroB.y + 1.65, hwB + 0.3), uHeroB.z), 0.36);
         float st = sA > 0.0 && (sB < 0.0 || sA < sB) ? sA : sB; if (st > 0.0 && st < 8.0) heroSee = exp(-st * 0.18) * 0.5;
-        float sA2 = uHeroA.w > 0.5 && sA > 0.0 ? capHit(vW, -v, uHeroA.xyz + vec3(0.0, 0.05, 0.0), uHeroA.xyz + vec3(0.0, 1.5, 0.0), 0.32) : -1.0;
+        float sA2 = uHeroA.w > 0.5 && sA > 0.0 ? capH(vW, -v, uHeroA.xyz + vec3(0.0, 0.05, 0.0), uHeroA.xyz + vec3(0.0, 1.5, 0.0), 0.32, uHeroDA) : -1.0;
         float sB2 = uHeroB.w > 0.5 && sB > 0.0 ? capHit(vW, -v, uHeroB.xyz + vec3(0.0, 0.05, 0.0), uHeroB.xyz + vec3(0.0, 1.45, 0.0), 0.29) : -1.0;
         if (max(sA2, sB2) > 0.0) heroSee *= 2.0;   /* two nested capsules: soft edge, no hard window */
         if (rt > 0.0 && rt < 14.0) { vec3 Th = exp(-vec3(0.45, 0.07, 0.02) * rt * 1.6); body = mix(body, rc * mix(0.35, 1.0, uDay) * (0.55 + 0.45 * uDay) * Th + body * (1.0 - Th) * 0.6, 0.9); }
@@ -1491,7 +1493,7 @@ const waterMat = new THREE.ShaderMaterial({
       float heroK = 0.0; vec3 heroC = vec3(0.0);
       if (!below && r.y > 0.0) {
         vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
-        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA) tA = capHit(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.25, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34);   /* only the part above the surface reflects (Shifat 5:12) */
+        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA) tA = capH(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.25, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34, uHeroDA);   /* only the part above the surface reflects (Shifat 5:12) */
         if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB) tB = capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.25, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
         if (tA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = 1.0; }   // Shadow's dark suit
         if (tB > 0.0 && (tA < 0.0 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = 1.0; }   // Ghost's pale suit
@@ -1699,7 +1701,7 @@ function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefO
     useEffect(() => () => st.rt.dispose(), [st]);
     useFrame(() => {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
-        HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost);   // analytic hero reflections (everywhere on the sea)
+        HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost); u.uHeroDA.value.set(Math.sin(sim.yaw), 0, Math.cos(sim.yaw), sim.swim && !sim.dive ? 1 : 0);   // analytic hero reflections (everywhere on the sea)
         const d = Math.hypot(cam.position.x - ISLAND.cx, cam.position.z - ISLAND.cz);
         // Shifat 3:39 AM "cities & bridges must reflect on water too": the mirror pass now runs near the island, along the city shore, and around the
         // east bridge / harbor; it replaces the screen-space march there (which could never show what is off-screen, like the tops of towers).
