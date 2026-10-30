@@ -5,16 +5,21 @@ import * as THREE from 'three';
 export const OCC = { uOccHero: { value: new THREE.Vector3(0, -999, 0) } };
 export function occludeFade(sh: any) {
     sh.uniforms.uOccHero = OCC.uOccHero;
-    sh.vertexShader = 'varying vec3 vOccW;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    sh.vertexShader = 'varying vec3 vOccW; varying vec3 vOccO;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
     { vec4 op = vec4(transformed, 1.0);
     #ifdef USE_INSTANCING
     op = instanceMatrix * op;
     #endif
-    vOccW = (modelMatrix * op).xyz; }`);
-    sh.fragmentShader = 'varying vec3 vOccW; uniform vec3 uOccHero;\n' + sh.fragmentShader.replace('void main() {', `void main() {
+    vOccW = (modelMatrix * op).xyz;
+    vec4 oo = vec4(0.0, 0.9, 0.0, 1.0);
+    #ifdef USE_INSTANCING
+    oo = instanceMatrix * oo;
+    #endif
+    vOccO = (modelMatrix * oo).xyz; }`);
+    sh.fragmentShader = 'varying vec3 vOccW; varying vec3 vOccO; uniform vec3 uOccHero;\n' + sh.fragmentShader.replace('void main() {', `void main() {
     { vec3 oc = cameraPosition, oh = uOccHero, seg = oh - oc; float L2 = max(dot(seg, seg), 1e-3);
-      float t = clamp(dot(vOccW - oc, seg) / L2, 0.0, 1.0); float dseg = length(vOccW - (oc + seg * t));
+      float t = clamp(dot(vOccO - oc, seg) / L2, 0.0, 1.0); float dseg = length(vOccO - (oc + seg * t));   /* 12:02 AM: test the robot's own centre, so a robot hides WHOLE instead of leaving shredded pieces */
       float behind = 1.0 - smoothstep(0.78, 0.95, t);   // only between the lens and the hero, not past the hero
-      float f = max((1.0 - smoothstep(1.15, 1.6, dseg)) * behind, 1.0 - smoothstep(1.8, 2.6, length(vOccW - oc)));
+      float f = max((1.0 - smoothstep(1.5, 1.9, dseg)) * behind, 1.0 - smoothstep(2.6, 3.2, length(vOccO - oc)));
       if (f > 0.45) discard;   /* clean cut instead of a dither: the outline pass inked every dither hole as black speckle */ }`);
 }
