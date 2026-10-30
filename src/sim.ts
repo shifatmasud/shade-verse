@@ -7,6 +7,7 @@ export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number
 export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
 export const FOG: V3 = [0.84, 0.77, 0.74];
 const G = 60, G_FALL = 100, G_WEB = 27;   /* Oct 29 10:07 PM 'jump should be faster & faster to fall': snappier rise (27 -> 60) and a heavier fall (100); 10:14 PM 'even faster'; web swings keep the old 27 */
+export const WALK_V = 22;
 export const JUMP_V = 24;   // was 16: same ~5 m height, reached in ~0.4 s (was ~0.6 s); whole jump ~0.7 s (was ~1.19 s)
 export const PARK = { x0: 100, x1: 260, z0: 20, z1: 180 };
 export const PARK_POND = { cx: 180, cz: 100, rx: 14, rz: 14 }; // circular lake (env-iter1)
@@ -692,7 +693,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
             s.runPhase += (Math.abs(up) + Math.abs(lat) * 18) * dt * 0.52;
         }
     } else if (s.ground && !s.web) {
-        const a = Math.min(1, dt * 10); v[0] += (wx * 15 - v[0]) * a; v[2] += (wz * 15 - v[2]) * a; v[1] = 0;
+        const a = Math.min(1, dt * 13); v[0] += (wx * WALK_V - v[0]) * a; v[2] += (wz * WALK_V - v[2]) * a; v[1] = 0;   // 10:19 PM 'make walk faster': 15 -> 22 m/s, quicker pickup
     } else {
         // Glide lift balances gravity during descent; keep ordinary gravity through the rising launch.
         if (s.glideOn && (s as any).flightBoost) v[1] += (12 - v[1]) * (1 - Math.exp(-3.5 * dt));   // flight climbs faster (was 8)
