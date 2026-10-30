@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Sim } from './sim';
-import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, islandPeakY, coastK, islandRR, poolAt, RIVERS, riverNear, riverHW, POOL, FALL_WALL, riverY, BRIDGE, BRIDGE_L, bridgeDeckU, cableY, CABLE_X, towerZ, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, HBOSS, HCOLS, HROWS, AVENUE } from './seaWorld';
+import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, islandPeakY, coastK, islandRR, poolAt, RIVERS, riverNear, riverHW, POOL, FALL_WALL, riverY, RIVER_DEEP, BRIDGE, BRIDGE_L, bridgeDeckU, cableY, CABLE_X, towerZ, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, HBOSS, HCOLS, HROWS, AVENUE } from './seaWorld';
 import { buildings } from './sim';
 import { QUALITY, QK, LOWQ } from './quality';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
@@ -179,7 +179,7 @@ function riverGeo() {
     // water blend: the river centreline is already a dense spline (seaWorld smoothPts); each cross-section uses the averaged tangent so
     // consecutive sections never fold or gap at bends, 5 vertices across (soft banks), and the strip fades out inside the plunge pool /
     // lagoon it leaves or enters, so pool -> river -> lagoon -> estuary -> sea reads as one surface instead of overlapping slabs.
-    const pos: number[] = [], uv: number[] = [], sl: number[] = [], fd: number[] = [], cm: number[] = [], idx: number[] = [], X = 4;
+    const pos: number[] = [], uv: number[] = [], sl: number[] = [], fd: number[] = [], cm: number[] = [], ac: number[] = [], idx: number[] = [], X = 4;
     const inPool = (x: number, z: number) => { let f = 1; for (const p of POOLS) f = Math.min(f, sm(p.rim * 0.55, p.rim * 0.95, Math.hypot(x - p.cx, z - p.cz) / p.r)); return f; };
     for (const r of RIVERS) {
         const base = pos.length / 3, slope = Math.abs(r.y1 - r.y0) / r.len, P: [number, number][] = [...r.pts], A = [...r.acc];
@@ -193,31 +193,47 @@ function riverGeo() {
             const a = P[Math.max(0, i - 1)], b = P[Math.min(N - 1, i + 1)], tl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, px = -(b[1] - a[1]) / tl, pz = (b[0] - a[0]) / tl;
             const [x, z] = P[i], s = A[i], tt = Math.max(0, Math.min(1, s / r.len)), y = riverY(r, tt) + 0.04 * (1 - tt), w = riverHW(r, tt) * 1.38;
             const te = r.tEnd ?? 1, calm = r.y1 < -0.5 ? sm(te * 0.45, te * 0.95, tt) : 0, fade = (r.y1 < -0.5 ? (1 - sm(te * 0.62, te * 1.12, tt)) * sm(1.12, 0.9, islandRR(x, z)) : 1) * inPool(x, z);   // the sea reach fades out over the estuary into the ocean (no seam)
-            for (let k = 0; k <= X; k++) { const sg = (k / X) * 2 - 1, bw = 1 - 0.35 * sg * sg; pos.push(x + px * w * sg, y + 0.05 * bw, z + pz * w * sg); uv.push(k / X, s); sl.push(slope); fd.push(fade); cm.push(calm); }
+            const dC = Math.max(0.4, Math.min(6, y - (islandH(x, z) ?? (y - RIVER_DEEP))));   // real carved depth at the centreline (for the refraction trace)
+            for (let k = 0; k <= X; k++) { const sg = (k / X) * 2 - 1, bw = 1 - 0.35 * sg * sg; pos.push(x + px * w * sg, y + 0.05 * bw, z + pz * w * sg); uv.push(k / X, s); sl.push(slope); fd.push(fade); cm.push(calm); ac.push(px, pz, w, dC); }
             if (i > 0) for (let k = 0; k < X; k++) { const c = base + (i - 1) * (X + 1) + k, d = c + X + 1; idx.push(c, d, c + 1, c + 1, d, d + 1); }
         }
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('aSlope', new THREE.Float32BufferAttribute(sl, 1)); g.setAttribute('aFade', new THREE.Float32BufferAttribute(fd, 1)); g.setAttribute('aCalm', new THREE.Float32BufferAttribute(cm, 1)); g.setIndex(idx); return g;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('aSlope', new THREE.Float32BufferAttribute(sl, 1)); g.setAttribute('aFade', new THREE.Float32BufferAttribute(fd, 1)); g.setAttribute('aCalm', new THREE.Float32BufferAttribute(cm, 1)); g.setAttribute('aAcr', new THREE.Float32BufferAttribute(ac, 4)); g.setIndex(idx); return g;
 }
 // water blend: the river and pools now write depth (fragments under 3% alpha are discarded), so the outline pass sees one flat water
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
 const RIVER_MAT = new THREE.ShaderMaterial({
     transparent: true, depthWrite: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') } },
-    vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-    fragmentShader: `varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky;
+    vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky;
     float n2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
     float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(n2(i), n2(i + vec2(1, 0)), f.x), mix(n2(i + vec2(0, 1)), n2(i + vec2(1, 1)), f.x), f.y); }
     void main(){ float sp = 1.6 + vSl * 40.0; vec2 f = vec2(vUv.x * 4.0, vUv.y * 0.55 - uT * sp);
       float streak = vn(f * vec2(3.0, 1.0)) * 0.6 + vn(f * vec2(9.0, 2.5) + 3.1) * 0.4;
       float bank = 1.0 - smoothstep(0.0, 0.2, min(vUv.x, 1.0 - vUv.x));
-      float white = clamp(smoothstep(0.55, 0.85, streak) * (0.35 + vSl * 9.0) + bank * 0.45 * smoothstep(0.4, 0.7, vn(f * 6.0)), 0.0, 1.0);
+      float white = clamp(smoothstep(0.6, 0.88, streak) * (0.35 + vSl * 9.0) + bank * 0.45 * smoothstep(0.4, 0.7, vn(f * 6.0)), 0.0, 1.0);
       vec3 V = normalize(cameraPosition - vW); float fr = 0.03 + 0.97 * pow(1.0 - max(V.y, 0.0), 5.0);
       vec3 body = mix(vec3(0.05, 0.42, 0.45), vec3(0.18, 0.66, 0.62), 0.5 + 0.5 * streak);
+      { // Shifat 2:07 AM "transparency & refraction law": bend the view ray by Snell (1.333), march it across the channel's real depth profile
+        // (centre depth baked per section, parabolic banks), Beer-Lambert over the path; the bed stays put while the streaks flow over it
+        vec2 gq = vec2(vn(f * 2.0) - 0.5, vn(f * 2.0 + 7.3) - 0.5) * 0.12; vec3 nn = normalize(vec3(gq.x, 1.0, gq.y));
+        vec3 td = refract(-V, nn, 1.0 / 1.333); float sy = max(-td.y, 0.12), u0 = vUv.x * 2.0 - 1.0, hw = max(vAcr.z, 0.5);
+        float dU = dot(td.xz, vAcr.xy) / sy / hw; float u = u0, dep = vAcr.w * max(1.0 - u * u, 0.0);
+        u = u0 + dU * dep; dep = vAcr.w * max(1.0 - u * u, 0.0); u = u0 + dU * dep; dep = vAcr.w * max(1.0 - u * u, 0.0);
+        float t1 = dep / sy; vec2 hx = vW.xz + td.xz * t1;
+        float peb = vn(hx * 2.3) * 0.6 + vn(hx * 6.1 + 2.0) * 0.4;
+        vec3 alb = mix(vec3(0.42, 0.40, 0.32), vec3(0.86, 0.80, 0.64), smoothstep(2.5, 0.3, dep)) * (0.75 + 0.35 * peb);
+        vec2 cq = hx * 1.7; float c1 = abs(sin(cq.x + sin(cq.y * 1.3 + uT * 1.6) * 1.2 + uT * 0.9) * sin(cq.y * 0.9 + sin(cq.x * 1.1 - uT * 1.3) * 1.3));
+        float cs = pow(1.0 - c1, 8.0) * exp(-dep * 0.2) * uDay * (1.0 - smoothstep(20.0, 60.0, length(cameraPosition - vW)));
+        vec3 Tb = exp(-vec3(0.19, 0.045, 0.035) * (t1 + dep * 0.5));
+        vec3 seen = alb * (1.0 + cs * 0.7) * Tb + vec3(0.06, 0.45, 0.47) * (1.0 - Tb);
+        body = mix(body, seen, 0.95);
+      }
       white *= 1.0 - 0.95 * vCalm; body = mix(body, vec3(0.16, 0.62, 0.66), vCalm);   /* mouth: foam dies down and the colour turns to the shallow sea's, so river and ocean read as one surface */
       vec3 c = mix(mix(body, uSky, fr * 0.6), vec3(0.95, 0.99, 1.0), white) * mix(0.3, 1.0, uDay);
       float soft = smoothstep(0.0, 0.24, min(vUv.x, 1.0 - vUv.x));   // soft banks, no hard edge on the sand
-      float a = (0.78 + 0.18 * white) * soft * vFade; if (a < 0.03) discard;
+      float a = (mix(0.93, 0.78, vCalm) + 0.07 * white) * soft * vFade; if (a < 0.03) discard;   /* traced bed drawn here, so the strip is near-opaque */
       gl_FragColor = vec4(c, a); }`,
 });
 // long grass (2b): clumps of three crossed blades, swaying in the vertex shader; only on the meadow/jungle ground, never on sand
