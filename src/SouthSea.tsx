@@ -134,9 +134,9 @@ function fallsSheet(width: number, out: number, n = 22, C = 8) {
     for (let j = 0; j < n; j++) for (let c = 0; c < C; c++) { const a = j * (C + 1) + c, b = a + C + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
 }
-function fallsMat(speed: number, alpha: number, bright: number) {
+function fallsMat(speed: number, alpha: number, bright: number, dw = false) {
     return new THREE.ShaderMaterial({
-        transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
+        transparent: true, depthWrite: dw /* back sheet writes depth so the outline pass stops inking the cliff's contours through the falling water */, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay;
         float h(float x){ return fract(sin(x * 91.7) * 43758.5); }
@@ -150,7 +150,7 @@ function fallsMat(speed: number, alpha: number, bright: number) {
           gl_FragColor = vec4(c, clamp((${alpha.toFixed(2)} + 0.45 * streak + 0.4 * foam + 0.3 * lip) * edge, 0.0, 1.0)); }`,
     });
 }
-const FALLS_MATS = [fallsMat(0.55, 0.38, 0.6), fallsMat(0.85, 0.22, 0.9), fallsMat(1.25, 0.1, 1.2)];
+const FALLS_MATS = [fallsMat(0.55, 0.38, 0.6, true), fallsMat(0.85, 0.22, 0.9), fallsMat(1.25, 0.1, 1.2)];
 const FOAM_MAT = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uCaus: { value: CAUSTIC_TEX } },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
