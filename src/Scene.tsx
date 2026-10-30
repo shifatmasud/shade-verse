@@ -1549,9 +1549,9 @@ const waterMat = new THREE.ShaderMaterial({
           float wd = vW.y - bedY(vW.xz), cv = texture2D(uCaus, vW.xz * 0.011 + 0.2).r;
           float ph = uTime * 0.18 + cv * 2.6 + sin(ia * 3.0) * 0.4, sw = fract(ph + wd * 0.45), swash = smoothstep(0.0, 0.12, sw) * (1.0 - smoothstep(0.12, 0.85, sw));
           float lace = texture2D(uCaus, vW.xz * 0.21 + vec2(uTime * 0.02, -uTime * 0.013)).r + 0.6 * texture2D(uCaus, vW.xz * 0.53 - uTime * 0.03).g;
-          float zone = 1.0 - smoothstep(0.1, 2.4, wd), edge = smoothstep(-0.05, 0.06, wd) * (1.0 - smoothstep(0.1, 0.55, wd));
+          float zone = (1.0 - smoothstep(0.1, 1.2, wd)) * smoothstep(0.02, 0.12, length(vec2(bedY(vW.xz + vec2(1.5, 0.0)) - bedY(vW.xz - vec2(1.5, 0.0)), bedY(vW.xz + vec2(0.0, 1.5)) - bedY(vW.xz - vec2(0.0, 1.5)))) / 3.0), edge = smoothstep(-0.05, 0.06, wd) * (1.0 - smoothstep(0.1, 0.55, wd));
           float fo = zone * smoothstep(0.42, 0.85, lace * (0.5 + swash) * zone + swash * 0.55 * zone) + edge * (0.6 + 0.4 * swash);
-          fo *= smoothstep(1.35, 1.0, irr);
+          fo *= smoothstep(1.35, 1.0, irr);   /* swash only on a sloping beach band (bed gradient), not across wide shallow flats where it read as giant white blotches */
           col = mix(col, vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), clamp(fo, 0.0, 1.0) * 0.75);
           aOut = mix(aOut, 0.62, (1.0 - smoothstep(0.9, 1.08, irr)) * (1.0 - fo) * (1.0 - bedA));
         }
