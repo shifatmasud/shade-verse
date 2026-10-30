@@ -1,7 +1,8 @@
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
+import { SEA_BLDS, seaSurface, seaLift, poolAt, islandH, inCalmZone } from './southsea';
 export type V3 = [number, number, number];
-export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number }
+export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number; y0?: number; sea?: true; kind?: string }
 
 export const CELL = 40, N = 15, HALF = (N * CELL) / 2;
 export const FOG: V3 = [0.84, 0.77, 0.74];
@@ -54,11 +55,14 @@ export function bridgeSurfaceAt(x: number, z: number): number | null {
     return PARK_BRIDGE.deckY * (1 - t) + parkH(x, z) * t;
 }
 export function isLakeWater(x: number, z: number) {
+    if (z < WATER_Z && poolAt(x, z)) return true;   // South Sea 2: the island's lagoon + waterfall pool swim like the park lake
     const dx = (x - PARK_POND.cx) / PARK_POND.rx, dz = (z - PARK_POND.cz) / PARK_POND.rz;
     return dx * dx + dz * dz < LAKE_SHORE * LAKE_SHORE && bridgeSurfaceAt(x, z) === null;
 }
 export function lakeWaveH(x: number, z: number, t: number) { return Math.sin(x * 0.11 + z * 0.08 + t * 0.42) * 0.09 + Math.sin(x * 0.21 - z * 0.16 - t * 0.31) * 0.035; }
-export function waterSurfaceAt(x: number, z: number, t = 0) { return isLakeWater(x, z) ? PARK_POND_Y + lakeWaveH(x, z, t) : WATER_Y; }
+export function waterSurfaceAt(x: number, z: number, t = 0) { if (z < WATER_Z) { const pl = poolAt(x, z); if (pl) return pl.y + lakeWaveH(x, z, t); } return isLakeWater(x, z) ? PARK_POND_Y + lakeWaveH(x, z, t) : WATER_Y; }
+/** floor of an inland water body (park lake or an island pool) */
+export function lakeFloorAt(x: number, z: number) { return z < WATER_Z ? (islandH(x, z) ?? WATER_Y - 3) : parkH(x, z); }
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 // Greater ocean (Shifat Oct 29, step 1 of the South Sea plan): playable sea far beyond the old city-edge wall, with a real depth profile:
 // shallow shelf near the beach -> slope -> a deep trench -> rising again toward the future 2nd-city platform.
@@ -68,7 +72,7 @@ export function seabedAt(x: number, z: number) {
     const d = WATER_Z - z;   // metres offshore
     let y = SEABED - 16 * _sm(110, 300, d) - 24 * _sm(420, 600, d) + 22 * _sm(760, 930, d);   // -10 shelf, -26 slope, -50 trench, -28 far shelf
     y += Math.sin(x * 0.045 + z * 0.021) * 1.4 * _sm(30, 120, d) + Math.sin(x * 0.013 - z * 0.032) * 2.2 * _sm(200, 400, d);   // dunes / ridges
-    return Math.min(y, SEABED);
+    return seaLift(x, z, Math.min(y, SEABED));   // South Sea 2: the island rises out of the seabed
 }
 
 let seedv = 1337;
@@ -163,6 +167,7 @@ function buildWorld() {
 }
 export const world = buildWorld();
 const blds = world.blds;
+for (const b of SEA_BLDS) blds.push(b);   // South Sea: lighthouse, shacks (and later bridge towers, harbor towers) collide and take webs like buildings
 
 // Fixed rooftop arena on the central tower, distinct from the player's spawn roof.
 const arenaRoof = blds.find((b) => b.host === undefined && Math.abs((b.x0 + b.x1) / 2 - 40) < 1 && Math.abs((b.z0 + b.z1) / 2) < 1);
@@ -246,7 +251,7 @@ function spawnEnemy(s: Sim): Enemy {
 }
 function spawnEnemy0(s: Sim, noRoof = false): Enemy {
     if (!noRoof && Math.random() < 0.4) {
-        const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return b.x1 - b.x0 > 10 && d > 30 && d < 150 && b.h < 60; });
+        const cand = blds.filter((b) => { const d = Math.hypot((b.x0 + b.x1) / 2 - s.pos[0], (b.z0 + b.z1) / 2 - s.pos[2]); return b.x1 - b.x0 > 10 && d > 30 && d < 150 && b.h < 60 && (!b.sea || b.kind === 'harbor') && !inCalmZone((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2); });
         if (cand.length) { const b = cand[Math.floor(Math.random() * cand.length)]; return { roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 }, x: (b.x0 + b.x1) / 2 + (Math.random() - 0.5) * 6, y: b.h + 1, z: (b.z0 + b.z1) / 2 + (Math.random() - 0.5) * 6, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 }; }
     }
     for (let k = 0; k < 60; k++) {
@@ -513,7 +518,7 @@ function collide(s: Sim, prevY: number) {
     const hw = 0.5, hh = 1.0;
     for (let bi = 0; bi < blds.length; bi++) {
         const b = blds[bi];
-        if (p[0] + hw <= b.x0 || p[0] - hw >= b.x1 || p[2] + hw <= b.z0 || p[2] - hw >= b.z1 || p[1] - hh > b.h + 0.05 || p[1] + hh <= 0) continue;
+        if (p[0] + hw <= b.x0 || p[0] - hw >= b.x1 || p[2] + hw <= b.z0 || p[2] - hw >= b.z1 || p[1] - hh > b.h + 0.05 || p[1] + hh <= (b.y0 ?? 0)) continue;
         if (prevY - hh >= b.h - 0.6 && v[1] <= 0.5) { p[1] = b.h + hh; if (v[1] < 0) v[1] = 0; s.ground = true; s.safe = [p[0], p[1], p[2]]; continue; }
         const l = p[0] + hw - b.x0, r = b.x1 - (p[0] - hw), f = p[2] + hw - b.z0, k = b.z1 - (p[2] - hw), m = Math.min(l, r, f, k);
         hitB = bi;
@@ -606,14 +611,18 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     // Manual pitch is retained on walls; no forced leveling.
     if (s.swim) {
         const inLake = isLakeWater(p[0], p[2]), surface = waterSurfaceAt(p[0], p[2], s.t);
-        const lakeDepth = inLake ? Math.max(1.2, surface - parkH(p[0], p[2]) - 1.05) : 5;
+        const lakeDepth = inLake ? Math.max(1.2, surface - lakeFloorAt(p[0], p[2]) - 1.05) : 5;
         const sp = s.dive ? (inLake ? 5.8 : 7) : (inLake ? 7.2 : 9.5), a = Math.min(1, dt * (inLake ? 3.2 : 4));
         const cur = s.dive ? Math.sin(s.t * 0.3) * 0.9 : 0;   // underwater current: gentle sideways drift while diving (same phase as the bubble drift)
         v[0] += (wx * sp + cur - v[0]) * a; v[2] += (wz * sp - v[2]) * a;
-        const target = s.dive ? (inLake ? Math.max(parkH(p[0], p[2]) + 1.05, surface - lakeDepth) : -5) : surface + 0.25;
+        const target = s.dive ? (inLake ? Math.max(lakeFloorAt(p[0], p[2]) + 1.05, surface - lakeDepth) : -5) : surface + 0.25;
         v[1] += ((target - p[1]) * 3 - v[1]) * Math.min(1, dt * (inLake ? 5.5 : 5));
         s.runPhase += Math.hypot(v[0], v[2]) * dt * 0.8;
         if (p[2] > WATER_Z - 1.2 && wz > 0.3 && p[1] > WATER_Y - 2.5) { p[1] = 1; p[2] = WATER_Z + 1.3; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; }
+        else if (p[2] < WATER_Z + 1 && Math.hypot(wx, wz) > 0.3 && p[1] > surface - 2.5) {   // South Sea 2: generic shore / ladder exit onto the island beach, a pool bank, the dock (and later the harbor)
+            const wl = Math.hypot(wx, wz), ax = p[0] + wx / wl * 1.6, az = p[2] + wz / wl * 1.6, sf = seaSurface(ax, az, 1e9);
+            if (sf !== null && sf > surface + 0.15 && sf < surface + 10.5 && !poolAt(ax, az)) { p[0] = ax; p[1] = sf + 1; p[2] = az; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; (s as any).leapT = 0.4; }
+        }
     } else if (s.wall && !s.web) {
         const n = s.wall, tx = -n[1], tz = n[0];
         const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
@@ -672,10 +681,11 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
 
     if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
-    if (s.swim) { const floor = isLakeWater(p[0], p[2]) ? parkH(p[0], p[2]) + 1.05 : seabedAt(p[0], p[2]) + 1; if (p[1] < floor) { p[1] = floor; if (v[1] < 0) v[1] = 0; } }
+    if (s.swim) { const floor = isLakeWater(p[0], p[2]) ? lakeFloorAt(p[0], p[2]) + 1.05 : seabedAt(p[0], p[2]) + 1; if (p[1] < floor) { p[1] = floor; if (v[1] < 0) v[1] = 0; } }
     const parkFloor = parkH(p[0], p[2]), bridgeFloor = bridgeSurfaceAt(p[0], p[2]);
-    const gy = 1.0 + Math.max(parkFloor, bridgeFloor ?? -Infinity);
-    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35)) && p[2] >= WATER_Z && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes
+    let gy = 1.0 + Math.max(parkFloor, bridgeFloor ?? -Infinity), onLand = p[2] >= WATER_Z, seaG = false;
+    if (p[2] < WATER_Z + 40) { const sf = seaSurface(p[0], p[2], prevY - 1.0); if (sf !== null && (!onLand || sf + 1 > gy)) { gy = sf + 1.0; onLand = true; seaG = true; } }   // South Sea: island ground, dock, bridge deck, harbor platform
+    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35) || (seaG && wasGround && v[1] <= 0.5 && p[1] - gy < 1.2)) && onLand && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes
         if (!s.ground) { s.ground = true; }
         p[1] = gy; if (v[1] < 0) v[1] = 0;
     }

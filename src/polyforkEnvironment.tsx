@@ -151,7 +151,7 @@ export function PolyforkBuildings() {
         const result = new Map<string, Placement[]>();
         CITY_ASSETS.forEach((asset) => result.set(asset.id, []));
         const rendered = buildings.filter((b) => {
-            if (b.host !== undefined) return false;
+            if (b.host !== undefined || (b as any).sea) return false;   // South Sea structures render themselves
             const x = (b.x0 + b.x1) * 0.5, z = (b.z0 + b.z1) * 0.5;
             if (isLegacyCityCore(x, z)) return false;
             // This 6-home outer block is already the authored Polyfork tenement prototype.
@@ -472,11 +472,11 @@ function rampGeometry(sign: -1 | 1) {
 //   depth colour gradient, shoreline blend (transmission -> 1 as depth -> 0).
 // Refs: three.js transmission pass approach; Morgan McGuire & Mara, "Efficient GPU Screen-Space Ray Tracing" (JCGT 2014);
 //   Inigo Quilez sphere intersection; Schlick 1994.
-const LAKE_VS = `uniform float uTime; varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;
+export const LAKE_VS = `uniform float uTime; varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;
 void main(){vec4 w=modelMatrix*vec4(position,1.0);float a1=w.x*0.11+w.z*0.08+uTime*0.42,a2=w.x*0.21-w.z*0.16-uTime*0.31;float h=0.09*sin(a1)+0.035*sin(a2);
 vec2 g=vec2(0.0099*cos(a1)+0.00735*cos(a2),0.0072*cos(a1)-0.0056*cos(a2));w.y+=h;vWorld=w.xyz;vHeight=h;vNormal=normalize(vec3(-g.x,1.0,-g.y));
 vec4 mv=viewMatrix*w;vView=mv.xyz;vScreen=projectionMatrix*mv;gl_Position=vScreen;}`;
-const LAKE_FS = `#include <packing>
+export const LAKE_FS = `#include <packing>
 uniform float uTime; uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene; uniform float uSteps; uniform float uNear; uniform float uFar;
 uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay;
 varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;

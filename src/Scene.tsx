@@ -24,6 +24,8 @@ import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSu
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { QUALITY, QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
+import { SouthSea } from './SouthSea';
+import { ISLAND } from './southsea';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -717,6 +719,7 @@ const treeWind = (leaf: boolean) => (sh: any) => {
     `);
 };
 const trunkWindShader = treeWind(false), leafWindShader = treeWind(true);
+const SOUTH_SEA_KIT = { tod: TOD, palmGeo, treeGeo, palmTrunkTex, palmFrondTex, palmFrondShader, trunkWindShader, leafWindShader };   // South Sea island reuses the park's palm + broadleaf species
 function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean }) {
     const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
@@ -1294,14 +1297,14 @@ const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
 const seabedMat = mkSea(false), wallMat = mkSea(true);
 // Water: sum-of-sines height field, fresnel sky mix, sun glitter, crest foam, distance haze (informed by public ocean-shader write-ups, see docs/REFERENCES.md)
 const WAVES = `
-float swellK(float z){ return 1.0 + 1.3 * smoothstep(-300.0, -750.0, z); }   // bigger swell offshore (greater ocean)
+float swellK(vec2 p){ return (1.0 + 1.3 * smoothstep(-300.0, -750.0, p.y)) * mix(0.22, 1.0, smoothstep(87.0, 185.0, length(p - vec2(-160.0, -820.0)))); }   // bigger swell offshore (greater ocean), calm around the island so waves lap its beach
 float wh(vec2 p, float t){
   float h = 0.0;
   h += sin(dot(p, vec2(0.008, 0.005)) + t * 0.32) * 0.78;
   h += sin(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42;
   h += sin(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12;
   h += sin(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035;
-  return h * swellK(p.y);
+  return h * swellK(p);
 }
 vec2 wg(vec2 p, float t){
   vec2 g = vec2(0.0);
@@ -1309,10 +1312,10 @@ vec2 wg(vec2 p, float t){
   g += cos(dot(p, vec2(-0.012, 0.009)) + t * 0.42) * 0.42 * vec2(-0.012, 0.009);
   g += cos(dot(p, vec2(0.033, -0.023)) + t * 0.72) * 0.12 * vec2(0.033, -0.023);
   g += cos(dot(p, vec2(0.076, 0.054)) + t * 0.98) * 0.035 * vec2(0.076, 0.054);
-  return g * swellK(p.y);
+  return g * swellK(p);
 }`;
 function waveH(x: number, z: number, t: number) {
-    const zk = Math.max(0, Math.min(1, (z + 300) / -450)), sk = 1 + 1.3 * zk * zk * (3 - 2 * zk);
+    const zk = Math.max(0, Math.min(1, (z + 300) / -450)), ik = Math.max(0, Math.min(1, (Math.hypot(x - ISLAND.cx, z - ISLAND.cz) - 87) / 98)), sk = (1 + 1.3 * zk * zk * (3 - 2 * zk)) * (0.22 + 0.78 * ik * ik * (3 - 2 * ik));
     return sk * (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035);
 }
 function waveAtWater(x: number, z: number, t: number) { return isLakeWater(x, z) ? lakeWaveH(x, z, t) : waveH(x, z, t); }
@@ -1421,7 +1424,7 @@ function oceanGeo() {
 // Seabed with the real depth profile (shelf -> slope -> trench), shared with the swim floor in the sim.
 function seabedGeo() {
     const nx = 110, nz = 150, x0 = -(HALF + 500), x1 = HALF + 500, z0 = WATER_Z + 1, z1 = SEA.zMin - 450, pos: number[] = [], idx: number[] = [];
-    for (let j = 0; j <= nz; j++) { const tz = j / nz, z = z0 + (z1 - z0) * Math.pow(tz, 1.25); for (let i = 0; i <= nx; i++) { const x = x0 + (x1 - x0) * i / nx; pos.push(x, seabedAt(x, z), z); } }
+    for (let j = 0; j <= nz; j++) { const tz = j / nz, z = z0 + (z1 - z0) * Math.pow(tz, 1.25); for (let i = 0; i <= nx; i++) { const x = x0 + (x1 - x0) * i / nx; pos.push(x, Math.min(seabedAt(x, z), -3.2), z); } }   // the island's own terrain mesh covers anything shallower
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, b = a + nx + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
 }
@@ -2006,6 +2009,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
         <OceanFollow waterRef={waterRef} />
         <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} />
+        <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * (HALF + 200), -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>

@@ -2,6 +2,14 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## South Sea 2: island (Oct 29) — Shifat: "Go. Don't ask... keep working"
+- Jungle island ~600 m offshore, west of the bridge corridor (centre -160,-820, ~185 m across), bridge-free per Shifat ("Jungle Island shouldn't have bridge"): reach it by swimming, gliding or riding a boat deck.
+- Real terrain: one heightfield (`src/southsea.ts` islandH) drives both the mesh and the sim: walk, run and land anywhere on it; the seabed and swim floor rise with its underwater slopes; swimming into the beach walks you out (shore exit), and a generic ladder exit climbs onto the dock / pool banks. Ocean swell is damped around the island so waves lap the sand instead of washing over it.
+- White-sand beach ring, 34 palms (22 on phone) using the park palm species, jungle broadleaves on the hill (60 / 34 on phone), a ~17 m waterfall (scrolling sheet + spray) into a plunge pool, and a lagoon; both pools use the park lake water shader and are swimmable.
+- Lighthouse on the 33 m peak: solid and a tall web anchor (top ~60 m), rotating beam at night. Small dock (walkable deck) and five beach shacks (solid, roofs walkable).
+- Calm zone: enemies never spawn on or around the island. Camera far plane 700 -> 1600 with a light distance haze on the sea sights so the island reads from the city beach.
+- Not measured: phone FPS (swiftshader only); vegetation/pools/falls only draw within ~330-430 m / 260 m of the island.
+
 ## env-iter4 (Oct 29) — Shifat: more foliage, randomized bubble emitter, boss follows & keeps attacking
 - Leafy trees (broadleaf/cherry/umbrella/poplar): leaf cards x1.65 (desktop high x1.9, weak GPU/phone x1.45, low x1.25) via QK.foliage; palms/conifers/trunks untouched.
 - Underwater bubbles: old fixed 140-point column system removed; pooled randomized emitter (one Points draw, 220 / 110 on phone) with seabed vents + bursts around the camera and a hero stream scaled by swim speed / dive; per-particle random size, rise speed, wobble, drift, life; fade in/out; pops under the real wave surface.
