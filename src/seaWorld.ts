@@ -63,10 +63,11 @@ export function riverNear(x: number, z: number): { d: number; y: number; fx: num
     }
     return best;
 }
+export const RIVER_DEEP = 4.2;   // metres of water in the river's centre
 function islandRaw(x: number, z: number, pools = true): number | null {
     const rr = islandRR(x, z);
     if (rr > 1.6) return null;
-    if (rr >= 1.0) { let y = -2.6 - 42 * (rr - 1.0); if (pools && rr < 1.25) { const rv = riverNear(x, z); if (rv && rv.d < rv.hw * 2.6) y = Math.min(y, rv.y - 1.4); } return y; }
+    if (rr >= 1.0) { let y = -2.6 - 42 * (rr - 1.0); if (pools && rr < 1.25) { const rv = riverNear(x, z); if (rv && rv.d < rv.hw * 2.6) y = Math.min(y, rv.y - RIVER_DEEP); } return y; }
     let y = 1.5 + 0.25 * Math.sin(x * 0.3 + z * 0.2);
     if (rr >= 0.8) y = y + (-2.6 - y) * sm(0.8, 1.0, rr);   // white-sand beach sloping into the sea
     else y += (hillH(x, z) + cliffBump(x, z)) * sm(0.8, 0.42, rr);   // long gentle foothills down to the beach
@@ -74,19 +75,20 @@ function islandRaw(x: number, z: number, pools = true): number | null {
         const dl = Math.hypot(x - LAGOON.cx, z - LAGOON.cz) / LAGOON.r;
         if (dl < 1.7) y = y + (LAGOON.y + 0.5 - 3.4 * sm(0.95, 0.5, dl) - y) * sm(1.7, 1.0, dl);
         const dp = Math.hypot(x - POOL.cx, z - POOL.cz) / POOL.r;
-        if (dp < 1.8) y = y + (POOL.y + 0.5 - 2.9 * sm(0.95, 0.5, dp) - y) * sm(1.8, 1.0, dp);
+        if (dp < 1.8) y = y + (POOL.y + 0.5 - 5.0 * sm(0.95, 0.5, dp) - y) * sm(1.8, 1.0, dp);
         {   // waterfall notch: flat at pool level up to the cliff face, then a near-vertical wall up to the ledge
             const rx = x - POOL.cx, rz = z - POOL.cz, along = rx * toPeak[0] + rz * toPeak[1], perp = Math.abs(-rx * toPeak[1] + rz * toPeak[0]);
             if (along > 0 && along < 30 && perp < 11) { const floor = POOL.y + 0.5 + Math.max(0, along - FALL_WALL) * 7, wf = sm(14, 6.5, perp); /* water blend: wider, softer notch sides (rounded gorge, not a sharp shelf) */ y = y + (Math.min(y, floor) - y) * wf; }
         }
         const rv = riverNear(x, z);
-        if (rv && rv.d < rv.hw * 2.6) { const bed = rv.y - 1.4 + 1.9 * sm(rv.hw * 0.75, rv.hw * 1.6, rv.d); y = y + (bed - y) * sm(rv.hw * 2.6, rv.hw * 1.6, rv.d); }
+        if (rv && rv.d < rv.hw * 2.6) { const bed = rv.y - RIVER_DEEP + (RIVER_DEEP + 0.5) * sm(rv.hw * 0.7, rv.hw * 1.6, rv.d);   /* deep swimmable channel (was 1.4 m) */ y = y + (bed - y) * sm(rv.hw * 2.6, rv.hw * 1.6, rv.d); }
     }
     return y;
 }
 POOL.y = (islandRaw(POOL.cx, POOL.cz, false) as number) - 1.2;
-mkRiver([[POOL.cx + 3, POOL.cz - 8], [POOL.cx + 1, POOL.cz - 18], [POOL.cx + 8, POOL.cz - 29], [POOL.cx + 20, POOL.cz - 33], [LAGOON.cx - 1, LAGOON.cz - 15]], POOL.y, LAGOON.y, 3.2);
-mkRiver([[LAGOON.cx + 15, LAGOON.cz + 4], [LAGOON.cx + 30, LAGOON.cz + 8], [LAGOON.cx + 44, LAGOON.cz + 11], [LAGOON.cx + 60, LAGOON.cz + 15], [LAGOON.cx + 76, LAGOON.cz + 17], [LAGOON.cx + 92, LAGOON.cz + 19]], LAGOON.y, -1.0, 4.0, 13);   // widens into an estuary and reaches sea level before the coast
+/* Oct 29 9:20 PM (Shifat: "make water fall to sea a direct curved river blended into sea water… make them deep so it feels better to swim under river water"):
+   ONE curved river now runs straight from the plunge pool to the south coast and widens into the sea (the old pool→lagoon→east-coast pair is gone; the lagoon stays a pond). */
+mkRiver([[POOL.cx + 2, POOL.cz - 8], [POOL.cx - 2, POOL.cz - 22], [POOL.cx - 6, POOL.cz - 38], [POOL.cx - 4, POOL.cz - 56], [POOL.cx - 1, POOL.cz - 74], [POOL.cx + 1, POOL.cz - 92], [POOL.cx + 2, POOL.cz - 108]], POOL.y, -1.0, 4.2, 12);
 export const LAGOON_RIM = 0.93, POOL_RIM = 0.9;
 /** island ground height (may be under the sea near the edge), or null away from the island */
 export function islandH(x: number, z: number): number | null { return islandRaw(x, z); }
