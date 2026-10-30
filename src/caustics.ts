@@ -12,3 +12,6 @@ vec3 causRGB(vec2 xz, float t){
   float l2 = texture2D(uCaus, b).r; vec2 o = vec2(0.0035, 0.0021);
   return vec3(min(texture2D(uCaus, a + o).r, l2), min(texture2D(uCaus, a).r, l2), min(texture2D(uCaus, a - o).r, l2));
 }`;
+// Tileable ripple normal map (public/waternormal.png): gradient of ~45 random integer-wavenumber waves, RG = slope. Scrolled in two layers for micro detail.
+export const WATER_NRM = new THREE.TextureLoader().load('/waternormal.png', (t) => { t.needsUpdate = true; });
+WATER_NRM.wrapS = WATER_NRM.wrapT = THREE.RepeatWrapping; WATER_NRM.minFilter = THREE.LinearMipmapLinearFilter; WATER_NRM.magFilter = THREE.LinearFilter; WATER_NRM.colorSpace = THREE.NoColorSpace; WATER_NRM.anisotropy = 4;

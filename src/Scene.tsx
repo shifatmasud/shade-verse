@@ -26,11 +26,11 @@ import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnv
 import { RoofProps } from './RoofProps';
 import { StreetProps } from './StreetProps';
 import { OCC } from './occlude';
-import { QUALITY, QK, HQ, AA_FXAA } from './quality';
+import { QUALITY, QK, HQ, AA_FXAA, LOWQ } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SouthSea, CITY_LOD } from './SouthSea';
 import { ISLAND, islandH } from './seaWorld'
-import { CAUSTIC_TEX, CAUSTIC_GLSL } from './caustics';
+import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM } from './caustics';
 import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -1352,10 +1352,11 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, uCaus: { value: CAUSTIC_TEX }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
+    uniform sampler2D uNrm; uniform float uDet2;
     uniform sampler2D tScene; uniform sampler2D tDepth; uniform sampler2D uBed; uniform vec3 uBedC; uniform float uUseScene, uSteps, uNear, uFar; uniform mat4 uProj;
     vec2 bedUV(vec2 xz){ return (xz - uBedC.xy) / (2.0 * uBedC.z) + 0.5; }
     float bedY(vec2 xz){ return texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0; }
@@ -1365,6 +1366,11 @@ const waterMat = new THREE.ShaderMaterial({
       vec2 g = wg(vW.xz, uTime) + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
       g = mix(g, wg(vW.xz, uTime), smoothstep(15.0, 70.0, length(cameraPosition.xz - vW.xz)));
+      // AAA-style micro detail (Sea of Thieves / Uncharted use scrolling normal maps over the big waves): two layers of a tileable ripple normal
+      // map drifting in different directions; mipmaps + a distance fade stop far-field shimmer. Above the surface only.
+      float wDist = length(cameraPosition - vW);
+      if (gl_FrontFacing) { vec2 d1 = texture2D(uNrm, vW.xz * 0.045 + vec2(0.011, 0.006) * uTime).rg * 2.0 - 1.0, d2 = vec2(0.0); if (uDet2 > 0.5) d2 = texture2D(uNrm, mat2(0.8, -0.6, 0.6, 0.8) * vW.xz * 0.12 - vec2(0.008, -0.012) * uTime).rg * 2.0 - 1.0;   /* phones: one layer */
+        g += (d1 * 0.11 + d2 * 0.06) * mix(1.0, 0.4, smoothstep(40.0, 300.0, wDist)); }
       vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       bool below = !gl_FrontFacing;
@@ -1415,7 +1421,11 @@ const waterMat = new THREE.ShaderMaterial({
         body = sceneCol(uv2) * Tr + body * (1.0 - Tr);
       }
       vec3 col = mix(body, refl, fr);
-      col += vec3(1.0, 0.85, 0.7) * (pow(max(dot(r, uSun), 0.0), 220.0) * 1.6 + pow(max(dot(r, uSun), 0.0), 40.0) * 0.35);
+      // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
+      // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
+      vec3 sunC = mix(vec3(1.0, 0.42, 0.16), vec3(1.0, 0.93, 0.82), smoothstep(0.02, 0.35, uSun.y));
+      float ndh = max(dot(n, normalize(uSun + v)), 0.0), shin = mix(700.0, 40.0, smoothstep(15.0, 380.0, wDist)), rs = max(dot(r, uSun), 0.0);
+      vec3 sunSpec = sunC * min(pow(ndh, shin) * shin * 0.0075 + pow(rs, 40.0) * 0.3 + pow(rs, 8.0) * 0.12 * (1.0 - smoothstep(0.1, 0.5, uSun.y)), 2.2) * smoothstep(-0.05, 0.04, uSun.y);   // + a broad warm sheen when the sun is low
       col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, wh(vW.xz, uTime)) * 0.25 * (1.0 - fr);
       float crest = smoothstep(0.95, 1.22, wh(vW.xz, uTime) + sin(vW.x * 0.07) * sin(vW.z * 0.06) * 0.035);
       col = mix(col, vec3(1.0), crest * 0.11);
@@ -1452,6 +1462,7 @@ const waterMat = new THREE.ShaderMaterial({
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
       if (!below) {
         col *= mix(0.3, 1.0, uDay);
+        col += sunSpec * (1.0 - haze * 0.5);
         // Stylised cool night-sky lobe, not scene reflections or a physical moon model.
         col += vec3(0.18, 0.26, 0.38) * (1.0-uDay) * pow(max(dot(r, normalize(vec3(-0.3, 0.6, -0.5))), 0.0), 12.0);
       }
