@@ -56,6 +56,10 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec2 ca = (mix(ca4.rg, ca4.ba, wt) - 0.5) * wr + 0.5, cb = (mix(cb4.rg, cb4.ba, wt) - 0.5) * wr + 0.5;
         vec2 d1 = mix(ca, cb, smoothstep(0.2, 0.8, fv - 0.1 * (ca.x - cb.x + ca.y - cb.y))) * 2.0 - 1.0, d2 = vec2(0.0); 
         g += (d1 * 0.125 + d2) * mix(1.0, 0.12, smoothstep(30.0, 220.0, wDist)); }   /* far away the waves carry the shape; a tiled ripple there would read as a pattern */
+      /* far-sea variation (Shifat 3:23 PM 'fbm'): wind gust patches - a very low-frequency noise (one fetch of the caustic tile's blurred
+         mips) roughens some stretches and leaves others glassy, so the open sea never reads as one uniform sheet. Same on every device. */
+      float gust = texture2D(uCaus, vW.xz * 0.0013 + vec2(0.003, 0.0017) * uTime).r;
+      g *= mix(0.55, 1.45, smoothstep(0.25, 0.75, gust));
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       bool below = !gl_FrontFacing;
