@@ -41,6 +41,24 @@ const colorize = (g: THREE.BufferGeometry, c: THREE.ColorRepresentation) => { co
 const merged = (parts: THREE.BufferGeometry[]) => { const g = mergeGeometries(parts.map((p) => { const q = p.index ? p.toNonIndexed() : p; if (q.attributes.uv) q.deleteAttribute('uv'); if (!q.attributes.normal) q.computeVertexNormals(); return q; }), false)!; return g; };
 let _seed = 4242; const rnd = () => (_seed = (_seed * 16807) % 2147483647) / 2147483647;
 
+
+/* Upgrade #4 (Oct 29 plan "beach sand flat"): per-pixel beach on the island terrain — a darker wet-sand band that a slow wash
+   creeps up and back with a thin foam line at its edge, and wind ripples on the dry sand. Sand-coloured pixels only. */
+const BEACH_T = { value: 0 };
+function beachShader(sh: any) {
+    sh.uniforms.uBT = BEACH_T;
+    sh.fragmentShader = 'uniform float uBT;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    { vec2 bxz = vHzW.xz; float yb = vHzW.y;
+      float sandM = smoothstep(0.5, 0.62, diffuseColor.r) * smoothstep(0.02, 0.08, diffuseColor.r - diffuseColor.b) * smoothstep(-2.4, -1.4, yb) * (1.0 - smoothstep(1.6, 2.4, yb));
+      float wash = -0.85 + 0.32 * sin(uBT * 0.55 + bxz.x * 0.045 + bxz.y * 0.03) + 0.08 * sin(uBT * 1.3 + bxz.y * 0.21);
+      float wet = 1.0 - smoothstep(wash + 0.1, wash + 1.25, yb);
+      float rip = sin(dot(bxz, vec2(0.92, 0.38)) * 2.3 + sin(bxz.y * 0.27 + bxz.x * 0.11) * 2.2);
+      float ripM = 0.5 + 0.5 * sin(bxz.x * 0.13 + 1.7) * sin(bxz.y * 0.11 + 0.6); vec3 sc = diffuseColor.rgb * (1.0 + 0.035 * rip * ripM * (1.0 - wet));
+      sc = mix(sc, sc * vec3(0.68, 0.64, 0.55), wet * 0.9);
+      float foam = exp(-pow((yb - wash - 0.05) / 0.07, 2.0)) * (0.6 + 0.4 * sin(bxz.x * 1.7 + bxz.y * 1.3 + uBT * 2.0));
+      sc = mix(sc, vec3(1.0), clamp(foam, 0.0, 1.0) * 0.75);
+      diffuseColor.rgb = mix(diffuseColor.rgb, sc, sandM); }`);
+}
 // ---------------------------------------------------------------- island terrain
 function islandTerrainGeo() {
     const half = ISLAND.R * 1.22, step = PHONE ? 1.8 : 1.3,   // water blend: finer grid so the carved river banks, plunge pool and waterfall notch read as smooth curves, not 2.6 m facets
@@ -264,7 +282,8 @@ function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number }) {
 type Inst = { x: number; y: number; z: number; s: number; r: number; sy?: number; tint?: number };
 function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     const terrain = useMemo(islandTerrainGeo, []);
-    const terrainMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1d1b16' }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
+    const terrainMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1d1b16' }); m.onBeforeCompile = hazeShader(kit.tod, beachShader); return m; }, []);
+    useFrame((_, dt) => { BEACH_T.value += Math.min(dt, 0.1); });
     const lh = useMemo(lighthouseGeo, []), shacks = useMemo(shacksGeo, []), dock = useMemo(dockGeo, []);
     const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.15, 0.0), fallsSheet(FALLS.w, 0.7), fallsSheet(FALLS.w * 0.8, 1.4)], []);
     const spray = useMemo(() => sprayGeo(PHONE ? 50 : 110, FALLS.w), []), mist = useMemo(() => sprayGeo(PHONE ? 14 : 30, FALLS.w * 1.6), []), river = useMemo(riverGeo, []);
