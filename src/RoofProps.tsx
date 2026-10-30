@@ -57,6 +57,10 @@ export function RoofProps() {
                 const dy = ys[0] - sp.top;
                 sp.pcs.forEach((p, k) => out[names.get(sp.lists[k])!].push({ ...p, y: p.y + dy }));
             }
+            // water tanks are solid (land on them, bump into them); the small AC units and vents stay walk-through to keep the per-frame collision loops cheap on phones
+            for (const t of out.tank) { const hb = buildings.findIndex((b: any) => b.host === undefined && !b.sea && t.x > b.x0 && t.x < b.x1 && t.z > b.z0 && t.z < b.z1);
+                if (hb >= 0) (buildings as any[]).push({ x0: t.x - 2.0, x1: t.x + 2.0, z0: t.z - 2.0, z1: t.z + 2.0, h: t.y + 2.5, host: hb }); }
+            if (DBG) (window as any).__roofTanks = out.tank.map((t) => [t.x, t.y, t.z]);
             if (DBG) (window as any).__roofProps = { spots: spotsRaw.spots.length, placed: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.length])) };
             setSets(out);
         };
