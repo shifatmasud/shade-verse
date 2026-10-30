@@ -1521,7 +1521,8 @@ function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: React.M
         const ok = !!w && near && !phoneFar && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;
         if (!ok) { u.uUseScene.value = 0; return; }
         st.n++;
-        if ((scale > 0.6 && !PHONE_REFL) || st.n % 2 === 0 || st.copies === 0) {   /* phones: half rate (one frame of lag under rippled water is invisible) */
+        const farSea = cam.position.z < WATER_Z - 320;
+        if ((scale > 0.6 && !PHONE_REFL && !farSea) || st.n % 2 === 0 || st.copies === 0) {   /* phones always, desktop out at open sea (Shifat 10:27 'go alternative'): half rate - one frame of lag under rippled water is invisible */
             worldBufferSize(gl, st.buf);
             const W = Math.max(160, Math.round(st.buf.x * QK.lakeCopyScale)), H = Math.max(90, Math.round(st.buf.y * QK.lakeCopyScale));
             if (target.width !== W || target.height !== H) target.setSize(W, H); u.uSceneTx.value.set(1 / W, 1 / H);
