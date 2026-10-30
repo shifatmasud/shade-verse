@@ -1375,11 +1375,11 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uBoat: { value: [0, 1, 2, 3, 4].map(() => new THREE.Vector4(0, 1e5, 0, 0)) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform float uFogK; uniform vec4 uHeroA, uHeroB;
+    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform float uFogK; uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB;
     // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
     float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
       float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0) return -1.0;
@@ -1475,6 +1475,19 @@ const waterMat = new THREE.ShaderMaterial({
         refl = mix(refl, hc * mix(0.35, 1.0, uDay), hk * 0.9); heroK = hk; heroC = hc * mix(0.35, 1.0, uDay);
       }
       vec3 col = mix(body, refl, fr);
+      { // boat wakes (Kelvin pattern, ref: Sea of Thieves / AC4 ship wakes): two foam arms at the 19.5 deg Kelvin angle + a churned centre trail and a bow wave,
+        // laced by the caustic-cell network so it breaks up like real wake foam; fades over ~70 m. Up to 5 boats, early-out by distance.
+        float wk = 0.0;
+        for (int i = 0; i < 5; i++) { vec4 b = uBoat[i]; vec2 d = vW.xz - b.xy; if (dot(d, d) > 6400.0 || below) continue;
+          vec2 fw = vec2(sin(b.z), cos(b.z)); float s = dot(d, fw), l = dot(d, vec2(fw.y, -fw.x)), bk = -s;
+          float fade = (1.0 - smoothstep(-7.0, -4.5, s)) * (1.0 - smoothstep(8.0, 75.0, bk)) * clamp(b.w * 0.6, 0.0, 1.0);
+          float arm = abs(abs(l) - max(bk - 5.0, 0.0) * 0.354 - 1.6), aw = 0.6 + max(bk, 0.0) * 0.06;
+          float trail = exp(-l * l / (3.0 + max(bk, 0.0) * 0.18)) * (1.0 - smoothstep(3.0, 45.0, bk));
+          float bow = exp(-pow(length(vec2(l * 0.8, s - 6.0)) - 2.8, 2.0) * 1.5) * smoothstep(2.0, 6.5, s);
+          wk = max(wk, (exp(-arm * arm / aw) * 0.9 + trail * 0.75) * fade + bow * 0.7); }
+        if (wk > 0.01) { float lace = texture2D(uCaus, vW.xz * 0.23 + vec2(uTime * 0.01, 0.0)).r + 0.5 * texture2D(uCaus, vW.xz * 0.61).g;
+          col = mix(col, vec3(0.95, 0.98, 1.0) * mix(0.35, 1.0, uDay), clamp(wk * smoothstep(0.25, 0.85, lace * 0.8 + wk * 0.35), 0.0, 1.0) * 0.85); }
+      }
       col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.9);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
@@ -1601,7 +1614,7 @@ function boatParts(kind: number) {
 function Boats({ sim }: { sim: Sim }) {
     const geo = useMemo(() => [boatParts(0), boatParts(1)], []);
     const refs = useRef<THREE.Group[]>([]);
-    useFrame(() => { for (let i = 0; i < BOATS.length; i++) { const g = refs.current[i]; if (!g) continue; const b = boatAt(i, sim.t); g.position.set(b.x, b.y, b.z); g.rotation.set(0, b.yaw, b.roll); } });
+    useFrame(() => { const ub = waterMat.uniforms.uBoat.value as THREE.Vector4[]; for (let i = 0; i < BOATS.length; i++) { const b = boatAt(i, sim.t); if (i < 5) ub[i].set(b.x, b.z, b.yaw, Math.hypot(b.vx, b.vz)); const g = refs.current[i]; if (!g) continue; g.position.set(b.x, b.y, b.z); g.rotation.set(0, b.yaw, b.roll); } });   /* wakes follow each boat */
     return <group name="boats">{BOATS.map((b, i) => <group key={i} ref={(g) => { if (g) refs.current[i] = g; }}>
         <mesh geometry={geo[b.kind].body}><meshLambertMaterial vertexColors /></mesh>
         <mesh geometry={geo[b.kind].sail}><meshLambertMaterial color={b.kind ? '#ffd166' : '#fafafa'} side={THREE.DoubleSide} /></mesh>
