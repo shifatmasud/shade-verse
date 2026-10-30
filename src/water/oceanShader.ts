@@ -102,7 +102,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 Rv = normalize((viewMatrix * vec4(r, 0.0)).xyz); float tp = 0.0;
         for (int i = 0; i < 16; i++) { if (float(i) >= uSteps || uUseRefl > 0.5) break; float k = (float(i) + 1.0) / uSteps; float tt = 140.0 * k * k; vec3 Q = vView + Rv * tt; vec4 c = uProj * vec4(Q, 1.0); if (c.w <= 0.0) break; vec2 uv = c.xy / c.w * 0.5 + 0.5;
           if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break; float sz = oceanZ(uv);
-          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); vec3 sc_ = sceneCol(uv); refl = mix(refl, mix(sc_, dot(sc_, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + refl * 0.25, 0.7), e * 0.3); break;   /* same subtle blue as the mirror (Shifat 3:49 PM) */ }
+          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); vec3 sc_ = sceneCol(uv); refl = mix(refl, mix(sc_, dot(sc_, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + refl * 0.25, 0.7), e * 0.5); break;   /* same subtle blue as the mirror (Shifat 3:49 PM) */ }
           tp = tt; }
         // refraction: the real seabed / shore / swimmer behind the surface, absorbed by the water thickness (red dies first)
         float dd = max(wz - oceanZ(suv), 0.0); vec3 Nv = (viewMatrix * vec4(n, 0.0)).xyz; vec2 uv2 = suv + Nv.xy * 0.04 * clamp(dd * 0.3, 0.0, 1.0);
@@ -118,7 +118,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
            one low-res mirror on every device, 2 spread taps (+ bilinear = wide soft blur), tinted toward the water's own blue and laid in at ~30 %. */
         vec4 rs = (texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998))) * 0.5;
         vec3 rsc = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb; vec3 rsb = mix(rsc, dot(rsc, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + refl * 0.25, 0.7);
-        refl = mix(refl, rsb, rs.a * 0.3); nGlow = rsc * rs.a;
+        refl = mix(refl, rsb, rs.a * 0.5); nGlow = rsc * rs.a;
       }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
@@ -146,9 +146,16 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
         if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA) tA = capH(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.25, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34, uHeroDA);   /* only the part above the surface reflects (Shifat 5:12) */
         if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB) tB = capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.25, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
-        if (tA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = 1.0; }   // Shadow's dark suit
-        if (tB > 0.0 && (tA < 0.0 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = 1.0; }   // Ghost's pale suit
-        refl = mix(refl, hc * mix(0.35, 1.0, uDay), hk * 0.9); heroK = hk; heroC = hc * mix(0.35, 1.0, uDay);
+        // Shifat 4:26 PM 'fix reflection of heroes on water, looks wrong': the solid hard-edged pill is now a soft, rippled, sea-tinted reflection that
+        // matches the subtle blurry city mirror - a second, fatter capsule gives a feathered edge, the colour leans to the water's blue, and it fades with distance.
+        float sA = (tA > 0.0) ? 1.0 : 0.0, sB = (tB > 0.0) ? 1.0 : 0.0;
+        if (uHeroA.w > 0.5 && sA < 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA && capH(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.15, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.55, uHeroDA) > 0.0) sA = 0.45;
+        if (uHeroB.w > 0.5 && sB < 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB && capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.15, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.5) > 0.0) sB = 0.45;
+        if (sA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = sA; }   // Shadow's dark suit
+        if (sB > 0.0 && (sA < 0.5 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = sB; }   // Ghost's pale suit
+        hc = mix(hc * mix(0.35, 1.0, uDay), refl * vec3(0.55, 0.7, 0.85), 0.45);   /* sea-tinted, like the rest of the mirror */
+        hk *= 0.6 * (1.0 - smoothstep(10.0, 40.0, length(cameraPosition - vW)));
+        refl = mix(refl, hc, hk); heroK = hk; heroC = hc;
       }
       vec3 col = mix(body, refl, fr);
       { // boat wakes (Kelvin pattern, ref: Sea of Thieves / AC4 ship wakes): two foam arms at the 19.5 deg Kelvin angle + a churned centre trail and a bow wave,
@@ -166,7 +173,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
           n = normalize(n + vec3(lace - 0.75, 0.0, texture2D(uCaus, vW.xz * 0.37 + 0.3).b - 0.5) * min(wk, 1.0) * 0.9);   /* churned wake water: the bent normal breaks the sun glitter into scattered sparkles along the arms and trail */
           col *= 1.0 - 0.18 * exp(-pow(abs(wk - 0.25) * 4.0, 2.0)); }   /* faint troughs just outside the foam give the wake relief */
       }
-      col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.9);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
+      col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.5);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
       // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
