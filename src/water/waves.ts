@@ -14,16 +14,18 @@ export const LONG_WAVES: string[][] = [
 /** Wind-wave trains at golden-angle directions, each with a slow envelope and a phase warp (never tiles):
  *  [envBase, envAmp, envKx, envKz, envPhase, envSpeed, kx, kz, warpAmp, warpKx, warpKz, warpPhase, speed, amplitude].
  *  The first 4 are the physics trains (also in waveSumJS); the last 5 are short visual chop (GLSL only, skippable via WG_CHOP). */
+/* Spectrum pass (Shifat 3:23 PM): every train now moves at the deep-water dispersion speed w = sqrt(g k) (was ~half: slow-motion sea), and the
+   5 visual chop trains have a real wind-sea steepness (k*A ~ 0.06-0.08, saturation range of the JONSWAP/Phillips spectrum) instead of ~0.02. */
 export const GOLDEN_WAVES: string[][] = [
-    ['0.55', '0.45', '-0.0018', '0.00583', '0.0', '0.03', '0.1464', '0.04529', '1.3', '-0.00317', '0.01025', '0.0 * 2.3', '0.6744', '0.26'],
-    ['0.55', '0.45', '-0.00261', '-0.00551', '1.7', '0.03', '-0.19587', '0.0926', '1.3', '-0.00648', '-0.01371', '1.7 * 2.3', '0.8018', '0.18'],
-    ['0.55', '0.45', '0.00565', '0.00231', '3.4', '0.03', '0.10942', '-0.26808', '1.3', '0.01877', '0.00766', '3.4 * 2.3', '0.927', '0.12'],
-    ['0.55', '0.45', '-0.00572', '0.00212', '5.1', '0.03', '0.13366', '0.36156', '1.3', '-0.02531', '0.00936', '5.1 * 2.3', '1.0695', '0.08'],
-    ['0.5', '0.5', '0.0038', '-0.00738', '6.8', '0.04', '-0.45426', '-0.23365', '1.1', '0.01168', '-0.02271', '6.8', '1.2312', '0.05'],
-    ['0.5', '0.5', '0.00219', '0.00801', '8.5', '0.04', '0.6967', '-0.19024', '1.1', '0.00951', '0.03483', '8.5', '1.464', '0.032'],
-    ['0.5', '0.5', '-0.00702', '-0.00443', '10.2', '0.04', '-0.54941', '0.87127', '1.1', '-0.04356', '-0.02747', '10.2', '1.7483', '0.02'],
-    ['0.5', '0.5', '0.00817', '-0.00148', '11.9', '0.04', '-0.25427', '-1.40518', '1.1', '0.07026', '-0.01271', '11.9', '2.0585', '0.013'],
-    ['0.5', '0.5', '-0.00502', '0.00661', '13.6', '0.04', '1.51557', '1.1525', '1.1', '-0.05763', '0.07578', '13.6', '2.377', '0.009'],
+    ['0.55', '0.45', '-0.0018', '0.00583', '0.0', '0.03', '0.1464', '0.04529', '1.3', '-0.00317', '0.01025', '0.0 * 2.3', '1.2261', '0.26'],
+    ['0.55', '0.45', '-0.00261', '-0.00551', '1.7', '0.03', '-0.19587', '0.0926', '1.3', '-0.00648', '-0.01371', '1.7 * 2.3', '1.4579', '0.18'],
+    ['0.55', '0.45', '0.00565', '0.00231', '3.4', '0.03', '0.10942', '-0.26808', '1.3', '0.01877', '0.00766', '3.4 * 2.3', '1.6854', '0.12'],
+    ['0.55', '0.45', '-0.00572', '0.00212', '5.1', '0.03', '0.13366', '0.36156', '1.3', '-0.02531', '0.00936', '5.1 * 2.3', '1.9446', '0.08'],
+    ['0.5', '0.5', '0.0038', '-0.00738', '6.8', '0.04', '-0.45426', '-0.23365', '1.1', '0.01168', '-0.02271', '6.8', '2.2386', '0.150'],
+    ['0.5', '0.5', '0.00219', '0.00801', '8.5', '0.04', '0.6967', '-0.19024', '1.1', '0.00951', '0.03483', '8.5', '2.6617', '0.096'],
+    ['0.5', '0.5', '-0.00702', '-0.00443', '10.2', '0.04', '-0.54941', '0.87127', '1.1', '-0.04356', '-0.02747', '10.2', '3.1788', '0.060'],
+    ['0.5', '0.5', '0.00817', '-0.00148', '11.9', '0.04', '-0.25427', '-1.40518', '1.1', '0.07026', '-0.01271', '11.9', '3.7428', '0.039'],
+    ['0.5', '0.5', '-0.00502', '0.00661', '13.6', '0.04', '1.51557', '1.1525', '1.1', '-0.05763', '0.07578', '13.6', '4.3218', '0.027'],
 ];
 export const PHYSICS_TRAINS = 4;
 
@@ -58,3 +60,23 @@ export function waveSumJS(x: number, z: number, t: number) {
     for (const w of NG) s += Math.sin(x * w[6] + z * w[7] + w[8] * Math.sin(x * w[9] + z * w[10] + w[11]) + t * w[12]) * w[13] * (w[0] + w[1] * Math.sin(x * w[2] + z * w[3] + w[4] + t * w[5]));
     return s;
 }
+
+
+/* Gerstner (Shifat 3:23 PM 'realistic yet highly optimized waves: study fft, gerstner, spectrum'): the swell + physics trains also move the
+   surface sideways toward each crest (x = x0 - Q*A*dir*cos), so crests come out sharp and troughs broad and flat like real sea, instead of
+   round sine humps. Only trains longer than the vertex grid (>= 16 m) displace; the fragment shader gets the matching Jacobian term J so the
+   lighting sharpens at the crests too (normal = (-gx, 1 - J, -gz)). Q = steepness share per train (sum of Q*k*A stays < 1: no loops). */
+export const GERSTNER_Q = 0.9;
+function kn(w: string[], a: number, b: number) { const x = Number(w[a]), z = Number(w[b]), l = Math.hypot(x, z); return [x / l, z / l, l]; }
+function wdLong(w: string[]) { const [dx, dz] = kn(w, 0, 1); return `  d -= cos(dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}) * ${w[3]} * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)});`; }
+function wdGold(w: string[]) { const [dx, dz] = kn(w, 6, 7); return `    ${env(w)} d -= cos(${arg(w)}) * ${w[13]} * m * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)});`; }
+function wjLong(w: string[]) { const [, , k] = kn(w, 0, 1); return `  { float a = dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}; g += cos(a) * ${w[3]} * vec2(${w[0]}, ${w[1]}); j += sin(a) * ${(Number(w[3]) * k).toFixed(5)}; }`; }
+function wjGold(w: string[]) { const [, , k] = kn(w, 6, 7); return `    ${env(w)} { float a = ${arg(w)}; g += cos(a) * ${w[13]} * m * vec2(${w[6]}, ${w[7]}); j += sin(a) * ${(Number(w[13]) * k).toFixed(5)} * m; }`; }
+/** GLSL: wdisp() horizontal Gerstner displacement (vertex) and wgj() = (gradient.xy, Jacobian J) for the fragment normal. Needs WAVES_GLSL first. */
+export const GERSTNER_GLSL = [
+    '', `#define GQ ${GERSTNER_Q.toFixed(2)}`,
+    'vec2 wdisp(vec2 p, float t){', '  vec2 d = vec2(0.0);', ...LONG_WAVES.map(wdLong), '  { float m;',
+    ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(wdGold), '  }', '  return d * (GQ * swellK(p));', '}',
+    'vec3 wgj(vec2 p, float t){', '  vec2 g = vec2(0.0); float j = 0.0;', ...LONG_WAVES.map(wjLong), '  { float m;',
+    ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(wjGold), '    if (WG_CHOP) {', ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(wjGold), '    }',
+    '  }', '  float s = swellK(p); return vec3(g * s, j * GQ * s);', '}'].join('\n');
