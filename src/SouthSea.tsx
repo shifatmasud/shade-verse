@@ -223,7 +223,11 @@ const RIVER_MAT = new THREE.ShaderMaterial({
     void main(){ float sp = 1.6 + vSl * 40.0; vec2 f = vec2(vUv.x * 4.0, vUv.y * 0.55 - uT * sp);
       float streak = vn(f * vec2(3.0, 1.0)) * 0.6 + vn(f * vec2(9.0, 2.5) + 3.1) * 0.4;
       float bank = 1.0 - smoothstep(0.0, 0.2, min(vUv.x, 1.0 - vUv.x));
-      float white = clamp(smoothstep(0.6, 0.88, streak) * (0.35 + vSl * 9.0) + bank * 0.45 * smoothstep(0.4, 0.7, vn(f * 6.0)), 0.0, 1.0);
+      // flow foam (Sea of Thieves / RDR2 rivers): thin lacy threads stretched along the current, not round blobs - the shared caustic web,
+      // scrolled downstream at the flow speed in two layers, gated by the slow streak noise so it gathers in lanes and thickens on steep runs and banks
+      vec2 fu = vec2(vUv.x * 1.6, vUv.y * 0.22 - uT * sp * 0.4); float lace = texture2D(uCaus, fu).r * 0.65 + texture2D(uCaus, fu * vec2(2.1, 1.7) + vec2(0.37, -uT * sp * 0.25)).g * 0.45;
+      float lane = smoothstep(0.35, 0.75, streak);
+      float white = clamp(smoothstep(0.55, 0.95, lace * (0.55 + 0.6 * lane)) * (0.45 + vSl * 9.0) + bank * 0.5 * smoothstep(0.5, 0.9, lace), 0.0, 1.0) * 0.85;
       vec3 V = normalize(cameraPosition - vW); float fr = 0.03 + 0.97 * pow(1.0 - max(V.y, 0.0), 5.0);
       vec3 body = mix(vec3(0.05, 0.42, 0.45), vec3(0.18, 0.66, 0.62), 0.5 + 0.5 * streak);
       { // Shifat 2:07 AM "transparency & refraction law": bend the view ray by Snell (1.333), march it across the channel's real depth profile
