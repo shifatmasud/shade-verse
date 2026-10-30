@@ -1375,11 +1375,11 @@ const waterMat = new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uUWF: UWF, uDay: TOD.day, uSun: TOD.sunU, uSky: { value: TOD.sky }, uDeep: { value: new THREE.Color('#0a6f92') }, uShallow: { value: new THREE.Color('#2fa8c4') },
         // Shifat Oct 29 "ocean water can be upgraded like lake waters": same screen-space reflection + refraction the lake uses (OceanScreenSpace fills these)
-        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uBoat: { value: [0, 1, 2, 3, 4].map(() => new THREE.Vector4(0, 1e5, 0, 0)) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroDA: { value: new THREE.Vector4(0, 0, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
+        tScene: { value: null }, tDepth: { value: null }, uBed: { value: BED_TEX }, tRefl: { value: null }, uReflSoft: { value: new THREE.Vector2(0, 0) }, uSceneTx: { value: new THREE.Vector2(0.004, 0.007) }, uFogK: { value: (QUALITY.coarse || LOWQ) ? 0.0042 : 0.0032 }, uBoat: { value: [0, 1, 2, 3, 4].map(() => new THREE.Vector4(0, 1e5, 0, 0)) }, uHeroA: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroB: { value: new THREE.Vector4(0, -999, 0, 0) }, uHeroDA: { value: new THREE.Vector4(0, 0, 0, 0) }, uRefMat: { value: new THREE.Matrix4() }, uUseRefl: { value: 0 }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uDet2: { value: (QUALITY.coarse || LOWQ) ? 0 : 1 }, uBedC: { value: new THREE.Vector3(BED_C.x, BED_C.z, BED_C.h) }, uUseScene: { value: 0 }, uSteps: { value: 7 }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() } },
     vertexShader: WAVES + `uniform float uTime; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; void main(){ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);'),
     fragmentShader: '#include <packing>\n' + WAVES + `uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform vec2 uSceneTx; uniform float uFogK;
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
     // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
@@ -1396,7 +1396,7 @@ const waterMat = new THREE.ShaderMaterial({
     float bedEdge(vec2 xz){ vec2 q = bedUV(xz); return smoothstep(0.0, 0.12, min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y))); }
     float bedY(vec2 xz){ float e = bedEdge(xz); return mix(seaBed(xz), texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0, e); }
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
-    vec3 sceneCol(vec2 uv){ return linearToOutputTexel(vec4(texture2D(tScene, uv).rgb, 1.0)).rgb; }
+    vec3 sceneCol(vec2 uv){ vec2 o = uSceneTx * 0.7; vec3 c = texture2D(tScene, uv + vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv - vec2(o.x, o.y * 0.35)).rgb + texture2D(tScene, uv + vec2(-o.x * 0.35, o.y)).rgb + texture2D(tScene, uv - vec2(-o.x * 0.35, o.y)).rgb; return linearToOutputTexel(vec4(c * 0.25, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
     void main(){
       vec2 g = wg(vW.xz, uTime) + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
@@ -1767,7 +1767,7 @@ function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: React.M
         if (scale > 0.6 || st.n % 2 === 0 || st.copies === 0) {
             worldBufferSize(gl, st.buf);
             const W = Math.max(160, Math.round(st.buf.x * QK.lakeCopyScale)), H = Math.max(90, Math.round(st.buf.y * QK.lakeCopyScale));
-            if (target.width !== W || target.height !== H) target.setSize(W, H);
+            if (target.width !== W || target.height !== H) target.setSize(W, H); u.uSceneTx.value.set(1 / W, 1 / H);
             const prev = gl.getRenderTarget(), ac = gl.autoClear, sh = gl.shadowMap.autoUpdate;
             try { w!.visible = false; gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.setRenderTarget(target); gl.clear(true, true, true); gl.render(scene, camera); }
             finally { gl.setRenderTarget(prev); gl.autoClear = ac; gl.shadowMap.autoUpdate = sh; w!.visible = true; }
