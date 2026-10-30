@@ -11,15 +11,16 @@ type P = { x: number; y: number; z: number; sx: number; sy: number; sz: number; 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 function h01(a: number, b: number) { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); }
 
-export function RoofProps() {
+export function RoofProps({ harborOnly = false }: { harborOnly?: boolean }) {   /* the city copy lives inside CityGate (hidden from Neon Harbor), so the harbor gets its own copy outside it */
     const spotsRaw = useMemo(() => {
         const ac: P[] = [], fan: P[] = [], vent: P[] = [], hatch: P[] = [], tank: P[] = [], legs: P[] = [];
         const spots: { x: number; z: number; top: number; pcs: P[]; lists: P[][]; foot: number; core?: boolean }[] = [];
         let curCore = false; const spot = (x: number, z: number, top: number, foot: number, items: [P[], P][]) => Math.hypot(x - 4, z + 4) < 8 ? 0 : spots.push({ x, z, top, foot, core: curCore, pcs: items.map((i) => i[1]), lists: items.map((i) => i[0]) } as any);
         buildings.forEach((b: any, bi: number) => {
-            if (b.host !== undefined || b.sea) return;
+            const harbor = b.sea && b.kind === 'harbor' && b.h - b.y0 < 120;   /* 11:53 PM: Neon Harbor towers had bare roofs too (flat boxes, boss tower excluded) */
+            if (b.host !== undefined || (b.sea && !harbor) || harbor !== harborOnly) return;
             const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, w = b.x1 - b.x0, d = b.z1 - b.z0;
-            const core = isLegacyCityCore(cx, cz);   // sweep 11:40 PM: the centre city (spawn roof!) was still bare slabs; its roofs are flat boxes, so no ray needed
+            const core = isLegacyCityCore(cx, cz) || harbor;   // sweep 11:40 PM: the centre city (spawn roof!) was still bare slabs; its roofs are flat boxes, so no ray needed
             if (w < 9 || d < 9) return;
             if (core && Math.abs(cx - 40) < 3 && Math.abs(cz) < 3) return;   // boss arena roof stays clear
             if (cx >= -251 && cx <= -229 && cz >= 69 && cz <= 92) return;
@@ -65,7 +66,7 @@ export function RoofProps() {
             for (const t of out.tank) { const hb = buildings.findIndex((b: any) => b.host === undefined && !b.sea && t.x > b.x0 && t.x < b.x1 && t.z > b.z0 && t.z < b.z1);
                 if (hb >= 0) (buildings as any[]).push({ x0: t.x - 2.0, x1: t.x + 2.0, z0: t.z - 2.0, z1: t.z + 2.0, h: t.y + 2.5, host: hb }); }
             if (DBG) (window as any).__roofTanks = out.tank.map((t) => [t.x, t.y, t.z]);
-            if (DBG) (window as any).__roofProps = { spots: spotsRaw.spots.length, placed: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.length])) };
+            if (DBG) (window as any)[harborOnly ? '__roofPropsH' : '__roofProps'] = { spots: spotsRaw.spots.length, placed: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.length])) };
             setSets(out);
         };
         const t = setTimeout(run, 800); return () => { dead = true; clearTimeout(t); };
@@ -99,6 +100,7 @@ function mergeTwo(a: THREE.BufferGeometry, b: THREE.BufferGeometry) {
 function Inst({ list, geo, mat }: { list: P[]; geo: THREE.BufferGeometry; mat: THREE.Material }) {
     const ref = useRef<THREE.InstancedMesh>(null!);
     useEffect(() => {
+        if (!ref.current) return;   // empty list renders nothing
         const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
         list.forEach((it, i) => { e.set(0, it.ry, 0); q.setFromEuler(e); m.compose(p.set(it.x, it.y, it.z), q, s.set(it.sx, it.sy, it.sz)); ref.current.setMatrixAt(i, m); });
         ref.current.instanceMatrix.needsUpdate = true; ref.current.computeBoundingSphere();

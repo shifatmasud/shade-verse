@@ -2010,6 +2010,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <SelectiveBloomPass />
         {OUTLINE_STATE.on && HD.enabled ? <HeroHDPass /> : null}
         <Sky />
+        <RoofProps harborOnly />
         <CityGate><City /><TenementBlock />
         <ParkGround />
         <React.Suspense fallback={null}>
