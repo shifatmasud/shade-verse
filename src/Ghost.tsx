@@ -21,6 +21,11 @@ const _target = new THREE.Vector3();
 const _handL = new THREE.Vector3();
 const _handR = new THREE.Vector3();
 
+/* Upgrade #1 (Shifat OK'd 9:16 PM Oct 29, effect only, model untouched): round soft sprite for Ghost's point FX — they drew as hard squares. */
+const SOFT_DOT = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.85)'); g.addColorStop(0.7, 'rgba(255,255,255,0.25)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+
 function feminineHeroData() {
     const d = JSON.parse(JSON.stringify(heroData)) as any;
     const p: number[] = d.pos;
@@ -465,10 +470,10 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             <lineBasicMaterial ref={shockMatRef} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} />
         </lineSegments>
         <points ref={plasmaRef} geometry={plasmaGeo} frustumCulled={false} dispose={null}>
-            <pointsMaterial color="#c9f5ff" size={0.52} sizeAttenuation transparent opacity={0.95} depthWrite={false} />
+            <pointsMaterial map={SOFT_DOT} alphaTest={0.01} color="#c9f5ff" size={0.62} sizeAttenuation transparent opacity={0.95} depthWrite={false} />
         </points>
         <points ref={morphRef} geometry={morphGeo} visible={false} frustumCulled={false} dispose={null}>
-            <pointsMaterial ref={morphMatRef} color="#ffffff" vertexColors size={0.42} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
+            <pointsMaterial ref={morphMatRef} map={SOFT_DOT} alphaTest={0.01} color="#ffffff" vertexColors size={0.3} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
         </points>
     </>;
 }
