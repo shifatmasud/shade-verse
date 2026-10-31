@@ -43,13 +43,14 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       if (uWL.w > 0.5) { vec2 sn = vScreen.xy / vScreen.w; bool airHalf = sn.y > wlY(sn.x);   /* split lens: the upper half of the lens is in air (sees only the top of the sea), the lower half is under water (sees only the wavy underside) */
         if (airHalf != gl_FrontFacing) discard; }
       gChop = length(cameraPosition - vW) < 120.0;   /* every device: past 120 m the 3-12 m chop is sub-pixel shimmer, so its 5 trains are skipped (phone was 90 m, desktop 160 m) */
-      vec3 gj = wgj(vP0, uTime); vec2 gW = gj.xy; gChop = true;   /* Gerstner: gradient + crest Jacobian at the undisplaced point */ vec2 g = gW + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
+      float wD0 = length(cameraPosition - vW); bool farS = wD0 > 260.0;   /* Shifat 4:30 PM: far sea flat & smooth for speed - past 260 m no wave/ripple maths, faded from 200 m */
+      vec3 gj = farS ? vec3(0.0) : wgj(vP0, uTime) * (1.0 - smoothstep(200.0, 260.0, wD0)); vec2 gW = gj.xy; gChop = true;   /* Gerstner: gradient + crest Jacobian at the undisplaced point */ vec2 g = gW + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;
       g += vec2(cos(dot(vW.xz, vec2(0.7, 0.4)) + uTime * 2.1), cos(dot(vW.xz, vec2(-0.35, 0.8)) - uTime * 1.7)) * 0.035 + vec2(cos(dot(vW.xz, vec2(1.7, -1.1)) + uTime * 3.3), cos(dot(vW.xz, vec2(-1.3, 1.6)) - uTime * 2.7))* 0.018;
       g = mix(g, gW, smoothstep(15.0, 70.0, length(cameraPosition.xz - vW.xz)));
       // AAA-style micro detail (Sea of Thieves / Uncharted use scrolling normal maps over the big waves): two layers of a tileable ripple normal
       // map drifting in different directions; mipmaps + a distance fade stop far-field shimmer. Above the surface only.
       float wDist = length(cameraPosition - vW);
-      if (gl_FrontFacing) { vec2 wq = vW.xz + 9.0 * vec2(sin(vW.z * 0.013 + uTime * 0.02), cos(vW.x * 0.011 - uTime * 0.017));   /* slow domain warp: the ripple tile never lines up into a grid */
+      if (gl_FrontFacing && !farS) { vec2 wq = vW.xz + 9.0 * vec2(sin(vW.z * 0.013 + uTime * 0.02), cos(vW.x * 0.011 - uTime * 0.017));   /* slow domain warp: the ripple tile never lines up into a grid */
         // texture bombing (Quilez 'texture no-tile' v3): a low-frequency variation value picks which randomly offset copy of the ripple map each patch
         // uses and blends neighbours, so the 22 m tile never shows as a repeat
         float kk = texture2D(uCaus, wq * 0.0031 + 0.37).r * 0.6 + 0.4 * (0.5 + 0.5 * sin(wq.x * 0.0071 + sin(wq.y * 0.0053) * 2.0));
