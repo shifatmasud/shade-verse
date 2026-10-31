@@ -44,7 +44,7 @@ export function Gulls({ sim }: { sim: Sim }) {
 }
 export function Fish({ sim }: { sim: Sim }) {
     const N = (QUALITY as any).tier === 'low' || QK.foliage < 1.5 ? 70 : 130, ref = useRef<THREE.InstancedMesh>(null!);
-    const geo = useMemo(() => { const b = new THREE.ConeGeometry(0.26, 1.1, 5); b.rotateX(Math.PI / 2); const t = new THREE.ConeGeometry(0.22, 0.4, 3); t.rotateX(-Math.PI / 2); t.translate(0, 0, -0.66); return mergeGeometries([b.toNonIndexed(), t.toNonIndexed()], false)!; }, []);
+    const geo = useMemo(() => { /* Shifat 6:06 PM underwater shots: the 5-sided cone fish read as flat green shards up close. Now a smooth tapered body (squashed sphere, nose forward) + a thin forked tail, smooth normals so the ink outline draws one clean silhouette */ const b = new THREE.SphereGeometry(0.2, 10, 7); b.scale(0.55, 0.85, 2.6); const p = b.attributes.position; for (let k = 0; k < p.count; k++) { const z = p.getZ(k); if (z < 0) { const s = 1 + z * 0.9; p.setX(k, p.getX(k) * s); p.setY(k, p.getY(k) * s); } } b.computeVertexNormals(); const t = new THREE.ConeGeometry(0.17, 0.32, 4, 1, true); t.scale(0.25, 1, 1); t.rotateX(-Math.PI / 2); t.translate(0, 0, -0.62); t.computeVertexNormals(); return mergeGeometries([b.toNonIndexed(), t.toNonIndexed()], false)!; }, []);
     const fish = useMemo(() => Array.from({ length: 130 }, (_, i) => ({ s: i % 5, r: 1.5 + ((i * 37) % 20) / 6, yo: ((i * 13) % 9 - 4) * 0.35, ph: i * 2.39, w: 0.6 + ((i * 7) % 5) * 0.08 })), []);
     const schools = useMemo(() => Array.from({ length: 5 }, (_, k) => ({ x: 0, y: 0, z: 0, set: false, k })), []);
     const o = useMemo(() => new THREE.Object3D(), []), cols = useMemo(() => ['#f2a03d', '#6fc3df', '#e8e2c4', '#f06d6d', '#9be08a'].map(c => new THREE.Color(c)), []);
