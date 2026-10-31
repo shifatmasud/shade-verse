@@ -271,6 +271,9 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         col += sunSpec * (1.0 - haze * 0.5);
         // Stylised cool night-sky lobe, not scene reflections or a physical moon model.
         col += vec3(0.18, 0.26, 0.38) * (1.0-uDay) * pow(max(dot(r, normalize(vec3(-0.3, 0.6, -0.5))), 0.0), 12.0);
+        // Night read from above (Shifat 2:29 PM screenshots: flat black): a broad dim moon-sky sheen across the ripples plus a sparse moon glint path.
+        { vec3 md = normalize(vec3(-0.3, 0.6, -0.5)); float mr = max(dot(r, md), 0.0); float nt = (1.0 - uDay) * (1.0 - smoothstep(-80.0, -40.0, vW.x) * (1.0 - smoothstep(-760.0, -720.0, vW.z)));   /* Neon Harbor night look stays untouched */
+          col += nt * (vec3(0.035, 0.06, 0.10) * pow(mr, 3.0) + vec3(0.3, 0.36, 0.45) * pow(mr, 90.0) * (1.0 - haze)); }
       }
       // A near-waterline camera can sit inside a displaced crest while viewing its top face.
       // Fade only that nearby top-face sheet so the swimmer remains readable through the split.
