@@ -26,3 +26,13 @@ Use and cite real visual and motion references. Capture before-and-after screens
 - Water look: reflections subtle, blurry and blue; caustics kept; waves never tile; all water bodies share one look (`src/water/common.ts`).
 - Same visuals on all devices; performance budget = Adreno 506 phone. No change that costs fps without Shifat's OK.
 - Fish and sea-life shapes as of Oct 30 2026.
+
+## Checkpoint `checkpoint-2026-10-31-water` (commit f5633ad) — LOCKED by Shifat 4:51 PM Oct 31
+Restore with: `git checkout checkpoint-2026-10-31-water` (or reset main to it).
+Locked looks (change only on Shifat's word):
+- Water: see-through + Snell refraction, Beer-Lambert depth colour, caustics (shallow), underwater colour, submerged & mirrored heroes, Snell skyline.
+- Pond: trees-only SSR, 1/8-res copy, heavy 9-tap blur (soft pink/green haze) — "Perfect".
+- Far sea: flat & smooth past 260 m.
+- Night sea: moon sheen + sparse glint path (masked out of Neon Harbor).
+- Neon Harbor night: far towers fade into deep navy atmospheric haze (never whitewashed).
+- Perf: pond SSR only within 70 m, copy every 3rd frame, 8 steps.
