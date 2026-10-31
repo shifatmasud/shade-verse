@@ -18,8 +18,9 @@ void main(){
   vec3 col = (lb < lMin || lb > lMax) ? a : b;
   gl_FragColor = vec4(col, 1.0);
 }`;
-export const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2 uRes; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uSharp;')
-    .replace('  gl_FragColor = vec4(col, 1.0);\n}', `  float sd = texture2D(tDepth, vUv).x;
+export const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2 uRes; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uSharp; uniform float uFx;')
+    .replace('  gl_FragColor = vec4(col, 1.0);\n}', `  col = mix(cM, col, uFx);   /* Shifat 3:45 AM: the FXAA blend softened the whole world; uFx = 0 keeps the raw render */
+  float sd = texture2D(tDepth, vUv).x;
   float szn = sd * 2.0 - 1.0, sz = (2.0 * uNear * uFar) / (uFar + uNear - szn * (uFar - uNear));
   float sk = uSharp * (1.0 - smoothstep(6.0, 28.0, sz)) * step(sd, 0.99999) * (1.0 - smoothstep(0.14, 0.38, lMax - lMin));
   if (sk > 0.002) {
