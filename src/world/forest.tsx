@@ -1,4 +1,4 @@
-import { BEACH_DIR, HALF, LAKE_SHORE, PARK, PARK_POND, WATER_Z, bridgeSurfaceAt, buildings, parkH, sandWeight, world, type Sim } from '../sim';
+import { BEACH_DIR, HALF, LAKE_SHORE, PARK, PARK_POND, PARK_POND_Y, WATER_Z, bridgeSurfaceAt, buildings, parkH, sandWeight, world, type Sim } from '../sim';
 import * as THREE from 'three';
 import { TREE_PATTERN, TREE_TYPES, cherryLeafShader, coniferGeo, leafWindShader, palmFrondShader, palmFrondTex, palmGeo, palmTrunkTex, treeGeo, treeWindTime, trunkWindShader } from './trees';
 import { QK } from '../quality';
@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
 import { useFrame } from '@react-three/fiber';
+import { registerPondMirror } from '../heroHD';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
@@ -71,6 +72,29 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
         for (let i = 0; i < 70; i++) { const p = pts[i < 45 ? i % pts.length : Math.min(pts.length - 1, 130 + i - 45)], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + (i < 45 ? 3 + (i % 5) : 0), 0.02 + parkH(p.x + (i < 45 ? 3 + (i % 5) : 0), p.z + (i < 45 ? 2 : 0)), p.z + (i < 45 ? 2 : 0)); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.22 + ((p.c * 5.7) % 1) * 0.08, 0.18 + ((p.c * 2.3) % 1) * 0.12, 0.55 + ((p.c * 9.1) % 1) * 0.20)); }
         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
     }, [pts]);
+    /* Pond tree reflection (Shifat 3:27 PM 'separate trees render pass & use them like hero reflection'): the lakeside trees once more as small
+       instanced copies (trunk + low-LOD leaves, cloned materials) on their own layer; the hero pass draws them through its mirrored camera, clipped to
+       the pond outline, only while the camera is near the pond (src/heroHD.ts POND_MIRROR). The world pass never draws them. */
+    const mirG = useRef<THREE.Group>(null!), mirPairs = useRef<[THREE.MeshLambertMaterial, THREE.MeshLambertMaterial][]>([]);
+    useEffect(() => {
+        const R = PARK_POND.rx * LAKE_SHORE + 16, near = pts.filter((p) => Math.hypot(p.x - PARK_POND.cx, p.z - PARK_POND.cz) < R);
+        const o = new THREE.Object3D(), col = new THREE.Color(), out: THREE.InstancedMesh[] = [];
+        const cl = (src: THREE.Material) => { const m = src.clone() as THREE.MeshLambertMaterial; m.onBeforeCompile = src.onBeforeCompile; m.customProgramCacheKey = src.customProgramCacheKey; mirPairs.current.push([src as THREE.MeshLambertMaterial, m]); return m; };
+        for (let v = 0; v < NT; v++) {
+            const ps = near.filter((p) => p.v === v); if (!ps.length || !tr.current[v] || !lo.current[v]) continue;
+            const t = new THREE.InstancedMesh(geos[v].trunk, cl(tr.current[v].material as THREE.Material), ps.length), l = new THREE.InstancedMesh(geos[v].leaves, cl((lf.current[v] || lo.current[v]).material as THREE.Material), ps.length);
+            ps.forEach((p, i) => { o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); t.setMatrixAt(i, o.matrix); l.setMatrixAt(i, o.matrix);
+                const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1;
+                if (geos[v].kind === 'cherry' || geos[v].kind === 'palm') col.setRGB(1, 1, 1).multiplyScalar(0.86 + w * 0.22); else col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30);
+                t.setColorAt(i, col.setRGB(1, 1, 1)); l.setColorAt(i, q >= 0 ? (geos[v].kind === 'cherry' || geos[v].kind === 'palm' ? col.setRGB(1, 1, 1).multiplyScalar(0.86 + w * 0.22) : col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30)) : col); });
+            t.dispose();   // trunks are hidden under the canopies in the reflection: leaves only = 1 draw per tree family
+            for (const m of [l]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.frustumCulled = false; out.push(m); mirG.current.add(m); }
+        }
+        registerPondMirror(out, PARK_POND_Y, PARK_POND.cx, PARK_POND.cz, PARK_POND.rx * LAKE_SHORE);
+        if (DBG) (window as any).__pondMirrorN = out.length;
+        return () => { registerPondMirror([], 0, 0, 0, 0); out.forEach((m) => { mirG.current?.remove(m); (m.material as THREE.Material).dispose(); }); mirPairs.current = []; };
+    }, [pts]);
+    useFrame(() => { for (const [a, b] of mirPairs.current) b.emissive.copy(a.emissive); });
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
     useFrame(() => { const gm2 = grass.current && (grass.current.material as THREE.MeshLambertMaterial); if (gm2) { const nn2 = 1 - TOD.day.value; gm2.color.setRGB(1 - 0.35 * nn2, 1 - 0.12 * nn2, 1 + 0.35 * nn2); gm2.emissive.setRGB(0.0, 0.002 * nn2, 0.006 * nn2); } });   // night: cool the ground tone to match the cool tufts
     const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)
@@ -96,6 +120,7 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
                 <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
             </>}
         </group>)}
+        <group ref={mirG} name="pond-tree-mirror" />
         <points geometry={petalGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} uniforms={petalU} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying float vR; void main(){ float life = fract(uTime * 0.055 + ph); vec3 p = position; p.y += 4.6 * (1.0 - life); p.x += sin(uTime * 0.9 + ph * 40.0) * 0.6 + life * 2.2; p.z += cos(uTime * 0.7 + ph * 23.0) * 0.5; vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vA = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.85, 1.0, life)); vR = uTime * 2.0 + ph * 30.0; gl_PointSize = clamp(55.0 / -mv.z, 1.5, 7.0); }`} fragmentShader={`uniform float uDayP; varying float vA; varying float vR; void main(){ vec2 q = gl_PointCoord - 0.5; float c = cos(vR), s = sin(vR); q = mat2(c, -s, s, c) * q; float e = length(q * vec2(1.0, 1.9)); if (e > 0.48) discard; gl_FragColor = vec4(mix(vec3(0.5, 0.33, 0.42), vec3(1.0, 0.78, 0.86), uDayP), vA * 0.95); }`} /></points>
         <instancedMesh ref={bush} args={[undefined, undefined, 70]} frustumCulled={false}><primitive object={bushGeo} attach="geometry" /><meshLambertMaterial map={bushTex} color="#dce1cd" emissive="#182510" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
     </group>;

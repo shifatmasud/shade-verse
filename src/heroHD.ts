@@ -66,29 +66,43 @@ export function crispHeroTexture(tex: THREE.Texture | null | undefined, gl?: THR
    light path (Beer-Lambert style, clear near the surface, deep teal further down) and (b) pulls its depth up to just in front of the water surface on the
    camera ray, so the surface no longer hides it while real rocks/walls in front still do. Only hero fragments pay for this (no change to the water or
    world shaders, no early-z loss there). Scene sets uWL (water surface under the hero, -1e4 when not in water) and uWC each frame. */
-export const HERO_WATER = { uMir: { value: 0 }, uWL: { value: -1e4 }, uWC: { value: new THREE.Color('#1a6f85') }, uPV: { value: new THREE.Matrix4() } };
+export const HERO_WATER = { uPondC: { value: new THREE.Vector3(0, 0, 0) }, uMirA: { value: 0.45 }, uMir: { value: 0 }, uWL: { value: -1e4 }, uWC: { value: new THREE.Color('#1a6f85') }, uPV: { value: new THREE.Matrix4() } };
 const patched = new WeakSet<THREE.Material>();
 const _R = new THREE.Matrix4();
 const mirCam = new THREE.PerspectiveCamera(); mirCam.matrixAutoUpdate = false; mirCam.matrixWorldAutoUpdate = false;
 const mirSaved: [THREE.Material, boolean, boolean, THREE.Side][] = [];
+/* Shifat 3:27 PM 'separate trees render pass & use them like hero reflection': a small copy of just the pond-bank trees (polyforkEnvironment
+   PondTreeMirror) lives on its own layer and is drawn here through the same mirrored camera, clipped to the pond outline, only near the pond. */
+export const POND_MIRROR_LAYER = 3;
+export const POND_MIRROR = { meshes: [] as THREE.Mesh[], y: 0, cx: 0, cz: 0, r: 0 };
+export function registerPondMirror(meshes: THREE.Mesh[], y: number, cx: number, cz: number, r: number) {
+    POND_MIRROR.meshes = meshes; POND_MIRROR.y = y; POND_MIRROR.cx = cx; POND_MIRROR.cz = cz; POND_MIRROR.r = r;
+    for (const m of meshes) {
+        m.layers.set(POND_MIRROR_LAYER);
+        for (const x of (Array.isArray(m.material) ? m.material : [m.material]) as THREE.Material[]) {
+            patchWater(x); x.transparent = true; x.depthWrite = false; x.side = x.side === THREE.DoubleSide ? THREE.DoubleSide : x.side === THREE.BackSide ? THREE.FrontSide : THREE.BackSide;
+        }
+    }
+}
 function patchWater(m: THREE.Material) {
     if (patched.has(m)) return; patched.add(m);
     const prev = m.onBeforeCompile, prevKey = m.customProgramCacheKey.bind(m);
     m.onBeforeCompile = (sh, r) => {
         prev.call(m, sh, r);
         Object.assign(sh.uniforms, HERO_WATER);
-        sh.vertexShader = 'varying vec3 vHwW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vHwW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.vertexShader = 'varying vec3 vHwW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  #ifdef USE_INSTANCING\n  vHwW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;\n  #else\n  vHwW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n  #endif');
         const end = sh.fragmentShader.lastIndexOf('}');
-        sh.fragmentShader = 'varying vec3 vHwW; uniform float uWL; uniform vec3 uWC; uniform mat4 uPV; uniform float uMir;\n' + sh.fragmentShader.slice(0, end) + `
+        sh.fragmentShader = 'varying vec3 vHwW; uniform float uWL; uniform vec3 uWC; uniform mat4 uPV; uniform float uMir; uniform vec3 uPondC; uniform float uMirA;\n' + sh.fragmentShader.slice(0, end) + `
   if (uMir > 0.5) {   /* #4 full-body reflection (Shifat 2:32 PM): this pass is drawn with the camera mirrored in the water plane; only the parts above
        the water reflect, laid just in front of the water surface on the real view ray (so land/objects in front still cover it), water-tinted, see-through */
     if (vHwW.y < uWL) discard;
     vec3 hwM = cameraPosition, hwR = vec3(hwM.x, 2.0 * uWL - hwM.y, hwM.z);
     vec3 hwS2 = hwM + (vHwW - hwM) * ((uWL - hwM.y) / max(vHwW.y - hwM.y, 1e-3));
     vec3 hwP2 = hwS2 + normalize(hwR - hwS2) * (0.5 - 0.07 * min(length(vHwW - hwS2), 6.0));
+    if (uPondC.z > 0.0 && length(hwS2.xz - uPondC.xy) > uPondC.z) discard;   // pond trees: only inside the pond's outline
     vec4 hwQ2 = uPV * vec4(hwP2, 1.0);
     float hwH = vHwW.y - uWL;
-    gl_FragColor = vec4(mix(gl_FragColor.rgb * 0.85, uWC, 0.3), 0.45 * exp(-hwH * 0.06));
+    gl_FragColor = vec4(mix(gl_FragColor.rgb * 0.85, uWC, 0.3), uMirA * exp(-hwH * (uPondC.z > 0.0 ? 0.02 : 0.06)));
     gl_FragDepth = clamp((hwQ2.z / hwQ2.w) * 0.5 + 0.5, 0.0, 1.0);
     return;
   }
@@ -103,7 +117,7 @@ function patchWater(m: THREE.Material) {
   gl_FragDepth = hwD;
 }`;
     };
-    m.customProgramCacheKey = () => prevKey() + '|heroWater2';
+    m.customProgramCacheKey = () => prevKey() + '|heroWater3';
     m.needsUpdate = true;
 }
 
@@ -125,7 +139,7 @@ export function createHeroComposite() {
     const mats = new Set<THREE.Material>();
     const saved = new Map<THREE.Material, [boolean, number, number]>();
     const retag = (scene: THREE.Scene) => {
-        lights.length = 0; scene.traverse((o) => { if ((o as THREE.Light).isLight) { o.layers.enable(HERO_LAYER); lights.push(o); } });
+        lights.length = 0; scene.traverse((o) => { if ((o as THREE.Light).isLight) { o.layers.enable(HERO_LAYER); o.layers.enable(POND_MIRROR_LAYER); lights.push(o); } });
         heroMeshes.length = 0; mats.clear();
         HD.roots.forEach((r) => r.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { o.layers.set(HERO_LAYER); heroMeshes.push(m); (Array.isArray(m.material) ? m.material : [m.material]).forEach(patchWater); }   /* Shifat 9:58 AM 'draw heroes HD only': hero meshes live ONLY on the hero layer, so the dpr-1 world pass skips them and they are drawn once, here */ }));
     };
@@ -166,6 +180,16 @@ export function createHeroComposite() {
                     HERO_WATER.uMir.value = 0;
                     for (const [x, t, d, s] of mirSaved) { x.transparent = t; x.depthWrite = d; x.side = s; } mirSaved.length = 0;
                 }
+            }
+            const pm = POND_MIRROR;
+            if (pm.meshes.length && (camera as THREE.PerspectiveCamera).isPerspectiveCamera && camera.position.y > pm.y + 0.3 && Math.hypot(camera.position.x - pm.cx, camera.position.z - pm.cz) < 80) {
+                _R.set(1, 0, 0, 0, 0, -1, 0, 2 * pm.y, 0, 0, 1, 0, 0, 0, 0, 1);
+                mirCam.matrixWorld.multiplyMatrices(_R, camera.matrixWorld); mirCam.matrixWorldInverse.copy(mirCam.matrixWorld).invert();
+                mirCam.projectionMatrix.copy((camera as THREE.PerspectiveCamera).projectionMatrix); mirCam.projectionMatrixInverse.copy((camera as THREE.PerspectiveCamera).projectionMatrixInverse);
+                mirCam.layers.set(POND_MIRROR_LAYER);
+                const wl0 = HERO_WATER.uWL.value;
+                HERO_WATER.uWL.value = pm.y; HERO_WATER.uPondC.value.set(pm.cx, pm.cz, pm.r); HERO_WATER.uMirA.value = 0.7; HERO_WATER.uMir.value = 1;
+                try { gl.render(scene, mirCam); } finally { HERO_WATER.uWL.value = wl0; HERO_WATER.uPondC.value.z = 0; HERO_WATER.uMirA.value = 0.45; HERO_WATER.uMir.value = 0; }
             }
         } finally {
             saved.forEach((v, x) => { x.polygonOffset = v[0]; x.polygonOffsetFactor = v[1]; x.polygonOffsetUnits = v[2]; }); saved.clear(); mats.clear();

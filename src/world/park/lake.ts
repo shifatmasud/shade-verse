@@ -137,7 +137,7 @@ void main(){
   float tc=1.0-smoothstep(tH-3.0,tH+1.5,hy+(N.x+N.z)*2.0);
   vec4 sk=texture2D(uSkyl,vec2(atan(rr.x,rr.z)*0.15915494+0.5,0.5));sk.rgb=pow(sk.rgb,vec3(2.2));
   float top=sk.a*0.35;float tw=step(0.004,sk.a)*(1.0-smoothstep(top*0.9,top*1.1+0.02,asin(clamp(rr.y,0.0,1.0))));
-  vec3 rc=mix(refl,reflTint(sk.rgb*mix(0.3,0.9,uDay),refl),tw*0.7);rc=mix(rc,mix(bankC,treeC,smoothstep(0.4,1.4,hy)),tc*0.6);
+  vec3 rc=mix(refl,reflTint(sk.rgb*mix(0.3,0.9,uDay),refl),tw*0.7);rc=mix(rc,mix(bankC,treeC,smoothstep(0.4,1.4,hy)),tc*0.3);
   refl=rc;F=max(F,tc*0.35);}
  if(!below&&cameraPosition.y>vWorld.y){/* Shifat 6:06 PM: both heroes reflect in the pond (flying one too), same soft capsule style as the sea/pools/river; only the part above the surface */
   float wy=vWorld.y;bool nA=uHeroA.w>0.5&&length(uHeroA.xz-vWorld.xz)<40.0&&uHeroA.y+1.55>wy,nB=uHeroB.w>0.5&&length(uHeroB.xz-vWorld.xz)<40.0&&uHeroB.y+1.5>wy;
