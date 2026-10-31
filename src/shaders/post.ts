@@ -18,10 +18,11 @@ void main(){
   vec3 col = (lb < lMin || lb > lMax) ? a : b;
   gl_FragColor = vec4(col, 1.0);
 }`;
-export const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2 uRes; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uSharp;')
+export const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2 uRes; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uSharp; uniform float uUp;')
     .replace('  gl_FragColor = vec4(col, 1.0);\n}', `  float sd = texture2D(tDepth, vUv).x;
   float szn = sd * 2.0 - 1.0, sz = (2.0 * uNear * uFar) / (uFar + uNear - szn * (uFar - uNear));
   float sk = uSharp * (1.0 - smoothstep(6.0, 28.0, sz)) * step(sd, 0.99999) * (1.0 - smoothstep(0.14, 0.38, lMax - lMin));
+  sk = max(sk, uUp * step(sd, 0.99999) * (1.0 - smoothstep(0.14, 0.38, lMax - lMin)));   /* Shifat 6:46 PM 'everything except hero looks low quality': when the world buffer is upscaled to the screen (phone auto-res), pre-sharpen it at every distance in proportion to the upscale, clamped to the local min/max so no halos */
   if (sk > 0.002) {
     vec3 sMin = min(cM, min(min(cNW, cNE), min(cSW, cSE))), sMax = max(cM, max(max(cNW, cNE), max(cSW, cSE)));
     col = clamp(col + (col - 0.25 * (cNW + cNE + cSW + cSE)) * sk, sMin, sMax);
