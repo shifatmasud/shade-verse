@@ -60,7 +60,13 @@ export const RIVER_MAT = new THREE.ShaderMaterial({
       vec2 fu = vec2(vUv.x * 1.6, vUv.y * 0.22 - uT * sp * 0.4); float lace = texture2D(uCaus, fu).r * 0.65 + texture2D(uCaus, fu * vec2(2.1, 1.7) + vec2(0.37, -uT * sp * 0.25)).g * 0.45;
       float lane = smoothstep(0.35, 0.75, streak);
       float white = clamp(smoothstep(0.55, 0.95, lace * (0.55 + 0.6 * lane)) * (0.45 + vSl * 9.0) + bank * 0.5 * smoothstep(0.5, 0.9, lace), 0.0, 1.0) * 0.85;
-      vec3 V = normalize(cameraPosition - vW); vec2 rg = fftSlope(vW.xz, uT) * WATER_FFT_K * (1.0 - smoothstep(30.0, 220.0, length(cameraPosition - vW)));   /* same FFT ripple detail as the sea */
+      /* same FFT ripple detail as the sea, now carried downstream with the current (flow-map style: two phases offset by half a cycle and
+         cross-faded, so the ripples travel with the water without ever stretching at the bends). Downstream = +v along the strip. */
+      mat2 J = mat2(dFdx(vW.xz), dFdy(vW.xz)); vec2 gv = vec2(dFdx(vUv.y), dFdy(vUv.y)); float dJ = determinant(J);
+      vec2 fl = abs(dJ) > 1e-8 ? inverse(transpose(J)) * gv : vec2(0.0); fl = dot(fl, fl) > 1e-10 ? normalize(fl) : vec2(0.0);
+      float fs = (1.2 + vSl * 20.0) * (1.0 - vCalm), p1 = fract(uT * 0.3), p2 = fract(uT * 0.3 + 0.5), wf = abs(p1 * 2.0 - 1.0);
+      vec2 rg = mix(fftSlope(vW.xz - fl * fs * p1 / 0.3, uT), fftSlope(vW.xz - fl * fs * p2 / 0.3 + 7.3, uT), wf);
+      vec3 V = normalize(cameraPosition - vW); rg *= WATER_FFT_K * (1.0 - smoothstep(30.0, 220.0, length(cameraPosition - vW)));
       vec3 Nr = normalize(vec3(-rg.x, 1.0, -rg.y)); float fr = 0.03 + 0.97 * pow(1.0 - max(dot(Nr, V), 0.0), 5.0);
       vec3 body = mix(vec3(0.05, 0.42, 0.45), vec3(0.18, 0.66, 0.62), 0.5 + 0.5 * streak);
       { // Shifat 2:07 AM "transparency & refraction law": bend the view ray by Snell (1.333), march it across the channel's real depth profile
