@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PARK_BRIDGE, bridgeSurfaceAt, parkH } from '../../sim';
 import { CAUSTIC_GLSL } from '../../caustics';
+import { WATER_COMMON_GLSL } from '../../water/common';
 
 // Park lake: shoreline foam + bridge ramp geometry, and the lake / caustics / foam / contact shaders.
 function subdividePositions(source: THREE.BufferGeometry, levels = 2) {
@@ -95,7 +96,8 @@ vec2 g=vec2(0.0099*cos(a1)+0.00735*cos(a2),0.0072*cos(a1)-0.0056*cos(a2));w.y+=h
 vec4 mv=viewMatrix*w;vView=mv.xyz;vScreen=projectionMatrix*mv;gl_Position=vScreen;}`;
 export const LAKE_FS = `#include <packing>
 uniform float uTime; uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene; uniform float uSteps; uniform float uNear; uniform float uFar;
-uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay;
+uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay; uniform sampler2D uNrm;
+${WATER_COMMON_GLSL}
 varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;
 float sceneZ(vec2 uv){return perspectiveDepthToViewZ(texture2D(tDepth,uv).x,uNear,uFar);}
 float sph(vec3 ro,vec3 rd,vec4 s){vec3 oc=ro-s.xyz;float b=dot(oc,rd);float h=b*b-dot(oc,oc)+s.w*s.w;if(h<0.0)return 1e5;float t=-b-sqrt(h);return t>0.0?t:1e5;}
@@ -108,6 +110,7 @@ void main(){
  vec3 V=normalize(cameraPosition-vWorld);bool below=!gl_FrontFacing;float dist=length(cameraPosition-vWorld);
  float rf=1.0-smoothstep(22.0,75.0,dist);vec2 p=vWorld.xz;
  vec2 g=rip(p,vec2(0.80,0.60),1.9,1.35,0.020)+rip(p,vec2(-0.55,0.83),2.7,-1.7,0.013)+rip(p,vec2(0.97,-0.24),4.3,2.3,0.006)+rip(p,vec2(-0.2,-0.98),6.1,-2.9,0.0035);
+ g+=fftSlope(p,uTime)*WATER_FFT_K*(1.0-smoothstep(30.0,220.0,dist));/* same FFT ripple detail as the sea (src/water/common.ts) */
  vec3 N=normalize(vNormal+vec3(-g.x,0.0,-g.y)*rf);if(below)N=-N;
  float ci=clamp(dot(N,V),0.0,1.0);float F=0.02+0.98*pow(1.0-ci,5.0);
  vec3 R=reflect(-V,N);vec3 Td=refract(-V,N,below?1.33:1.0/1.33);
@@ -120,9 +123,9 @@ void main(){
   for(int i=0;i<16;i++){if(float(i)>=uSteps)break;float k=(float(i)+1.0)/uSteps;float t=90.0*k*k;vec3 Q=vView+Rv*t;vec4 c=uProj*vec4(Q,1.0);if(c.w<=0.0)break;vec2 uv=c.xy/c.w*0.5+0.5;
    if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0)break;float sz=sceneZ(uv);if(Q.z<sz&&Q.z>sz-(t-tp)*1.2-0.6&&sz>-uFar*0.98){
     if(uSteps>12.0){float a0=tp,a1=t;for(int j=0;j<4;j++){float m=0.5*(a0+a1);vec3 M=vView+Rv*m;vec4 cm=uProj*vec4(M,1.0);vec2 um=cm.xy/cm.w*0.5+0.5;if(M.z<sceneZ(um)){a1=m;uv=um;}else a0=m;}}
-    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);vec2 bo=vec2(0.0035,0.0045)*(1.0+0.6*clamp(t/40.0,0.0,1.0));vec3 rs=(texture2D(tScene,uv).rgb*2.0+texture2D(tScene,uv+vec2(bo.x,0.0)).rgb+texture2D(tScene,uv-vec2(bo.x,0.0)).rgb+texture2D(tScene,uv+vec2(0.0,bo.y)).rgb+texture2D(tScene,uv-vec2(0.0,bo.y)).rgb)/6.0;/* soft 5-tap: the low-res scene copy no longer reads as pixel blocks, and blurs more for far objects like real ripple-roughened water */refl=mix(refl,rs,e);reflDist=t;break;}
+    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);vec2 bo=vec2(0.0035,0.0045)*(1.0+0.6*clamp(t/40.0,0.0,1.0));vec3 rs=(texture2D(tScene,uv).rgb*2.0+texture2D(tScene,uv+vec2(bo.x,0.0)).rgb+texture2D(tScene,uv-vec2(bo.x,0.0)).rgb+texture2D(tScene,uv+vec2(0.0,bo.y)).rgb+texture2D(tScene,uv-vec2(0.0,bo.y)).rgb)/6.0;/* soft 5-tap: the low-res scene copy no longer reads as pixel blocks, and blurs more for far objects like real ripple-roughened water */refl=mix(refl,reflTint(rs,refl),e*WATER_REFL_W);reflDist=t;break;}/* same soft blue subtle reflections as the sea */
    tp=t;}}
- vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0)&&(vWorld+R*ht).y>vWorld.y)refl=heroCol(hn);/* Shifat 5:12: only the part above the surface reflects */
+ vec3 hn;float ht=hero(vWorld,R,hn);if(ht<min(reflDist,60.0)&&(vWorld+R*ht).y>vWorld.y)refl=mix(refl,heroReflCol(heroCol(hn),refl,uDay),heroReflW(1.0,dist));/* Shifat 5:12: only the part above the surface reflects; soft + tinted like every water body */
  // refraction / transmission
  vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.46,0.12,0.075);/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
  vec3 trans;float alpha=1.0;

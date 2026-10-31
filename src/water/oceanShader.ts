@@ -4,6 +4,7 @@
 import { QUALITY, LOWQ } from '../quality';
 import { CAUSTIC_GLSL } from '../caustics';
 import { WAVES_GLSL, GERSTNER_GLSL } from './waves';
+import { WATER_COMMON_GLSL } from './common';
 
 /** Shared GLSL wave field, generated from the single wave table in ./waves.ts (also drives the CPU waveH). */
 export const WAVES = WAVES_GLSL;
@@ -15,6 +16,7 @@ export const OCEAN_VERT = WAVES + GERSTNER_GLSL + `uniform float uTime; uniform 
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + `varying vec2 vP0; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
     uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform vec2 uSceneTx; uniform float uFogK;
+    ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     ${(QUALITY.coarse || LOWQ) ? '#define PHONE_W' : ''}
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
@@ -102,7 +104,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 Rv = normalize((viewMatrix * vec4(r, 0.0)).xyz); float tp = 0.0;
         for (int i = 0; i < 16; i++) { if (float(i) >= uSteps || uUseRefl > 0.5) break; float k = (float(i) + 1.0) / uSteps; float tt = 140.0 * k * k; vec3 Q = vView + Rv * tt; vec4 c = uProj * vec4(Q, 1.0); if (c.w <= 0.0) break; vec2 uv = c.xy / c.w * 0.5 + 0.5;
           if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break; float sz = oceanZ(uv);
-          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); vec3 sc_ = sceneCol(uv); refl = mix(refl, mix(sc_, dot(sc_, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + refl * 0.25, 0.7), e * 0.5); break;   /* same subtle blue as the mirror (Shifat 3:49 PM) */ }
+          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); vec3 sc_ = sceneCol(uv); refl = mix(refl, reflTint(sc_, refl), e * WATER_REFL_W); break;   /* same subtle blue as the mirror (Shifat 3:49 PM) */ }
           tp = tt; }
         // refraction: the real seabed / shore / swimmer behind the surface, absorbed by the water thickness (red dies first)
         float dd = max(wz - oceanZ(suv), 0.0); vec3 Nv = (viewMatrix * vec4(n, 0.0)).xyz; vec2 uv2 = suv + Nv.xy * 0.04 * clamp(dd * 0.3, 0.0, 1.0);
@@ -117,8 +119,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         /* Shifat 3:49 PM 'reflections of the cities & islands subtler, blurrier, bluer - very very subtle, never grab attention; ultra performance':
            one low-res mirror on every device, 2 spread taps (+ bilinear = wide soft blur), tinted toward the water's own blue and laid in at ~30 %. */
         vec4 rs = (texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998))) * 0.5;
-        vec3 rsc = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb; vec3 rsb = mix(rsc, dot(rsc, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + refl * 0.25, 0.7);
-        refl = mix(refl, rsb, rs.a * 0.5); nGlow = rsc * rs.a;
+        vec3 rsc = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb; vec3 rsb = reflTint(rsc, refl);
+        refl = mix(refl, rsb, rs.a * WATER_REFL_W); nGlow = rsc * rs.a;
       }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
@@ -151,10 +153,10 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         float sA = (tA > 0.0) ? 1.0 : 0.0, sB = (tB > 0.0) ? 1.0 : 0.0;
         if (uHeroA.w > 0.5 && sA < 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA && capH(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.15, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.55, uHeroDA) > 0.0) sA = 0.45;
         if (uHeroB.w > 0.5 && sB < 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB && capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.15, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.5) > 0.0) sB = 0.45;
+        sA = heroSoftK(tA, sA > 0.0 ? 1.0 : -1.0); sB = heroSoftK(tB, sB > 0.0 ? 1.0 : -1.0);
         if (sA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = sA; }   // Shadow's dark suit
         if (sB > 0.0 && (sA < 0.5 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = sB; }   // Ghost's pale suit
-        hc = mix(hc * mix(0.35, 1.0, uDay), refl * vec3(0.55, 0.7, 0.85), 0.45);   /* sea-tinted, like the rest of the mirror */
-        hk *= 0.6 * (1.0 - smoothstep(10.0, 40.0, length(cameraPosition - vW)));
+        hc = heroReflCol(hc, refl, uDay); hk = heroReflW(hk, length(cameraPosition - vW));   /* shared water look (src/water/common.ts) */
         refl = mix(refl, hc, hk); heroK = hk; heroC = hc;
       }
       vec3 col = mix(body, refl, fr);
