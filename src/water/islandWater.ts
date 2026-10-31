@@ -45,10 +45,10 @@ export const FOAM_MAT = new THREE.ShaderMaterial({
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
 export const RIVER_MAT = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM } },
+    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost } },
     vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `${CAUSTIC_GLSL}
-    varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky; uniform sampler2D uNrm;
+    varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky; uniform sampler2D uNrm; uniform vec4 uHeroA, uHeroB;
     ${WATER_COMMON_GLSL}
     float n2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
     float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(n2(i), n2(i + vec2(1, 0)), f.x), mix(n2(i + vec2(0, 1)), n2(i + vec2(1, 1)), f.x), f.y); }
@@ -79,7 +79,19 @@ export const RIVER_MAT = new THREE.ShaderMaterial({
         body = mix(body, seen, 0.95 * (1.0 - sea));   /* toward the mouth the sea's own refraction takes over (no colour seam) */
       }
       white *= 1.0 - 0.95 * vCalm; body = mix(body, vec3(0.16, 0.62, 0.66), vCalm);   /* mouth: foam dies down and the colour turns to the shallow sea's, so river and ocean read as one surface */
-      vec3 c = mix(mix(body, uSky, fr * 0.6), vec3(0.95, 0.99, 1.0), white) * mix(0.3, 1.0, uDay);
+      /* hero reflections on the river: same soft feathered, tinted style as the sea, pools and pond (src/water/common.ts) */
+      vec3 rr = reflect(-V, Nr); float hk = 0.0; vec3 hc = vec3(0.0); float dv = length(cameraPosition - vW);
+      if (dv < 40.0) {
+        bool nA = uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 25.0 && uHeroA.y + 1.55 > vW.y, nB = uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 25.0 && uHeroB.y + 1.5 > vW.y;
+        float qA = nA ? capHitP(vW, rr, vec3(uHeroA.x, max(uHeroA.y + 0.25, vW.y), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34) : -1.0;
+        float oA = nA && qA < 0.0 ? capHitP(vW, rr, vec3(uHeroA.x, max(uHeroA.y + 0.15, vW.y), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.55) : -1.0;
+        float qB = nB ? capHitP(vW, rr, vec3(uHeroB.x, max(uHeroB.y + 0.25, vW.y), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3) : -1.0;
+        float oB = nB && qB < 0.0 ? capHitP(vW, rr, vec3(uHeroB.x, max(uHeroB.y + 0.15, vW.y), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.5) : -1.0;
+        float kA = heroSoftK(qA, oA), kB = heroSoftK(qB, oB);
+        if (kA > 0.0 && kA >= kB) { hk = kA; hc = vec3(0.09, 0.11, 0.21); } else if (kB > 0.0) { hk = kB; hc = vec3(0.78, 0.82, 0.92); }
+        hc = heroReflCol(hc, uSky, uDay); hk = heroReflW(hk, dv);
+      }
+      vec3 c = mix(mix(body, mix(uSky, hc, hk), max(fr * 0.6, hk * 0.32)), vec3(0.95, 0.99, 1.0), white) * mix(0.3, 1.0, uDay);
       float soft = smoothstep(0.0, 0.24, min(vUv.x, 1.0 - vUv.x));   // soft banks, no hard edge on the sand
       float sea2 = max(vCalm, 1.0 - smoothstep(-0.6, 1.2, vW.y)); float a = (mix(0.93, 0.0, smoothstep(0.0, 0.85, sea2)) + 0.5 * white) * soft * vFade;   /* Shifat 2:34 AM seam: the mouth fades to clear so only the flowing foam remains over the sea */ if (a < 0.03) discard;   /* traced bed drawn here, so the strip is near-opaque */
       gl_FragColor = vec4(c, a); }`,
@@ -104,10 +116,6 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
         fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3]; uniform sampler2D uBed; uniform vec4 uBB; uniform vec4 uHeroA, uHeroB, uHeroDA; uniform sampler2D uNrm;
         ${CAUSTIC_GLSL}
         ${WATER_COMMON_GLSL}
-        float capHitP(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
-          float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0 || baba < 1e-4) return -1.0;
-          float t = (-b - sqrt(h)) / a, y = baoa + t * bard; if (y > 0.0 && y < baba) return t;
-          vec3 oc = y <= 0.0 ? oa : ro - pb; b = dot(rd, oc); c = dot(oc, oc) - ra * ra; h = b * b - c; return h > 0.0 ? -b - sqrt(h) : -1.0; }
         /* Shadow swimming lies flat along his facing (same as the sea); otherwise upright */
         float heroA(vec3 ro, vec3 rd, float y0, float y1){ if (uHeroDA.w > 0.5) { vec3 c = vec3(uHeroA.x, uHeroA.y - 0.05, uHeroA.z), d = vec3(uHeroDA.x, 0.0, uHeroDA.z) * 0.8; return capHitP(ro, rd, c - d, c + d, 0.24); }
           return capHitP(ro, rd, vec3(uHeroA.x, y0, uHeroA.z), vec3(uHeroA.x, y1, uHeroA.z), 0.34); }

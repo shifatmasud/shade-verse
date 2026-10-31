@@ -10,6 +10,11 @@ vec3 reflTint(vec3 c, vec3 base){ return mix(c, dot(c, vec3(0.3, 0.5, 0.2)) * ve
 float heroSoftK(float inner, float outer){ return inner > 0.0 ? 1.0 : (outer > 0.0 ? 0.45 : 0.0); }
 vec3 heroReflCol(vec3 hc, vec3 base, float day){ return mix(hc * mix(0.35, 1.0, day), base * vec3(0.55, 0.7, 0.85), 0.45); }
 float heroReflW(float k, float dist){ return k * 0.6 * (1.0 - smoothstep(10.0, 40.0, dist)); }
+// ray vs capsule (hero bodies), shared by every water body
+float capHitP(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
+  float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0 || baba < 1e-4) return -1.0;
+  float t = (-b - sqrt(h)) / a, y = baoa + t * bard; if (y > 0.0 && y < baba) return t;
+  vec3 oc = y <= 0.0 ? oa : ro - pb; b = dot(rd, oc); c = dot(oc, oc) - ra * ra; h = b * b - c; return h > 0.0 ? -b - sqrt(h) : -1.0; }
 #define WATER_REFL_W 0.5
 #define WATER_FFT_K 0.125
 `;
