@@ -32,7 +32,7 @@ export const HQ = QUALITY.tier === 'high';
 export const LOWQ = QUALITY.tier === 'low';
 // Per-tier knobs used across the scene.
 export const QK = {
-    dprCap: HQ ? 2 : QUALITY.coarse ? 1.5 : LOWQ ? 1 : 2,   /* touch: the world at 1.5 dpr, heroes stay native (HD pass) - Shifat 4:28 AM */
+    dprCap: HQ ? 2 : QUALITY.coarse ? 1 : LOWQ ? 1 : 2,   /* touch: the world at 1 dpr, heroes stay native (HD pass) - Shifat 9:06 AM 'everything at dpr 1 except heroes' */
     maxScale: HQ ? 1.25 : 1.34,
     anisotropy: HQ ? 8 : 4,
     grass: HQ ? 9500 : LOWQ ? 3500 : 6500,

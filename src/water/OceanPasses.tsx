@@ -26,6 +26,7 @@ const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA
 // A Reflector-style virtual camera mirrored about the sea plane renders ONLY those opaque shapes (layer 7, ~15 draw calls, no grass/water/fx)
 // into a small target (1/4 res desktop, 1/5 phone; phones every 2nd frame); the ocean shader samples it with wave distortion and Fresnel.
 const REFL_LAYER = 7;
+const NOPROBE = typeof location !== 'undefined' && /[?&]debug/.test(location.search) && /[?&]noprobe/.test(location.search);   // ?debug&noprobe: A/B test on device
 export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; sim: Sim; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => ({ n: 0, tagged: false, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
@@ -41,8 +42,8 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
         const zone = d < 520 || cam.position.z > WATER_Z - 320 || (cam.position.x > -40 && cam.position.z < -760);
         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
         const ok = !!w && zone && cam.position.z < WATER_Z + 40 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 110 && !(UW as any).on && st.fr.intersectsBox(_oceanBox);   /* only when the sea is actually in view */
-        if (!ok) { u.uUseRefl.value = 0; return; }
-        if (!st.tagged || st.n % 300 === 0) {   // (re)tag big opaque shapes - island, city blocks, bridges, harbor - plus lights (three culls lights by layer too)
+        if (!ok || NOPROBE) { u.uUseRefl.value = 0; return; }
+        if (!st.tagged || st.n % 3600 === 0) {   /* was every 300 frames: a whole-scene walk on the CPU */   // (re)tag big opaque shapes - island, city blocks, bridges, harbor - plus lights (three culls lights by layer too)
             const sp = new THREE.Sphere(); let nT = 0;
             scene.traverse((o: any) => { if (o.isLight) { o.layers.enable(REFL_LAYER); return; } if (!o.isMesh || o.isPoints || o.isSkinnedMesh || o.layers.isEnabled(REFL_LAYER)) return;
                 const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m || m.transparent || !m.depthTest || o === w || o.userData.noRefl || (o.isInstancedMesh && o.count > 3000)) return;   /* custom-shader city/blocks included; water, sky, fx excluded */
@@ -60,8 +61,10 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
             const mk = () => new THREE.WebGLCubeRenderTarget(64, { type: rtType(gl), generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
             P.rt = [mk(), mk()]; P.cam = new THREE.CubeCamera(1, 2500, P.rt[0]);   /* far enough for the whole skyline from the open sea */ P.cam.coordinateSystem = gl.coordinateSystem; P.cam.updateCoordinateSystem(); P.cam.children.forEach((c: any) => c.layers.set(REFL_LAYER));
         }
-        const moved = Math.hypot(cam.position.x - P.at.x, cam.position.z - P.at.z) > 40 || !P.ready;
-        if (P.face < 0 && (moved || st.n - P.last > 480)) { P.face = 0; P.pos.set(cam.position.x, WATER_Y + 0.5, cam.position.z); }
+        /* Shifat 9:06 AM 'reflection probe causing the ocean snap & re-draw': the probe re-captured (6 scene renders + mip build) every time the camera moved 40 m and
+           then swapped in at once = a visible snap of the reflections plus frame spikes. Now it is captured ONCE from a fixed point on the sea (super blurry
+           reflections don't need the exact viewpoint) and only refreshed every ~2 min for the day/night light; nothing re-renders while flying. */
+        if (P.face < 0 && (!P.ready || st.n - P.last > 3600)) { P.face = 0; P.pos.set(0, WATER_Y + 0.5, -560); }
         if (P.face >= 0 && st.n % 4 === 0) {   /* one face every 4th frame (was 2nd): halves the per-frame cost while flying, refresh still < 1 s */   // one face every other frame: the refresh costs ~1/12 of a scene render per frame, and only while it runs
             const back = P.rt[1 - P.cur], f = P.face, fc = P.cam.children[f] as THREE.PerspectiveCamera;
             P.cam.position.copy(P.pos); P.cam.updateMatrixWorld(true);
