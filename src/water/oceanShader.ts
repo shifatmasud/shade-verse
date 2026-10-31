@@ -197,19 +197,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, hW) * 0.25 * (1.0 - fr);
       // Whitecaps (ref: Sea of Thieves / AC Black Flag): foam where the wind-wave crests peak, broken into lacy cells by the caustic network
       // (same thin-line structure as real crest foam), drifting with the wave; thin streaks trail behind. One extra fetch; fades with distance.
-      float crest = 0.0;
-      if (gl_FrontFacing) { float hh = hW / max(swellK(vW.xz), 0.05);
-        /* bombed lace (no 6 m tile) + coarse breakup, and none in the sheltered harbor canals */
-        float lk = (0.5 + 0.5 * sin(vW.x * 0.0213 + sin(vW.z * 0.0171) * 2.2)) * 6.0, lf = fract(lk), li = floor(lk); vec2 luv = vec2(dot(vW.xz, vec2(0.83, -0.56)) * 0.17, dot(vW.xz, vec2(0.56, 0.83)) * 0.42) + vec2(0.0, uTime * 0.02);   /* wind-stretched fine streaks, not big blotches (Shifat 4:49 AM) */
-        float lace = mix(texture2D(uCaus, luv + sin(vec2(4.1, 9.3) * li)).r, texture2D(uCaus, luv * 0.93 + sin(vec2(4.1, 9.3) * (li + 1.0))).r, smoothstep(0.25, 0.75, lf));
-        lace *= smoothstep(0.08, 0.35, texture2D(uCaus, vW.xz * 0.0137 + 0.61).g + 0.15) * (1.0 - step(10.0, vW.x) * step(vW.x, 290.0) * step(-1255.0, vW.z) * step(vW.z, -995.0));
-        float gust = smoothstep(0.15, 0.75, sin(dot(vW.xz, vec2(0.0113, -0.0171)) + uTime * 0.07) * sin(dot(vW.xz, vec2(0.0191, 0.0067)) - uTime * 0.05) + 0.25 * sin(dot(vW.xz, vec2(-0.031, 0.024))));   /* wind gusts: breaks the regular crest grid into irregular patches */
-        crest = smoothstep(1.02, 1.5, hh) * smoothstep(0.2, 0.55, lace) * gust * 0.8 * smoothstep(0.35, 0.75, swellK(vW.xz)) * (1.0 - smoothstep(90.0, 320.0, wDist));
-        /* crest foam where the Gerstner surface actually folds (Jacobian compression gj.z, the Tessendorf/Sea-of-Thieves whitecap rule): foam hugs
-           the sharp crest lines, broken into the same wind-stretched lace and gust patches, with a fainter lacy residue on the crest's rim */
-        float jf = smoothstep(0.065, 0.12, gj.z), jr = smoothstep(0.045, 0.075, gj.z) * (1.0 - jf);
-        crest = max(crest, (jf * smoothstep(0.18, 0.5, lace) + jr * smoothstep(0.45, 0.7, lace) * 0.45) * mix(0.4, 1.0, gust) * (1.0 - smoothstep(90.0, 320.0, wDist)));
-        col = mix(col, vec3(0.97, 0.99, 1.0), crest * 0.6); }
+      float crest = 0.0;   /* Shifat 4:30 AM 'Hate foams': open-sea whitecaps + crest foam removed (also 3 texture reads less per sea pixel) */
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
       col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
       float aOut = mix(0.82, 1.0, max(fr, 0.0)); aOut = mix(aOut, 1.0, bedA * bedShore);
