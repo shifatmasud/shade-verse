@@ -358,6 +358,33 @@ export function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[
 const OCEAN_GEO = oceanGeo(), SEABED_GEO = seabedGeo();
 
 
+/* Shifat 3:33 AM: '6-7 fps over sea, 8-9 on land' -> on-device bisect. Only with ?debug in the URL (no effect otherwise):
+   HUD gets draw calls, triangles and the CPU (JavaScript) ms per frame; ?debug&res=0.3 pins the world resolution, ?debug&nosea hides the sea,
+   ?debug&noout turns the ink outline pass off - so a phone can tell GPU fill vs CPU vs a single pass. */
+const DQ = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams('');
+const DQ_ON = DQ.has('debug'), DQ_RES = DQ_ON && DQ.get('res') ? Math.max(0.2, Math.min(2, +DQ.get('res')!)) : 0, DQ_NOSEA = DQ_ON && DQ.has('nosea');
+if (DQ_ON && DQ.has('noout')) OUTLINE_STATE.on = false;
+function DebugStats() {
+    const gl = useThree((s) => s.gl), scene = useThree((s) => s.scene);
+    const st = useRef({ t0: 0, end: 0, n: 0, cpu: 0 }).current;
+    useEffect(() => {
+        if (!DQ_ON) return;
+        gl.info.autoReset = false;
+        const orig = gl.render.bind(gl);
+        (gl as any).render = (a: any, b: any) => { orig(a, b); st.end = performance.now(); };
+        return () => { (gl as any).render = orig; gl.info.autoReset = true; };
+    }, [gl]);
+    useFrame(() => {
+        if (!DQ_ON) return;
+        const w = window as any;
+        if (st.t0 && st.end > st.t0) st.cpu += (st.end - st.t0 - st.cpu) * 0.1;
+        w.__dbgStats = { calls: gl.info.render.calls, tris: gl.info.render.triangles, cpu: st.cpu };
+        gl.info.reset(); st.t0 = performance.now();
+        if (DQ_NOSEA && (st.n++ % 60) === 0) scene.traverse((o: any) => { if (o.material === waterMat) o.visible = false; });
+    }, -1000);
+    return null;
+}
+
 export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
@@ -416,7 +443,8 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             const sd = ema.current > 24 && ns > 0.45 ? -0.1 : ema.current > 16 && ns > 1 ? -0.05 : ema.current < 12.5 && ns >= 1 && ns < QK.maxScale && (coarse || HQ) ? 0.05 : ema.current < 18 && ns < 1 ? 0.05 : 0;
             const sg = Math.sign(sd); hyst.current.n = sg !== 0 && sg === hyst.current.s ? hyst.current.n + 1 : sg !== 0 ? 1 : 0; hyst.current.s = sg;
             if (sd !== 0 && hyst.current.n >= 2 && (sd < 0 || sim.t - hyst.current.down > 6)) { ns = sd < -0.06 ? ns - 0.1 : sd < 0 ? Math.max(1, ns - 0.05) : ns + 0.05; hyst.current.n = 0; if (sd < 0) hyst.current.down = sim.t; }   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
-            if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
+            if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;
+            if (DQ_RES) ns = DQ_RES;   // ?debug&res=x: hold the world resolution for an on-device fill-rate test   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
             if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns); }
         }
         if (sim.mode === 'play') {
@@ -664,6 +692,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
         <DayNight />
+        <DebugStats />
         {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={AA_FXAA} />}
         <SelectiveBloomPass />
         {OUTLINE_STATE.on && HD.enabled ? <HeroHDPass /> : null}
