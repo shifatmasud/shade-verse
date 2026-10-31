@@ -52,7 +52,7 @@ export function App() {
     const sim = useMemo(() => createSim(), []);
     const fx = useRef({ fov: 0, shake: 0 }).current;
     const DEBUG = typeof location !== 'undefined' && /[?&]debug\b/.test(location.search);
-    const perf = useRef({ scale: coarse ? 0.8 : 1, fps: 60, speed: 0 }).current;
+    const perf = useRef({ scale: 1, fps: 60, speed: 0 }).current;
     const snd = useMemo(() => new SoundDirector(sim), [sim]);   // cinematic sound pass: beds, SFX and adaptive score (src/audio)
     const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0, sc: 0, gr: false, me: false, sh: false, sn: false, wb: false, rd: 0 });
     const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
