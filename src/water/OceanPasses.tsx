@@ -27,6 +27,7 @@ const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA
 // into a small target (1/4 res desktop, 1/5 phone; phones every 2nd frame); the ocean shader samples it with wave distortion and Fresnel.
 const REFL_LAYER = 7;
 const NOPROBE = typeof location !== 'undefined' && /[?&]debug/.test(location.search) && /[?&]noprobe/.test(location.search);   // ?debug&noprobe: A/B test on device
+const NOCOPY = typeof location !== 'undefined' && /[?&]debug/.test(location.search) && /[?&]nocopy/.test(location.search);   // ?debug&nocopy: only the scene copy off
 export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; sim: Sim; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => ({ n: 0, tagged: false, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
@@ -95,7 +96,7 @@ export function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: 
         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
         const near = cam.position.z < WATER_Z + 170 && cam.position.y > WATER_Y - 0.5 && cam.position.y < 140, scale = perf.scale;
         const phoneFar = PHONE_REFL && cam.position.z < WATER_Z - 320;   /* Shifat 9:16 AM phone fps: the copy is a second full scene render; out at sea the bed is analytic and near water is see-through, so phones skip it there */
-        const ok = !!w && near && !phoneFar && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;
+        const ok = !!w && near && !phoneFar && !NOPROBE && !NOCOPY && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;   /* ?debug&noprobe also stops this second scene render (the screen-space reflection + refraction copy) */
         if (!ok) { u.uUseScene.value = 0; return; }
         st.n++;
         const farSea = cam.position.z < WATER_Z - 320;
