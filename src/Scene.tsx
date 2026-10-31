@@ -362,7 +362,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
     const web = useRef<THREE.Mesh>(null!), webB = useRef<THREE.Mesh>(null!), arrow = useRef<THREE.Mesh>(null!), cores = useRef<THREE.InstancedMesh>(null!), glows = useRef<THREE.InstancedMesh>(null!);
-    const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(perf.scale);
+    const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(perf.scale), hyst = useRef({ s: 0, n: 0, down: -99 });
     const suit = useMemo(() => new THREE.MeshLambertMaterial({ color: '#2d56d0' }), []);
     const ink = useMemo(() => new THREE.MeshBasicMaterial({ color: '#06070f', side: THREE.BackSide }), []);
     const white = useMemo(() => new THREE.MeshLambertMaterial({ color: '#f1f4ff' }), []);
@@ -411,7 +411,11 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         { const want = Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * curScale.current; applyRatio(gl, want); }   // world ratio unchanged; the canvas runs at native for the hero HD pass
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
-            if (ema.current > 24 && ns > 0.45) ns -= 0.1; else if (ema.current > 16 && ns > 1) ns = Math.max(1, ns - 0.05); else if (ema.current < 12.5 && ns >= 1 && ns < QK.maxScale && (coarse || HQ)) ns += 0.05; else if (ema.current < 18 && ns < 1) ns += 0.05;   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
+            /* Shifat 6:56 PM 'performance spikes near water': every scale step re-allocates the world/outline/copy render targets (a visible hitch), and the scaler
+               used to bounce (down at >24 ms, up at <18 ms, checked every 0.8 s). Now a step needs the same verdict 2 checks in a row, and an up-step also waits 6 s after a down-step. */
+            const sd = ema.current > 24 && ns > 0.45 ? -0.1 : ema.current > 16 && ns > 1 ? -0.05 : ema.current < 12.5 && ns >= 1 && ns < QK.maxScale && (coarse || HQ) ? 0.05 : ema.current < 18 && ns < 1 ? 0.05 : 0;
+            const sg = Math.sign(sd); hyst.current.n = sg !== 0 && sg === hyst.current.s ? hyst.current.n + 1 : sg !== 0 ? 1 : 0; hyst.current.s = sg;
+            if (sd !== 0 && hyst.current.n >= 2 && (sd < 0 || sim.t - hyst.current.down > 6)) { ns = sd < -0.06 ? ns - 0.1 : sd < 0 ? Math.max(1, ns - 0.05) : ns + 0.05; hyst.current.n = 0; if (sd < 0) hyst.current.down = sim.t; }   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
             if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns); }
         }
