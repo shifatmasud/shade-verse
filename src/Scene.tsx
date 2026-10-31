@@ -734,8 +734,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <OceanFollow waterRef={waterRef} />
         <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
-        <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />
-        <IslandReflection waterRef={waterRef} sim={sim} perf={perf} />
+        {/* Shifat 9:33 AM 'No reflection. Lock it. Remove any second render.': OceanScreenSpace (scene copy) and the reflection probe are not mounted */}
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * HALF, -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {/* the 200 m wall extensions past the city run along open sea: top kept 0.4 m under the still-water line (at 0 m it read as a dark line on the horizon from the island) */}

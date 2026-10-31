@@ -146,6 +146,7 @@ function chooseBuildingAsset(b: (typeof buildings)[number], index: number): Asse
     return pool[Math.floor(h * pool.length) % pool.length];
 }
 
+const LAKE_COPY = false;
 export function PolyforkBuildings() {
     const gltfs = useLoader(GLTFLoader, CITY_ASSETS.map((asset) => asset.url)) as GLTF[];
     const models = useMemo(() => CITY_ASSETS.map((asset, i) => prepareModel(asset.id, gltfs[i])), [gltfs]);
@@ -496,7 +497,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         const struggling = scale <= 0.5, everyOther = scale <= 0.6;
         copyFrame.current++;
         const wantCopy = !!copyTarget && visible && !struggling && (!everyOther || copyFrame.current % 2 === 0);
-        if (copyTarget && visible && !struggling) {
+        if (LAKE_COPY && copyTarget && visible && !struggling) {   /* Shifat 9:33 AM: no second render, no reflections - LOCKED off */
             if (wantCopy) {
                 worldBufferSize(gl, bufSize);   // world size (hero HD pass keeps the canvas at native)
                 const w = Math.max(160, Math.round(bufSize.x * QK.lakeCopyScale)), h = Math.max(90, Math.round(bufSize.y * QK.lakeCopyScale));
