@@ -1,3 +1,4 @@
+import { waveH } from './waveHeight';
 import React, { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -33,6 +34,7 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
     useFrame(() => {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
         HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost); HERO_REFL.shadowDir.set(Math.sin(sim.yaw), 0, Math.cos(sim.yaw), sim.swim && !sim.dive ? 1 : 0); u.uHeroDA.value.copy(HERO_REFL.shadowDir);   // analytic hero reflections (everywhere on the sea)
+        { const t = u.uTime.value, a = HERO_REFL.shadow, b = HERO_REFL.ghost; u.uHw.value.set(waveH(a.x, a.z, t), waveH(b.x, b.z, t), waveH(cam.position.x, cam.position.z, t)); }   /* Shifat 4:28 AM (hiding the sea gave the biggest fps jump): these 3 wave heights are the same for every vertex, so they are computed once here instead of 3x per sea vertex */
         const d = Math.hypot(cam.position.x - ISLAND.cx, cam.position.z - ISLAND.cz);
         // Shifat 3:39 AM "cities & bridges must reflect on water too": the mirror pass now runs near the island, along the city shore, and around the
         // east bridge / harbor; it replaces the screen-space march there (which could never show what is off-screen, like the tops of towers).
