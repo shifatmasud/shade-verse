@@ -80,3 +80,19 @@ export const GERSTNER_GLSL = [
     'vec3 wgj(vec2 p, float t){', '  vec2 g = vec2(0.0); float j = 0.0;', ...LONG_WAVES.map(wjLong), '  { float m;',
     ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(wjGold), '    if (WG_CHOP) {', ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(wjGold), '    }',
     '  }', '  float s = swellK(p); return vec3(g * s, j * GQ * s);', '}'].join('\n');
+
+
+/* Sea sim (Shifat 4:40 AM 'sea is glitching'): the camera-following sheet snaps every OCEAN_SNAP m, and its warped grid is coarse away from the
+   camera (~4 m at 20 m, ~9 m at 100 m). Wave trains shorter than ~2 grid cells were point-sampled by the vertices, so each snap resampled them
+   differently = visible jumps ("swimming" waves). The vertex versions below fade each train out where the local grid can't carry it
+   (Nyquist: k * spacing < pi); the per-pixel normals still draw all the detail, so the look stays. */
+function aa(k: number) { return `smoothstep(${(0.9 * Math.PI / k).toFixed(3)}, ${(0.45 * Math.PI / k).toFixed(3)}, sp)`; }
+function kOf(w: string[], a: number, b: number) { return Math.hypot(Number(w[a]), Number(w[b])); }
+function whLongV(w: string[]) { return `  h += sin(dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}) * ${w[3]} * ${aa(kOf(w, 0, 1))};`; }
+function whGoldV(w: string[]) { return `    ${env(w)} h += sin(${arg(w)}) * ${w[13]} * m * ${aa(kOf(w, 6, 7))};`; }
+function wdLongV(w: string[]) { const [dx, dz, k] = kn(w, 0, 1); return `  d -= cos(dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}) * ${w[3]} * ${aa(k)} * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)});`; }
+function wdGoldV(w: string[]) { const [dx, dz, k] = kn(w, 6, 7); return `    ${env(w)} d -= cos(${arg(w)}) * ${w[13]} * m * ${aa(k)} * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)});`; }
+/** GLSL (vertex only): whV / wdispV = wh / wdisp with each train faded by the local grid spacing sp (metres). Needs WAVES_GLSL first. */
+export const WAVES_V_GLSL = [
+    '', 'float whV(vec2 p, float t, float sp){', '  float h = 0.0;', ...LONG_WAVES.map(whLongV), '  { float m;', ...GOLDEN_WAVES.map(whGoldV), '  }', '  return h * swellK(p);', '}',
+    'vec2 wdispV(vec2 p, float t, float sp){', '  vec2 d = vec2(0.0);', ...LONG_WAVES.map(wdLongV), '  { float m;', ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(wdGoldV), '  }', '  return d * (GQ * swellK(p));', '}'].join('\n');

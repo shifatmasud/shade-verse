@@ -3,14 +3,15 @@
 // CPU waveH() in Scene.tsx (swimming + boats), so the two cannot drift apart.
 import { QUALITY, LOWQ } from '../quality';
 import { CAUSTIC_GLSL } from '../caustics';
-import { WAVES_GLSL, GERSTNER_GLSL } from './waves';
+import { WAVES_GLSL, GERSTNER_GLSL, WAVES_V_GLSL } from './waves';
+import { OCEAN_N, OCEAN_WARP, OCEAN_HALF } from './seabed';
 import { WATER_COMMON_GLSL } from './common';
 
 /** Shared GLSL wave field, generated from the single wave table in ./waves.ts (also drives the CPU waveH). */
 export const WAVES = WAVES_GLSL;
 
 /** Ocean vertex shader: camera-following warped grid displaced by the wave field. */
-export const OCEAN_VERT = WAVES + GERSTNER_GLSL + `uniform float uTime; uniform vec4 uHeroA, uHeroB; uniform vec3 uHw; varying vec2 vP0; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw; void main(){ vHw = uHw;   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); w.z = min(w.z, -222.0); float h = wh(w.xz, uTime); w.y += h; vP0 = w.xz; w.xz += wdisp(w.xz, uTime) * smoothstep(-222.0, -232.0, w.z);   /* Gerstner: sideways toward the crests (none right at the sea wall) */ vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);');
+export const OCEAN_VERT = WAVES + GERSTNER_GLSL + WAVES_V_GLSL + `uniform float uTime; uniform vec4 uHeroA, uHeroB; uniform vec3 uHw; varying vec2 vP0; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw; void main(){ vHw = uHw;   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); ${'vec2 la = abs(position.xz) / ' + OCEAN_HALF.toFixed(1) + '; vec2 sa = ' + (OCEAN_WARP * OCEAN_HALF * 2 / OCEAN_N).toFixed(4) + ' * pow(max(la, vec2(1e-4)), vec2(' + ((OCEAN_WARP - 1) / OCEAN_WARP).toFixed(4) + ')); float sp = max(sa.x, sa.y);'}   /* local grid spacing (m) of the warped sheet: waves shorter than ~2 cells fade (see whV) */ w.z = min(w.z, -222.0); float h = whV(w.xz, uTime, sp); w.y += h; vP0 = w.xz; w.xz += wdispV(w.xz, uTime, sp) * smoothstep(-222.0, -232.0, w.z);   /* Gerstner: sideways toward the crests (none right at the sea wall) */ vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);');
 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + `varying vec2 vP0; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
@@ -191,8 +192,9 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
       vec3 sunC = mix(vec3(1.0, 0.42, 0.16), vec3(1.0, 0.93, 0.82), smoothstep(0.02, 0.35, uSun.y));
       float lowSun = (1.0 - smoothstep(0.06, 0.4, uSun.y)) * smoothstep(-0.05, 0.03, uSun.y);   /* RDR2 / Sea of Thieves sunset: a broad golden glitter road on the sea toward a low sun, not a thin strip */
-      float ndh = max(dot(n, normalize(uSun + v)), 0.0), shin = mix(700.0, 40.0, smoothstep(15.0, 380.0, wDist)) * (1.0 - 0.7 * lowSun), rs = max(dot(r, uSun), 0.0);
-      vec3 sunSpec = sunC * min(pow(ndh, shin) * shin * (0.0075 + 0.012 * lowSun) + pow(rs, 40.0) * 0.3 + pow(rs, 8.0) * 0.12 * (1.0 - smoothstep(0.1, 0.5, uSun.y)), 2.2) * smoothstep(-0.05, 0.04, uSun.y);   // + a broad warm sheen when the sun is low
+      float ndh = max(dot(n, normalize(uSun + v)), 0.0), shin = mix(1800.0, 40.0, pow(smoothstep(8.0, 380.0, wDist), 0.6)) * (1.0 - 0.7 * lowSun), rs = max(dot(r, uSun), 0.0);
+      float gl0 = pow(ndh, shin) * shin * (0.0075 + 0.012 * lowSun); gl0 = (0.55 + 0.6 * lowSun) * (1.0 - exp(-0.7 * gl0)) * mix(0.25, 1.0, smoothstep(6.0, 90.0, wDist));   /* frame-by-frame sim (Shifat 5:05 AM): the near glint saturated into flat white blobs (peak ~5 clamped at 2.2) - now sharper and softly compressed: sparkles, not foam-like patches */
+      vec3 sunSpec = sunC * min(gl0 + pow(rs, 40.0) * 0.3 + pow(rs, 8.0) * 0.12 * (1.0 - smoothstep(0.1, 0.5, uSun.y)), 2.2) * smoothstep(-0.05, 0.04, uSun.y);   // + a broad warm sheen when the sun is low
       float hW = wh(vP0, uTime);   /* evaluated once per pixel (was twice) */
       col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, hW) * 0.25 * (1.0 - fr);
       // Whitecaps (ref: Sea of Thieves / AC Black Flag): foam where the wind-wave crests peak, broken into lacy cells by the caustic network

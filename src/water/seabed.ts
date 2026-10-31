@@ -28,9 +28,10 @@ export const seabedMat = mkSea(false), wallMat = mkSea(true);
 // Greater ocean: a camera-following sea sheet whose grid is dense under the camera and coarse toward the horizon (one mesh, no extra
 // draw calls). The vertex shader folds anything north of the shoreline onto it, so the sheet never covers land.
 export const OCEAN_HALF = 1500, OCEAN_SNAP = 8;   // South Sea 3: 900 -> 1500 so the sheet reaches past the raised far plane (no seabed band at the horizon)
+export const OCEAN_N = 170, OCEAN_WARP = 2.1;
 export function oceanGeo() {
-    const n = 170, pos: number[] = [], idx: number[] = [];   /* keep 170: 124 made the camera-follow snap visibly shift the coarser wave mesh (Shifat 4:40 AM 'sea is glitching') */
-    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), 2.1) * OCEAN_HALF;
+    const n = OCEAN_N, pos: number[] = [], idx: number[] = [];   /* keep 170: 124 made the camera-follow snap visibly shift the coarser wave mesh (Shifat 4:40 AM 'sea is glitching') */
+    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), OCEAN_WARP) * OCEAN_HALF;
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(warp(i / n * 2 - 1), 0, warp(j / n * 2 - 1));
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i, b = a + n + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;

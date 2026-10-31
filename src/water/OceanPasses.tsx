@@ -15,7 +15,7 @@ import { waterMat } from './oceanMaterial';
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
 export function OceanFollow({ waterRef }: { waterRef: React.MutableRefObject<THREE.Mesh | null> }) {
-    useFrame(({ camera }) => { const w = waterRef.current; if (!w) return; w.position.set(Math.round(camera.position.x / OCEAN_SNAP) * OCEAN_SNAP, WATER_Y, Math.round(camera.position.z / OCEAN_SNAP) * OCEAN_SNAP); });
+    useFrame(({ camera }) => { const w = waterRef.current; if (!w) return; const so = DBG ? ((window as any).__seaSnapOff || 0) : 0; w.position.set(Math.round(camera.position.x / OCEAN_SNAP) * OCEAN_SNAP + so, WATER_Y, Math.round(camera.position.z / OCEAN_SNAP) * OCEAN_SNAP + so); });   /* __seaSnapOff: sea sim test hook (shifts the sheet by whole snaps; a correct sea renders identically) */
     return null;
 }
 
