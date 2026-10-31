@@ -27,10 +27,9 @@ const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA
 const REFL_LAYER = 7;
 export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; sim: Sim; perf: { scale: number } }) {
     const { gl, scene, camera } = useThree();
-    const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: rtType(gl) }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
-        rot: new THREE.Matrix4(), cp: new THREE.Vector3(), la: new THREE.Vector3(), tg: new THREE.Vector3(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
-        bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1), probe: { cam: null as any, rt: [] as THREE.WebGLCubeRenderTarget[], cur: 0, face: -1, at: new THREE.Vector3(1e9, 0, 0), pos: new THREE.Vector3(), last: 0, ready: false }, col: new THREE.Color(), pv: new THREE.Matrix4(), fr: new THREE.Frustum() }), []);
-    useEffect(() => () => { st.rt.dispose(); st.probe.rt.forEach((r) => r.dispose()); }, [st]);
+    const st = useMemo(() => ({ n: 0, tagged: false, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
+        probe: { cam: null as any, rt: [] as THREE.WebGLCubeRenderTarget[], cur: 0, face: -1, at: new THREE.Vector3(1e9, 0, 0), pos: new THREE.Vector3(), last: 0, ready: false }, col: new THREE.Color(), pv: new THREE.Matrix4(), fr: new THREE.Frustum() }), []);
+    useEffect(() => () => { st.probe.rt.forEach((r) => r.dispose()); }, [st]);
     useFrame(() => {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
         HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost); HERO_REFL.shadowDir.set(Math.sin(sim.yaw), 0, Math.cos(sim.yaw), sim.swim && !sim.dive ? 1 : 0); u.uHeroDA.value.copy(HERO_REFL.shadowDir);   // analytic hero reflections (everywhere on the sea)
