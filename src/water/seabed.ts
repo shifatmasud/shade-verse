@@ -29,7 +29,7 @@ export const seabedMat = mkSea(false), wallMat = mkSea(true);
 // draw calls). The vertex shader folds anything north of the shoreline onto it, so the sheet never covers land.
 export const OCEAN_HALF = 1500, OCEAN_SNAP = 8;   // South Sea 3: 900 -> 1500 so the sheet reaches past the raised far plane (no seabed band at the horizon)
 export function oceanGeo() {
-    const n = 124, pos: number[] = [], idx: number[] = [];   /* 170 -> 124 (Shifat 4:28 AM: the sea was the biggest fps cost on the phone, vertex-bound): ~47% fewer sea vertices; normals stay per pixel */
+    const n = 170, pos: number[] = [], idx: number[] = [];   /* keep 170: 124 made the camera-follow snap visibly shift the coarser wave mesh (Shifat 4:40 AM 'sea is glitching') */
     const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), 2.1) * OCEAN_HALF;
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(warp(i / n * 2 - 1), 0, warp(j / n * 2 - 1));
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i, b = a + n + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
