@@ -17,3 +17,12 @@ Landscape only. Do not add or enable portrait gameplay.
 ## Release rules
 
 Use and cite real visual and motion references. Capture before-and-after screenshots for each iteration. Check both target devices—Android 10 with Chrome 155, and Windows 10 with Edge 155 on Intel UHD Graphics 600—and distinguish observed tests from estimates. Push reviewed changes directly to `main` in the existing private mirror and let its connected Vercel Git integration deploy automatically; do not invoke Vercel deployment through CLI/API or change Vercel settings. Every release report must include a changelog, a score out of 100 across visuals, controls, performance, stability, and device compatibility, plus the live link.
+
+## Locks added Oct 30 2026 (Shifat approved)
+
+- Name: always "Shade Verse".
+- Neon Harbor night look (incl. neon glow on water) stays untouched.
+- Map: Jungle Island has no bridge; the only bridge runs east, city to Neon Harbor.
+- Water look: reflections subtle, blurry and blue; caustics kept; waves never tile; all water bodies share one look (`src/water/common.ts`).
+- Same visuals on all devices; performance budget = Adreno 506 phone. No change that costs fps without Shifat's OK.
+- Fish and sea-life shapes as of Oct 30 2026.
