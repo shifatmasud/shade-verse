@@ -131,7 +131,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         #endif
       }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
-      if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
+      bool camUp = cameraPosition.y > vW.y;   /* Shifat 6:06 PM: a camera under the sea never sees the analytic hero (the real body is right there) - this was the dark pill floating above the swimmer */
+      if (!below && camUp) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
         // their capsules, so a swimming / diving hero is seen bent, tinted and absorbed through the water (red dies first), shifting with the waves.
         vec3 tdr = refract(-v, n, 1.0 / 1.333); float rA = -1.0, rB = -1.0;
         if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 30.0 && uHeroA.y + 0.25 < hwA) rA = capH(vW, tdr, uHeroA.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroA.x, min(uHeroA.y + 1.55, hwA), uHeroA.z), 0.34, uHeroDA);   /* only the submerged part refracts; flying = none */
@@ -152,7 +153,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         if (rt > 0.0 && rt < 14.0) { vec3 Th = exp(-vec3(0.45, 0.07, 0.02) * rt * 1.6); body = mix(body, rc * mix(0.35, 1.0, uDay) * (0.55 + 0.45 * uDay) * Th + body * (1.0 - Th) * 0.6, 0.9); }
       }
       float heroK = 0.0; vec3 heroC = vec3(0.0);
-      if (!below && r.y > 0.0) {
+      if (!below && camUp && r.y > 0.0) {
         vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
         if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA) tA = capH(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.25, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34, uHeroDA);   /* only the part above the surface reflects (Shifat 5:12) */
         if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB) tB = capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.25, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);

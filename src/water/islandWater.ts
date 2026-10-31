@@ -87,7 +87,7 @@ export const RIVER_MAT = new THREE.ShaderMaterial({
       white *= 1.0 - 0.95 * vCalm; body = mix(body, vec3(0.16, 0.62, 0.66), vCalm);   /* mouth: foam dies down and the colour turns to the shallow sea's, so river and ocean read as one surface */
       /* hero reflections on the river: same soft feathered, tinted style as the sea, pools and pond (src/water/common.ts) */
       vec3 rr = reflect(-V, Nr); float hk = 0.0; vec3 hc = vec3(0.0); float dv = length(cameraPosition - vW);
-      if (dv < 40.0) {
+      if (dv < 40.0 && cameraPosition.y > vW.y) {
         bool nA = uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 25.0 && uHeroA.y + 1.55 > vW.y, nB = uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 25.0 && uHeroB.y + 1.5 > vW.y;
         float qA = nA ? capHitP(vW, rr, vec3(uHeroA.x, max(uHeroA.y + 0.25, vW.y), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34) : -1.0;
         float oA = nA && qA < 0.0 ? capHitP(vW, rr, vec3(uHeroA.x, max(uHeroA.y + 0.15, vW.y), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.55) : -1.0;
@@ -150,7 +150,7 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
           }
           // Shifat 5:12 AM hero rule in the island pools: below the surface refracts and shows through, above it reflects (flying = reflection only)
           float see = 0.0; vec3 r = reflect(-v, n); float hk = 0.0; vec3 hc = vec3(0.0); float wy = uBB.w;
-          if (!below) {
+          if (!below && cameraPosition.y > vW.y) {
             vec3 tdh = refract(-v, n, 1.0 / 1.333);
             float rA = uHeroA.w > 0.5 && uHeroA.y + 0.25 < wy && length(uHeroA.xz - vW.xz) < 25.0 ? heroA(vW, tdh, uHeroA.y + 0.25, min(uHeroA.y + 1.55, wy)) : -1.0;
             float rB = uHeroB.w > 0.5 && uHeroB.y + 0.25 < wy && length(uHeroB.xz - vW.xz) < 25.0 ? capHitP(vW, tdh, uHeroB.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroB.x, min(uHeroB.y + 1.5, wy), uHeroB.z), 0.3) : -1.0;
