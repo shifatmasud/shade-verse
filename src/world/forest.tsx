@@ -6,7 +6,7 @@ import { TOD } from './env';
 import { PINE_URL } from '../texdata';
 import { useEffect, useMemo, useRef } from 'react';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
+import { SELECTIVE_BLOOM_LAYER, TREE_SSR_LAYER } from '../renderLayers';
 import { useFrame } from '@react-three/fiber';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
@@ -71,6 +71,8 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
         for (let i = 0; i < 70; i++) { const p = pts[i < 45 ? i % pts.length : Math.min(pts.length - 1, 130 + i - 45)], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + (i < 45 ? 3 + (i % 5) : 0), 0.02 + parkH(p.x + (i < 45 ? 3 + (i % 5) : 0), p.z + (i < 45 ? 2 : 0)), p.z + (i < 45 ? 2 : 0)); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.22 + ((p.c * 5.7) % 1) * 0.08, 0.18 + ((p.c * 2.3) % 1) * 0.12, 0.55 + ((p.c * 9.1) % 1) * 0.20)); }
         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
     }, [pts]);
+    // Shifat 3:44 PM 'small scale trees only SSR': park trees also live on TREE_SSR_LAYER so the pond's tiny screen-space copy renders just them.
+    useEffect(() => { for (const arr of [tr.current, lf.current, lo.current]) for (const m of arr) m?.layers.enable(TREE_SSR_LAYER); }, []);
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
     useFrame(() => { const gm2 = grass.current && (grass.current.material as THREE.MeshLambertMaterial); if (gm2) { const nn2 = 1 - TOD.day.value; gm2.color.setRGB(1 - 0.35 * nn2, 1 - 0.12 * nn2, 1 + 0.35 * nn2); gm2.emissive.setRGB(0.0, 0.002 * nn2, 0.006 * nn2); } });   // night: cool the ground tone to match the cool tufts
     const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)

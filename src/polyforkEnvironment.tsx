@@ -1,4 +1,5 @@
 import { worldBufferSize } from './heroHD';
+import { TREE_SSR_LAYER } from './renderLayers';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -240,7 +241,7 @@ function chooseBuildingAsset(b: (typeof buildings)[number], index: number): Asse
     return pool[Math.floor(h * pool.length) % pool.length];
 }
 
-const LAKE_COPY = false;
+const LAKE_COPY = true;   // Shifat 3:44 PM: small-scale, trees-only SSR copy for the pond
 export function PolyforkBuildings() {
     const gltfs = useLoader(GLTFLoader, CITY_ASSETS.map((asset) => asset.url)) as GLTF[];
     const models = useMemo(() => CITY_ASSETS.map((asset, i) => prepareModel(asset.id, gltfs[i])), [gltfs]);
@@ -518,7 +519,6 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
     useMemo(() => projectPondSkyline(PARK_POND.cx, PARK_POND.cz, PARK_POND_Y, PARK_POND.rx), []);   // #5: static pond skyline ring (projected once)
     // low-res opaque scene copy (colour + depth) for SSR + screen-space refraction; never allocated on ?q=low.
     const copyTarget = useMemo(() => {
-        if (LOWQ) return null;
         const t = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: true, stencilBuffer: false, samples: 0, type: THREE.UnsignedByteType });
         t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType;
         t.texture.minFilter = t.texture.magFilter = THREE.LinearFilter; t.texture.generateMipmaps = false;
@@ -593,23 +593,26 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         // scene copy: only while the lake is on screen and close enough to matter; adaptive when the frame budget is tight.
         const scale = perf ? perf.scale : 1;
         projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(projView);
-        const visible = frustum.intersectsSphere(lakeSphere) && cam.position.distanceTo(lakeSphere.center) < 170;
+        const visible = frustum.intersectsSphere(lakeSphere) && cam.position.distanceTo(lakeSphere.center) < 70;
         const struggling = scale <= 0.5, everyOther = scale <= 0.6;
         copyFrame.current++;
         const wantCopy = !!copyTarget && visible && !struggling && (!everyOther || copyFrame.current % 2 === 0);
         if (LAKE_COPY && copyTarget && visible && !struggling) {   /* Shifat 9:33 AM: no second render, no reflections - LOCKED off */
             if (wantCopy) {
                 worldBufferSize(gl, bufSize);   // world size (hero HD pass keeps the canvas at native)
-                const w = Math.max(160, Math.round(bufSize.x * QK.lakeCopyScale)), h = Math.max(90, Math.round(bufSize.y * QK.lakeCopyScale));
+                const w = Math.max(240, Math.round(bufSize.x * 0.25)), h = Math.max(135, Math.round(bufSize.y * 0.25));   // same small copy on every device
                 if (copyTarget.width !== w || copyTarget.height !== h) copyTarget.setSize(w, h);
                 const previousTarget = gl.getRenderTarget(), previousAutoClear = gl.autoClear, previousShadows = gl.shadowMap.autoUpdate;
                 try {
                     water.visible = false; gl.shadowMap.autoUpdate = false; gl.autoClear = true;
-                    gl.setRenderTarget(copyTarget); gl.clear(true, true, true); gl.render(scene, camera);
+                    if ((copies.current & 63) === 0) scene.traverse((o) => { if ((o as THREE.Light).isLight) o.layers.enable(TREE_SSR_LAYER); });
+                    const mask = camera.layers.mask, bg = scene.background, cc = gl.getClearColor(new THREE.Color()), ca = gl.getClearAlpha(); camera.layers.set(TREE_SSR_LAYER); scene.background = null; gl.setClearColor(0x000000, 0);
+                    gl.setRenderTarget(copyTarget); gl.clear(true, true, true); try { gl.render(scene, camera); } finally { camera.layers.mask = mask; scene.background = bg; gl.setClearColor(cc, ca); }
                 } finally {
                     gl.setRenderTarget(previousTarget); gl.autoClear = previousAutoClear; gl.shadowMap.autoUpdate = previousShadows; water.visible = true;
                 }
                 copies.current++;
+                if (DBG) (window as any).__lakeCopy = { n: copies.current, w: copyTarget.width, h: copyTarget.height };
             }
             u.uUseScene.value = 1;
         } else u.uUseScene.value = 0;

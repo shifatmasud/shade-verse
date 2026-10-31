@@ -118,12 +118,12 @@ void main(){
  float shallow=1.0-smoothstep(0.15,2.2,bedDepth);
  vec2 suv=vScreen.xy/vScreen.w*0.5+0.5;float wz=vView.z;
  // reflection
- vec3 refl=sky(R);float reflDist=1e5;
+ float gHw=0.0; vec3 refl=sky(R);float reflDist=1e5;
   if(uUseScene>0.5&&!below){vec3 Rv=normalize((viewMatrix*vec4(R,0.0)).xyz);float tp=0.0;
-  for(int i=0;i<16;i++){if(float(i)>=uSteps)break;float k=(float(i)+1.0)/uSteps;float t=90.0*k*k;vec3 Q=vView+Rv*t;vec4 c=uProj*vec4(Q,1.0);if(c.w<=0.0)break;vec2 uv=c.xy/c.w*0.5+0.5;
-   if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0)break;float sz=sceneZ(uv);if(Q.z<sz&&Q.z>sz-(t-tp)*1.2-0.6&&sz>-uFar*0.98){
+  for(int i=0;i<16;i++){if(i>=12)break;float k=(float(i)+1.0)/12.0;float t=70.0*k*k;vec3 Q=vView+Rv*t;vec4 c=uProj*vec4(Q,1.0);if(c.w<=0.0)break;vec2 uv=c.xy/c.w*0.5+0.5;
+   if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0)break;float sz=sceneZ(uv);if(Q.z<sz&&Q.z>sz-max((t-tp)*1.2+0.6,14.0)&&sz>-uFar*0.98){
     if(uSteps>12.0){float a0=tp,a1=t;for(int j=0;j<4;j++){float m=0.5*(a0+a1);vec3 M=vView+Rv*m;vec4 cm=uProj*vec4(M,1.0);vec2 um=cm.xy/cm.w*0.5+0.5;if(M.z<sceneZ(um)){a1=m;uv=um;}else a0=m;}}
-    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);vec2 bo=vec2(0.0035,0.0045)*(1.0+0.6*clamp(t/40.0,0.0,1.0));vec3 rs=(texture2D(tScene,uv).rgb*2.0+texture2D(tScene,uv+vec2(bo.x,0.0)).rgb+texture2D(tScene,uv-vec2(bo.x,0.0)).rgb+texture2D(tScene,uv+vec2(0.0,bo.y)).rgb+texture2D(tScene,uv-vec2(0.0,bo.y)).rgb)/6.0;/* soft 5-tap: the low-res scene copy no longer reads as pixel blocks, and blurs more for far objects like real ripple-roughened water */refl=mix(refl,reflTint(rs,refl),e*WATER_REFL_W);reflDist=t;break;}/* same soft blue subtle reflections as the sea */
+    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.93,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);vec2 bo=vec2(0.0035,0.0045)*(1.0+0.6*clamp(t/40.0,0.0,1.0));vec3 rs=(texture2D(tScene,uv).rgb*2.0+texture2D(tScene,uv+vec2(bo.x,0.0)).rgb+texture2D(tScene,uv-vec2(bo.x,0.0)).rgb+texture2D(tScene,uv+vec2(0.0,bo.y)).rgb+texture2D(tScene,uv-vec2(0.0,bo.y)).rgb)/6.0;/* soft 5-tap: the low-res scene copy no longer reads as pixel blocks, and blurs more for far objects like real ripple-roughened water */float ca=texture2D(tScene,uv).a;rs=rs/max(ca,0.35)*2.4;/* the trees-only copy misses the world pass's bloom/fog lift: brighten to match the real canopies */float hw=e*0.8*smoothstep(0.1,0.6,ca);refl=mix(refl,mix(rs,reflTint(rs,refl),0.3)*0.9,hw);F=max(F,0.8*hw);gHw=hw;reflDist=t;break;}/* trees-only SSR (Shifat 3:44 PM): canopies read clearly, lightly water-tinted *//* same soft blue subtle reflections as the sea */
    tp=t;}}
  if(!below&&reflDist>9e4){/* #5 pond reflection illusion v2 (Shifat 3:20 PM 'looks a bit wrong'): the bank trees are an analytic ring (cylinder) around the
    pond, hit by the per-pixel reflected ray, so the mirrored tree line hugs the shore with true parallax like a real pond; above the trees the far
@@ -149,13 +149,14 @@ void main(){
  // refraction / transmission
  vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.46,0.12,0.075);/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
  vec3 trans;float alpha=1.0;
- if(uUseScene>0.5&&!below){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
+ if(false){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
   float sz2=sceneZ(uv2);if(sz2>wz){uv2=suv;sz2=sceneZ(suv);}float th=clamp(wz-sz2,0.0,12.0)*1.15;vec3 T=exp(-absorb*th);
   vec3 behind=texture2D(tScene,uv2).rgb;vec3 hn2;float th2=1e5;/* #3: the real diving heroes draw through the water now (src/heroHD.ts), the analytic stand-in (Shifat 2:53 PM 'weird blue thingy') is off */if(th2<th+0.5&&(vWorld+Td*th2).y<vWorld.y)behind=mix(behind,heroCol(hn2),0.85);trans=behind*T+deepCol*(1.0-T);trans=trans*vec3(0.78,1.0,0.97)+vec3(0.0,0.025,0.03)*uDay;}/* clear-pond green-turquoise cast even in the shallows (was reading grey) */
  else{float th=bedDepth/max(abs(Td.y),0.25);vec3 T=exp(-absorb*th);float Ts=clamp(dot(T,vec3(0.2,0.4,0.4)),0.0,1.0);
   vec3 hn2;float th2=1e5;/* #3: the real diving heroes draw through the water now (src/heroHD.ts), the analytic stand-in (Shifat 2:53 PM 'weird blue thingy') is off */float hk=(th2<th+0.5&&(vWorld+Td*th2).y<vWorld.y)?0.85:0.0;/* only the submerged part refracts */trans=mix(deepCol*(1.0-T)/max(1.0-Ts,0.05),heroCol(hn2),hk);alpha=max(1.0-Ts*(1.0-hk),0.42);}/* keep the turquoise body tint when looking straight down (was going grey) */
  float f=below?max(F,0.12):F;vec3 col=mix(trans,refl,f);
  if(alpha<1.0){col=(refl*f+trans*(1.0-f)*alpha)/max(f+(1.0-f)*alpha,0.001);alpha=f+(1.0-f)*alpha;}
+ if(gHw>0.0){col=mix(col,refl,0.8*gHw);alpha=max(alpha,0.9*gHw);}/* trees-only SSR hit: the canopy reflection is opaque, not washed by the see-through blend */
  if(below){float haze=1.0-exp(-dist*0.045);col=mix(col,vec3(0.035,0.23,0.30),haze*0.72);alpha=1.0;}
  col=mix(col,vec3(0.86,0.96,0.92),smoothstep(0.12,0.18,vHeight)*0.10);
  gl_FragColor=vec4(col,alpha);
