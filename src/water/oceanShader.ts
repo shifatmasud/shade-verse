@@ -123,7 +123,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
            city / island / bridge, heavily mip-blurred; tinted toward the water's blue and laid in subtly (shared look, src/water/common.ts).
            One blurry fetch for the body + one sharper fetch for the night neon. No mirror render at all. */
         vec3 rd = normalize(vec3(r.x + n.x * 0.12, max(r.y, 0.02), r.z + n.z * 0.12));
-        vec4 rs = textureCube(tProbe, rd, 3.0), rg = textureCube(tProbe, rd, 1.0);
+        vec4 rs = textureCube(tProbe, rd, 3.0), rg = uDay < 0.98 ? textureCube(tProbe, rd, 1.0) : vec4(0.0);   /* the sharp neon read only matters at night (nGlow is scaled by 1-uDay): skipped by day, one cube fetch less per sea pixel */
         vec3 rsc = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb; vec3 rsb = reflTint(rsc, refl);
         refl = mix(refl, rsb, rs.a * WATER_REFL_W); nGlow = linearToOutputTexel(vec4(rg.rgb, 1.0)).rgb * rg.a;
         #ifdef PROBE_DEBUG
