@@ -72,7 +72,7 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
     }, [pts]);
     // Shifat 3:44 PM 'small scale trees only SSR': park trees also live on TREE_SSR_LAYER so the pond's tiny screen-space copy renders just them.
-    useEffect(() => { for (const arr of [lf.current, lo.current]) for (const m of arr) m?.layers.enable(TREE_SSR_LAYER); }, []);
+    useEffect(() => { for (const arr of [tr.current, lf.current, lo.current]) for (const m of arr) m?.layers.enable(TREE_SSR_LAYER); }, []);
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
     useFrame(() => { const gm2 = grass.current && (grass.current.material as THREE.MeshLambertMaterial); if (gm2) { const nn2 = 1 - TOD.day.value; gm2.color.setRGB(1 - 0.35 * nn2, 1 - 0.12 * nn2, 1 + 0.35 * nn2); gm2.emissive.setRGB(0.0, 0.002 * nn2, 0.006 * nn2); } });   // night: cool the ground tone to match the cool tufts
     const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)
