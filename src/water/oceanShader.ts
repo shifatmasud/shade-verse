@@ -60,8 +60,12 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         g += (d1 * 0.125 + d2) * mix(1.0, 0.12, smoothstep(30.0, 220.0, wDist)); }   /* far away the waves carry the shape; a tiled ripple there would read as a pattern */
       /* far-sea variation (Shifat 3:23 PM 'fbm'): wind gust patches - a very low-frequency noise (one fetch of the caustic tile's blurred
          mips) roughens some stretches and leaves others glassy, so the open sea never reads as one uniform sheet. Same on every device. */
-      float gust = texture2D(uCaus, vW.xz * 0.0013 + vec2(0.003, 0.0017) * uTime).r;
+      vec4 gq = texture2D(uCaus, vW.xz * 0.0013 + vec2(0.003, 0.0017) * uTime);
+      float gust = gq.r;
       g *= mix(0.55, 1.45, smoothstep(0.25, 0.75, gust));
+      /* Shifat 5:32 PM 'breaking up the far sea': a second, much larger scale from the SAME fetch (the tile's other channel, domain-warped by the
+         first) - slow colour patches over hundreds of metres (deeper blue vs. greener, like current lines / cloud shade on real ocean). */
+      float swPatch = smoothstep(0.3, 0.7, texture2D(uCaus, vW.xz * 0.00042 + (gq.rg - 0.5) * 0.08 - vec2(0.0011, 0.0006) * uTime).g);
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       bool below = !gl_FrontFacing;
@@ -164,6 +168,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         refl = mix(refl, hc, hk); heroK = hk; heroC = hc;
       }
       vec3 col = mix(body, refl, fr);
+      col *= mix(vec3(1.0), mix(vec3(0.86, 0.95, 1.06), vec3(1.06, 1.05, 0.94), swPatch), smoothstep(40.0, 200.0, length(cameraPosition - vW)) * (below ? 0.0 : 1.0));   /* far-sea colour patches */
       { // boat wakes (Kelvin pattern, ref: Sea of Thieves / AC4 ship wakes): two foam arms at the 19.5 deg Kelvin angle + a churned centre trail and a bow wave,
         // laced by the caustic-cell network so it breaks up like real wake foam; fades over ~70 m. Up to 5 boats, early-out by distance.
         float wk = 0.0;
