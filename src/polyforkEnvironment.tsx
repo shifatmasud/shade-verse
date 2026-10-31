@@ -267,11 +267,13 @@ export function ParkGround() {
         path.computeVertexNormals();
         return { floor, path };
     }, [cx, cz]);
-    return <group name="park-ground">
-        <mesh position={[cx, 0.05, cz]} geometry={terrain.floor} frustumCulled={false}>
+    const pgRef = useRef<THREE.Group>(null!);
+    useFrame(({ camera }) => { if (pgRef.current) pgRef.current.visible = Math.hypot(camera.position.x - cx, camera.position.z - cz) < 460; });   /* Shifat 9:43 AM 'freeze what's not visible': the park floor (41k tris) was drawn every frame from anywhere, even far out at sea behind the skyline; now frustum-culled and skipped past 460 m */
+    return <group name="park-ground" ref={pgRef}>
+        <mesh position={[cx, 0.05, cz]} geometry={terrain.floor} frustumCulled>
             <meshLambertMaterial color="#ffffff" vertexColors onBeforeCompile={sandShader} />
         </mesh>
-        <mesh position={[cx, 0.09, cz]} geometry={terrain.path} frustumCulled={false}>
+        <mesh position={[cx, 0.09, cz]} geometry={terrain.path} frustumCulled>
             <meshLambertMaterial color="#b89865" onBeforeCompile={landTag} />
         </mesh>
     </group>;
