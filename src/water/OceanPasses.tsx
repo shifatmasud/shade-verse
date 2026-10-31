@@ -60,12 +60,12 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
         }
         const moved = Math.hypot(cam.position.x - P.at.x, cam.position.z - P.at.z) > 40 || !P.ready;
         if (P.face < 0 && (moved || st.n - P.last > 480)) { P.face = 0; P.pos.set(cam.position.x, WATER_Y + 0.5, cam.position.z); }
-        if (P.face >= 0 && st.n % 2 === 0) {   // one face every other frame: the refresh costs ~1/12 of a scene render per frame, and only while it runs
+        if (P.face >= 0 && st.n % 4 === 0) {   /* one face every 4th frame (was 2nd): halves the per-frame cost while flying, refresh still < 1 s */   // one face every other frame: the refresh costs ~1/12 of a scene render per frame, and only while it runs
             const back = P.rt[1 - P.cur], f = P.face, fc = P.cam.children[f] as THREE.PerspectiveCamera;
             P.cam.position.copy(P.pos); P.cam.updateMatrixWorld(true);
             const prev = gl.getRenderTarget(), ac = gl.autoClear, sh = gl.shadowMap.autoUpdate, cp = gl.clippingPlanes, cc = gl.getClearAlpha(); gl.getClearColor(st.col);
             back.texture.generateMipmaps = f === 5;
-            try { gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.clippingPlanes = [st.plane]; gl.setClearColor(st.col, 0); gl.setRenderTarget(back, f); gl.clear(true, true, true); gl.render(scene, fc); }
+            try { gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.clippingPlanes = [st.plane]; gl.setClearColor(st.col, 0); gl.setRenderTarget(back, f); gl.clear(true, true, true); if (f !== 3) gl.render(scene, fc); }   /* Shifat 6:56 PM 'flying near water fps spikes': the -Y face looks under the water plane (clip leaves it empty) - cleared, never drawn */
             finally { gl.setRenderTarget(prev); gl.autoClear = ac; gl.shadowMap.autoUpdate = sh; gl.clippingPlanes = cp; gl.setClearColor(st.col, cc); }
             if (++P.face > 5) { P.face = -1; P.cur = 1 - P.cur; P.at.copy(P.pos); P.last = st.n; P.ready = true; }
         }
@@ -94,7 +94,7 @@ export function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: 
         if (!ok) { u.uUseScene.value = 0; return; }
         st.n++;
         const farSea = cam.position.z < WATER_Z - 320;
-        if ((scale > 0.6 && !PHONE_REFL && !farSea) || st.n % 2 === 0 || st.copies === 0) {   /* phones always, desktop out at open sea (Shifat 10:27 'go alternative'): half rate - one frame of lag under rippled water is invisible */
+        if ((scale > 0.6 && !PHONE_REFL && !farSea) || st.n % (PHONE_REFL ? 3 : 2) === 0 || st.copies === 0) {   /* phones: 1/3 rate (Shifat 6:56 PM spikes near water) */   /* phones always, desktop out at open sea (Shifat 10:27 'go alternative'): half rate - one frame of lag under rippled water is invisible */
             worldBufferSize(gl, st.buf);
             const W = Math.max(160, Math.round(st.buf.x * QK.lakeCopyScale)), H = Math.max(90, Math.round(st.buf.y * QK.lakeCopyScale));
             if (target.width !== W || target.height !== H) target.setSize(W, H); u.uSceneTx.value.set(1 / W, 1 / H);
