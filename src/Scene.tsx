@@ -362,11 +362,12 @@ const OCEAN_GEO = oceanGeo(), SEABED_GEO = seabedGeo();
    HUD gets draw calls, triangles and the CPU (JavaScript) ms per frame; ?debug&res=0.3 pins the world resolution, ?debug&nosea hides the sea,
    ?debug&noout turns the ink outline pass off - so a phone can tell GPU fill vs CPU vs a single pass. */
 const DQ = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams('');
+const DQ_HIDE = (DQ.has('debug') && DQ.get('hide')) ? DQ.get('hide')!.split(',') : [];
 const DQ_ON = DQ.has('debug'), DQ_RES = DQ_ON && DQ.get('res') ? Math.max(0.2, Math.min(2, +DQ.get('res')!)) : 0, DQ_NOSEA = DQ_ON && DQ.has('nosea');
 if (DQ_ON && DQ.has('noout')) OUTLINE_STATE.on = false;
 function DebugStats() {
     const gl = useThree((s) => s.gl), scene = useThree((s) => s.scene);
-    const st = useRef({ t0: 0, end: 0, n: 0, cpu: 0 }).current;
+    const st = useRef({ t0: 0, end: 0, n: 0, cpu: 0, hid: [] as THREE.Object3D[] }).current;
     useEffect(() => {
         if (!DQ_ON) return;
         gl.info.autoReset = false;
@@ -380,7 +381,15 @@ function DebugStats() {
         if (st.t0 && st.end > st.t0) st.cpu += (st.end - st.t0 - st.cpu) * 0.1;
         w.__dbgStats = { calls: gl.info.render.calls, tris: gl.info.render.triangles, cpu: st.cpu };
         gl.info.reset(); st.t0 = performance.now();
-        if (DQ_NOSEA && (st.n++ % 60) === 0) scene.traverse((o: any) => { if (o.material === waterMat) o.visible = false; });
+        for (const o of st.hid) o.visible = false;   // components that re-show their meshes every frame are hidden again each frame
+        if ((DQ_NOSEA || DQ_HIDE.length) && (st.n++ % 60) === 0) { st.hid.length = 0; scene.traverse((o: any) => {
+            if (!(o.isMesh || o.isPoints)) return;
+            if (DQ_NOSEA && o.material === waterMat) { o.visible = false; st.hid.push(o); return; }
+            let top = '', q = o; while (q) { if (q.name) top = q.name; q = q.parent; }
+            const grp = o.material === waterMat ? 'ocean' : o.material === seabedMat ? 'seabed' : top.startsWith('polyfork-city') ? 'city' : top === 'street-props' || top === 'roof-props' ? 'props'
+                : top === 'park-ground' ? 'park' : top === 'south-sea' ? 'island' : !top && o.material && o.material.type === 'MeshLambertMaterial' ? 'trees' : !top && o.material && o.material.type === 'ShaderMaterial' ? 'shader' : top;
+            if (DQ_HIDE.includes(grp)) { o.visible = false; st.hid.push(o); }
+        }); }
     }, -1000);
     return null;
 }
