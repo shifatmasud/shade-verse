@@ -53,8 +53,8 @@ function harborTowerMat(tod: SouthSeaKit['tod']) {
             col *= 1.0 - 0.18 * (1.0 - smoothstep(8.0, 12.0, vP.y));   // darker street level
             stripe *= 0.0;
           } else { col = mix(vec3(0.24, 0.22, 0.3), vec3(0.5, 0.48, 0.55), uDay); }
-          float d = length(vP - cameraPosition); float hz = cameraPosition.y > -0.6 ? min(mix(0.72, 0.55, uDay), 1.0 - exp(-d * uHazeK * mix(1.0, 0.55, uDay))) : 0.0;
-          gl_FragColor = vec4(mix(col, uFog * mix(0.5, 1.0, uDay), hz), 1.0);   /* Shifat 4:37 PM 'whitewashed': at night far towers sink into a darker haze, neon keeps reading */
+          float d = length(vP - cameraPosition); float hz = cameraPosition.y > -0.6 ? min(mix(0.85, 0.55, uDay), 1.0 - exp(-d * uHazeK * mix(2.6, 0.55, uDay))) : 0.0;
+          gl_FragColor = vec4(mix(col, mix(vec3(0.05, 0.065, 0.16), uFog, uDay), hz), 1.0);   /* Shifat 4:37 PM 'whitewashed': at night far towers sink into a darker haze, neon keeps reading */
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
