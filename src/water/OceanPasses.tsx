@@ -29,8 +29,8 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(4, 4, { type: rtType(gl) }), cam: new THREE.PerspectiveCamera(), n: 0, tagged: false, buf: new THREE.Vector2(),
         rot: new THREE.Matrix4(), cp: new THREE.Vector3(), la: new THREE.Vector3(), tg: new THREE.Vector3(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.05),
-        bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1), col: new THREE.Color(), pv: new THREE.Matrix4(), fr: new THREE.Frustum() }), []);
-    useEffect(() => () => st.rt.dispose(), [st]);
+        bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1), probe: { cam: null as any, rt: [] as THREE.WebGLCubeRenderTarget[], cur: 0, face: -1, at: new THREE.Vector3(1e9, 0, 0), pos: new THREE.Vector3(), last: 0, ready: false }, col: new THREE.Color(), pv: new THREE.Matrix4(), fr: new THREE.Frustum() }), []);
+    useEffect(() => () => { st.rt.dispose(); st.probe.rt.forEach((r) => r.dispose()); }, [st]);
     useFrame(() => {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
         HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost); HERO_REFL.shadowDir.set(Math.sin(sim.yaw), 0, Math.cos(sim.yaw), sim.swim && !sim.dive ? 1 : 0); u.uHeroDA.value.copy(HERO_REFL.shadowDir);   // analytic hero reflections (everywhere on the sea)
@@ -50,27 +50,29 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
             st.tagged = true;
         }
         st.n++;
-        cam.getWorldDirection(st.tg); const steep = st.tg.y < -0.8;   /* looking almost straight down: Fresnel ~2%, the mirror is barely visible */
-        const slow = perf.scale < 0.75 || steep;   /* adaptive: when the frame budget is tight (UHD 600 under load) the mirror drops to a third rate */
-        if (st.n % 3 === 0 || u.uUseRefl.value === 0) {   /* Shifat 3:49 PM subtle blurry reflections: third rate + phone res on every device (same look, cheaper) */   /* the mirror is rippled anyway, so a frame of lag is invisible: half rate desktop, third rate phone */
-            worldBufferSize(gl, st.buf);
-            const k = 0.12,   /* Shifat 4:15 AM: phone gets city too, at the lowest res (rippled mirror hides it) */ W = Math.max(96, Math.round(st.buf.x * k)), H = Math.max(48, Math.round(st.buf.y * k));
-            if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H); u.uReflSoft.value.set(1.3 / W, 0.9 / H);   /* desktop too: the adaptive-res mirror otherwise shows neon / hero reflections as blocky squares */
-            // mirror the camera about y = WATER_Y (three.js Reflector maths)
-            cam.updateMatrixWorld(); st.cp.setFromMatrixPosition(cam.matrixWorld); st.rot.extractRotation(cam.matrixWorld);
-            st.la.set(0, 0, -1).applyMatrix4(st.rot).add(st.cp);
-            const vc = st.cam; vc.position.set(st.cp.x, 2 * WATER_Y - st.cp.y, st.cp.z);
-            st.tg.set(st.la.x, 2 * WATER_Y - st.la.y, st.la.z);
-            vc.up.set(0, 1, 0).applyMatrix4(st.rot); vc.up.y = -vc.up.y; vc.lookAt(st.tg);
-            vc.fov = cam.fov; vc.aspect = cam.aspect; vc.near = cam.near; vc.far = Math.min(cam.far, 420);   /* fog covers beyond this */ vc.updateProjectionMatrix(); vc.updateMatrixWorld();
-            vc.layers.set(REFL_LAYER);
-            const prev = gl.getRenderTarget(), ac = gl.autoClear, sh = gl.shadowMap.autoUpdate, cp = gl.clippingPlanes, cc = gl.getClearAlpha(); gl.getClearColor(st.col);
-            try { gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.clippingPlanes = [st.plane]; gl.setClearColor(st.col, 0); gl.setRenderTarget(st.rt); gl.clear(true, true, true); gl.render(scene, vc); }
-            finally { gl.setRenderTarget(prev); gl.autoClear = ac; gl.shadowMap.autoUpdate = sh; gl.clippingPlanes = cp; gl.setClearColor(st.col, cc); }
-            u.uRefMat.value.multiplyMatrices(st.bias, vc.projectionMatrix).multiply(vc.matrixWorldInverse);
+        // Shifat 4:30 PM 'what if we used cheap techniques?': a REFLECTION PROBE instead of the planar mirror. A small cubemap of the tagged big shapes
+        // (island, city, bridge, harbor) is captured at water level under the camera, ONE face per frame and only when the camera has moved > 40 m
+        // (or every ~8 s for the day/night change); otherwise nothing is re-rendered at all. The sea samples it along the rippled reflection ray with a
+        // mip bias, which gives the soft, blurry, subtle look for free. Double-buffered so a half-updated probe is never shown. Same on every device.
+        const P = st.probe;
+        if (!P.cam) {
+            const mk = () => new THREE.WebGLCubeRenderTarget(64, { type: rtType(gl), generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+            P.rt = [mk(), mk()]; P.cam = new THREE.CubeCamera(1, 2500, P.rt[0]);   /* far enough for the whole skyline from the open sea */ P.cam.coordinateSystem = gl.coordinateSystem; P.cam.updateCoordinateSystem(); P.cam.children.forEach((c: any) => c.layers.set(REFL_LAYER));
         }
-        u.tRefl.value = st.rt.texture; u.uUseRefl.value = 1;
-        if (DBG) (window as any).__refl = { n: st.n, w: st.rt.width };
+        const moved = Math.hypot(cam.position.x - P.at.x, cam.position.z - P.at.z) > 40 || !P.ready;
+        if (P.face < 0 && (moved || st.n - P.last > 480)) { P.face = 0; P.pos.set(cam.position.x, WATER_Y + 0.5, cam.position.z); }
+        if (P.face >= 0 && st.n % 2 === 0) {   // one face every other frame: the refresh costs ~1/12 of a scene render per frame, and only while it runs
+            const back = P.rt[1 - P.cur], f = P.face, fc = P.cam.children[f] as THREE.PerspectiveCamera;
+            P.cam.position.copy(P.pos); P.cam.updateMatrixWorld(true);
+            const prev = gl.getRenderTarget(), ac = gl.autoClear, sh = gl.shadowMap.autoUpdate, cp = gl.clippingPlanes, cc = gl.getClearAlpha(); gl.getClearColor(st.col);
+            back.texture.generateMipmaps = f === 5;
+            try { gl.shadowMap.autoUpdate = false; gl.autoClear = true; gl.clippingPlanes = [st.plane]; gl.setClearColor(st.col, 0); gl.setRenderTarget(back, f); gl.clear(true, true, true); gl.render(scene, fc); }
+            finally { gl.setRenderTarget(prev); gl.autoClear = ac; gl.shadowMap.autoUpdate = sh; gl.clippingPlanes = cp; gl.setClearColor(st.col, cc); }
+            if (++P.face > 5) { P.face = -1; P.cur = 1 - P.cur; P.at.copy(P.pos); P.last = st.n; P.ready = true; }
+        }
+        if (!P.ready) { u.uUseRefl.value = 0; return; }
+        u.tProbe.value = P.rt[P.cur].texture; u.uUseRefl.value = 1;
+        if (DBG) (window as any).__refl = { n: st.n, probe: st.probe.cur, ready: st.probe.ready };
     });
     return null;
 }

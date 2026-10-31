@@ -15,7 +15,7 @@ export const OCEAN_VERT = WAVES + GERSTNER_GLSL + `uniform float uTime; uniform 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + `varying vec2 vP0; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform vec2 uSceneTx; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform sampler2D tRefl; uniform samplerCube tProbe; uniform mat4 uRefMat; uniform float uUseRefl; uniform vec2 uReflSoft; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     ${(QUALITY.coarse || LOWQ) ? '#define PHONE_W' : ''}
@@ -115,12 +115,16 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       vec3 nGlow = vec3(0.0);   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
       float fdE = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK;
       if (uUseRefl > 0.5 && !below && fdE < 1.9) {   // mirrored island / city / bridge shapes (skipped where the fog has swallowed them), rippled by the surface normal (more distortion with distance to the plane)
-        vec4 rc = uRefMat * vec4(vW.x, -1.0, vW.z, 1.0); vec2 ruv = rc.xy / rc.w + n.xz * 0.07;
-        /* Shifat 3:49 PM 'reflections of the cities & islands subtler, blurrier, bluer - very very subtle, never grab attention; ultra performance':
-           one low-res mirror on every device, 2 spread taps (+ bilinear = wide soft blur), tinted toward the water's own blue and laid in at ~30 %. */
-        vec4 rs = (texture2D(tRefl, clamp(ruv + uReflSoft, 0.002, 0.998)) + texture2D(tRefl, clamp(ruv - uReflSoft, 0.002, 0.998))) * 0.5;
+        /* reflection probe (Shifat 4:30 PM 'cheap techniques?' + 4:57 PM 'super blurry ok'): the rippled reflection ray looks up a tiny cubemap of the
+           city / island / bridge, heavily mip-blurred; tinted toward the water's blue and laid in subtly (shared look, src/water/common.ts).
+           One blurry fetch for the body + one sharper fetch for the night neon. No mirror render at all. */
+        vec3 rd = normalize(vec3(r.x + n.x * 0.12, max(r.y, 0.02), r.z + n.z * 0.12));
+        vec4 rs = textureCube(tProbe, rd, 3.0), rg = textureCube(tProbe, rd, 1.0);
         vec3 rsc = linearToOutputTexel(vec4(rs.rgb, 1.0)).rgb; vec3 rsb = reflTint(rsc, refl);
-        refl = mix(refl, rsb, rs.a * WATER_REFL_W); nGlow = rsc * rs.a;
+        refl = mix(refl, rsb, rs.a * WATER_REFL_W); nGlow = linearToOutputTexel(vec4(rg.rgb, 1.0)).rgb * rg.a;
+        #ifdef PROBE_DEBUG
+        refl = mix(vec3(1.0, 0.0, 0.0), rs.rgb, rs.a);
+        #endif
       }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       if (!below) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
