@@ -600,7 +600,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         if (LAKE_COPY && copyTarget && visible && !struggling) {   /* Shifat 9:33 AM: no second render, no reflections - LOCKED off */
             if (wantCopy) {
                 worldBufferSize(gl, bufSize);   // world size (hero HD pass keeps the canvas at native)
-                const w = Math.max(240, Math.round(bufSize.x * 0.25)), h = Math.max(135, Math.round(bufSize.y * 0.25));   // same small copy on every device
+                const w = Math.max(96, Math.round(bufSize.x * 0.125)), h = Math.max(54, Math.round(bufSize.y * 0.125));   // Shifat 4:16 PM: res down, then blur   // same small copy on every device
                 if (copyTarget.width !== w || copyTarget.height !== h) copyTarget.setSize(w, h);
                 const previousTarget = gl.getRenderTarget(), previousAutoClear = gl.autoClear, previousShadows = gl.shadowMap.autoUpdate;
                 try {
