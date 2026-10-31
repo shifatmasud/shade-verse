@@ -95,7 +95,7 @@ export function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: 
         u.uProj.value.copy(cam.projectionMatrix); u.uNear.value = cam.near; u.uFar.value = cam.far; u.uSteps.value = QK.lakeSteps;
         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
         const near = cam.position.z < WATER_Z + 170 && cam.position.y > WATER_Y - 0.5 && cam.position.y < 140, scale = perf.scale;
-        const phoneFar = PHONE_REFL && cam.position.z < WATER_Z - 320;   /* Shifat 9:16 AM phone fps: the copy is a second full scene render; out at sea the bed is analytic and near water is see-through, so phones skip it there */
+        const phoneFar = PHONE_REFL;   /* Shifat 9:26 AM (6 fps at sea, 237 draw calls, whitewashed jittery bridge mirror): phones never run this second whole-scene render now - the bed is analytic, the probe gives the soft reflection */   /* Shifat 9:16 AM phone fps: the copy is a second full scene render; out at sea the bed is analytic and near water is see-through, so phones skip it there */
         const ok = !!w && near && !phoneFar && !NOPROBE && !NOCOPY && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;   /* ?debug&noprobe also stops this second scene render (the screen-space reflection + refraction copy) */
         if (!ok) { u.uUseScene.value = 0; return; }
         st.n++;
