@@ -31,7 +31,7 @@ if (ON) {
             g.bufferData(g.ARRAY_BUFFER, new Float32Array(v), g.STATIC_DRAW); g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 2, g.FLOAT, false, 0, 0);
             g.clearColor(0, 0, 0, 1); g.clear(g.COLOR_BUFFER_BIT); g.drawArrays(g.TRIANGLES, 0, 3); const px = new Uint8Array(4); g.readPixels(1, 1, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px); res.push(name + '=' + (px[0] > 128 ? 'front' : px[2] > 128 ? 'back' : 'none'));
         }
-        send('frontfacing', { res: res.join(' '), expect: 'ccw=front cw=back' });
+        send('frontfacing', { res: res.join(' '), expect: 'ccw=front cw=back', timer: !!g.getExtension('EXT_disjoint_timer_query_webgl2'), exts: (g.getSupportedExtensions() || []).join(',') });
     } catch (e) { send('frontfacing', { err: String(e) }); } }, 4000);
     addEventListener('error', (e) => { if (logs.length < 40) logs.push('onerror: ' + e.message + ' ' + (e.filename || '') + ':' + (e.lineno || '')); });
     // where the frame time goes on the real device: CPU time inside renderer.render (scene walk + GL submit, incl. driver), main-thread long tasks
