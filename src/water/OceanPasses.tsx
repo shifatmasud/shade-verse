@@ -181,8 +181,11 @@ export function FullMirror({ waterRef }: { waterRef: React.MutableRefObject<THRE
         const u = waterMat.uniforms as any, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
         const on = FM_ON && !!w && cam.position.y > WATER_Y + 0.3 && !(UW as any).on;
         u.uMir.value = on ? 1 : 0; if (!on) return;
-        if (st.n++ % 120 === 0) { st.heroes = []; scene.traverse((o: any) => { if (o.userData && (o.userData.hero || o.userData.noRefl)) st.heroes.push(o); }); }
-        worldBufferSize(gl, st.buf); const W = Math.max(64, Math.round(st.buf.x * 0.25)), H = Math.max(32, Math.round(st.buf.y * 0.25));
+        if (st.n % 120 === 0) { st.heroes = []; scene.traverse((o: any) => { if (o.userData && (o.userData.hero || o.userData.noRefl)) { st.heroes.push(o); return; }
+            /* cheap: grass, flowers, small props, particles do not read in a blurred, rippled mirror */
+            if (o.isPoints) { st.heroes.push(o); return; } const g = o.geometry; if (o.isInstancedMesh && g) { if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere!.radius < 1.2) st.heroes.push(o); } }); }
+        if (st.n++ % 2 === 1 && u.tMir.value) return;   // every 2nd frame (one frame of lag is invisible under ripples)
+        worldBufferSize(gl, st.buf); const W = Math.max(64, Math.round(st.buf.x * 0.2)), H = Math.max(32, Math.round(st.buf.y * 0.2));
         if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H);
         const mc = st.cam; mc.copy(cam, false); mc.layers.mask = cam.layers.mask; mc.matrixAutoUpdate = false; mc.updateProjectionMatrix();
         /* Reflector-style virtual camera: a real rotation (no negative scale, so faces keep their winding - the negative-scale mirror drew the
