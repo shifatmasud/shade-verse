@@ -59,6 +59,8 @@ export function Civilians({sim}:{sim:Sim}){
         return {geo,mat:new THREE.MeshLambertMaterial({vertexColors:true,emissive:new THREE.Color('#1c2230'),emissiveIntensity:0.6})};
     }),[]);
     const refsF=useRef<THREE.InstancedMesh[]>([]);
+    /* Shifat 10:51 PM phone perf: upload only the instances in use (was the whole 444-slot buffer x 14 meshes = ~380 KB to the GPU every frame, even out at sea with nobody around) */
+    const upl=(m:THREE.InstancedMesh)=>{const a=m.instanceMatrix,u=m.userData as any;if(m.count===0&&u.lastN===0)return;a.clearUpdateRanges();if(m.count>0)a.addUpdateRange(0,m.count*16);a.needsUpdate=true;u.lastN=m.count;};
     const o=useMemo(()=>new THREE.Object3D(),[]);
     const wrapS=(v:number,W:number)=>((v%W)+W+W/2)%W-W/2;
     const ln=useRef({a:[0,0],y:30,t:0}),ys=useRef<number[]>([]);
@@ -88,6 +90,6 @@ export function Civilians({sim}:{sim:Sim}){
         };
         for(let i=0;i<nP;i++)place(i,false);
         for(let i=0;i<nA;i++)place(i+1000,true);
-        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];syncInk(refs.current[i]);refs.current[i].instanceMatrix.needsUpdate=true;refsF.current[i].count=cf[i];syncInk(refsF.current[i]);refsF.current[i].instanceMatrix.needsUpdate=true;}if(DBG)(window as any).__ped=cnt.slice();});
+        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];syncInk(refs.current[i]);upl(refs.current[i]);refsF.current[i].count=cf[i];syncInk(refsF.current[i]);upl(refsF.current[i]);}if(DBG)(window as any).__ped=cnt.slice();});
     return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m&&refs.current[i]!==m){refs.current[i]=m;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}{far.map((p,i)=><instancedMesh key={'f'+i} ref={m=>{if(m&&refsF.current[i]!==m){refsF.current[i]=m;m.userData.far=true;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}</group>;
 }
