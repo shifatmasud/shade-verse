@@ -56,8 +56,8 @@ const rayMat = new THREE.ShaderMaterial({
           s += exp(-dx * dx * 1.6) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }   /* Shifat 8:43 PM 'more blurry god rays': gaussian shaft profile (was a hard-edged band), wider, and the sheets feed the bloom pass */
         float edge = smoothstep(0.0, 0.12, x) * (1.0 - smoothstep(0.88, 1.0, x));
         float depth = uSurf - vY; float fade = exp(-max(depth, 0.0) * 0.055) * smoothstep(0.0, 1.2, depth);
-        float a = s * edge * fade * mix(0.04, 1.0, uDay * uDay) * 0.36;   /* night: only a faint moon trace of the shafts (they read as daylight at night) */
-        gl_FragColor = vec4(vec3(0.62, 0.93, 1.0) * a, a);
+        float a = s * edge * fade * mix(0.6, 1.0, uDay * uDay) * 0.36;   /* Shifat Nov 1 11:16 AM 'underwater must always have god rays, even at night, because of the moon': night keeps clear moonbeams (~60%) */
+        gl_FragColor = vec4(mix(vec3(0.55, 0.7, 1.0), vec3(0.62, 0.93, 1.0), uDay) * a, a);   /* moonlight: cooler, silver-blue */
       }`,
 });
 // Shifat Oct 29 "water bubble must be randomized particle emission": round glints with a per-particle size (aSize) and rgba fade.
