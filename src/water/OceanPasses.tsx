@@ -82,7 +82,7 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
     });
     return null;
 }
-const PHONE_REFL = QUALITY.coarse || LOWQ;
+const PHONE_REFL = true;   /* Shifat 10:02 PM 'phone & desktop sea 1:1': every device takes the phone water path (analytic bed refraction, no second scene render) - identical look, desktop gets faster */
 // Phone GPUs (Adreno 506 etc.) often cannot RENDER into half-float targets (no EXT_color_buffer_half_float / _float): the copy came out empty, so on
 // Shifat's phone no reflections showed at all. Use half float only when the GPU can render to it, else plain 8-bit.
 function rtType(gl: THREE.WebGLRenderer) { const e = gl.extensions; return (e.has('EXT_color_buffer_float') || e.has('EXT_color_buffer_half_float')) && !(QUALITY.coarse || LOWQ) ? THREE.HalfFloatType : THREE.UnsignedByteType; }

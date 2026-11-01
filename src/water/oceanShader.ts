@@ -19,7 +19,6 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
     uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform float uUseRefl; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
-    ${(QUALITY.coarse || LOWQ) ? '#define PHONE_W' : ''}
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
     // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
     float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
