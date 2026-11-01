@@ -1,4 +1,6 @@
 import { SKY_D_MAX } from './skylineRefl';
+import { HF_HMAX, HF_BRIDGE, HF_DECK } from './heightRefl';
+import { HARBOR } from '../seaWorld';
 // Sea surface shader for the ocean + lakes (waterMat in Scene.tsx).
 // WAVES is the shared GLSL wave field (height wh / gradient wg), generated in ./waves.ts from the same table as the
 // CPU waveH() in Scene.tsx (swimming + boats), so the two cannot drift apart.
@@ -17,7 +19,7 @@ export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform vec2 uSceneTx; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
@@ -154,6 +156,21 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec4 rs = vec4(sk.rgb * mix(0.3, 1.0, uDay), cov);
         vec3 rsb = mix(rs.rgb, reflTint(rs.rgb, refl), 0.45);   /* Shifat 1:21 'I don't see reflection': readable silhouettes - keeps their own colour, only half tinted to the water */
         skR = rsb; skA = rs.a * 0.95; nGlow = sk.rgb * 0.35 * cov;   /* Shifat 8:35 PM 'reflections not showing': the skyline is laid in AFTER the sea haze (below) with the world's own haze rate - the sea fog is ~2x the city's, so mixing it in here faded the mirrored city to nothing right under the city */   /* night: the lit skyline as a soft glow band */
+        if (uHF > 0.5) {   /* HEIGHTFIELD-TRACED reflection (src/water/heightRefl.ts): step the rippled reflected ray through the baked top-down world map until it
+             passes under the height there. The ray's climb is halved, which stretches every mirrored shape ~2x downward like wind-roughened water does. */
+          vec3 hd = normalize(vec3(rd.x, rd.y * 0.5, rd.z)); vec2 Q0 = vW.xz; float tp = 0.0, hit = 0.0, th = 1e5; vec4 hc = vec4(0.0);
+          float jit = clamp((n.x + n.z) * 4.0, -0.5, 0.5);   // the ripples dither each ray's step positions: step bands become soft streaks
+          for (int i = 0; i < 14; i++) {
+            float t = 3.0 * pow(500.0, (float(i) + 0.5 + jit) / 13.0); float qy = hd.y * t; if (qy > ${HF_HMAX.toFixed(1)}) break;
+            vec2 huv = (Q0 + hd.xz * t - uHfB.xy) / uHfB.zw; if (huv.x < 0.0 || huv.y < 0.0 || huv.x > 1.0 || huv.y > 1.0) { tp = t; continue; }
+            vec4 s = textureLod(uHf, huv, 1.0 + t * 0.004);   // softer with distance (mip blur)
+            if (s.a * ${HF_HMAX.toFixed(1)} > qy) { float tm = 0.5 * (tp + t); vec4 s2 = textureLod(uHf, (Q0 + hd.xz * tm - uHfB.xy) / uHfB.zw, 1.0 + tm * 0.004); bool inM = s2.a * ${HF_HMAX.toFixed(1)} > hd.y * tm; hc = inM ? s2 : s; th = inM ? tm : t; hit = 1.0; break; }
+            tp = t;
+          }
+          vec3 hcol = hc.rgb * mix(0.3, 1.0, uDay);
+          float hw = uHF > 1.5 ? hit * (1.0 - smoothstep(250.0, 400.0, th)) : 1.0;   /* mode 2 = mix: heightfield owns hits nearer than ~300 m, the ring keeps the far skyline */
+          skR = mix(skR, mix(hcol, reflTint(hcol, refl), 0.45), hw); skA = mix(skA, hit * 0.95, hw); nGlow = mix(nGlow, hc.rgb * 0.35 * hit, hw);
+        }
         #ifdef PROBE_DEBUG
         refl = mix(vec3(1.0, 0.0, 0.0), rs.rgb, rs.a);
         #endif
