@@ -38,6 +38,7 @@ import { seabedMat, wallMat, OCEAN_HALF, OCEAN_SNAP, oceanGeo, seabedGeo } from 
 import { waterMat } from './water/oceanMaterial';
 import { OceanFollow, IslandReflection, OceanScreenSpace, ReflectionIllusion, OceanSlices } from './water/OceanPasses';
 import { Boats, Gulls, Fish, MarineSnow, Whale } from './world/sealife';
+import { Jellies } from './world/jellies';
 import { buildEnemy, PlasmaFx, EnemyDeathFx, EnemyShotsFx } from './world/enemies';
 import { DayNight } from './world/dayNight';
 import { FarPropGate, CityGate } from './world/gates';
@@ -851,7 +852,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}><ringGeometry args={[1.0, 1.09, 48]} /><meshBasicMaterial color="#eefbff" transparent opacity={0.4} depthWrite={false} /></mesh>)}</group>
         <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
         <OceanFollow waterRef={waterRef} /><OceanSlices waterRef={waterRef} geo={OCEAN_GEO} /><ReflectionIllusion sim={sim} />
-        <ContactShadows sim={sim} /><StaticShadows /><Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow />
+        <ContactShadows sim={sim} /><StaticShadows /><Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow /><Jellies />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         {/* Shifat 9:33 AM 'No reflection. Lock it. Remove any second render.': OceanScreenSpace (scene copy) and the reflection probe are not mounted */}
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>
