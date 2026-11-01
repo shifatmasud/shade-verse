@@ -25,8 +25,8 @@ export function beachShader(sh: any) {
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.11, 0.17), smoothstep(-9.0, -14.0, vHzW.y));   /* deep shelf fades to the open-seabed tone: the terrain mesh ends at -14 m and its edge no longer draws a sawtooth through clear water */`);
 }
 // ---------------------------------------------------------------- island terrain
-export function islandTerrainGeo() {
-    const half = ISLAND.R * 1.22, step = PHONE ? 1.8 : 1.3,   // water blend: finer grid so the carved river banks, plunge pool and waterfall notch read as smooth curves, not 2.6 m facets
+export function islandTerrainGeo(stepLod?: number) {
+    const half = ISLAND.R * 1.22, step = stepLod ?? (PHONE ? 1.8 : 1.3),   // water blend: finer grid so the carved river banks, plunge pool and waterfall notch read as smooth curves, not 2.6 m facets
         n = Math.ceil(half * 2 / step);
     const pos: number[] = [], col: number[] = [], idx: number[] = [], ok: boolean[] = [];
     const sand = new THREE.Color('#f7efd8'), wet = new THREE.Color('#d2bf96'), grass = new THREE.Color('#5f9a3c'), jungle = new THREE.Color('#2f6b2a'), rock = new THREE.Color('#9d9686'), under = new THREE.Color('#d8cba3'), c = new THREE.Color();

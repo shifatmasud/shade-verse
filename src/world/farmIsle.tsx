@@ -35,8 +35,8 @@ export function farmRoadD(x: number, z: number) {   // world xz -> metres to the
 }
 const nearBuilding = (lx: number, lz: number, pad: number) => HOUSES.some((h) => Math.hypot(lx - h[0], lz - h[1]) < 7 * h[3] + pad) || Math.hypot(lx - BARN.x, lz - BARN.z) < 12 + pad || Math.hypot(lx - SILO.x, lz - SILO.z) < 4 + pad || Math.hypot(lx - MILL.x, lz - MILL.z) < 5 + pad;
 
-function terrainGeo() {
-    const n = PHONE ? 170 : 230, half = FARM.R * 1.72, pos: number[] = [], col: number[] = [], idx: number[] = [], ok: boolean[] = [];
+function terrainGeo(nLod?: number) {
+    const n = nLod ?? (PHONE ? 170 : 230), half = FARM.R * 1.72, pos: number[] = [], col: number[] = [], idx: number[] = [], ok: boolean[] = [];
     const c = new THREE.Color(), grass = new THREE.Color('#7fae4e'), grass2 = new THREE.Color('#9cc25a'), sand = new THREE.Color('#e6d6a8'), wet = new THREE.Color('#b8a47a');
     const mud = new THREE.Color('#6b5236'), rut = new THREE.Color('#4a3824'), wheat = new THREE.Color('#d9bc62'), plow = new THREE.Color('#8a6a44'), crop = new THREE.Color('#5f9a3c');
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
@@ -156,7 +156,7 @@ function puddleGeo() {
 }
 
 export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
-    const terrain = useMemo(terrainGeo, []), bw = useMemo(() => { setSeed(4711); return buildingsGeo(); }, []), blds = bw.geo, sails = useMemo(sailsGeo, []), puddles = useMemo(puddleGeo, []);
+    const terrain = useMemo(() => terrainGeo(), []), terrainFar = useMemo(() => terrainGeo(56), []), bw = useMemo(() => { setSeed(4711); return buildingsGeo(); }, []), blds = bw.geo, sails = useMemo(sailsGeo, []), puddles = useMemo(puddleGeo, []);
     const tex = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; }; return { leaf: mk('/spray145.png'), bark: mk('/bark.jpg', true), pine: mk(PINE_URL), pbark: mk('/pinebark.jpg', true) }; }, []);
     const mats = useMemo(() => {
         const ck = (m: THREE.Material, k: string) => { (m as any).customProgramCacheKey = () => 'farm-' + k; return m; };
@@ -201,7 +201,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
     const grpRef = useRef<THREE.Group>(null!);
     useFrame((st, dt) => {
         const c = st.camera.position, d = Math.hypot(c.x - FARM.cx, c.z - FARM.cz);
-        if (grpRef.current) grpRef.current.visible = d < 900;            // past the haze the island is invisible anyway
+        if (grpRef.current) { grpRef.current.visible = d < 900; const tm = grpRef.current.children[0] as THREE.Mesh; tm.geometry = d > 380 ? terrainFar : terrain; }   // past the haze the island is invisible anyway; Shifat 10:22 PM 25 fps target: past 380 m a 1/3-res terrain (31.7k -> 3.5k tris), haze-small there
         { const near = d < 450, ch = grpRef.current ? grpRef.current.children : []; for (let i = 1; i < ch.length; i++) if (i !== 2) ch[i].visible = near; }   // far LOD (regression Oct 31 8:05 PM: +15 draw calls at the harbor): past 450 m only terrain + buildings, the rest is haze-small
         objs[4].visible = d < FARM.R + 160;                               // long grass only when close enough to read
         { const dy = kit.tod.day.value, w = mats.win.color, k = 1 - THREE.MathUtils.smoothstep(dy, 0.25, 0.75); w.setRGB(0.17 + (1.0 - 0.17) * k, 0.23 + (0.66 - 0.23) * k, 0.28 + (0.32 - 0.28) * k).multiplyScalar(1 + 0.6 * k); }   // windows: dark glass by day, warm lamplight at dusk/night

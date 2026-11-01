@@ -24,9 +24,9 @@ export { hazeShader, CITY_LOD };
 export type { SouthSeaKit };
 
 function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
-    const terrain = useMemo(islandTerrainGeo, []);
+    const terrain = useMemo(() => islandTerrainGeo(), []), terrainFar = useMemo(() => islandTerrainGeo(4.6), []), terrRef = useRef<THREE.Mesh>(null!);   /* Shifat 10:22 PM 25 fps: coarse terrain past 420 m */
     const terrainMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1d1b16' }); m.onBeforeCompile = hazeShader(kit.tod, beachShader, true); return m; }, []);
-    useFrame((_, dt) => { BEACH_T.value += Math.min(dt, 0.1); });
+    useFrame((st, dt) => { BEACH_T.value += Math.min(dt, 0.1); if (terrRef.current) { const c = st.camera.position; terrRef.current.geometry = Math.hypot(c.x - ISLAND.cx, c.z - ISLAND.cz) > 420 ? terrainFar : terrain; } });
     const lh = useMemo(lighthouseGeo, []), shacks = useMemo(shacksGeo, []), dock = useMemo(dockGeo, []);
     const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.15, 0.0), fallsSheet(FALLS.w, 0.7), fallsSheet(FALLS.w * 0.8, 1.4)], []);
     const spray = useMemo(() => sprayGeo(PHONE ? 50 : 110, FALLS.w), []), mist = useMemo(() => sprayGeo(PHONE ? 14 : 30, FALLS.w * 1.6), []), river = useMemo(riverGeo, []);
@@ -156,9 +156,9 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         for (const w of waters) { const u = (w.material as THREE.ShaderMaterial).uniforms; u.uT.value = t; u.uDay.value = day; u.uSky.value.copy(kit.tod.fog).lerp(SKY_BLUE, 0.45); u.uSun.value.copy(kit.tod.sun); }
         { const night = 1 - day; lampMat.color.setRGB(1, 0.95, 0.75).multiplyScalar(0.8 + 0.6 * night); }
     });
-    const I = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, n: number) => <instancedMesh ref={(m) => { inst.current[key] = m; }} args={[geo, mat, Math.max(1, n)]} frustumCulled={false} />;
+    const I = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, n: number) => <instancedMesh ref={(m) => { inst.current[key] = m; }} args={[geo, mat, Math.max(1, n)]} />;   /* Shifat 10:22 PM 25 fps: island trees/bushes/rocks cull when off screen (bounds computed in fill) */
     return <group name="south-sea-island">
-        <mesh geometry={terrain} material={terrainMat} frustumCulled={false} />
+        <mesh ref={terrRef} geometry={terrain} material={terrainMat} frustumCulled={false} />
         <mesh geometry={lh.body} material={propMat} />
         <mesh geometry={lh.lamp} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
         <LightShafts kit={kit} lampY={lh.lampY} />

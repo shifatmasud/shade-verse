@@ -12,8 +12,8 @@ import { type SouthSeaKit, PHONE, hazeShader, colorize, merged, rnd, setSeed } f
 
 const IGLOOS = ICE_IGLOOS;   // layout lives in seaWorld (shared with the collision boxes)
 
-function terrainGeo() {
-    const n = PHONE ? 130 : 180, half = ICE.R * 1.5, pos: number[] = [], col: number[] = [], ice: number[] = [], idx: number[] = [], ok: boolean[] = [];
+function terrainGeo(nLod?: number) {
+    const n = nLod ?? (PHONE ? 130 : 180), half = ICE.R * 1.5, pos: number[] = [], col: number[] = [], ice: number[] = [], idx: number[] = [], ok: boolean[] = [];
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
         const x = ICE.cx - half + (i / n) * 2 * half, z = ICE.cz - half + (j / n) * 2 * half, h = iceRaw(x, z);
         pos.push(x, h ?? -40, z); ok.push(h !== null && h > -30);
@@ -90,7 +90,7 @@ void main(){ vec2 q = vUv * 2.0 - 1.0; float a = (1.0 - smoothstep(0.2, 1.0, len
   if (a < 0.004) discard; gl_FragColor = vec4(mix(uFogC * 0.5, mix(uFogC, vec3(0.86, 0.93, 0.98), 0.6), uDay), a); }`;
 
 export function IceIsle({ kit }: { kit: SouthSeaKit }) {
-    const terrain = useMemo(terrainGeo, []), ig = useMemo(iglooGeo, []), chunks = useMemo(chunksGeo, []), fog = useMemo(fogGeo, []);
+    const terrain = useMemo(() => terrainGeo(), []), terrainFar = useMemo(() => terrainGeo(46), []), ig = useMemo(iglooGeo, []), chunks = useMemo(chunksGeo, []), fog = useMemo(fogGeo, []);
     const mats = useMemo(() => {
         const ck = (m: THREE.Material, k: string) => { (m as any).customProgramCacheKey = () => 'ice-' + k; return m; };
         const iceU = { value: 1 };
@@ -103,7 +103,7 @@ export function IceIsle({ kit }: { kit: SouthSeaKit }) {
     }, []);
     const glowRef = useRef<THREE.MeshBasicMaterial>(mats.glow);
     const grpRef = useRef<THREE.Group>(null!);
-    useFrame((st) => { const c = st.camera.position, dd = Math.hypot(c.x - ICE.cx, c.z - ICE.cz); if (grpRef.current) { grpRef.current.visible = dd < 900; const ch = grpRef.current.children, near = dd < 450; if (ch.length > 4) { ch[1].visible = near; ch[4].visible = near; ch[3].visible = near || kit.tod.day.value < 0.4; } }   /* far LOD: chunks, fog cards (and the igloo glow by day) only within 450 m */ const d = kit.tod.day.value; glowRef.current.color.setRGB(1.0, 0.62 + 0.1 * d, 0.3 + 0.15 * d).multiplyScalar(0.85 + 1.4 * (1 - d)); });
+    useFrame((st) => { const c = st.camera.position, dd = Math.hypot(c.x - ICE.cx, c.z - ICE.cz); if (grpRef.current) { grpRef.current.visible = dd < 900; (grpRef.current.children[0] as THREE.Mesh).geometry = dd > 380 ? terrainFar : terrain;   /* Shifat 10:22 PM 25 fps: 1/3-res terrain past 380 m */ const ch = grpRef.current.children, near = dd < 450; if (ch.length > 4) { ch[1].visible = near; ch[4].visible = near; ch[3].visible = near || kit.tod.day.value < 0.4; } }   /* far LOD: chunks, fog cards (and the igloo glow by day) only within 450 m */ const d = kit.tod.day.value; glowRef.current.color.setRGB(1.0, 0.62 + 0.1 * d, 0.3 + 0.15 * d).multiplyScalar(0.85 + 1.4 * (1 - d)); });
     return (
         <group name="ice-isle" ref={grpRef}>
             <mesh geometry={terrain} material={mats.ground} />
