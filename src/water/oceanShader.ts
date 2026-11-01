@@ -208,7 +208,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec4 mp = uMirM * vec4(vW.x, WATER_LVL, vW.z, 1.0); vec2 muv = mp.xy / mp.w + vec2(n.x, n.z) * vec2(0.012, 0.03);
         float sv = uMirPx.y * mix(1.0, 3.0, smoothstep(20.0, 200.0, length(cameraPosition.xz - vW.xz)));
         vec3 m = 0.3 * (texture2D(tMir, muv + vec2(uMirPx.x * 0.7, sv)).rgb + texture2D(tMir, muv - vec2(uMirPx.x * 0.7, sv)).rgb) + 0.2 * (texture2D(tMir, muv + vec2(-uMirPx.x * 0.4, sv * 2.6)).rgb + texture2D(tMir, muv - vec2(-uMirPx.x * 0.4, sv * 2.6)).rgb);
-        refl = m; skA = 0.0; nGlow = vec3(0.0);
+        skR = mix(m, reflTint(m, refl), 0.3); skA = 0.95; nGlow = m * 0.35;   /* laid in like the ring (strong, not only Fresnel-weighted sky) */
       }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       bool camUp = cameraPosition.y > vW.y;   /* Shifat 6:06 PM: a camera under the sea never sees the analytic hero (the real body is right there) - this was the dark pill floating above the swimmer */
