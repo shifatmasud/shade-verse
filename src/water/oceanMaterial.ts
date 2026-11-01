@@ -11,7 +11,7 @@ import { OCEAN_VERT, OCEAN_FRAG } from './oceanShader';
 // Shifat 2:07 AM Oct 30 "must implement water transparency & refraction law": a baked bed map (height + sand/rock) around the island so
 // the ocean shader can trace each view ray through the surface by Snell's law (n 1.333) to the real seabed and absorb it by path length.
 // One 256x256 RGBA8 texture, built once; the shader does 3 fetches (fixed-point ray/bed intersection) instead of a second scene render.
-const BED_C = { x: -160, z: -820, h: 260 }, BED_N = 256;
+const BED_C = { x: 60, z: -700, h: 520 }, BED_N = 512;   /* Oct 31: widened (same ~2 m/texel) so the Farm Isle (east) and the ice island (west) get real shallows */
 const BED_TEX = (() => {
     const d = new Uint8Array(BED_N * BED_N * 4);
     for (let j = 0; j < BED_N; j++) for (let i = 0; i < BED_N; i++) {

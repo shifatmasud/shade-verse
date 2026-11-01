@@ -67,7 +67,7 @@ export function lakeFloorAt(x: number, z: number) { return z < WATER_Z ? (island
 export const WATER_Z = -222, WATER_Y = -1.0, SEABED = -10;
 // Greater ocean (Shifat Oct 29, step 1 of the South Sea plan): playable sea far beyond the old city-edge wall, with a real depth profile:
 // shallow shelf near the beach -> slope -> a deep trench -> rising again toward the future 2nd-city platform.
-export const SEA = { zMin: -1290, xMax: HALF + 180 };   // South Sea 4: room for Neon Harbor (platform to z -1242) and the water around it
+export const SEA = { zMin: -1290, xMax: HALF + 240 };   /* Oct 31 6:30 PM: +60 m east so the Farm Isle (seaWorld FARM) is fully reachable */   // South Sea 4: room for Neon Harbor (platform to z -1242) and the water around it
 const _sm = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export function seabedAt(x: number, z: number) {
     const d = WATER_Z - z;   // metres offshore

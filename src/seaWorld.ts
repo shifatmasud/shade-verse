@@ -91,7 +91,7 @@ POOL.y = (islandRaw(POOL.cx, POOL.cz, false) as number) - 1.2;
 mkRiver([[POOL.cx + 2, POOL.cz - 8], [POOL.cx - 2, POOL.cz - 22], [POOL.cx - 6, POOL.cz - 38], [POOL.cx - 4, POOL.cz - 56], [POOL.cx - 1, POOL.cz - 74], [POOL.cx + 1, POOL.cz - 92], [POOL.cx + 2, POOL.cz - 108]], POOL.y, -1.0, 4.2, 12);
 export const LAGOON_RIM = 0.93, POOL_RIM = 0.9;
 /** island ground height (may be under the sea near the edge), or null away from the island */
-export function islandH(x: number, z: number): number | null { return islandRaw(x, z); }
+export function islandH(x: number, z: number): number | null { return islandRaw(x, z) ?? farmRaw(x, z); }
 export function isIsland(x: number, z: number, pad = 1.3) { return Math.hypot(x - ISLAND.cx, z - ISLAND.cz) < ISLAND.R * pad; }
 export function islandPeakY() { return islandRaw(PEAK.x, PEAK.z) as number; }
 // waterfall: a free-falling sheet just in front of the cliff face, from the ledge down into the plunge pool
@@ -105,6 +105,26 @@ export function poolAt(x: number, z: number): { y: number; fx?: number; fz?: num
     if (Math.hypot(x - ISLAND.cx, z - ISLAND.cz) < ISLAND.R * 1.15) { const rv = riverNear(x, z); if (rv && rv.d < rv.hw * 1.2 && rv.y > -0.9) return { y: rv.y, fx: rv.fx, fz: rv.fz }; }   // the river swims too (with a current)
     return null;
 }
+
+// ---------------------------------------------------------------- Farm Isle (Shifat Oct 31 6:25 PM: 'Village should be a separate island on sea, from another side of city')
+// A low green farm island east of the bridge: gentle rolling fields on a sandy rim. Same rules as the jungle island: the sim and the
+// renderer read this one function, so what you see is what you walk on.
+export const FARM = { cx: 392, cz: -585, R: 98 };
+export function farmRR(x: number, z: number) {
+    const dx = x - FARM.cx, dz = z - FARM.cz, a = Math.atan2(dz, dx);
+    const k = 1 + 0.09 * Math.sin(a * 3 + 0.7) + 0.05 * Math.sin(a * 5 + 2.1) + 0.03 * Math.sin(a * 9 + 4.0);
+    return Math.hypot(dx, dz) / (FARM.R * k);
+}
+export function farmRaw(x: number, z: number): number | null {
+    const rr = farmRR(x, z);
+    if (rr > 1.7) return null;
+    if (rr >= 1.0) return -2.6 - 30 * (rr - 1.0);
+    let y = 1.6 + 0.9 * Math.sin(x * 0.031 + 0.4) * Math.cos(z * 0.027 - 0.8) + 0.5 * Math.sin(x * 0.07 - z * 0.05);   // rolling fields
+    y += 2.2 * Math.max(0, 1 - Math.hypot(x - (FARM.cx + 34), z - (FARM.cz + 22)) / 38) ** 2;                          // the windmill knoll
+    if (rr >= 0.84) y = y + (-2.6 - y) * sm(0.84, 1.0, rr);                                                              // sand rim into the sea
+    return y;
+}
+export function isFarm(x: number, z: number, pad = 1.3) { return Math.hypot(x - FARM.cx, z - FARM.cz) < FARM.R * pad; }
 
 // ---------------------------------------------------------------- walkable decks (dock now; bridge + harbor platform later)
 export interface Deck { x0: number; x1: number; z0: number; z1: number; y: number }
@@ -227,7 +247,7 @@ export function seaSurface(x: number, z: number, footY: number): number | null {
     return best;
 }
 /** seabed lifted by the island so the swim floor and the seabed mesh follow its underwater slopes */
-export function seaLift(x: number, z: number, y: number) { const ih = islandRaw(x, z, false); return ih === null ? y : Math.max(y, ih - 0.3); }
+export function seaLift(x: number, z: number, y: number) { const ih = islandRaw(x, z, false) ?? farmRaw(x, z); return ih === null ? y : Math.max(y, ih - 0.3); }
 /** enemies never spawn or roam here */
-export function inCalmZone(x: number, z: number) { return isIsland(x, z, 1.45); }
+export function inCalmZone(x: number, z: number) { return isIsland(x, z, 1.45) || isFarm(x, z, 1.45); }
 export const SEA_W = { W_Z, W_Y };

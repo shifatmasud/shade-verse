@@ -16,6 +16,7 @@ import { NeonHarbor, LightShafts, CITY_LOD } from './world/southSea/neonHarbor';
 import { coniferGeo } from './world/trees';
 import { PINE_URL } from './texdata';
 import { Bridge } from './world/southSea/bridge';
+import { FarmIsle } from './world/farmIsle';
 import { BEACH_T, GRASS_T, GRASS_U, MIST_MAT, SPRAY_MAT, beachShader, dockGeo, fallsSheet, islandTerrainGeo, lighthouseGeo, riverGeo, shacksGeo, sprayGeo, type Inst } from './world/southSea/islandGeo';
 export { hazeShader, CITY_LOD };
 export type { SouthSeaKit };
@@ -183,6 +184,6 @@ function distToFalls(x: number, z: number) {
 }
 
 export function SouthSea({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
-    return <group name="south-sea"><Island sim={sim} kit={kit} /><Bridge sim={sim} kit={kit} /><NeonHarbor kit={kit} /></group>;
+    return <group name="south-sea"><Island sim={sim} kit={kit} /><FarmIsle kit={kit} /><Bridge sim={sim} kit={kit} /><NeonHarbor kit={kit} /></group>;
 }
 void islandPeakY; void HCOLS; void HROWS;

@@ -224,6 +224,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       float aOut = mix(0.82, 1.0, max(fr, 0.0)); aOut = mix(aOut, 1.0, bedA * bedShore);
       { // South Sea 2b (real tropical refs: Maldives / Bora Bora): turquoise shallows around the island's white sand + a foam line at the shore
         vec2 iq = vW.xz - vec2(-160.0, -820.0); float ia = atan(iq.y, iq.x); float irr = length(iq) / (92.0 * (1.0 + 0.13 * sin(2.0 * ia + 3.16) + 0.085 * sin(3.0 * ia + 5.06) + 0.05 * sin(5.0 * ia + 0.83) + 0.03 * sin(8.0 * ia + 4.71) + 0.018 * sin(13.0 * ia + 2.25)));   // = seaWorld coastK
+        { vec2 fq = vW.xz - vec2(392.0, -585.0); float fa = atan(fq.y, fq.x); float frr = length(fq) / (98.0 * (1.0 + 0.09 * sin(3.0 * fa + 0.7) + 0.05 * sin(5.0 * fa + 2.1) + 0.03 * sin(9.0 * fa + 4.0)));   // = seaWorld farmRR (Farm Isle)
+          if (frr < irr) { irr = frr; iq = fq; ia = fa; } }
         if (irr < 1.6 && !below) {
           float sh = 1.0 - smoothstep(0.93, 1.5, irr);
           vec3 tq = mix(vec3(0.07, 0.55, 0.62), vec3(0.42, 0.9, 0.84), 1.0 - smoothstep(0.92, 1.18, irr)) * mix(0.25, 1.0, uDay);
