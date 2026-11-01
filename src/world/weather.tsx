@@ -67,8 +67,8 @@ void main(){
 const SPL_FS = `
 uniform float uRain; uniform float uDay; uniform float uOn; varying vec2 vQ; varying float vPh;
 void main(){
-  float d = length(vQ), ring = smoothstep(0.18, 0.0, abs(d - 0.75)) * (1.0 - vPh * vPh), dot_ = smoothstep(0.35, 0.0, d) * smoothstep(0.35, 0.0, vPh);
-  float a = (ring * 0.62 + dot_ * 0.55) * uRain * uOn;
+  float d = length(vQ), ring = smoothstep(0.18, 0.0, abs(d - 0.75)) * (1.0 - vPh * vPh), dot_ = smoothstep(0.32, 0.0, d) * smoothstep(0.2, 0.0, vPh);
+  float a = dot_ * 0.75 * uRain * uOn;   /* Shifat Nov 1 12:52 'no solid splash ring, study real refs': on hard ground a drop leaves no ring - only a tiny flash where it lands (the crown of beads is DROP_VS) */
   if (a < 0.004) discard;
   gl_FragColor = vec4(mix(vec3(0.5, 0.55, 0.62), vec3(0.92, 0.95, 1.0), uDay), a);
 }`;
@@ -83,7 +83,7 @@ function splashGeo() {
 
 // Shifat Nov 1 12:34 'rain drop splash need tiny drop particles to sell the splash': each impact throws 3 tiny beads up and out on a short arc
 // (same hashed spot and cycle as its ring, so they leave from the ring's centre). One draw call of camera-facing quads.
-const DROP_K = 3;
+const DROP_K = 6;
 const DROP_VS = `
 attribute vec3 aSeed; attribute vec2 aK; uniform float uT; uniform vec4 uHero; uniform float uG; varying vec2 vQ; varying float vA;
 float h1(float n){ return fract(sin(n) * 43758.5453); }
@@ -91,18 +91,18 @@ void main(){
   float P = 0.45 + aSeed.y * 0.35, tt = uT + aSeed.x * P * 7.0, cyc = floor(tt / P), ph = fract(tt / P);
   float a = h1(cyc * 12.9898 + aSeed.x * 78.233) * 6.2832, rr = 1.2 + sqrt(h1(cyc * 4.1414 + aSeed.z * 17.17)) * 9.0;
   vec3 wp = vec3(uHero.x + cos(a) * rr, uG + 0.05, uHero.z + sin(a) * rr);
-  float tp = ph * P, r1 = h1(cyc * 7.31 + aK.x * 3.7 + aSeed.z * 11.1), da = aK.x * 2.094 + r1 * 1.4 + a;
-  float vh = 0.45 + 0.5 * r1, vv = 1.3 + 0.9 * h1(cyc * 2.17 + aK.x * 5.3 + aSeed.y * 9.1);
+  float tp = ph * P, r1 = h1(cyc * 7.31 + aK.x * 3.7 + aSeed.z * 11.1), da = aK.x * 1.047 + r1 * 0.8 + a;
+  float vh = 0.6 + 0.6 * r1, vv = 0.9 + 0.7 * h1(cyc * 2.17 + aK.x * 5.3 + aSeed.y * 9.1);   /* a low crown: beads thrown out more than up */
   wp += vec3(cos(da) * vh * tp, max(vv * tp - 4.9 * tp * tp, 0.0), sin(da) * vh * tp);
-  vA = step(0.012, tp) * (1.0 - smoothstep(0.18, 0.3, tp)) * step(vv * tp - 4.9 * tp * tp, 9.0);
+  vA = step(0.005, tp) * (1.0 - smoothstep(0.14, 0.24, tp)) * step(vv * tp - 4.9 * tp * tp, 9.0);
   vQ = position.xy * 2.0;
-  vec4 vp = viewMatrix * vec4(wp, 1.0); vp.xy += position.xy * (0.035 + 0.02 * r1);
+  vec4 vp = viewMatrix * vec4(wp, 1.0); vp.xy += position.xy * (0.03 + 0.016 * r1);
   gl_Position = projectionMatrix * vp;
 }`;
 const DROP_FS = `
 uniform float uRain; uniform float uDay; uniform float uOn; varying vec2 vQ; varying float vA;
 void main(){
-  float a = smoothstep(1.0, 0.3, length(vQ)) * vA * uRain * uOn * 0.8;
+  float a = smoothstep(1.0, 0.3, length(vQ)) * vA * uRain * uOn * 0.95;
   if (a < 0.004) discard;
   gl_FragColor = vec4(mix(vec3(0.55, 0.6, 0.68), vec3(0.95, 0.97, 1.0), uDay), a);
 }`;
