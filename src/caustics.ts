@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+// Nov 1: public/caustics.png = portfolio caustic baked (old tile kept as caustics_v1.png).
 // Shifat 2:28 AM Oct 30 "study real clean caustic patterns": a physically made caustic tile (public/caustics.png) - a million light rays
 // refracted through a tileable rippled surface (n 1.333) and splatted onto the floor, which gives the clean cellular network of thin
 // bright lines seen in real pools and shallow seas. Animated the standard way: two copies drifting apart, min() keeps the lines thin,
@@ -8,7 +9,7 @@ CAUSTIC_TEX.wrapS = CAUSTIC_TEX.wrapT = THREE.RepeatWrapping; CAUSTIC_TEX.minFil
 CAUSTIC_TEX.colorSpace = THREE.NoColorSpace;
 export const CAUSTIC_GLSL = `uniform sampler2D uCaus;
 vec3 causRGB(vec2 xz, float t){
-  vec2 a = xz * 0.21 + vec2(0.023, 0.011) * t, b = mat2(0.81, -0.59, 0.59, 0.81) * xz * 0.26 + vec2(-0.017, 0.021) * t;
+  vec2 a = xz * 0.14 + vec2(0.023, 0.011) * t, b = mat2(0.81, -0.59, 0.59, 0.81) * xz * 0.17 + vec2(-0.017, 0.021) * t;   /* Shifat Nov 1 'caustic like my portfolio': the tile is now the portfolio's caustic (wave-field focusing, knots, crisp and soft patches) baked periodic; ~1.5x more cells per tile, so sampled 0.65x */
   float l2 = texture2D(uCaus, b).r; vec2 o = vec2(0.0035, 0.0021);
   return vec3(min(texture2D(uCaus, a + o).r, l2), min(texture2D(uCaus, a).r, l2), min(texture2D(uCaus, a - o).r, l2));
 }`;
