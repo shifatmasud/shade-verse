@@ -47,6 +47,11 @@ if (ON) {
     setInterval(() => { if (document.hidden || fN >= 0) return; fN = 0; fAcc.fill(0); fPrev = 0; }, 20000);
     (window as any).__telMark = () => { if (fN >= 0 && !fFirst) fFirst = performance.now(); };
     (window as any).__telMarkEnd = () => { if (fN >= 0) fLast = performance.now(); };   /* the renderer's render is an instance method (three r187) */
+    /* Long Animation Frames (Chrome): which scripts / style / layout fill a slow frame, outside the 3D renderer too */
+    const loaf = { n: 0, dur: 0, block: 0, style: 0, scripts: {} as Record<string, number> };
+    try { new PerformanceObserver((l) => { for (const e of l.getEntries() as any[]) { loaf.n++; loaf.dur += e.duration; loaf.block += e.blockingDuration || 0; if (e.styleAndLayoutStart) loaf.style += e.startTime + e.duration - e.styleAndLayoutStart;
+        for (const s of e.scripts || []) { const k = (s.invokerType || '') + ':' + (s.invoker || '').slice(0, 40) + '@' + ((s.sourceURL || '').split('/').pop() || '').slice(0, 30) + ':' + (s.sourceFunctionName || '').slice(0, 30); loaf.scripts[k] = (loaf.scripts[k] || 0) + s.duration; } } }).observe({ type: 'long-animation-frame', buffered: false } as any); } catch { /* ignore */ }
+    (window as any).__loaf = loaf;
     let busy = 0; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) busy += e.duration; }).observe({ type: 'longtask', buffered: false } as any); } catch { /* ignore */ }
     let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     let n = 0, last = performance.now(), sentGpu = false;
@@ -55,6 +60,7 @@ if (ON) {
         const c = document.querySelector('canvas') as HTMLCanvasElement | null; const d: any = { build: ((document.querySelector('script[src*="index-"]') as HTMLScriptElement | null)?.src || '').split('/').pop(), fps, cpu, dpr: devicePixelRatio, css: c ? [c.clientWidth, c.clientHeight] : null, buf: c ? [c.width, c.height] : null, hud: (document.querySelector('[data-perf]') as any)?.textContent || null };
         const tl: any = (window as any).__tel; if (tl) d.tel = tl; const g: any = (window as any).__game; if (g && g.sim) d.pos = g.sim.pos.map((v: number) => Math.round(v)), d.swim = !!g.sim.swim;
         if (!sentGpu && c) { const gl = (c.getContext('webgl2') || c.getContext('webgl')) as WebGL2RenderingContext | null; if (gl) { const di = gl.getExtension('WEBGL_debug_renderer_info'); d.gpu = { renderer: di ? gl.getParameter(di.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), maxTex: gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS), maxVary: gl.getParameter(gl.MAX_VARYING_VECTORS), maxFragU: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS), maxVertU: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS), prec: (() => { const p = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT); return p ? p.precision : null; })(), exts: gl.getSupportedExtensions() }; d.quality = QUALITY; sentGpu = true; } }
+        { const top = Object.entries(loaf.scripts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => [k, Math.round(v)]); d.loaf = { n: loaf.n, dur: Math.round(loaf.dur), block: Math.round(loaf.block), style: Math.round(loaf.style), top }; loaf.n = 0; loaf.dur = 0; loaf.block = 0; loaf.style = 0; loaf.scripts = {}; }
         d.logs = logs.splice(0); send('sample', d);
         if (++n > 40) n = 40;   // keeps going, 1 per 15 s
     }, 15000);
