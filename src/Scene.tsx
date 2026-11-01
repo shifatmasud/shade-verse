@@ -456,10 +456,22 @@ export const Scene = React.memo(SceneImpl);
 function ShaderWarmup() {
     const { gl, scene, camera } = useThree();
     useEffect(() => {
-        const run = () => {
+        const compileNow = (cam: THREE.Camera) => {
             const hidden: THREE.Object3D[] = [];
             scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-            try { gl.compile(scene, camera); } catch { /* ignore */ } finally { for (const o of hidden) o.visible = false; }
+            try { gl.compile(scene, cam); } catch { /* ignore */ } finally { for (const o of hidden) o.visible = false; }
+        };
+        /* the program key also carries the output target's colour space + tone mapping, which the passes set per render: compile from inside
+           the next real render call, once for each distinct target state, so the keys match exactly what the frame will ask for */
+        const run = () => {
+            compileNow(camera);
+            const r0 = gl.render, seen = new Set<string>(); let n = 0;
+            gl.render = function (this: THREE.WebGLRenderer, s: THREE.Object3D, c: THREE.Camera) {
+                const t = gl.getRenderTarget(), k = (t ? 'rt' + (t.texture.colorSpace || '') : 'canvas') + gl.toneMapping + gl.outputColorSpace;
+                if (s === scene && !seen.has(k)) { seen.add(k); compileNow(c); }
+                if (++n > 40) gl.render = r0;
+                return r0.call(gl, s as any, c);
+            } as any;
         };
         const ts = [1200, 5000, 12000, 25000].map((ms) => setTimeout(run, ms));
         return () => ts.forEach(clearTimeout);
