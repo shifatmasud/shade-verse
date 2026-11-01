@@ -776,9 +776,12 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     return <>
         <mesh ref={beaconRef} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)}><cylinderGeometry args={[4, 4, 90, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
         <color attach="background" args={[FOG[0], FOG[1], FOG[2]]} />
-        <hemisphereLight name="hemi" args={['#d4e4ff', '#8a9a6a', 1.25]} />
-        <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
-        <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
+        {/* Shifat 11:27 PM phone perf: lights live on every layer. When a pass rendered only the sea / late / reflection layer it saw 0 lights,
+            three bumped its lights version, and the next pass re-derived the shader program of every lit material (about a quarter of the
+            phone's render CPU, every frame). Same lights, same look; transparents drawn in the late pass are now lit like the normal path. */}
+        <hemisphereLight name="hemi" args={['#d4e4ff', '#8a9a6a', 1.25]} onUpdate={(o) => o.layers.enableAll()} />
+        <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" onUpdate={(o) => o.layers.enableAll()} />
+        <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" onUpdate={(o) => o.layers.enableAll()} />
         <DayNight />
         <Weather />
         <DebugStats /><Bench />
