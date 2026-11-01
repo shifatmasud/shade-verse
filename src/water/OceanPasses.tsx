@@ -12,7 +12,7 @@ import { OCEAN_SNAP, OCEAN_BINS } from './seabed';
 import { waterMat } from './oceanMaterial';
 import { projectSkyline } from './skylineRefl';
 import { bakeHeightRefl } from './heightRefl';
-const HF_ON = typeof location !== 'undefined' && /[?&]hf\b/.test(location.search), HF_MIX = !(typeof location !== 'undefined' && /[?&]ring\b/.test(location.search));   /* Shifat Nov 1 3:02 PM 'test multiple versions, then choose': version 4 (heightfield near + ring far) chosen; ?ring = old ring only, ?hf = heightfield only */   // heightfield-traced reflections prototype (Shifat Nov 1 2:50 PM)
+const HF_ON = typeof location !== 'undefined' && /[?&]hf\b/.test(location.search), HF_MIX = typeof location !== 'undefined' && /[?&]hfmix\b/.test(location.search);   /* Shifat 3:11 PM 'none of these 4 looks okay': back to the ring by default; ?hf / ?hfmix keep the prototypes */   /* Shifat Nov 1 3:02 PM 'test multiple versions, then choose': version 4 (heightfield near + ring far) chosen; ?ring = old ring only, ?hf = heightfield only */   // heightfield-traced reflections prototype (Shifat Nov 1 2:50 PM)
 
 // Per-frame drivers of the sea: the camera-following sheet, the mirror (reflection) pass and the screen-space scene copy for refraction.
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
