@@ -144,7 +144,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec2 sq = vW.xz - uSkC, sdh = normalize(rd.xz + 1e-5); float sa = atan(rd.x, rd.z) * 0.15915494 + 0.5;
         vec3 sdv = texture2D(uSkyl, vec2(sa, 0.75)).rgb; float sdc = (sdv.r * 255.0 * 256.0 + sdv.g * 255.0) / 65535.0 * ${SKY_D_MAX.toFixed(1)}, sdp = 1.0;
         if (sdc > 4.0) { float sb = dot(sq, sdh), sc = dot(sq, sq) - sdc * sdc; float st = max(-sb + sqrt(max(sb * sb - sc, 0.0)), 4.0); vec2 sP = sq + sdh * st; sa = atan(sP.x, sP.y) * 0.15915494 + 0.5; sdp = st / sdc; }
-        vec4 sk = texture2D(uSkyl, vec2(sa, 0.25)); float skB = texture2D(uSkyl, vec2(sa, 0.75)).b;
+        vec4 sk = texture2D(uSkyl, vec2(sa, 0.25)); float skB = sdc > 4.0 ? texture2D(uSkyl, vec2(sa, 0.75)).b : sdv.b;   /* Nov 1: with no parallax shift sa is unchanged, so the row-1 texel is the one already read */
         sk.a = atan(tan(sk.a * 0.35) / max(sdp, 0.05)) / 0.35; skB = atan(tan(skB * 0.35) / max(sdp, 0.05)) / 0.35;
         /* Shifat 2:33 PM 'city/harbour/bridge/island reflection not seen': the far skyline stands only a few degrees tall, smaller than the ripple tilt, so a
            rippled-ray test shattered it to nothing. Real water at a distance mirrors it as long vertical streaks: test the CALM mirror elevation (the view
