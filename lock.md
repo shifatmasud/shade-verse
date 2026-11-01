@@ -36,3 +36,6 @@ Locked looks (change only on Shifat's word):
 - Night sea: moon sheen + sparse glint path (masked out of Neon Harbor).
 - Neon Harbor night: far towers fade into deep navy atmospheric haze (never whitewashed).
 - Perf: pond SSR only within 70 m, copy every 3rd frame, 8 steps.
+
+## Shadow style (Shifat Oct 31 9:41-9:42 PM: 'Perfect', 'Every other shadows must be like this')
+All shadows are faint, wide, blurred and cool-tinted (multiply toward rgb .80/.85/.94, never black): character contact shadows, wall-foot occlusion, baked ground shade. Any new shadow must match `src/world/contactShadows.tsx`.
