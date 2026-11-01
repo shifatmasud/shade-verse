@@ -56,12 +56,14 @@ export const RECIPES: Record<string, Recipe> = {
         }
         for (let i = 0; i < 2; i++) { const t0 = 2 + r() * 9, o = O(c, 'sawtooth', 330 + r() * 80, t0, t0 + 0.35), f = F(c, 'lowpass', 900), g = G(c, 0); E(g.gain, [[t0, 0], [t0 + 0.03, 0.025], [t0 + 0.3, 0.02], [t0 + 0.35, 0]]); chain(o, f, g, c.destination); }   // far horn
     } },
-    rain: { dur: 14, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 7:09 PM 'no continuous rainfall, subtle gapped rain drops only': silence between a few soft drops
-        let t = 0.3 + r() * 0.6;
-        while (t < 13.6) {
-            const d = N(c, 'white', t, 0.05, 100 + Math.floor(t * 97)), bp = F(c, 'bandpass', 1600 + r() * 2400, 3.0), lp = F(c, 'lowpass', 5000), g = hit(c, t, 0.004, 0.035 + r() * 0.04), v = G(c, 0.05 + r() * 0.06);
+    rain: { dur: 14, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 7:15 PM 'a bit more rain, more softer sounds' (refs: real light-rain recordings = a soft muffled patter
+        // of many tiny taps on leaves/ground + a faint low wash, nothing hissy): dense but very quiet, lowpassed taps + a whisper-level brown wash
+        { const w = N(c, 'brown', 0, 14, 77), lp = F(c, 'lowpass', 1400), hp = F(c, 'highpass', 180), v = G(c, 0.06); chain(w, hp, lp, v, c.destination); }
+        let t = 0.05;
+        while (t < 13.9) {
+            const d = N(c, 'white', t, 0.03, 100 + Math.floor(t * 211)), bp = F(c, 'bandpass', 900 + r() * 2200, 2.2), lp = F(c, 'lowpass', 3600), g = hit(c, t, 0.003, 0.02 + r() * 0.03), v = G(c, 0.012 + r() * 0.03);
             chain(d, bp, lp, g, v, c.destination);
-            t += r() < 0.25 ? 0.12 + r() * 0.2 : 0.55 + r() * 1.3;   // mostly lone drops with gaps, now and then a quick pair
+            t += 0.04 + r() * 0.22;   // ~7 soft taps a second, irregular
         }
     } },
     waves: { dur: 13, sr: 22050, loop: 2, build: (c, r) => {
