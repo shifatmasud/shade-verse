@@ -500,7 +500,8 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
-        { const want = Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * curScale.current; applyRatio(gl, Math.max(1, want)); }   /* Shifat 10:13 PM 'phone environment dpr mustn't go below 1, no fps-based downscaling below 1' */   // world ratio unchanged; the canvas runs at native for the hero HD pass
+        { const want = Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * curScale.current; applyRatio(gl, Math.max(1, want)); }
+        { (window as any).__gl = gl; const tl = ((window as any).__tel ||= {}); tl.scale = Math.round(curScale.current * 100) / 100; tl.ms = Math.round(ema.current); tl.cam = [Math.round(state.camera.position.x), Math.round(state.camera.position.y), Math.round(state.camera.position.z)]; tl.mode = sim.mode; tl.swim = !!sim.swim; tl.calls = gl.info.render.calls; tl.tris = gl.info.render.triangles; }   /* device diagnostics (telemetry.ts) */   /* Shifat 10:13 PM 'phone environment dpr mustn't go below 1, no fps-based downscaling below 1' */   // world ratio unchanged; the canvas runs at native for the hero HD pass
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
             /* Shifat 6:56 PM 'performance spikes near water': every scale step re-allocates the world/outline/copy render targets (a visible hitch), and the scaler
