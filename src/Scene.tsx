@@ -459,7 +459,7 @@ function ShaderWarmup() {
         const compileNow = (cam: THREE.Camera) => {
             const hidden: THREE.Object3D[] = [];
             scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-            try { gl.compile(scene, cam); } catch { /* ignore */ } finally { for (const o of hidden) o.visible = false; }
+            try { void (gl as any).compileAsync(scene, cam).catch(() => {}); } catch { /* ignore */ } finally { for (const o of hidden) o.visible = false; }
         };
         /* the program key also carries the output target's colour space + tone mapping, which the passes set per render: compile from inside
            the next real render call, once for each distinct target state, so the keys match exactly what the frame will ask for */
@@ -473,7 +473,7 @@ function ShaderWarmup() {
                 return r0.call(gl, s as any, c);
             } as any;
         };
-        const ts = [1200, 5000, 12000, 25000].map((ms) => setTimeout(run, ms));
+        const ts = [1200].map((ms) => setTimeout(run, ms));   /* once, on the title screen; async (parallel compile) so the main thread is not held */
         return () => ts.forEach(clearTimeout);
     }, [gl, scene, camera]);
     return null;
