@@ -1,3 +1,4 @@
+import { shadowFloorAt } from '../sim';
 import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -100,10 +101,10 @@ export function Weather() {
         if (WEATHER.force >= 0 && Math.abs(r.value - target) < 0.02) r.value = target;
         mat.uniforms.uT.value = t; mat.uniforms.uUnder.value = (UW as any).on ? 1 : 0;
         mesh.visible = r.value > 0.01;
-        { // ground level under the hero: the hero's foot height once it has stopped moving vertically (standing / running on a surface)
-            const h = HERO_REFL.shadow, g = gy.current, vy = Math.abs(h.y - g.last) / Math.max(dt, 1e-3); g.last = h.y;
-            if (vy < 0.6) { g.t += dt; if (g.t > 0.15) g.y = h.y; } else g.t = 0;
-            const on = (UW as any).on || h.y - g.y > 7 || Math.abs(g.y - (-1)) < 0.6 ? 0 : 1;   // not underwater, not high above the last ground, not on the sea surface (the sea has its own rings)
+        { // ground level under the hero (Shifat 9:56 PM: rings were floating in the sky while gliding - the old 'stopped moving vertically' guess took the
+            // glide altitude for the ground). Now the real surface under the hero; none over open water (the sea draws its own rings).
+            const h = HERO_REFL.shadow, g = gy.current; const fl = shadowFloorAt(h.x, h.y, h.z); g.y = fl ?? -1;
+            const on = (UW as any).on || fl === null || h.y - fl > 7 ? 0 : 1;   // not underwater, not over open water, not high above the ground
             smat.uniforms.uG.value = g.y; smat.uniforms.uOn.value += (on - smat.uniforms.uOn.value) * Math.min(1, dt * 4);
             smesh.visible = mesh.visible && smat.uniforms.uOn.value > 0.02;
         }
