@@ -44,4 +44,4 @@ All shadows are faint, wide, blurred and cool-tinted (multiply toward rgb .80/.8
 Phone and desktop sea water must look exactly the same (1:1). Optimizations are fine only if they apply to every device. No device-specific water branches.
 
 ## Resolution floor (Shifat Oct 31 10:13 PM)
-The world (environment) render never goes below DPR 1 on any device. The fps scaler may not downscale below 1.
+The world (environment) render never goes below DPR 0.8 on any device (Shifat Nov 1 2026 2:14 PM: "Min res dpr can be 0.8 for faster fps"; was 1). The fps scaler may not downscale below 0.8.
