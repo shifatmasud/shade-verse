@@ -59,8 +59,8 @@ export const RECIPES: Record<string, Recipe> = {
     rain: { dur: 12, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 6:40 PM 'must feel like subtle lite rain': no rumble, a faint airy hush + sparse soft droplets
         const h = N(c, 'pink', 0, 13, 71), hb = F(c, 'bandpass', 2400, 0.7), hl = F(c, 'lowpass', 4200), hh = F(c, 'highpass', 900), hg = G(c, 0.16); chain(h, hh, hb, hl, hg, c.destination);
         const pts: [number, number][] = []; for (let i = 0; i <= 24; i++) pts.push([i * 0.5, 0.12 + 0.05 * Math.sin(i * 0.9 + r() * 2)]); E(hg.gain, pts);
-        for (let i = 0; i < 90; i++) {   // light drops: short, soft, spread out
-            const t = r() * 11.8, d = N(c, 'white', t, 0.04, 100 + i), bp = F(c, 'bandpass', 2200 + r() * 2600, 3.5), g = hit(c, t, 0.003, 0.025 + r() * 0.03), v = G(c, 0.03 + r() * 0.07);
+        for (let i = 0; i < 22; i++) {   // light drops: few, short, soft (Shifat 7:02 PM 'too much rain drops')
+            const t = r() * 11.8, d = N(c, 'white', t, 0.04, 100 + i), bp = F(c, 'bandpass', 2200 + r() * 2600, 3.5), g = hit(c, t, 0.003, 0.025 + r() * 0.03), v = G(c, 0.015 + r() * 0.035);
             chain(d, bp, g, v, c.destination);
         }
     } },

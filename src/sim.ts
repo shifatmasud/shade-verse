@@ -320,7 +320,7 @@ export function resetSim(s: Sim) {
 // Flying cars (Shifat Oct 29: "flying cars must have collision & web must work on them"). One deterministic traffic model shared by
 // the renderer and the sim: cars run along street lanes at fixed altitudes; the hero collides with them (stands on the roof and rides
 // along, bumps off the sides and underside) and web swings / spring shots can attach under a car and ride with it.
-export const CITY_CAR_N = 36, BRIDGE_CAR_N = 14, ISLE_CAR_N = 8, CAR_N = CITY_CAR_N + BRIDGE_CAR_N + ISLE_CAR_N, CAR_SCALE = 2.4;   // South Sea 3b: 14 more flying cars hover along the long bridge
+export const CITY_CAR_N = 36, BRIDGE_CAR_N = 14, ISLE_CAR_N = 0,   /* Shifat 7:03 PM 'no need flying cars there, boats are enough' */ CAR_N = CITY_CAR_N + BRIDGE_CAR_N + ISLE_CAR_N, CAR_SCALE = 2.4;   // South Sea 3b: 14 more flying cars hover along the long bridge
 /** Nearest street ped to the hero, published by the renderer each frame (for ped voice lines). */
 export const PED_VOICE = { x: 0, y: 0, z: 0, d: 1e9, t: 0 };
 export const CARS = [...Array.from({ length: CITY_CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 })), ...Array.from({ length: BRIDGE_CAR_N }, (_, i) => ({ axis: 2, lane: i % 3, y: i % 2 ? 5 + (i % 3) * 1.5 : 10 + (i * 7) % 6, sp: 13 + (i * 5) % 9, off: (i * 211) % 1500 })), ...Array.from({ length: ISLE_CAR_N }, (_, i) => ({ axis: 3, lane: i % 2, y: 16 + (i * 5) % 14, sp: (11 + (i * 3) % 6) * (i % 4 < 2 ? 1 : -1), off: i * 1.9 }))];   // Oct 31: 4 cars circle Farm Isle and 4 the Ice Isle (Shifat 5:48 PM: only drones + flying cars there)   // bridge cars: off spreads them over the ~2.9 km loop
