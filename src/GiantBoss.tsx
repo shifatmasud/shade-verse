@@ -167,19 +167,23 @@ function buildBossRig(): BossRig {
         addMuscle(byName[side < 0 ? 'thighL' : 'thighR'], `boss-quad-${label}`, [side * 0.045, -0.18, 0.035], [0.082, 0.17, 0.095], muscleGeometry, muscleMaterial, muscleOutline);
     }
 
-    // The open-faced helmet keeps Shadow's original red lens pixels unobstructed.
-    plate(byName.head, 'helmet', [0, 0.12, 0.035], [0.125, 0.065, 0.14], armorTrimMaterial, armorSphereGeometry);
+    // Boss face redesign (Shifat Oct 31 5:02 PM 'boss face looks shit, need redesign'): a closed war-helm instead of the open-faced
+    // blob helmet. Dark gunmetal skull + crimson faceplate, one glowing V-visor slit (bloom), swept-back crest horns and a jaw guard.
+    const HY = 0.04, HZ = 0.2;   // head centre in head-bone space (Shadow's lens sits at z 0.335)
+    const helmDark = new THREE.MeshLambertMaterial({ color: '#191a24', emissive: '#05050a', emissiveIntensity: 0.2 });
+    const visorMat = new THREE.MeshBasicMaterial({ color: '#ff2a3a' });
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1), coneGeo = new THREE.ConeGeometry(1, 1, 6), coneGeo4 = new THREE.ConeGeometry(1, 1, 4);
+    const hp = (shape: THREE.BufferGeometry, mat: THREE.Material, pos: [number, number, number], scl: [number, number, number], rot: [number, number, number] = [0, 0, 0]) => { const m = plate(byName.head, 'helmet', pos, scl, mat as THREE.MeshLambertMaterial, shape); m.rotation.set(...rot); return m; };
+    hp(armorSphereGeometry, helmDark, [0, HY + 0.035, HZ - 0.01], [0.135, 0.15, 0.17]);                       // skull shell
+    hp(coneGeo4, helmDark, [0, HY - 0.03, HZ + 0.12], [0.11, 0.19, 0.045], [Math.PI, Math.PI / 4, 0]);   // V-shaped faceplate (point = chin)
+        hp(boxGeo, armorMaterial, [0, HY + 0.12, HZ + 0.01], [0.022, 0.05, 0.27], [0.25, 0, 0]);                    // red crest ridge
     for (const side of [-1, 1]) {
-        plate(byName.head, 'helmet', [side * 0.095, 0.015, 0.12], [0.04, 0.12, 0.15], armorMaterial, armorSphereGeometry);
-        plate(byName.head, 'helmet', [side * 0.075, -0.105, 0.22], [0.05, 0.05, 0.10], armorTrimMaterial, armorSphereGeometry);
-    }
-    plate(byName.head, 'helmet', [0, 0.095, 0.31], [0.093, 0.025, 0.045], armorMaterial);
-    plate(byName.head, 'helmet', [0, -0.13, 0.23], [0.085, 0.04, 0.09], armorMaterial);
-    for (const side of [-1, 1]) {
-        const eye = new THREE.Mesh(armorSphereGeometry, eyeMaterial);
-        eye.name = `boss-original-red-eye-${side < 0 ? 'left' : 'right'}`;
-        eye.position.set(side * 0.032, 0.044, 0.335); eye.scale.set(0.019, 0.012, 0.006);
-        eye.userData.bossEyeLens = true; eye.layers.enable(SELECTIVE_BLOOM_LAYER); byName.head.add(eye);
+        hp(armorGeometry, armorMaterial, [side * 0.085, HY - 0.035, HZ + 0.07], [0.03, 0.075, 0.07]);          // cheek guards
+        hp(coneGeo, armorMaterial, [side * 0.1, HY + 0.13, HZ - 0.03], [0.035, 0.26, 0.035], [-0.65, 0, -side * 0.7]);   // swept-back crest horns
+        const slit = new THREE.Mesh(boxGeo, visorMat);
+        slit.name = `boss-visor-${side < 0 ? 'left' : 'right'}`;
+        slit.position.set(side * 0.04, HY + 0.025, HZ + 0.172); slit.scale.set(0.066, 0.014, 0.012); slit.rotation.z = side * 0.32;
+        slit.userData.bossEyeLens = true; slit.layers.enable(SELECTIVE_BLOOM_LAYER); byName.head.add(slit);
     }
     plate(byName.neck, 'neck', [0, 0.035, 0], [0.135, 0.10, 0.135], armorTrimMaterial, armorBandGeometry);
 
