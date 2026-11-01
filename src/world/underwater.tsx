@@ -1,3 +1,4 @@
+import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
 import { HALF, PARK_POND_Y, WATER_Y, WATER_Z, isLakeWater, seabedAt, waterSurfaceAt, type Sim } from '../sim';
 import * as THREE from 'three';
 import { QUALITY } from '../quality';
@@ -31,11 +32,11 @@ const rayMat = new THREE.ShaderMaterial({
       float h(float x){ return fract(sin(x * 127.1) * 43758.5453); }
       void main(){
         float x = vU.x, t = uTime;
-        float s = 0.0; for (int k = 0; k < 4; k++) { float fk = float(k), c = 0.15 + 0.7 * h(fk + floor(t * 0.05 + fk) * 3.1); float w = 0.035 + 0.06 * h(fk * 7.0 + 1.0);
-          s += (1.0 - smoothstep(w * 0.3, w, abs(x - c - 0.04 * sin(t * 0.35 + fk * 2.1)))) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }
+        float s = 0.0; for (int k = 0; k < 4; k++) { float fk = float(k), c = 0.15 + 0.7 * h(fk + floor(t * 0.05 + fk) * 3.1); float w = 0.06 + 0.09 * h(fk * 7.0 + 1.0), dx = (x - c - 0.04 * sin(t * 0.35 + fk * 2.1)) / w;
+          s += exp(-dx * dx * 1.6) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }   /* Shifat 8:43 PM 'more blurry god rays': gaussian shaft profile (was a hard-edged band), wider, and the sheets feed the bloom pass */
         float edge = smoothstep(0.0, 0.12, x) * (1.0 - smoothstep(0.88, 1.0, x));
         float depth = uSurf - vY; float fade = exp(-max(depth, 0.0) * 0.055) * smoothstep(0.0, 1.2, depth);
-        float a = s * edge * fade * mix(0.04, 1.0, uDay * uDay) * 0.42;   /* night: only a faint moon trace of the shafts (they read as daylight at night) */
+        float a = s * edge * fade * mix(0.04, 1.0, uDay * uDay) * 0.36;   /* night: only a faint moon trace of the shafts (they read as daylight at night) */
         gl_FragColor = vec4(vec3(0.62, 0.93, 1.0) * a, a);
       }`,
 });
@@ -110,7 +111,7 @@ export function Underwater({ sim }: { sim: Sim }) {
     return <group>
         <instancedMesh ref={kelp} args={[kGeo, kelpMat, 1400]} frustumCulled={false} />
         <points ref={bub} geometry={bGeo} frustumCulled={false}><primitive object={bubbleMat} attach="material" /></points>
-        <group ref={rays}><instancedMesh ref={rayInst} args={[rayGeo, rayMat, RAY_N]} frustumCulled={false} /></group>
+        <group ref={rays}><instancedMesh ref={rayInst} args={[rayGeo, rayMat, RAY_N]} frustumCulled={false} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} /></group>
     </group>;
 }
 
