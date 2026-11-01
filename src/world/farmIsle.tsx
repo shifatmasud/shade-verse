@@ -6,6 +6,7 @@ import { addTrunkSolids } from '../sim';
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { seabedAt } from '../sim';
 import { FARM, farmRaw, farmRR, FARM_HOUSES, FARM_BARN, FARM_SILO, FARM_MILL, farmGroundAt } from '../seaWorld';
 import { QK } from '../quality';
 import { coniferGeo } from './trees';
@@ -40,7 +41,7 @@ function terrainGeo(nLod?: number) {
     const c = new THREE.Color(), grass = new THREE.Color('#7fae4e'), grass2 = new THREE.Color('#9cc25a'), sand = new THREE.Color('#e6d6a8'), wet = new THREE.Color('#b8a47a');
     const mud = new THREE.Color('#6b5236'), rut = new THREE.Color('#4a3824'), wheat = new THREE.Color('#d9bc62'), plow = new THREE.Color('#8a6a44'), crop = new THREE.Color('#5f9a3c');
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
-        const x = FARM.cx - half + (i / n) * 2 * half, z = FARM.cz - half + (j / n) * 2 * half, h = farmRaw(x, z), y = h ?? -40;
+        const x = FARM.cx - half + (i / n) * 2 * half, z = FARM.cz - half + (j / n) * 2 * half, h = farmRaw(x, z), y = Math.max(h ?? -99, seabedAt(x, z) - 0.5);   /* Nov 1: the ground now runs down onto the sea floor instead of stopping in a stair-stepped cliff at -16 m (seen from under water) */
         const rr = farmRR(x, z), lx = x - FARM.cx, lz = z - FARM.cz, rd = farmRoadD(x, z);
         const nz = Math.sin(x * 0.19 + z * 0.07) * Math.sin(x * 0.05 - z * 0.23);
         c.copy(grass).lerp(grass2, 0.5 + 0.5 * nz);
@@ -54,11 +55,11 @@ function terrainGeo(nLod?: number) {
         if (rd < 4.2) { const r2 = Math.abs(rd - 1.2); c.lerp(mud, 1 - THREE.MathUtils.smoothstep(rd, 3.0, 4.2)); if (r2 < 0.55) c.lerp(rut, 0.85 * (1 - r2 / 0.55)); c.lerp(rut, 0.25 * (0.5 + 0.5 * Math.sin(x * 1.7 + z * 0.9))); }
         if (rr > 0.8) c.lerp(sand, THREE.MathUtils.smoothstep(rr, 0.8, 0.88));
         if (y < -0.7) c.lerp(wet, 0.6);
-        pos.push(x, y - (rd < 2.6 ? 0.06 : 0), z); col.push(c.r, c.g, c.b); ok.push(h !== null && y > -16);
+        pos.push(x, y - (rd < 2.6 ? 0.06 : 0), z); col.push(c.r, c.g, c.b); ok.push(h !== null);
     }
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
         const a = j * (n + 1) + i, b = a + 1, d = a + n + 1, e = d + 1;
-        if (ok[a] && ok[b] && ok[d] && ok[e]) idx.push(a, d, b, b, d, e);
+        if (ok[a] || ok[b] || ok[d] || ok[e]) idx.push(a, d, b, b, d, e);
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
 }
