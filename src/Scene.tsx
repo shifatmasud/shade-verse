@@ -370,19 +370,19 @@ const DQ_ON = DQ.has('debug'), DQ_RES = DQ_ON && DQ.get('res') ? Math.max(0.2, M
 if (DQ_ON && DQ.has('noout')) OUTLINE_STATE.on = false;
 function DebugStats() {
     const gl = useThree((s) => s.gl), scene = useThree((s) => s.scene);
-    const st = useRef({ t0: 0, end: 0, n: 0, cpu: 0, hid: [] as THREE.Object3D[] }).current;
+    const st = useRef({ t0: 0, end: 0, n: 0, cpu: 0, rs: 0, logic: 0, hid: [] as THREE.Object3D[] }).current;
     useEffect(() => {
         if (!DQ_ON) return;
         gl.info.autoReset = false;
         const orig = gl.render.bind(gl);
-        (gl as any).render = (a: any, b: any) => { orig(a, b); st.end = performance.now(); };
+        (gl as any).render = (a: any, b: any) => { if (!st.rs) st.rs = performance.now(); orig(a, b); st.end = performance.now(); };   (window as any).__gl = gl;
         return () => { (gl as any).render = orig; gl.info.autoReset = true; };
     }, [gl]);
     useFrame(() => {
         if (!DQ_ON) return;
         const w = window as any;
-        if (st.t0 && st.end > st.t0) st.cpu += (st.end - st.t0 - st.cpu) * 0.1;
-        w.__dbgStats = { calls: gl.info.render.calls, tris: gl.info.render.triangles, cpu: st.cpu };
+        if (st.t0 && st.end > st.t0) { st.cpu += (st.end - st.t0 - st.cpu) * 0.1; if (st.rs > st.t0) st.logic += (st.rs - st.t0 - st.logic) * 0.1; }   /* logic = game/useFrame JS before the first render call; the rest of cpu = three.js render submission */
+        w.__dbgStats = { calls: gl.info.render.calls, tris: gl.info.render.triangles, cpu: st.cpu, logic: st.logic, progs: gl.info.programs ? gl.info.programs.length : 0 }; st.rs = 0;
         gl.info.reset(); st.t0 = performance.now();
         for (const o of st.hid) o.visible = false;   // components that re-show their meshes every frame are hidden again each frame
         if ((DQ_NOSEA || DQ_HIDE.length) && (st.n++ % 60) === 0) { st.hid.length = 0; scene.traverse((o: any) => {
