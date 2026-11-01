@@ -20,7 +20,7 @@ export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform sampler2D tMir; uniform mat4 uMirM; uniform float uMir; uniform vec2 uMirPx; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
@@ -204,6 +204,12 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         #endif
       }
       if (uHF > 3.5 && uHF < 4.5 && !below) { skR = mix(ssrC, reflTint(ssrC, refl), 0.35); skA = ssrA * 0.95; nGlow = ssrC * 0.35 * ssrA; }
+      if (uMir > 0.5 && !below) {   /* FULL MIRROR test (Shifat 3:35 PM 'full scene in air must be reflected'): the whole mirrored scene, rippled, slightly streaked */
+        vec4 mp = uMirM * vec4(vW.x, WATER_LVL, vW.z, 1.0); vec2 muv = mp.xy / mp.w + vec2(n.x, n.z) * vec2(0.012, 0.03);
+        float sv = uMirPx.y * mix(1.0, 3.0, smoothstep(20.0, 200.0, length(cameraPosition.xz - vW.xz)));
+        vec3 m = 0.3 * (texture2D(tMir, muv + vec2(uMirPx.x * 0.7, sv)).rgb + texture2D(tMir, muv - vec2(uMirPx.x * 0.7, sv)).rgb) + 0.2 * (texture2D(tMir, muv + vec2(-uMirPx.x * 0.4, sv * 2.6)).rgb + texture2D(tMir, muv - vec2(-uMirPx.x * 0.4, sv * 2.6)).rgb);
+        refl = m; skA = 0.0; nGlow = vec3(0.0);
+      }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       bool camUp = cameraPosition.y > vW.y;   /* Shifat 6:06 PM: a camera under the sea never sees the analytic hero (the real body is right there) - this was the dark pill floating above the swimmer */
       if (!below && camUp) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against

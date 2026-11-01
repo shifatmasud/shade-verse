@@ -166,3 +166,38 @@ export function ReflectionIllusion({ sim }: { sim: Sim }) {
     });
     return null;
 }
+
+/* FULL MIRROR test (Shifat Nov 1 3:35 PM 'Full scene in air must be reflected on water'; 2nd render allowed for this test 3:24 PM): the WHOLE scene above
+   the sea (sky, clouds, city, isles, trees, bridge, boats, gulls) rendered mirrored under the water plane into a 1/4-res target every frame (oblique
+   near plane = the sea, so nothing below leaks in); the sea projects it, rippled. Heroes stay out (their analytic reflection is untouched). Flag ?fm. */
+export const FM_ON = typeof location !== 'undefined' && /[?&]fm\b/.test(location.search);
+export function FullMirror({ waterRef }: { waterRef: React.MutableRefObject<THREE.Mesh | null> }) {
+    const { gl, scene, camera } = useThree();
+    const st = useMemo(() => ({ rt: new THREE.WebGLRenderTarget(16, 16, { type: rtType(gl), minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }), cam: new THREE.PerspectiveCamera(), buf: new THREE.Vector2(),
+        plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y), bias: new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1),
+        refl: new THREE.Matrix4().set(1, 0, 0, 0, 0, -1, 0, 2 * WATER_Y, 0, 0, 1, 0, 0, 0, 0, 1), cp: new THREE.Vector4(), q: new THREE.Vector4(), heroes: [] as THREE.Object3D[], n: 0 }), [gl]);
+    useEffect(() => { st.rt.texture.colorSpace = THREE.SRGBColorSpace; return () => st.rt.dispose(); }, [st]);   // same encoding as the screen, so the mirror is not darker
+    useFrame(() => {
+        const u = waterMat.uniforms as any, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
+        const on = FM_ON && !!w && cam.position.y > WATER_Y + 0.3 && !(UW as any).on;
+        u.uMir.value = on ? 1 : 0; if (!on) return;
+        if (st.n++ % 120 === 0) { st.heroes = []; scene.traverse((o: any) => { if (o.userData && (o.userData.hero || o.userData.noRefl)) st.heroes.push(o); }); }
+        worldBufferSize(gl, st.buf); const W = Math.max(64, Math.round(st.buf.x * 0.25)), H = Math.max(32, Math.round(st.buf.y * 0.25));
+        if (st.rt.width !== W || st.rt.height !== H) st.rt.setSize(W, H);
+        const mc = st.cam; mc.copy(cam, false); mc.layers.mask = cam.layers.mask; mc.matrixAutoUpdate = false; mc.updateProjectionMatrix();
+        /* Reflector-style virtual camera: a real rotation (no negative scale, so faces keep their winding - the negative-scale mirror drew the
+           buildings' back faces, dark), positioned and aimed at the mirror images of the camera and its target */
+        const cp = cam.getWorldPosition(new THREE.Vector3()), dir = cam.getWorldDirection(new THREE.Vector3()), tg = cp.clone().add(dir), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+        mc.matrixAutoUpdate = true; mc.position.set(cp.x, 2 * WATER_Y - cp.y, cp.z); mc.up.set(up.x, -up.y, up.z); mc.lookAt(tg.x, 2 * WATER_Y - tg.y, tg.z); mc.updateMatrixWorld(); mc.matrixWorldInverse.copy(mc.matrixWorld).invert();
+        const pl = st.plane.clone().applyMatrix4(mc.matrixWorldInverse); st.cp.set(pl.normal.x, pl.normal.y, pl.normal.z, pl.constant);
+        const pm = mc.projectionMatrix.elements; st.q.set((Math.sign(st.cp.x) + pm[8]) / pm[0], (Math.sign(st.cp.y) + pm[9]) / pm[5], -1, (1 + pm[10]) / pm[14]);
+        const c = st.cp.multiplyScalar(2 / st.cp.dot(st.q)); pm[2] = c.x; pm[6] = c.y; pm[10] = c.z + 1; pm[14] = c.w;
+        u.uMirM.value.multiplyMatrices(st.bias, mc.projectionMatrix).multiply(mc.matrixWorldInverse); u.uMirPx.value.set(1 / W, 1 / H);
+        const prevRT = gl.getRenderTarget(), vis = w!.visible, hv = st.heroes.map(o => o.visible);
+        w!.visible = false; st.heroes.forEach(o => (o.visible = false));
+        gl.setRenderTarget(st.rt); gl.clear(); gl.render(scene, mc);
+        gl.setRenderTarget(prevRT); w!.visible = vis; st.heroes.forEach((o, i) => (o.visible = hv[i])); u.tMir.value = st.rt.texture;
+        if (DBG) (window as any).__mirDump = () => { const b = new Uint8Array(W * H * 4); gl.readRenderTargetPixels(st.rt, 0, 0, W, H, b); return { W, H, d: Array.from(b) }; };
+    });
+    return null;
+}

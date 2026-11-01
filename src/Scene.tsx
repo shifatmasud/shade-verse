@@ -37,7 +37,7 @@ import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM, HERO_REFL } from './caustics';
 import { TOD, UWF, UW } from './world/env';
 import { seabedMat, wallMat, OCEAN_HALF, OCEAN_SNAP, oceanGeo, seabedGeo } from './water/seabed';
 import { waterMat } from './water/oceanMaterial';
-import { OceanFollow, IslandReflection, OceanScreenSpace, ReflectionIllusion, OceanSlices, SSR_ON } from './water/OceanPasses';
+import { OceanFollow, IslandReflection, OceanScreenSpace, ReflectionIllusion, OceanSlices, SSR_ON, FullMirror } from './water/OceanPasses';
 import { ImpostorBake } from './water/impostorRefl';
 import { Boats, Gulls, Fish, MarineSnow, Whale } from './world/sealife';
 import { Jellies } from './world/jellies';
@@ -863,7 +863,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <group ref={splashRef} visible={false}>{[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => <mesh key={i} frustumCulled={false}><coneGeometry args={[0.13, 1, 5]} /><meshBasicMaterial color="#f4fdff" transparent opacity={0.9} depthWrite={false} /></mesh>)}</group>
         <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false} renderOrder={5}><ringGeometry args={[0.55, 1.45, 48, 1]} /><primitive object={swimRingMat()} attach="material" /></mesh>)}</group>
         <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
-        <OceanFollow waterRef={waterRef} /><OceanSlices waterRef={waterRef} geo={OCEAN_GEO} /><ReflectionIllusion sim={sim} /><ImpostorBake waterRef={waterRef} />{SSR_ON && <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />}
+        <OceanFollow waterRef={waterRef} /><OceanSlices waterRef={waterRef} geo={OCEAN_GEO} /><ReflectionIllusion sim={sim} /><ImpostorBake waterRef={waterRef} /><FullMirror waterRef={waterRef} />{SSR_ON && <OceanScreenSpace sim={sim} waterRef={waterRef} perf={perf} />}
         <ContactShadows sim={sim} /><StaticShadows /><Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow /><Jellies /><Lilies sim={sim} />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         {/* Shifat 9:33 AM 'No reflection. Lock it. Remove any second render.': OceanScreenSpace (scene copy) and the reflection probe are not mounted */}
