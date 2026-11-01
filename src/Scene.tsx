@@ -450,6 +450,23 @@ function DebugStats() {
 /* Shifat 11:13 PM phone perf: the App HUD updates 10x a second (fps text, beacon distance); without memo every HUD tick re-rendered this whole
    3D tree through React (thousands of prop diffs on a slow phone CPU). Props here are stable refs, so the 3D tree now renders once. */
 export const Scene = React.memo(SceneImpl);
+/* Shifat's phone (Adreno 506) froze each time a new area came into view: three builds a shader program the first time an object is drawn,
+   and a big program costs that GPU hundreds of ms on the main thread. Every program is built up front instead - hidden objects are made
+   visible for the compile call only (no frame is drawn in between) and restored at once. Nothing on screen changes. */
+function ShaderWarmup() {
+    const { gl, scene, camera } = useThree();
+    useEffect(() => {
+        const run = () => {
+            const hidden: THREE.Object3D[] = [];
+            scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+            try { gl.compile(scene, camera); } catch { /* ignore */ } finally { for (const o of hidden) o.visible = false; }
+        };
+        const ts = [1200, 5000, 12000, 25000].map((ms) => setTimeout(run, ms));
+        return () => ts.forEach(clearTimeout);
+    }, [gl, scene, camera]);
+    return null;
+}
+
 function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
@@ -780,6 +797,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     });
 
     return <>
+        <ShaderWarmup />
         <mesh ref={beaconRef} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)}><cylinderGeometry args={[4, 4, 90, 12, 1, true]} /><meshBasicMaterial color="#5ff2ff" transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} fog={false} /></mesh>
         <color attach="background" args={[FOG[0], FOG[1], FOG[2]]} />
         {/* Shifat 11:27 PM phone perf: lights live on every layer. When a pass rendered only the sea / late / reflection layer it saw 0 lights,
