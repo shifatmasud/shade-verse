@@ -358,6 +358,7 @@ export function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[
 
 // Water: sum-of-sines height field, fresnel sky mix, sun glitter, crest foam, distance haze (informed by public ocean-shader write-ups, see docs/REFERENCES.md)
 
+const _camNear: typeof buildings = [];
 const OCEAN_GEO = oceanGeo(), SEABED_GEO = seabedGeo();
 
 
@@ -525,10 +526,14 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         const dbgD = DBG ? (window as any).__camDist as number | undefined : undefined; if (DBG) (window as any).__wr = { world: HD.worldRatio, scale: curScale.current }; if (DBG && (window as any).__hq) { curScale.current = 1; perf.scale = 1; }
         let dist = dbgD ?? ((sim as any).riding ? 17 : sim.web ? 11.5 : sim.wall ? 7 : 8.5);   // flying a car: pull the camera back so the car doesn't fill the screen
         const fxd = Math.sin(sim.yaw) * cy, fzd = Math.cos(sim.yaw) * cy;
+        /* Shifat 12:02 AM phone fps: the camera's three building checks scanned every building in the city several times a frame; only the
+           ones within reach of the camera arm can matter, so they are gathered once (same results). */
+        const camB = _camNear; camB.length = 0;
+        { const rr = Math.max(dist, Math.hypot(cam.current.x - p[0], cam.current.z - p[2])) + 8; for (const b of buildings) if (p[0] > b.x0 - rr && p[0] < b.x1 + rr && p[2] > b.z0 - rr && p[2] < b.z1 + rr) camB.push(b); }
         for (; !dbgD && dist > (sim.wall ? 5 : 6); dist -= 1) {
             const ex = p[0] - fxd * dist, ey = p[1] + 1.5 + sy * dist, ez = p[2] - fzd * dist;
             let hit = false;
-            for (const b of buildings) if (ex > b.x0 - 3 && ex < b.x1 + 3 && ez > b.z0 - 3 && ez < b.z1 + 3 && ey < b.h + 3) { hit = true; break; }
+            for (const b of camB) if (ex > b.x0 - 3 && ex < b.x1 + 3 && ez > b.z0 - 3 && ez < b.z1 + 3 && ey < b.h + 3) { hit = true; break; }
             if (!hit) break;
         }
         const wsh = 0, wnx = sim.wall ? -sim.wall[1] : 0, wnz = sim.wall ? sim.wall[0] : 0; // Manual orbit has no forced wall-side offset
@@ -536,7 +541,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         if (sim.mode === 'menu' || sim.mode === 'over') { cam.current.set(tx, ty, tz); } else cam.current.lerp(new THREE.Vector3(tx, ty, tz), 1 - Math.pow(0.001, dt));
         { // push smoothed camera out of buildings (post-lerp)
             const q = cam.current;
-            for (const b of buildings) if (q.x > b.x0 - 2 && q.x < b.x1 + 2 && q.z > b.z0 - 2 && q.z < b.z1 + 2 && q.y < b.h + 2) {
+            for (const b of camB) if (q.x > b.x0 - 2 && q.x < b.x1 + 2 && q.z > b.z0 - 2 && q.z < b.z1 + 2 && q.y < b.h + 2) {
                 if (!(tx > b.x0 - 2 && tx < b.x1 + 2 && tz > b.z0 - 2 && tz < b.z1 + 2 && ty < b.h + 2)) { q.set(tx, ty, tz); continue; }
                 const dx0 = q.x - (b.x0 - 2), dx1 = b.x1 + 2 - q.x, dz0 = q.z - (b.z0 - 2), dz1 = b.z1 + 2 - q.z, dy = b.h + 2 - q.y, m = Math.min(dx0, dx1, dz0, dz1, dy);
                 if (m === dy) q.y = b.h + 2; else if (m === dx0) q.x = b.x0 - 2; else if (m === dx1) q.x = b.x1 + 2; else if (m === dz0) q.z = b.z0 - 2; else q.z = b.z1 + 2;
@@ -556,7 +561,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             const q=cam.current,ax=p[0],ay=p[1]+(sim.swim?.7:1.5),az=p[2];
             const dx=q.x-ax,dy=q.y-ay,dz=q.z-az;let safe=1;
             // Segment-vs-building slabs catch walls even when the endpoint is outside.
-            for(const b of buildings){let lo=0,hi=safe;const origin=[ax,ay,az],delta=[dx,dy,dz],mn=[b.x0-.35,-1000,b.z0-.35],mx=[b.x1+.35,b.h+.35,b.z1+.35];let hit=true;
+            for(const b of camB){let lo=0,hi=safe;const origin=[ax,ay,az],delta=[dx,dy,dz],mn=[b.x0-.35,-1000,b.z0-.35],mx=[b.x1+.35,b.h+.35,b.z1+.35];let hit=true;
                 for(let k=0;k<3;k++){if(Math.abs(delta[k])<1e-7){if(origin[k]<mn[k]||origin[k]>mx[k]){hit=false;break;}}else{let a=(mn[k]-origin[k])/delta[k],c=(mx[k]-origin[k])/delta[k];if(a>c){const t=a;a=c;c=t;}lo=Math.max(lo,a);hi=Math.min(hi,c);if(lo>hi){hit=false;break;}}}
                 if(hit&&lo>0)safe=Math.max(0,lo-.025);
             }
