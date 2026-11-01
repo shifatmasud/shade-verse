@@ -166,7 +166,7 @@ export function App() {
             dpr={[1, QK.dprCap]}
             gl={{ antialias: AA_MSAA, powerPreference: 'high-performance', alpha: false, stencil: false }}
             camera={{ fov: 62, near: 0.5, far: 1600, position: [0, 40, -10] }}
-            onCreated={({ gl }) => { gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, QK.dprCap) * perf.scale); GL2 = gl.capabilities.isWebGL2; }}
+            onCreated={({ gl }) => { gl.setPixelRatio(Math.max(1, Math.min(window.devicePixelRatio || 1, QK.dprCap) * perf.scale));   /* Shifat 10:13 PM: never below dpr 1 */ GL2 = gl.capabilities.isWebGL2; }}
             onPointerDown={(e) => { if (drag.current.id !== -1 || document.pointerLockElement) return; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; sim.camHeld = true; sim.lastDrag = sim.t; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
             onPointerMove={(e) => {
                 if (e.pointerId !== drag.current.id) return;

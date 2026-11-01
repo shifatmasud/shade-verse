@@ -447,7 +447,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
-        { const want = Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * curScale.current; applyRatio(gl, want); }   // world ratio unchanged; the canvas runs at native for the hero HD pass
+        { const want = Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * curScale.current; applyRatio(gl, Math.max(1, want)); }   /* Shifat 10:13 PM 'phone environment dpr mustn't go below 1, no fps-based downscaling below 1' */   // world ratio unchanged; the canvas runs at native for the hero HD pass
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
             /* Shifat 6:56 PM 'performance spikes near water': every scale step re-allocates the world/outline/copy render targets (a visible hitch), and the scaler
@@ -458,7 +458,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (sd !== 0 && hyst.current.n >= 2 && (sd < 0 || sim.t - hyst.current.down > 6)) { ns = sd < -0.06 ? ns - 0.1 : sd < 0 ? Math.max(1, ns - 0.05) : ns + 0.05; hyst.current.n = 0; if (sd < 0) hyst.current.down = sim.t; }   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;
             if (DQ_RES) ns = DQ_RES;   // ?debug&res=x: hold the world resolution for an on-device fill-rate test   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns); }
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.max(1, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns)); }
         }
         if (sim.mode === 'play') {
             { const n = Math.max(2, Math.ceil(dt / 0.025)); for (let i = 0; i < n; i++) stepSim(sim, dt / n, ev); }   // same <=25 ms physics steps as before
@@ -469,7 +469,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         const speed = Math.hypot(v[0], v[1], v[2]); perf.speed = speed;
         // camera
         const cy = Math.cos(sim.pitch), sy = Math.sin(sim.pitch);
-        const dbgD = DBG ? (window as any).__camDist as number | undefined : undefined; if (DBG && (window as any).__hq) { curScale.current = 1; perf.scale = 1; }
+        const dbgD = DBG ? (window as any).__camDist as number | undefined : undefined; if (DBG) (window as any).__wr = { world: HD.worldRatio, scale: curScale.current }; if (DBG && (window as any).__hq) { curScale.current = 1; perf.scale = 1; }
         let dist = dbgD ?? ((sim as any).riding ? 17 : sim.web ? 11.5 : sim.wall ? 7 : 8.5);   // flying a car: pull the camera back so the car doesn't fill the screen
         const fxd = Math.sin(sim.yaw) * cy, fzd = Math.cos(sim.yaw) * cy;
         for (; !dbgD && dist > (sim.wall ? 5 : 6); dist -= 1) {
