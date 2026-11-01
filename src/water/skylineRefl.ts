@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildings, WATER_Y } from '../sim';
-import { ISLAND, islandH } from '../seaWorld';
+import { ISLAND, islandH, PIRATE, ICE, iceRaw, FARM, farmRaw } from '../seaWorld';
 
 /* Reflection illusion (Shifat Oct 31 12:58 'illusion of reflection, super performant for all devices'). Nothing is rendered: the skyline
    around the camera (city + harbor towers from the building list, the island's hills) is projected on the CPU into a 512-px ring
@@ -28,7 +28,9 @@ function fillRing(cx: number, cz: number, baseY: number, island: boolean) {
         const e = Math.atan2((b.y0 || 0) + b.h - baseY, dist); if (e < 0.004) continue;
         const a = [Math.atan2(b.x0 - cx, b.z0 - cz), Math.atan2(b.x1 - cx, b.z0 - cz), Math.atan2(b.x0 - cx, b.z1 - cz), Math.atan2(b.x1 - cx, b.z1 - cz)];
         let lo = a[0], hi = a[0]; for (const v of a) { let dv = v - a[0]; if (dv > Math.PI) dv -= TAU; if (dv < -Math.PI) dv += TAU; lo = Math.min(lo, a[0] + dv); hi = Math.max(hi, a[0] + dv); }
-        const p = PAL[(i * 2654435761 >>> 0) % PAL.length]; put(lo, hi, e, p[0], p[1], p[2]);
+        const bb = b as any, tree = bb.kind === 'solid' && b.x1 - b.x0 < 1.5 && b.z1 - b.z0 < 1.5;   /* Shifat 9:58 PM 'blue layer hides reflection': every solid now mirrors in its own colour - trees green, the pirate hull dark, igloos white */
+        const p = tree ? [0.16, 0.36, 0.2] : bb.kind === 'solid' && Math.abs((b.x0 + b.x1) / 2 - PIRATE.cx) < 70 && Math.abs((b.z0 + b.z1) / 2 - PIRATE.cz) < 30 ? [0.16, 0.17, 0.21] : bb.kind === 'solid' && Math.hypot((b.x0 + b.x1) / 2 - ICE.cx, (b.z0 + b.z1) / 2 - ICE.cz) < 80 ? [0.9, 0.94, 0.98] : PAL[(i * 2654435761 >>> 0) % PAL.length];
+        put(lo, hi, e, p[0], p[1], p[2]);
     }
     if (!island) return;
     const R = ISLAND.R * 1.15;
@@ -36,6 +38,14 @@ function fillRing(cx: number, cz: number, baseY: number, island: boolean) {
         const x = ISLAND.cx + i / 6 * R, z = ISLAND.cz + j / 6 * R, h = islandH(x, z); if (h == null || h < WATER_Y + 0.5) continue;
         const dx = x - cx, dz = z - cz, dist = Math.max(10, Math.hypot(dx, dz)), a = Math.atan2(dx, dz), w = (R / 6) / dist;
         put(a - w, a + w, Math.atan2(h - WATER_Y, dist), 0.16, 0.42, 0.2);
+    }
+    for (const [I, raw, col] of [[FARM, farmRaw, [0.3, 0.5, 0.22]], [ICE, iceRaw, [0.82, 0.9, 0.96]]] as [{ cx: number; cz: number; R: number }, (x: number, z: number) => number | null, number[]][]) {   // Farm + Ice isles mirror too
+        const R2 = I.R * 1.15;
+        for (let j = -5; j <= 5; j++) for (let i = -5; i <= 5; i++) {
+            const x = I.cx + i / 5 * R2, z = I.cz + j / 5 * R2, h = raw(x, z); if (h == null || h < WATER_Y + 0.5) continue;
+            const dx = x - cx, dz = z - cz, dist = Math.max(10, Math.hypot(dx, dz)), a = Math.atan2(dx, dz), w = (R2 / 5) / dist;
+            put(a - w, a + w, Math.atan2(h - WATER_Y, dist), col[0], col[1], col[2]);
+        }
     }
 }
 function writeRing(d: Uint8Array, tex: THREE.DataTexture) {

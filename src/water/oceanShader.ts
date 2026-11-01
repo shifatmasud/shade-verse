@@ -298,7 +298,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         col=mix(col,junction,join);aOut=mix(aOut,1.0,join);}
       // Shifat 5:36 picked "clear water near you": within ~30 m the surface turns partly see-through (more when looking down, less at grazing
       // angles where Fresnel reflection takes over), so fish, the swimmer and the real seabed show through everywhere close by, not only in a window.
-      float dCam = length(cameraPosition - vW); float nearK = (1.0 - smoothstep(12.0, 32.0, dCam)) * (1.0 - fr) * step(-222.0, -vW.z) * (1.0 - step(below ? 1.0 : 0.0, 0.5) * 0.0);
+      float dCam = length(cameraPosition - vW); float nearK = (1.0 - smoothstep(30.0, 140.0, dCam)) * (1.0 - fr) * step(-222.0, -vW.z) * (1.0 - step(below ? 1.0 : 0.0, 0.5) * 0.0);
       float aAbove = mix(nearClear, 0.3, heroSee * (1.0 - fr * 0.5)); aAbove = min(aAbove, mix(1.0, 0.5, nearK));
       // soft shorelines (AAA depth fade): where the sea is only a few cm deep over terrain - inlets, coarse terrain edges - it thins to nothing
       // instead of ending in a hard polygon edge; uses the depth of the scene copy the refraction already makes (no extra pass)
