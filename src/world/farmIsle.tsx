@@ -77,7 +77,7 @@ function groundAt(lx: number, lz: number, r: number) {   // lowest ground under 
 }
 
 function buildingsGeo() {
-    const P: THREE.BufferGeometry[] = [], box = new THREE.BoxGeometry(1, 1, 1);
+    const P: THREE.BufferGeometry[] = [], Wn: THREE.BufferGeometry[] = [], box = new THREE.BoxGeometry(1, 1, 1);
     const off = (lx: number, lz: number, yaw: number, ax: number, az: number): [number, number] => [lx + ax * Math.cos(yaw) + az * Math.sin(yaw), lz - ax * Math.sin(yaw) + az * Math.cos(yaw)];
     for (const [lx, lz, yaw, s] of HOUSES) {
         const W = 6.6 * s, D = 9.0 * s, H = 7.6 * s, y0 = groundAt(lx, lz, 5 * s) - 0.8, [x, z] = L(lx, lz), wall = rnd() < 0.5 ? '#f4f1ea' : '#ece7dc';
@@ -89,10 +89,10 @@ function buildingsGeo() {
         { const [bx, bz] = L(lx, lz); P.push(place(box, '#d8d2c6', bx, y0 + 0.8 + H * 0.5, bz, yaw, W + 0.12, 0.22, D + 0.12)); }   // floor band between the two storeys
         for (const fl of [0.27, 0.73]) for (const sd of [-1, 1]) for (const k of [-1, 0, 1]) {   // two rows of windows (two storeys) on both long sides
             const [ox, oz] = off(lx, lz, yaw, sd * (W / 2 + 0.03), k * D * 0.3); const [wx, wz] = L(ox, oz), wy = y0 + 0.8 + H * fl;
-            P.push(place(box, '#ffffff', wx, wy, wz, yaw, 0.08, 1.35, 1.15)); P.push(place(box, '#2c3a48', wx + Math.cos(yaw) * sd * 0.02, wy, wz - Math.sin(yaw) * sd * 0.02, yaw, 0.08, 1.1, 0.9));
+            P.push(place(box, '#ffffff', wx, wy, wz, yaw, 0.08, 1.35, 1.15)); Wn.push(place(box, '#ffffff', wx + Math.cos(yaw) * sd * 0.02, wy, wz - Math.sin(yaw) * sd * 0.02, yaw, 0.08, 1.1, 0.9));
             P.push(place(box, '#3f5a3a', wx + Math.cos(yaw) * sd * 0.03, wy, wz - Math.sin(yaw) * sd * 0.03 + 0, yaw, 0.06, 1.25, 0.25));   // green shutter
         }
-        { const [ox, oz] = off(lx, lz, yaw, 0, D / 2 + 0.03); const [wx, wz] = L(ox, oz); P.push(place(box, '#6a4630', wx, y0 + 0.8 + 1.1, wz, yaw, 1.2, 2.2, 0.08)); P.push(place(box, '#2c3a48', wx + 1.7 * Math.cos(yaw), y0 + 0.8 + H * 0.27, wz - 1.7 * Math.sin(yaw), yaw, 1.0, 1.0, 0.08)); for (const q of [-1.7, 0, 1.7]) P.push(place(box, '#2c3a48', wx + q * Math.cos(yaw), y0 + 0.8 + H * 0.73, wz - q * Math.sin(yaw), yaw, 1.0, 1.1, 0.08)); P.push(place(box, '#ffffff', wx, y0 + 0.8 + 2.35, wz, yaw, 1.8, 0.12, 0.5)); }
+        { const [ox, oz] = off(lx, lz, yaw, 0, D / 2 + 0.03); const [wx, wz] = L(ox, oz); P.push(place(box, '#6a4630', wx, y0 + 0.8 + 1.1, wz, yaw, 1.2, 2.2, 0.08)); Wn.push(place(box, '#ffffff', wx + 1.7 * Math.cos(yaw), y0 + 0.8 + H * 0.27, wz - 1.7 * Math.sin(yaw), yaw, 1.0, 1.0, 0.08)); for (const q of [-1.7, 0, 1.7]) Wn.push(place(box, '#ffffff', wx + q * Math.cos(yaw), y0 + 0.8 + H * 0.73, wz - q * Math.sin(yaw), yaw, 1.0, 1.1, 0.08)); P.push(place(box, '#ffffff', wx, y0 + 0.8 + 2.35, wz, yaw, 1.8, 0.12, 0.5)); }
     }
     { // red barn (gambrel-ish: two stacked gables) + white trim + a hay door
         const { x: lx, z: lz, yaw } = BARN, [x, z] = L(lx, lz), y0 = groundAt(lx, lz, 9) - 0.6, W = 12, D = 17, H = 6;
@@ -127,7 +127,11 @@ function buildingsGeo() {
     { // timber jetty on the city-facing shore
         const [x0, z0] = L(2, 86); for (let k = 0; k < 9; k++) { P.push(place(box, '#8a6e50', x0, -0.35, z0 + k * 2.2, 0, 3.2, 0.25, 2.0)); P.push(place(box, '#5a4636', x0 - 1.4, -1.5, z0 + k * 2.2, 0, 0.25, 2.4, 0.25)); P.push(place(box, '#5a4636', x0 + 1.4, -1.5, z0 + k * 2.2, 0, 0.25, 2.4, 0.25)); }
     }
-    return merged(P);
+    { // round hay bales in the wheat fields (Shifat 5:48 PM 'cozy farm')
+        let n = 0; for (let t = 0; n < 14 && t < 600; t++) { const lx = (rnd() - 0.5) * 140, lz = (rnd() - 0.5) * 140, x = FARM.cx + lx, z = FARM.cz + lz, y = farmRaw(x, z); if (y === null || y < 0.8 || farmRR(x, z) > 0.74 || farmRoadD(x, z) < 6 || nearBuilding(lx, lz, 4)) continue; n++;
+            const g = new THREE.CylinderGeometry(0.85, 0.85, 1.3, 12); g.rotateZ(Math.PI / 2); P.push(place(g, n % 3 ? '#d8b860' : '#c9a54c', x, y + 0.75, z, rnd() * 6.28)); }
+    }
+    return { geo: merged(P), win: merged(Wn) };
 }
 function sailsGeo() {   // 4 lattice sails around a hub, in the local XY plane (spin about z)
     const P: THREE.BufferGeometry[] = [], box = new THREE.BoxGeometry(1, 1, 1);
@@ -156,7 +160,7 @@ function puddleGeo() {
 }
 
 export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
-    const terrain = useMemo(terrainGeo, []), blds = useMemo(() => { setSeed(4711); return buildingsGeo(); }, []), sails = useMemo(sailsGeo, []), puddles = useMemo(puddleGeo, []);
+    const terrain = useMemo(terrainGeo, []), bw = useMemo(() => { setSeed(4711); return buildingsGeo(); }, []), blds = bw.geo, sails = useMemo(sailsGeo, []), puddles = useMemo(puddleGeo, []);
     const tex = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; }; return { leaf: mk('/spray145.png'), bark: mk('/bark.jpg', true), pine: mk(PINE_URL), pbark: mk('/pinebark.jpg', true) }; }, []);
     const mats = useMemo(() => {
         const ck = (m: THREE.Material, k: string) => { (m as any).customProgramCacheKey = () => 'farm-' + k; return m; };
@@ -168,6 +172,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
             leaf: ck(Object.assign(new THREE.MeshLambertMaterial({ map: tex.leaf, vertexColors: true, color: '#86c45e', emissive: '#284f20', alphaTest: 0.5, side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.leafWindShader) }), 'l'),
             pineTrunk: ck(Object.assign(new THREE.MeshLambertMaterial({ map: tex.pbark, bumpMap: tex.pbark, bumpScale: 2.2, vertexColors: true, emissive: '#4a3a2c', side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.trunkWindShader) }), 'pt'),
             pineLeaf: ck(Object.assign(new THREE.MeshLambertMaterial({ map: tex.pine, vertexColors: true, emissive: '#1f3a22', alphaTest: 0.5, side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.leafWindShader) }), 'pl'),
+            win: new THREE.MeshBasicMaterial({ vertexColors: true, color: '#2c3a48', toneMapped: false }),
             grass: ck(Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: '#1c3410' }), { onBeforeCompile: kit.parkGrassOnCompile(GRASS_U) }), 'gr'),
         };
     }, []);
@@ -201,6 +206,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
         const c = st.camera.position, d = Math.hypot(c.x - FARM.cx, c.z - FARM.cz);
         if (grpRef.current) grpRef.current.visible = d < 900;            // past the haze the island is invisible anyway
         objs[4].visible = d < FARM.R + 160;                               // long grass only when close enough to read
+        { const dy = kit.tod.day.value, w = mats.win.color, k = 1 - THREE.MathUtils.smoothstep(dy, 0.25, 0.75); w.setRGB(0.17 + (1.0 - 0.17) * k, 0.23 + (0.66 - 0.23) * k, 0.28 + (0.32 - 0.28) * k).multiplyScalar(1 + 0.6 * k); }   // windows: dark glass by day, warm lamplight at dusk/night
         if (sailRef.current && d < 500) sailRef.current.rotation.z -= Math.min(dt, 0.1) * 0.55;
     });
     return (
@@ -208,6 +214,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
             <mesh geometry={terrain} material={mats.ground} receiveShadow />
             <mesh geometry={puddles} material={mats.puddle} />
             <mesh geometry={blds} material={mats.bld} />
+            <mesh geometry={bw.win} material={mats.win} />
             <group position={[mill.x, mill.y, mill.z]} rotation={[0, mill.yaw, 0]}><mesh ref={sailRef} geometry={sails} material={mats.bld} /></group>
             {objs.map((o, i) => <primitive key={i} object={o} />)}
         </group>
