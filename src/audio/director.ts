@@ -158,7 +158,7 @@ export class SoundDirector {
             const harborW = sstep(70, 10, harborD) * (1 - day) * (1 - under) * (menu ? 0 : 1);   // Neon Harbor night: neon buzz + pier laps + far city hum
             audio.bed('harbor', harborW * (1 - alt * 0.6), 0, 1);
             audio.bed('underwater', under, 0, 1);
-            audio.bed('rain', menu ? 0 : WEATHER.rain.value * 0.45 * (1 - under) * (s.swim ? 0.6 : 1), 0, 1);   // subtle rain bed (Shifat 6:31 PM 'not heavy'), follows the weather cycle
+            audio.bed('rain', menu ? 0 : WEATHER.rain.value * 0.32 * (1 - under) * (s.swim ? 0.6 : 1), 0, 1);   // subtle rain bed (Shifat 6:31 PM 'not heavy'), follows the weather cycle
             // swinging: continuous air rush whose pitch follows speed, plus a doppler-ish lift while accelerating
             const acc = (sp - p.speed) / Math.max(dt, 1e-3); this.swingVol += ((s.web ? clamp01((sp - 6) / 30) : 0) - this.swingVol) * Math.min(1, dt * 6);
             const dop = Math.max(-0.12, Math.min(0.15, acc * 0.006));

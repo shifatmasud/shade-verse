@@ -11,6 +11,7 @@ import { coniferGeo } from './trees';
 import { PINE_URL } from '../texdata';
 import { type SouthSeaKit, PHONE, hazeShader, colorize, merged, rnd, setSeed } from './southSea/common';
 import { GRASS_U } from './southSea/islandGeo';
+import { tuftGeo } from './forest';
 
 // layout in island-local metres (+z = toward the city)
 const L = (x: number, z: number) => [FARM.cx + x, FARM.cz + z] as [number, number];
@@ -79,17 +80,19 @@ function buildingsGeo() {
     const P: THREE.BufferGeometry[] = [], box = new THREE.BoxGeometry(1, 1, 1);
     const off = (lx: number, lz: number, yaw: number, ax: number, az: number): [number, number] => [lx + ax * Math.cos(yaw) + az * Math.sin(yaw), lz - ax * Math.sin(yaw) + az * Math.cos(yaw)];
     for (const [lx, lz, yaw, s] of HOUSES) {
-        const W = 6.2 * s, D = 8.4 * s, H = 4.6 * s, y0 = groundAt(lx, lz, 5 * s) - 0.8, [x, z] = L(lx, lz), wall = rnd() < 0.5 ? '#f4f1ea' : '#ece7dc';
+        const W = 6.6 * s, D = 9.0 * s, H = 7.6 * s, y0 = groundAt(lx, lz, 5 * s) - 0.8, [x, z] = L(lx, lz), wall = rnd() < 0.5 ? '#f4f1ea' : '#ece7dc';
         P.push(place(box, '#8c8478', x, y0 + 0.5, z, yaw, W + 0.3, 1, D + 0.3));                               // stone footing
         P.push(place(box, wall, x, y0 + 0.8 + H / 2, z, yaw, W, H, D));                                        // white walls
         P.push(place(gable(W + 0.9, 2.9 * s, D + 0.9), '#b8302a', x, y0 + 0.8 + H, z, yaw));                   // red gable roof
         P.push(place(gable(W - 0.2, 2.5 * s, D + 0.05), wall, x, y0 + 0.8 + H - 0.01, z, yaw));                // gable ends
         { const [cx, cz] = off(lx, lz, yaw, W * 0.22, D * 0.28); const [wx, wz] = L(cx, cz); P.push(place(box, '#9a5a44', wx, y0 + 0.8 + H + 2.4 * s, wz, yaw, 0.7, 2.2, 0.7)); }   // chimney
-        for (const sd of [-1, 1]) for (const k of [-1, 0, 1]) {   // windows on both long sides, dark glass with a white frame
-            const [ox, oz] = off(lx, lz, yaw, sd * (W / 2 + 0.03), k * D * 0.3); const [wx, wz] = L(ox, oz);
-            P.push(place(box, '#ffffff', wx, y0 + 0.8 + H * 0.55, wz, yaw, 0.08, 1.35, 1.15)); P.push(place(box, '#2c3a48', wx + Math.cos(yaw) * sd * 0.02, y0 + 0.8 + H * 0.55, wz - Math.sin(yaw) * sd * 0.02, yaw, 0.08, 1.1, 0.9));
+        { const [bx, bz] = L(lx, lz); P.push(place(box, '#d8d2c6', bx, y0 + 0.8 + H * 0.5, bz, yaw, W + 0.12, 0.22, D + 0.12)); }   // floor band between the two storeys
+        for (const fl of [0.27, 0.73]) for (const sd of [-1, 1]) for (const k of [-1, 0, 1]) {   // two rows of windows (two storeys) on both long sides
+            const [ox, oz] = off(lx, lz, yaw, sd * (W / 2 + 0.03), k * D * 0.3); const [wx, wz] = L(ox, oz), wy = y0 + 0.8 + H * fl;
+            P.push(place(box, '#ffffff', wx, wy, wz, yaw, 0.08, 1.35, 1.15)); P.push(place(box, '#2c3a48', wx + Math.cos(yaw) * sd * 0.02, wy, wz - Math.sin(yaw) * sd * 0.02, yaw, 0.08, 1.1, 0.9));
+            P.push(place(box, '#3f5a3a', wx + Math.cos(yaw) * sd * 0.03, wy, wz - Math.sin(yaw) * sd * 0.03 + 0, yaw, 0.06, 1.25, 0.25));   // green shutter
         }
-        { const [ox, oz] = off(lx, lz, yaw, 0, D / 2 + 0.03); const [wx, wz] = L(ox, oz); P.push(place(box, '#6a4630', wx, y0 + 0.8 + 1.1, wz, yaw, 1.2, 2.2, 0.08)); P.push(place(box, '#2c3a48', wx + 1.7 * Math.cos(yaw), y0 + 0.8 + H * 0.55, wz - 1.7 * Math.sin(yaw), yaw, 1.0, 1.0, 0.08)); }
+        { const [ox, oz] = off(lx, lz, yaw, 0, D / 2 + 0.03); const [wx, wz] = L(ox, oz); P.push(place(box, '#6a4630', wx, y0 + 0.8 + 1.1, wz, yaw, 1.2, 2.2, 0.08)); P.push(place(box, '#2c3a48', wx + 1.7 * Math.cos(yaw), y0 + 0.8 + H * 0.27, wz - 1.7 * Math.sin(yaw), yaw, 1.0, 1.0, 0.08)); for (const q of [-1.7, 0, 1.7]) P.push(place(box, '#2c3a48', wx + q * Math.cos(yaw), y0 + 0.8 + H * 0.73, wz - q * Math.sin(yaw), yaw, 1.0, 1.1, 0.08)); P.push(place(box, '#ffffff', wx, y0 + 0.8 + 2.35, wz, yaw, 1.8, 0.12, 0.5)); }
     }
     { // red barn (gambrel-ish: two stacked gables) + white trim + a hay door
         const { x: lx, z: lz, yaw } = BARN, [x, z] = L(lx, lz), y0 = groundAt(lx, lz, 9) - 0.6, W = 12, D = 17, H = 6;
@@ -168,7 +171,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
             grass: ck(Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: '#1c3410' }), { onBeforeCompile: kit.parkGrassOnCompile(GRASS_U) }), 'gr'),
         };
     }, []);
-    const geos = useMemo(() => ({ oak: kit.treeGeo('broad', 23, Math.round(420 * QK.foliage), 1.45), pine: PHONE ? coniferGeo('pine', 31, 3, 2, 1.6) : coniferGeo('pine', 31, 5, 3, 1.12), tuft: kit.tuftGeo() }), []);
+    const geos = useMemo(() => ({ oak: kit.treeGeo('broad', 23, Math.round(420 * QK.foliage), 1.45), pine: PHONE ? coniferGeo('pine', 31, 3, 2, 1.6) : coniferGeo('pine', 31, 5, 3, 1.12), tuft: tuftGeo(PHONE ? 3 : 5) }), []);
     const placements = useMemo(() => {
         setSeed(9090); const oaks: number[][] = [], pines: number[][] = [], tufts: number[][] = [];
         const okSpot = (lx: number, lz: number, rd: number, pad: number) => { const x = FARM.cx + lx, z = FARM.cz + lz, y = farmRaw(x, z); if (y === null || y < 0.6) return null; if (farmRoadD(x, z) < rd || nearBuilding(lx, lz, pad)) return null; return y; };
@@ -177,8 +180,8 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
         // pines as windbreaks round the rim
         for (let t = 0; pines.length < 30 && t < 6000; t++) { const a = rnd() * 6.283, r = FARM.R * (0.6 + rnd() * 0.18), lx = Math.cos(a) * r, lz = Math.sin(a) * r; if (lz > 50 && Math.abs(lx) < 20) continue; const y = okSpot(lx, lz, 5, 5); if (y === null || pines.some((o) => Math.hypot(o[0] - lx, o[1] - lz) < 7)) continue; pines.push([lx, y, lz, 0.9 + rnd() * 0.5, rnd() * 6.28]); }
         // tall grass: verges along the roads and field edges
-        const NT = PHONE ? 1800 : 3600;
-        for (let t = 0; tufts.length < NT && t < NT * 8; t++) { const lx = (rnd() - 0.5) * 170, lz = (rnd() - 0.5) * 170, x = FARM.cx + lx, z = FARM.cz + lz, y = farmRaw(x, z); if (y === null || y < 0.8 || farmRR(x, z) > 0.8) continue; const rd = farmRoadD(x, z); if (rd < 4.0 || nearBuilding(lx, lz, 1) || (rd > 9 && rnd() < 0.7)) continue; tufts.push([lx, y, lz, 1.1 + rnd() * 0.9, rnd() * 6.28]); }
+        const NT = PHONE ? 3600 : 7200;   // Shifat 6:39 PM 'reuse more long grasses'
+        for (let t = 0; tufts.length < NT && t < NT * 8; t++) { const lx = (rnd() - 0.5) * 170, lz = (rnd() - 0.5) * 170, x = FARM.cx + lx, z = FARM.cz + lz, y = farmRaw(x, z); if (y === null || y < 0.8 || farmRR(x, z) > 0.8) continue; const rd = farmRoadD(x, z); if (rd < 4.0 || nearBuilding(lx, lz, 1) || (rd > 12 && rnd() < 0.45)) continue; tufts.push([lx, y, lz, 1.1 + rnd() * 0.9, rnd() * 6.28]); }
         return { oaks, pines, tufts };
     }, []);
     const inst = (g: THREE.BufferGeometry, m: THREE.Material, list: number[][], tA: string, tB: string, sy = 1) => {

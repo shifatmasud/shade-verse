@@ -56,12 +56,11 @@ export const RECIPES: Record<string, Recipe> = {
         }
         for (let i = 0; i < 2; i++) { const t0 = 2 + r() * 9, o = O(c, 'sawtooth', 330 + r() * 80, t0, t0 + 0.35), f = F(c, 'lowpass', 900), g = G(c, 0); E(g.gain, [[t0, 0], [t0 + 0.03, 0.025], [t0 + 0.3, 0.02], [t0 + 0.35, 0]]); chain(o, f, g, c.destination); }   // far horn
     } },
-    rain: { dur: 10, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 6:31 PM 'subtle rain sounds, not heavy': a soft, dark patter (no bright hiss), sparse gentle drops
-        const h = N(c, 'pink', 0, 11, 71), hb = F(c, 'bandpass', 1500, 0.4), hl = F(c, 'lowpass', 2600), hg = G(c, 0.5); chain(h, hb, hl, hg, c.destination);
-        const p = N(c, 'brown', 0, 11, 72), pl = F(c, 'lowpass', 600), pg = G(c, 0.35);
-        const pts: [number, number][] = []; for (let i = 0; i <= 20; i++) pts.push([i * 0.5, 0.3 + 0.08 * Math.sin(i * 1.3 + r() * 2)]); E(pg.gain, pts); chain(p, pl, pg, c.destination);
-        for (let i = 0; i < 60; i++) {   // soft drops on leaves
-            const t = r() * 9.8, d = N(c, 'pink', t, 0.08, 100 + i), bp = F(c, 'bandpass', 900 + r() * 1600, 1.4), g = hit(c, t, 0.006, 0.05 + r() * 0.05), v = G(c, 0.05 + r() * 0.1);
+    rain: { dur: 12, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 6:40 PM 'must feel like subtle lite rain': no rumble, a faint airy hush + sparse soft droplets
+        const h = N(c, 'pink', 0, 13, 71), hb = F(c, 'bandpass', 2400, 0.7), hl = F(c, 'lowpass', 4200), hh = F(c, 'highpass', 900), hg = G(c, 0.16); chain(h, hh, hb, hl, hg, c.destination);
+        const pts: [number, number][] = []; for (let i = 0; i <= 24; i++) pts.push([i * 0.5, 0.12 + 0.05 * Math.sin(i * 0.9 + r() * 2)]); E(hg.gain, pts);
+        for (let i = 0; i < 90; i++) {   // light drops: short, soft, spread out
+            const t = r() * 11.8, d = N(c, 'white', t, 0.04, 100 + i), bp = F(c, 'bandpass', 2200 + r() * 2600, 3.5), g = hit(c, t, 0.003, 0.025 + r() * 0.03), v = G(c, 0.03 + r() * 0.07);
             chain(d, bp, g, v, c.destination);
         }
     } },
