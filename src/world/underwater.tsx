@@ -23,12 +23,12 @@ const kelpMat = new THREE.ShaderMaterial({   /* Shifat Nov 1 10:53 AM 'kelps sho
       gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `varying vec3 vW; varying float vH; varying vec2 vUv; varying float vHt; varying vec3 vN; varying float vWd; uniform float uDay; uniform vec3 uSun;
     void main(){ float y = vUv.y, x = vUv.x, h = y * vHt, W = vWd * 0.5; vec2 pw = vec2(x * W, h); float aa = fwidth(pw.x) * 1.3 + 1e-3;
-      float st = 0.03 * (1.0 - y * 0.5); float a = smoothstep(st + aa, st, abs(pw.x)) * (1.0 - smoothstep(0.93, 1.0, y)); float leaf = 0.85;
+      float st = 0.03 * (1.0 - y * 0.5) + aa * 0.5; float a = smoothstep(st + aa, st, abs(pw.x)) * (1.0 - smoothstep(0.93, 1.0, y)); float leaf = 0.85;
       float sp = 0.34, Lf = 0.78, k0 = floor(h / sp);
       for (int j = 0; j < 3; j++) { float k = k0 - float(j); if (k < 2.0) break; float s = mod(k, 2.0) < 1.0 ? 1.0 : -1.0; float ang = 0.42 + 0.12 * sin(k * 3.7);
         vec2 dir = vec2(s * sin(ang), cos(ang)); vec2 rel = pw - vec2(0.0, k * sp); float al = dot(rel, dir), pe = dot(rel, vec2(dir.y, -dir.x));
         float Lk = Lf * (0.75 + 0.25 * sin(k * 1.3)) * (1.0 - 0.4 * smoothstep(0.85, 1.0, y)); Lk = min(Lk, max(0.0, (vHt - k * sp) / max(dir.y, 0.2) - 0.04)); Lk = min(Lk, max(0.0, (W - 0.05) / max(abs(dir.x), 0.2)));
-        float u = clamp(al / max(Lk, 1e-3), 0.0, 1.0); float hw = 0.085 * pow(sin(3.14159 * u), 0.65) * (1.0 + 0.18 * sin(al * 38.0));
+        float u = clamp(al / max(Lk, 1e-3), 0.0, 1.0); float hw = 0.12 * pow(sin(3.14159 * u), 0.65) * (1.0 + 0.18 * sin(al * 38.0)) + aa * 0.6;   /* a touch broader than the portfolio's (seen from much farther here) and never thinner than ~a pixel, so far leaves stay leaves, not grass */
         float inl = smoothstep(hw + aa, hw - aa, abs(pe)) * step(0.0, al) * step(al, Lk); if (inl > a) { a = inl; leaf = 1.0 - abs(pe) / max(hw, 1e-3) * 0.6; } }
       if (a < 0.5) discard;
       vec3 V = normalize(vW - cameraPosition); vec3 N = vN * (dot(vN, V) > 0.0 ? -1.0 : 1.0); vec3 toSun = normalize(uSun);
