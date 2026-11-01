@@ -9,15 +9,35 @@ import { waterRenderY } from '../water/waveHeight';
 
 // Underwater life (user must-haves 10:29): kelp forest, jellyfish, tiny bubbles, god rays, current drift. Reference cues (viewed underwater shots): cyan light band near the surface, light shafts, sandy floor, haze to teal. All procedural approximations, small instance counts.
 const UW_FOG = 'vec3(0.09, 0.43, 0.55)';
-const kelpMat = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uDay: TOD.day },
-    vertexShader: `uniform float uTime; varying vec3 vW; varying float vH;
-    void main(){ vec3 p = position; float h = clamp(p.y / 6.0, 0.0, 1.0); vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-      float cur = sin(uTime * 0.7 + ip.x * 0.15 + ip.z * 0.1 + p.y * 0.5) * 0.7 + sin(uTime * 0.4 + p.y * 0.9) * 0.2;
-      p.x += cur * h * h; p.z += cos(uTime * 0.6 + ip.z * 0.2 + p.y * 0.4) * 0.35 * h * h;
-      vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0); vW = w.xyz; vH = h; gl_Position = projectionMatrix * viewMatrix * w; }`,
-    fragmentShader: `varying vec3 vW; varying float vH; uniform float uDay;
-    void main(){ vec3 col = mix(vec3(0.12, 0.30, 0.16), vec3(0.42, 0.62, 0.22), vH); float d = length(vW - cameraPosition); float kA = smoothstep(-3.0, -1.2, cameraPosition.y); float wf = mix(1.0, clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.01), 0.0, 1.0), kA); float dw = d * wf, k = mix(1.0, 3.5, kA);   /* seen from above: only the underwater part of the sight line absorbs, and more strongly (light goes down and back up) */ col = col * exp(-vec3(0.45, 0.07, 0.02) * dw * 0.12 * k) + ${UW_FOG} * 0.75 * (1.0 - exp(-dw * 0.028 * k)); col *= mix(0.12, 1.0, uDay) * mix(1.0, mix(1.0, 0.62, vH), kA);   /* from above: tips just under the surface no longer glow */ gl_FragColor = vec4(col, 1.0); }`   /* night: dark blades, not bright teal streaks */,
+const kelpMat = new THREE.ShaderMaterial({   /* Shifat Nov 1 10:53 AM 'kelps should look like my portfolio ones': the portfolio's giant kelp - a thin stipe with long
+    leaves alternating up it (cut in the fragment from one ribbon strip), twisting so they catch the light, olive-amber, glowing gold-green when the sun is behind them */
+    uniforms: { uTime: { value: 0 }, uDay: TOD.day, uSun: TOD.sunU },
+    vertexShader: `uniform float uTime; varying vec3 vW; varying float vH; varying vec2 vUv; varying float vHt; varying vec3 vN; varying float vWd;
+    void main(){ vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0); float sy = length(instanceMatrix[1].xyz), sx = length(instanceMatrix[0].xyz);
+      float y = clamp(position.y / 6.0, 0.0, 1.0), H = 6.0 * sy, h = y * H, ph = ip.x * 0.37 + ip.z * 0.21;
+      float tw = ph * 3.0 + h * 0.32 + 0.35 * sin(uTime * 0.4 + ph + h * 0.5); vec3 side = vec3(cos(tw), 0.0, sin(tw));
+      vec3 p = side * position.x * sx + vec3(0.0, h, 0.0);
+      float bendK = pow(y, 1.6), sway = sin(uTime * 0.55 + ph - h * 0.28) * 0.62 + sin(uTime * 1.13 + ph * 1.7 - h * 0.61) * 0.24, crs = sin(uTime * 0.43 + ph * 2.3 - h * 0.22);
+      p.x += (0.35 + sway) * 0.38 * H * bendK * 0.42; p.z += (0.2 + crs * 0.55) * 0.38 * H * bendK * 0.32;
+      vec4 w = modelMatrix * vec4(ip.xyz + p, 1.0); vW = w.xyz; vH = y; vUv = vec2(position.x / 0.8, y); vHt = H; vWd = sx * 1.6; vN = normalize(cross(side, vec3(0.0, 1.0, 0.0)));
+      gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying vec3 vW; varying float vH; varying vec2 vUv; varying float vHt; varying vec3 vN; varying float vWd; uniform float uDay; uniform vec3 uSun;
+    void main(){ float y = vUv.y, x = vUv.x, h = y * vHt, W = vWd * 0.5; vec2 pw = vec2(x * W, h); float aa = fwidth(pw.x) * 1.3 + 1e-3;
+      float st = 0.03 * (1.0 - y * 0.5); float a = smoothstep(st + aa, st, abs(pw.x)) * (1.0 - smoothstep(0.93, 1.0, y)); float leaf = 0.85;
+      float sp = 0.34, Lf = 0.78, k0 = floor(h / sp);
+      for (int j = 0; j < 3; j++) { float k = k0 - float(j); if (k < 2.0) break; float s = mod(k, 2.0) < 1.0 ? 1.0 : -1.0; float ang = 0.42 + 0.12 * sin(k * 3.7);
+        vec2 dir = vec2(s * sin(ang), cos(ang)); vec2 rel = pw - vec2(0.0, k * sp); float al = dot(rel, dir), pe = dot(rel, vec2(dir.y, -dir.x));
+        float Lk = Lf * (0.75 + 0.25 * sin(k * 1.3)) * (1.0 - 0.4 * smoothstep(0.85, 1.0, y)); Lk = min(Lk, max(0.0, (vHt - k * sp) / max(dir.y, 0.2) - 0.04)); Lk = min(Lk, max(0.0, (W - 0.05) / max(abs(dir.x), 0.2)));
+        float u = clamp(al / max(Lk, 1e-3), 0.0, 1.0); float hw = 0.085 * pow(sin(3.14159 * u), 0.65) * (1.0 + 0.18 * sin(al * 38.0));
+        float inl = smoothstep(hw + aa, hw - aa, abs(pe)) * step(0.0, al) * step(al, Lk); if (inl > a) { a = inl; leaf = 1.0 - abs(pe) / max(hw, 1e-3) * 0.6; } }
+      if (a < 0.5) discard;
+      vec3 V = normalize(vW - cameraPosition); vec3 N = vN * (dot(vN, V) > 0.0 ? -1.0 : 1.0); vec3 toSun = normalize(uSun);
+      vec3 alb = mix(vec3(0.20, 0.16, 0.06), vec3(0.42, 0.34, 0.11), leaf) * (0.9 + 0.1 * sin(h * 23.0));
+      float dep = max(-1.0 - vW.y, 0.0); vec3 sunAt = exp(-vec3(0.45, 0.07, 0.02) * dep * 0.12); float ndl = abs(dot(N, toSun));
+      float back = pow(max(dot(V, toSun), 0.0), 2.0), rimK = 1.0 - leaf; vec3 glowC = vec3(0.66, 0.80, 0.34);
+      vec3 col = alb * (sunAt * ndl * 0.8 + 0.35) * (0.75 + 0.25 * rimK) + sunAt * glowC * (back * (0.5 + 0.9 * rimK) + 0.05) * mix(alb * 2.0, glowC, 0.45) + pow(1.0 - abs(dot(N, V)), 2.5) * sunAt * glowC * 0.22 * (0.3 + back);
+      float d = length(vW - cameraPosition); float kA = smoothstep(-3.0, -1.2, cameraPosition.y); float wf = mix(1.0, clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.01), 0.0, 1.0), kA); float dw = d * wf, k = mix(1.0, 3.5, kA);   /* seen from above: only the underwater part of the sight line absorbs, and more strongly (light goes down and back up) */
+      col = col * exp(-vec3(0.45, 0.07, 0.02) * dw * 0.12 * k) + ${UW_FOG} * 0.75 * (1.0 - exp(-dw * 0.028 * k)); col *= mix(0.12, 1.0, uDay) * mix(1.0, mix(1.0, 0.62, vH), kA); gl_FragColor = vec4(col, 1.0); }`,
     side: THREE.DoubleSide,
 });
 // God rays (Shifat Oct 29 "godrays can be better, ref real images"): long soft shafts from the surface, slanted along the sun,
@@ -56,7 +76,7 @@ export function Underwater({ sim }: { sim: Sim }) {
     const kelp = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!), rayInst = useRef<THREE.InstancedMesh>(null!);
     const rayGeo = useMemo(() => { const g = new THREE.PlaneGeometry(1, RAY_LEN, 1, 1); g.translate(0, -RAY_LEN / 2, 0); return g; }, []);
     const rayS = useMemo(() => Array.from({ length: 26 }, (_, i) => ({ a: i * 2.399, r: 3 + ((i * 37) % 26), w: 2.5 + ((i * 13) % 6), ph: i * 1.7 })), []), rayO = useMemo(() => new THREE.Object3D(), []);
-    const kGeo = useMemo(() => { const g = new THREE.PlaneGeometry(0.5, 6, 1, 6); g.translate(0, 3, 0); return g; }, []);
+    const kGeo = useMemo(() => { const g = new THREE.PlaneGeometry(0.8, 6, 1, 12); g.translate(0, 3, 0); return g; }, []);
     const bGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BUB_N * 3).fill(-9999), 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(BUB_N * 4).fill(1), 4)); g.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(BUB_N).fill(1), 1)); return g; }, []);
     // particle state (pooled): base x/z, y, rise speed, age, life, wobble amp/freq/phase, drift x/z, size; alive when age < life
     const B = useMemo(() => ({ x: new Float32Array(BUB_N), y: new Float32Array(BUB_N), z: new Float32Array(BUB_N), v: new Float32Array(BUB_N), age: new Float32Array(BUB_N).fill(1), life: new Float32Array(BUB_N).fill(0), wa: new Float32Array(BUB_N), wf: new Float32Array(BUB_N), wp: new Float32Array(BUB_N), dx: new Float32Array(BUB_N), dz: new Float32Array(BUB_N), sz: new Float32Array(BUB_N), acc: 0, heroAcc: 0, next: 0, lastT: -1 }), []);
