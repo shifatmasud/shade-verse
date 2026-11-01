@@ -12,6 +12,9 @@ import { OCEAN_SNAP, OCEAN_BINS } from './seabed';
 import { waterMat } from './oceanMaterial';
 import { projectSkyline } from './skylineRefl';
 import { bakeHeightRefl } from './heightRefl';
+import { pickAnalytic } from './analyticRefl';
+export const SSR_ON = typeof location !== 'undefined' && /[?&]ssr\b/.test(location.search);   // reflection batch C - Shifat 3:24 PM 'I permit for this test run' (a second scene render, test flag only)
+const AR_ON = typeof location !== 'undefined' && /[?&]ar\b/.test(location.search);
 const HF_ON = typeof location !== 'undefined' && /[?&]hf\b/.test(location.search), HF_MIX = typeof location !== 'undefined' && /[?&]hfmix\b/.test(location.search);   /* Shifat 3:11 PM 'none of these 4 looks okay': back to the ring by default; ?hf / ?hfmix keep the prototypes */   /* Shifat Nov 1 3:02 PM 'test multiple versions, then choose': version 4 (heightfield near + ring far) chosen; ?ring = old ring only, ?hf = heightfield only */   // heightfield-traced reflections prototype (Shifat Nov 1 2:50 PM)
 
 // Per-frame drivers of the sea: the camera-following sheet, the mirror (reflection) pass and the screen-space scene copy for refraction.
@@ -127,8 +130,8 @@ export function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: 
         u.uProj.value.copy(cam.projectionMatrix); u.uNear.value = cam.near; u.uFar.value = cam.far; u.uSteps.value = QK.lakeSteps;
         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
         const near = cam.position.z < WATER_Z + 170 && cam.position.y > WATER_Y - 0.5 && cam.position.y < 140, scale = perf.scale;
-        const phoneFar = PHONE_REFL;   /* Shifat 9:26 AM (6 fps at sea, 237 draw calls, whitewashed jittery bridge mirror): phones never run this second whole-scene render now - the bed is analytic, the probe gives the soft reflection */   /* Shifat 9:16 AM phone fps: the copy is a second full scene render; out at sea the bed is analytic and near water is see-through, so phones skip it there */
-        const ok = !!w && near && !phoneFar && !NOPROBE && !NOCOPY && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;   /* ?debug&noprobe also stops this second scene render (the screen-space reflection + refraction copy) */
+        const phoneFar = PHONE_REFL && !SSR_ON;   /* Shifat 9:26 AM (6 fps at sea, 237 draw calls, whitewashed jittery bridge mirror): phones never run this second whole-scene render now - the bed is analytic, the probe gives the soft reflection */   /* Shifat 9:16 AM phone fps: the copy is a second full scene render; out at sea the bed is analytic and near water is see-through, so phones skip it there */
+        const ok = !!w && near && !phoneFar && !NOPROBE && !NOCOPY && st.fr.intersectsBox(_oceanBox) && (scale > 0.5 || SSR_ON) && !(UW as any).on;   /* ?debug&noprobe also stops this second scene render (the screen-space reflection + refraction copy) */
         if (!ok) { u.uUseScene.value = 0; return; }
         st.n++;
         const farSea = cam.position.z < WATER_Z - 320;
@@ -156,10 +159,10 @@ export function ReflectionIllusion({ sim }: { sim: Sim }) {
         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera;
         HERO_REFL.shadow.set(sim.pos[0], sim.pos[1], sim.pos[2], sim.mode === 'play' ? 1 : 0); u.uHeroA.value.copy(HERO_REFL.shadow); u.uHeroB.value.copy(HERO_REFL.ghost); HERO_REFL.shadowDir.set(Math.sin(sim.yaw), 0, Math.cos(sim.yaw), sim.swim && !sim.dive ? 1 : 0); u.uHeroDA.value.copy(HERO_REFL.shadowDir);
         { const t = u.uTime.value, a = HERO_REFL.shadow, b = HERO_REFL.ghost; u.uHw.value.set(waveH(a.x, a.z, t), waveH(b.x, b.z, t), waveH(cam.position.x, cam.position.z, t)); }
-        if (HF_ON || HF_MIX || (window as any).__hf) { bakeHeightRefl(); (waterMat.uniforms as any).uHF.value = HF_MIX ? 2 : 1; } else (waterMat.uniforms as any).uHF.value = 0;
-        if (cam.position.z < WATER_Z + 40 && Math.hypot(cam.position.x - st.at.x, cam.position.z - st.at.z) > 30) { st.at.copy(cam.position); projectSkyline(cam.position.x, cam.position.z); }   // also under water: Snell's window shows the same skyline
+        if (SSR_ON) (waterMat.uniforms as any).uHF.value = 4; else if (AR_ON) (waterMat.uniforms as any).uHF.value = 3; else if (HF_ON || HF_MIX || (window as any).__hf) { bakeHeightRefl(); (waterMat.uniforms as any).uHF.value = HF_MIX ? 2 : 1; } else (waterMat.uniforms as any).uHF.value = 0;
+        if (cam.position.z < WATER_Z + 40 && Math.hypot(cam.position.x - st.at.x, cam.position.z - st.at.z) > 30) { st.at.copy(cam.position); projectSkyline(cam.position.x, cam.position.z); if (AR_ON) pickAnalytic(cam.position.x, cam.position.z); }   // also under water: Snell's window shows the same skyline
         const ok = cam.position.z < WATER_Z + 40 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 160 && !(UW as any).on;
-        u.uUseRefl.value = ok ? 1 : 0;
+        u.uUseRefl.value = ok && !SSR_ON ? 1 : 0;
     });
     return null;
 }

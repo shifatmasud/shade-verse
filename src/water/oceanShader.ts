@@ -1,5 +1,6 @@
 import { SKY_D_MAX } from './skylineRefl';
 import { HF_HMAX, HF_BRIDGE, HF_DECK } from './heightRefl';
+import { IMP_HMAX } from './impostorRefl';
 import { HARBOR } from '../seaWorld';
 // Sea surface shader for the ocean + lakes (waterMat in Scene.tsx).
 // WAVES is the shared GLSL wave field (height wh / gradient wg), generated in ./waves.ts from the same table as the
@@ -19,7 +20,7 @@ export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec2 uSceneTx; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
@@ -117,13 +118,14 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       }
       vec3 r = reflect(-v, n);
       vec3 refl = mix(uSky, vec3(0.2, 0.34, 0.6), smoothstep(0.0, 0.45, r.y)) + vec3(1.0, 0.55, 0.3) * 0.25 * pow(max(dot(normalize(r), uSun), 0.0), 6.0);
+      vec3 ssrC = vec3(0.0); float ssrA = 0.0;   // batch C: screen-space hit
       if (uUseScene > 0.5 && !below) {
         vec2 suv = vScreen.xy / vScreen.w * 0.5 + 0.5; float wz = vView.z;
         // screen-space reflection: march the reflected ray through the low-res scene copy (palms, buildings, hero, boats show in the sea)
         vec3 Rv = normalize((viewMatrix * vec4(r, 0.0)).xyz); float tp = 0.0;
-        for (int i = 0; i < 16; i++) { if (float(i) >= uSteps || uUseRefl > 0.5) break; float k = (float(i) + 1.0) / uSteps; float tt = 140.0 * k * k; vec3 Q = vView + Rv * tt; vec4 c = uProj * vec4(Q, 1.0); if (c.w <= 0.0) break; vec2 uv = c.xy / c.w * 0.5 + 0.5;
+        for (int i = 0; i < 16; i++) { if (float(i) >= uSteps || uUseRefl > 0.5) break; float k = (float(i) + 1.0) / uSteps; float tt = (uHF > 3.5 ? 1500.0 : 140.0) * k * k; vec3 Q = vView + Rv * tt; vec4 c = uProj * vec4(Q, 1.0); if (c.w <= 0.0) break; vec2 uv = c.xy / c.w * 0.5 + 0.5;
           if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break; float sz = oceanZ(uv);
-          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); vec3 sc_ = sceneCol(uv); refl = mix(refl, reflTint(sc_, refl), e * WATER_REFL_W); break;   /* same subtle blue as the mirror (Shifat 3:49 PM) */ }
+          if (Q.z < sz && Q.z > sz - (tt - tp) * 1.2 - 0.8 && sz > -uFar * 0.98) { float e = smoothstep(0.0, 0.1, uv.x) * (1.0 - smoothstep(0.9, 1.0, uv.x)) * (1.0 - smoothstep(0.82, 1.0, uv.y)) * smoothstep(0.0, 0.08, uv.y); vec3 sc_ = sceneCol(uv); ssrC = sc_; ssrA = e; if (uHF < 3.5) refl = mix(refl, reflTint(sc_, refl), e * WATER_REFL_W); break;   /* same subtle blue as the mirror (Shifat 3:49 PM) */ }
           tp = tt; }
         // refraction: the real seabed / shore / swimmer behind the surface, absorbed by the water thickness (red dies first)
         float dd = max(wz - oceanZ(suv), 0.0); vec3 Nv = (viewMatrix * vec4(n, 0.0)).xyz; vec2 uv2 = suv + Nv.xy * 0.04 * clamp(dd * 0.3, 0.0, 1.0);
@@ -156,6 +158,32 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec4 rs = vec4(sk.rgb * mix(0.3, 1.0, uDay), cov);
         vec3 rsb = mix(rs.rgb, reflTint(rs.rgb, refl), 0.45);   /* Shifat 1:21 'I don't see reflection': readable silhouettes - keeps their own colour, only half tinted to the water */
         skR = rsb; skA = rs.a * 0.95; nGlow = sk.rgb * 0.35 * cov;   /* Shifat 8:35 PM 'reflections not showing': the skyline is laid in AFTER the sea haze (below) with the world's own haze rate - the sea fog is ~2x the city's, so mixing it in here faded the mirrored city to nothing right under the city */   /* night: the lit skyline as a soft glow band */
+        if (uHF > 4.5) {   /* REFLECTION IMPOSTORS (src/water/impostorRefl.tsx): the reflected ray meets each baked elevation card's vertical plane; the card there
+             is the landmark's real look (colours, windows) rendered once at load. Nearest opaque card wins; the ray's climb is halved (2x downward streak). */
+          vec3 hd = normalize(vec3(rd.x, rd.y * 0.5, rd.z)); float tb = 1e5; vec4 ic = vec4(0.0);
+          #define IMP_CARD(TX, P) { vec4 pp = P; float dc = pp.x < 0.5 ? hd.z : hd.x, oc = pp.x < 0.5 ? vW.z : vW.x; float t = (pp.y - oc) / (abs(dc) > 1e-4 ? dc : 1e-4); \
+            if (t > 1.0 && t < tb) { vec2 hp = vW.xz + hd.xz * t; float uu = ((pp.x < 0.5 ? hp.x : hp.y) - pp.z) / pp.w, vv = hd.y * t / ${IMP_HMAX.toFixed(1)}; \
+              if (uu > 0.0 && uu < 1.0 && vv < 1.0) { vec4 s = texture2D(TX, vec2(uu, vv)); if (s.a > 0.08) { tb = t; ic = vec4(s.rgb / max(s.a, 0.3), smoothstep(0.08, 0.6, s.a)); } } } }
+          IMP_CARD(tImp0, uImpP[0]) IMP_CARD(tImp1, uImpP[1]) IMP_CARD(tImp2, uImpP[2])
+          vec3 icol = ic.rgb * mix(0.3, 1.0, uDay);
+          skR = mix(icol, reflTint(icol, refl), 0.35); skA = ic.a * 0.95; nGlow = ic.rgb * 0.35 * ic.a;
+        } else
+        if (uHF > 2.5) {   /* ANALYTIC RAYTRACE (src/water/analyticRefl.ts): the rippled reflected ray against the 24 biggest-looking boxes and the 3 isle domes,
+             exact nearest hit, sun-lit by the face it hit. The ray's climb is halved: every mirrored shape stretches ~2x downward like wind-roughened water. */
+          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.5, rd.z)), ih = 1.0 / hd; float tb = 1e5; vec3 cb = vec3(0.0), nb = vec3(0.0, 1.0, 0.0);
+          for (int i = 0; i < 24; i++) {
+            vec3 t0 = (uArMin[i].xyz - ro) * ih, t1 = (uArMax[i].xyz - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
+            float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
+            if (a < b && a > 0.5 && a < tb) { tb = a; cb = uArCol[i]; nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
+          }
+          for (int i = 0; i < 3; i++) {   // isle domes: half-ellipsoids sitting on the sea
+            vec4 I = uArIsle[i]; vec3 sc = vec3(I.z, I.w, I.z); vec3 o = (ro - vec3(I.x, 0.0, I.y)) / sc, d = hd / sc; float A = dot(d, d), B = dot(o, d), C = dot(o, o) - 1.0, D = B * B - A * C;
+            if (D > 0.0) { float t = (-B - sqrt(D)) / A; if (t > 0.5 && t < tb && o.y + d.y * t >= 0.0) { tb = t; vec3 p = o + d * t; nb = normalize(p / sc); cb = i == 2 ? vec3(0.82, 0.9, 0.96) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(0.05, 0.25, p.y)); } }
+          }
+          float ah = step(tb, 9e4); vec3 sunD = normalize(uSun); float lam = 0.8 + 0.3 * max(dot(nb, sunD), 0.0);
+          vec3 acol = cb * lam * mix(0.3, 1.0, uDay);
+          skR = mix(acol, reflTint(acol, refl), 0.45); skA = ah * 0.95; nGlow = cb * 0.35 * ah;
+        } else
         if (uHF > 0.5) {   /* HEIGHTFIELD-TRACED reflection (src/water/heightRefl.ts): step the rippled reflected ray through the baked top-down world map until it
              passes under the height there. The ray's climb is halved, which stretches every mirrored shape ~2x downward like wind-roughened water does. */
           vec3 hd = normalize(vec3(rd.x, rd.y * 0.5, rd.z)); vec2 Q0 = vW.xz; float tp = 0.0, hit = 0.0, th = 1e5; vec4 hc = vec4(0.0);
@@ -175,6 +203,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         refl = mix(vec3(1.0, 0.0, 0.0), rs.rgb, rs.a);
         #endif
       }
+      if (uHF > 3.5 && uHF < 4.5 && !below) { skR = mix(ssrC, reflTint(ssrC, refl), 0.35); skA = ssrA * 0.95; nGlow = ssrC * 0.35 * ssrA; }
       float heroSee = 0.0; float hwA = vHw.x, hwB = vHw.y;   // the live wave surface at each hero
       bool camUp = cameraPosition.y > vW.y;   /* Shifat 6:06 PM: a camera under the sea never sees the analytic hero (the real body is right there) - this was the dark pill floating above the swimmer */
       if (!below && camUp) {   // Shifat 5:05 AM: analytic ray-traced REFRACTION of the heroes - the bent (Snell) ray under the surface is tested against
