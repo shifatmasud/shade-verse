@@ -1,3 +1,4 @@
+import { SKY_D_MAX } from './skylineRefl';
 // Sea surface shader for the ocean + lakes (waterMat in Scene.tsx).
 // WAVES is the shared GLSL wave field (height wh / gradient wg), generated in ./waves.ts from the same table as the
 // CPU waveH() in Scene.tsx (swimming + boats), so the two cannot drift apart.
@@ -16,7 +17,7 @@ export const OCEAN_VERT = WAVES + GERSTNER_GLSL + WAVES_V_GLSL + WAVES_VD_GLSL +
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform float uUseRefl; uniform vec2 uSceneTx; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
@@ -134,7 +135,14 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 rd = normalize(vec3(r.x + n.x * 0.12, max(r.y, 0.02), r.z + n.z * 0.12));
         /* reflection ILLUSION (Shifat Oct 31 12:58): no probe render - one lookup in the CPU-projected skyline ring (azimuth -> silhouette top + colour).
            The ripple normal smears the elevation test into soft vertical streaks, like real harbour water at dusk. */
-        vec4 sk = texture2D(uSkyl, vec2(atan(rd.x, rd.z) * 0.15915494 + 0.5, 0.5));
+        /* Shifat Nov 1 11:13 'reflection moves with the camera, feels wrong': the ring was looked up by direction alone (as if every silhouette were at infinity),
+           so the mirrored city slid along with the camera. Now each pixel follows ITS OWN reflected ray to the silhouette's real distance (row 1 of the ring)
+           and looks the ring up from there; the top elevation is re-scaled to this pixel's distance. Reflections stay fixed to the world. */
+        vec2 sq = vW.xz - uSkC, sdh = normalize(rd.xz + 1e-5); float sa = atan(rd.x, rd.z) * 0.15915494 + 0.5;
+        vec2 sdv = texture2D(uSkyl, vec2(sa, 0.75)).rg; float sdc = (sdv.r * 255.0 * 256.0 + sdv.g * 255.0) / 65535.0 * ${SKY_D_MAX.toFixed(1)}, sdp = 1.0;
+        if (sdc > 4.0) { float sb = dot(sq, sdh), sc = dot(sq, sq) - sdc * sdc; float st = max(-sb + sqrt(max(sb * sb - sc, 0.0)), 4.0); vec2 sP = sq + sdh * st; sa = atan(sP.x, sP.y) * 0.15915494 + 0.5; sdp = st / sdc; }
+        vec4 sk = texture2D(uSkyl, vec2(sa, 0.25));
+        sk.a = atan(tan(sk.a * 0.35) / max(sdp, 0.05)) / 0.35;
         /* Shifat 2:33 PM 'city/harbour/bridge/island reflection not seen': the far skyline stands only a few degrees tall, smaller than the ripple tilt, so a
            rippled-ray test shattered it to nothing. Real water at a distance mirrors it as long vertical streaks: test the CALM mirror elevation (the view
            elevation), stretch the image ~2x downward like wind-roughened water does, and let the ripples only fray the streak edges. */
@@ -261,7 +269,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 sr = mix(uSky, zc, smoothstep(0.0, 0.45, tr.y)), sg = mix(uSky, zc, smoothstep(0.0, 0.45, tg.y)), sb = mix(uSky, zc, smoothstep(0.0, 0.45, tb.y));
         vec3 win = vec3(sr.r, sg.g, sb.b);
         if (!tir) {   /* Shifat 2:36 PM 'water surface when underwater must show what's in the air': the skyline ring (city, bridge, island) inside Snell's window, refracted (squeezed toward the window rim) and wobbling with the surface - one fetch */
-          vec3 tn = normalize(tg); vec4 skw = texture2D(uSkyl, vec2(atan(tn.x, tn.z) * 0.15915494 + 0.5, 0.5));
+          vec3 tn = normalize(tg); vec4 skw = texture2D(uSkyl, vec2(atan(tn.x, tn.z) * 0.15915494 + 0.5, 0.25));
           float tw = skw.a * 0.35 * 1.8 + 0.01, ew = asin(clamp(tn.y, 0.0, 1.0)), cw = smoothstep(tw + 0.03, tw - 0.03, ew) * step(0.004, skw.a);
           win = mix(win, skw.rgb * mix(0.3, 0.5, uDay), cw * 0.9); }   // seen from below against the bright sky disc, the shore reads as a darker silhouette band at the rim
         if (!tir) win += vec3(1.0, 0.95, 0.82) * (pow(max(dot(normalize(tg), uSun), 0.0), 220.0) * 3.0 + pow(max(dot(normalize(tg), uSun), 0.0), 12.0) * 0.25) * uDay;
