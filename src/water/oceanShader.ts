@@ -250,8 +250,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       if (below) {
         // Snell's window: refract view ray water -> air with a slightly different index per colour channel (dispersion); beyond the critical angle (48.6 deg) total internal reflection shows the water, not the sky
         vec3 under = mix(uDeep, uShallow, 0.35 + 0.4 * pow(max(dot(-n, v), 0.0), 2.0));
-        { float rl = texture2D(uCaus, vW.xz * 0.11 + vec2(uTime * 0.013, -uTime * 0.009)).g + 0.6 * texture2D(uCaus, vW.xz * 0.29 - uTime * 0.017).r;   /* AAA underside: the total-internal-reflection mirror shimmers with the rippled lit water instead of one flat sheet */
-          under *= 1.0 + (rl * 0.55 - 0.3) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW))); }
+        { float rl = clamp(0.5 + (n.x - n.z) * 2.2, 0.0, 1.0);   /* Shifat 8:57 PM 'surface from below has caustic patterns': the underside shimmer now comes from the real wave normals (was 2 caustic-cell texture reads) */
+          under *= 1.0 + (rl * 0.5 - 0.25) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW))); }
         vec3 tr = refract(-v, n, 1.3310), tg = refract(-v, n, 1.3330), tb = refract(-v, n, 1.3375);
         bool tir = dot(tg, tg) < 0.0001;
         vec3 zc = vec3(0.55, 0.76, 0.96) * mix(0.12, 1.0, uDay);   /* AAA Snell window: a bright sky disc overhead (was a dull dark-blue zenith) with the sun blazing through it */
