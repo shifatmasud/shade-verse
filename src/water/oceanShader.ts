@@ -122,7 +122,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         float th = clamp(wz - sz2, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
         body = mix(sceneCol(uv2) * Tr + body * (1.0 - Tr), body, (1.0 - smoothstep(12.0, 32.0, length(cameraPosition - vW))) * 0.85);   /* near you the real fish/bed already show through (clear water); the low-res scene copy would only add blocky doubles */
       }
-      vec3 nGlow = vec3(0.0);   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
+      vec3 nGlow = vec3(0.0); vec3 skR = vec3(0.0); float skA = 0.0;   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
       float fdE = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK;
       if (uUseRefl > 0.5 && !below && fdE < 1.9) {   // mirrored island / city / bridge shapes (skipped where the fog has swallowed them), rippled by the surface normal (more distortion with distance to the plane)
         /* reflection probe (Shifat 4:30 PM 'cheap techniques?' + 4:57 PM 'super blurry ok'): the rippled reflection ray looks up a tiny cubemap of the
@@ -139,7 +139,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         float cov = (1.0 - smoothstep(1.2, 2.4, k)) * mix(1.0, 0.6, smoothstep(0.5, 2.4, k)) * step(0.004, sk.a);
         vec4 rs = vec4(sk.rgb * mix(0.3, 1.0, uDay), cov);
         vec3 rsb = mix(rs.rgb, reflTint(rs.rgb, refl), 0.45);   /* Shifat 1:21 'I don't see reflection': readable silhouettes - keeps their own colour, only half tinted to the water */
-        refl = mix(refl, rsb, rs.a * 0.95); nGlow = sk.rgb * 0.35 * cov;   /* night: the lit skyline as a soft glow band */
+        skR = rsb; skA = rs.a * 0.95; nGlow = sk.rgb * 0.35 * cov;   /* Shifat 8:35 PM 'reflections not showing': the skyline is laid in AFTER the sea haze (below) with the world's own haze rate - the sea fog is ~2x the city's, so mixing it in here faded the mirrored city to nothing right under the city */   /* night: the lit skyline as a soft glow band */
         #ifdef PROBE_DEBUG
         refl = mix(vec3(1.0, 0.0, 0.0), rs.rgb, rs.a);
         #endif
@@ -281,6 +281,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
       if (!below) {
         col *= mix(0.3, 1.0, uDay);
+        { float dR = length(cameraPosition - vW), hzW = min(0.93, 1.0 - exp(-dR * 0.0021));   // same haze the reflected buildings themselves get (HAZE_K)
+          col = mix(col, mix(skR * mix(0.75, 1.0, uDay), uSky * mix(0.3, 1.0, uDay), hzW), skA * clamp(fr * 1.6 + 0.08, 0.0, 0.85)); }   // physical Fresnel weight (strong at grazing, faint looking down)
         col += sunSpec * (1.0 - haze * 0.5);
         // Stylised cool night-sky lobe, not scene reflections or a physical moon model.
         col += vec3(0.18, 0.26, 0.38) * (1.0-uDay) * pow(max(dot(r, normalize(vec3(-0.3, 0.6, -0.5))), 0.0), 12.0);
