@@ -451,6 +451,16 @@ function DebugStats() {
 
 /* Shifat 11:13 PM phone perf: the App HUD updates 10x a second (fps text, beacon distance); without memo every HUD tick re-rendered this whole
    3D tree through React (thousands of prop diffs on a slow phone CPU). Props here are stable refs, so the 3D tree now renders once. */
+/* Shifat Nov 1 2:14 PM 'heroes ring ripple is harsh, study real images': a swimmer's ripples on real water are not thin white lines but broad, low-contrast
+   swells - a soft bright crest catching the sky with a faint darker trough inside it, both feathered to nothing, widening and fading as they spread. */
+function swimRingMat() {
+    return new THREE.ShaderMaterial({
+        uniforms: { opacity: { value: 0 } }, transparent: true, depthWrite: false,
+        vertexShader: 'varying float vR; void main(){ vR = length(position.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform float opacity; varying float vR; void main(){ float t = (vR - 0.55) / 0.9; float c0 = (t - 0.62) / 0.17, t0 = (t - 0.3) / 0.14; float crest = exp(-c0 * c0), trough = exp(-t0 * t0); float a = (crest * 0.55 + trough * 0.22) * opacity * smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.88, 1.0, t)); gl_FragColor = vec4(mix(vec3(0.05, 0.16, 0.24), vec3(0.93, 0.98, 1.0), crest / max(crest + trough, 1e-3)), a); }',
+    });
+}
+
 export const Scene = React.memo(SceneImpl);
 /* Shifat's phone (Adreno 506) froze each time a new area came into view: three builds a shader program the first time an object is drawn,
    and a big program costs that GPU hundreds of ms on the main thread. Every program is built up front instead - hidden objects are made
@@ -679,7 +689,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
                     for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,waterRenderY(x,z,sim.t)+0.055,z);}}
                 pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current*THREE.MathUtils.smoothstep(sim.t-wakeBorn.current,0.1,0.65);}}
         }
-        { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (rg) { const surfaceY=waterSurfaceAt(p[0],p[2],sim.t), on = sim.swim && p[1] > surfaceY - 1.6; rg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); (m.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
+        { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (DBG) (window as any).__ring = rg; if (rg) { const surfaceY=waterSurfaceAt(p[0],p[2],sim.t), on = (sim.swim || (DBG && (window as any).__ringForce)) && p[1] > surfaceY - 1.6; rg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); ((m.material as THREE.ShaderMaterial).uniforms.opacity.value) = 0.6 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
         const sa0 = sim as any;
         const rootPose = applyHeroRootPose(sim, rig, dt, sa0, p, HERO_SC);
         const lean = rootPose.lean, shadowBody = rig.poseRoot.children[0] as THREE.Object3D;
@@ -850,7 +860,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>
         <mesh ref={wakeRef} geometry={wakeGeo} material={wakeMat} visible={false} frustumCulled={false} />
         <group ref={splashRef} visible={false}>{[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => <mesh key={i} frustumCulled={false}><coneGeometry args={[0.13, 1, 5]} /><meshBasicMaterial color="#f4fdff" transparent opacity={0.9} depthWrite={false} /></mesh>)}</group>
-        <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}><ringGeometry args={[1.0, 1.09, 48]} /><meshBasicMaterial color="#eefbff" transparent opacity={0.4} depthWrite={false} /></mesh>)}</group>
+        <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false} renderOrder={5}><ringGeometry args={[0.55, 1.45, 48, 1]} /><primitive object={swimRingMat()} attach="material" /></mesh>)}</group>
         <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
         <OceanFollow waterRef={waterRef} /><OceanSlices waterRef={waterRef} geo={OCEAN_GEO} /><ReflectionIllusion sim={sim} />
         <ContactShadows sim={sim} /><StaticShadows /><Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow /><Jellies /><Lilies sim={sim} />
