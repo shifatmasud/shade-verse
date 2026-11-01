@@ -93,11 +93,12 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       float bedA = 0.0, bedShore = 0.0;
       if (uBench.y > 2.5 && uBench.y < 3.5) { gl_FragColor = vec4(body, 0.95); return; }   /* telemetry stage bench */   // how much of this pixel is the traced seabed (drives opacity below)
       vec2 bq = bedUV(vW.xz);
-      if (!below && uUseScene < 0.5 && vW.z < -222.0 && vW.y - bedY(vW.xz) < 40.0) {   /* Shifat 9:16 AM phone fps: deep water (bed > 40 m down) shows no bed anyway (bedA = 0 past 34 m), so most of the open sea skips the whole refraction trace */   /* whole open sea, not just the island square */
+      float bY0 = bedY(vW.xz);   /* Nov 1: the bed height under this pixel, read once (was read 4 times) */
+      if (!below && uUseScene < 0.5 && vW.z < -222.0 && vW.y - bY0 < 40.0) {   /* Shifat 9:16 AM phone fps: deep water (bed > 40 m down) shows no bed anyway (bedA = 0 past 34 m), so most of the open sea skips the whole refraction trace */   /* whole open sea, not just the island square */
         // Snell: td is the refracted ray (air 1.0 -> water 1.333). Fixed-point march to where it meets the bed: t = (surface - bed(xz(t))) / -td.y
-        float sy = -td.y; sy = max(sy, 0.08); float t0 = max(vW.y - bedY(vW.xz), 0.0) / sy, t1 = t0;
+        float sy = -td.y; sy = max(sy, 0.08); float t0 = max(vW.y - bY0, 0.0) / sy, t1 = t0;
         t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = mix(t0, t1, 0.85);
-        vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, bedUV(hx)); float be = bedEdge(hx), byh = bedY(hx); float dep = max(vW.y - byh, 0.0);
+        vec2 hx = vW.xz + td.xz * t1; vec4 bs = texture2D(uBed, bedUV(hx)); float be = bedEdge(hx), byh = mix(seaBed(hx), bs.r * 40.0 - 30.0, be); float dep = max(vW.y - byh, 0.0);
         float nn1 = 0.5 * sin(hx.x * 0.031 + sin(hx.y * 0.019) * 2.1) * sin(hx.y * 0.027 + sin(hx.x * 0.023) * 1.7); bs.g = mix(clamp((byh + 16.0 + nn1 * 4.0) / 9.0, 0.0, 1.0), bs.g, be); bs.b = mix(0.5 + 0.5 * nn1, bs.b, be);
         // bed albedo: white tropical sand shallow, darker rock / weed deeper, with soft ripple marks
         vec3 alb = mix(vec3(0.30, 0.34, 0.26), vec3(0.93, 0.87, 0.70), bs.g) * (0.86 + 0.14 * bs.b) * (0.93 + 0.07 * sin(hx.x * 1.7 + sin(hx.y * 0.9) * 2.0));
@@ -109,7 +110,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 Tb = exp(-vec3(0.17, 0.040, 0.026) * (t1 + dep * 0.6));
         vec3 scat = mix(vec3(0.06, 0.52, 0.58), uDeep * 0.85, smoothstep(4.0, 24.0, dep)) * mix(0.25, 1.0, uDay);
         vec3 seen = bedL * Tb + scat * (1.0 - Tb);
-        bedA = 1.0 - smoothstep(3.0, 9.0, dep);   /* Shifat 3:39 AM 'sea near shore doesn't need to show what's underneath the land': only the shallow band shows the bed */ bedShore = smoothstep(0.1, 1.1, vW.y - bedY(vW.xz));   // at the waterline let the real beach mesh show through so there is no seam
+        bedA = 1.0 - smoothstep(3.0, 9.0, dep);   /* Shifat 3:39 AM 'sea near shore doesn't need to show what's underneath the land': only the shallow band shows the bed */ bedShore = smoothstep(0.1, 1.1, vW.y - bY0);   // at the waterline let the real beach mesh show through so there is no seam
         body = mix(body, seen, bedA);
       }
       vec3 r = reflect(-v, n);
@@ -319,7 +320,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       /* Shifat 12:57 AM 'the actual sea gets hidden until I swim': clear water - looking down near you the surface is mostly see-through (the
          seagrass, fish and seabed below show like the underwater view); grazing angles and distance keep the reflective surface */
       aAbove = min(aAbove, mix(mix(0.22, 1.0, fr * fr), 1.0, smoothstep(40.0, 150.0, dCam)));
-      { float bdS = vW.y - bedY(vW.xz); aAbove = mix(aAbove, 1.0, smoothstep(3.0, 9.0, bdS) * (1.0 - smoothstep(45.0, 70.0, bdS))); }   /* Shifat 3:39 AM: near shore the sea no longer shows the land under it - see-through only in the shallow band and over open deep water */
+      { float bdS = vW.y - bY0; aAbove = mix(aAbove, 1.0, smoothstep(3.0, 9.0, bdS) * (1.0 - smoothstep(45.0, 70.0, bdS))); }   /* Shifat 3:39 AM: near shore the sea no longer shows the land under it - see-through only in the shallow band and over open deep water */
       // soft shorelines (AAA depth fade): where the sea is only a few cm deep over terrain - inlets, coarse terrain edges - it thins to nothing
       // instead of ending in a hard polygon edge; uses the depth of the scene copy the refraction already makes (no extra pass)
       if (uUseScene > 0.5 && !below) { vec2 suvF = vScreen.xy / vScreen.w * 0.5 + 0.5; float thr = vView.z - oceanZ(suvF), thk = thr < -2.5 ? 9.0 : max(thr, 0.0); aAbove *= smoothstep(0.0, 0.9, thk);   /* thr < 0: the low-res copy has an occluder (tree/hero) in front at this pixel - not shallow water, keep it solid (fixes dark blocks along tree silhouettes) */ col = mix(vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), col, smoothstep(0.05, 0.6, thk) * 0.6 + 0.4); }
