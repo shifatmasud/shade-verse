@@ -24,7 +24,7 @@ const burst = (e: React.PointerEvent, tint: string, spin = 0, showRing = true) =
     const el = e.currentTarget as HTMLElement;
     if (showRing) { const r = document.createElement('i'); r.className = 'ripple'; r.style.color = tint; el.appendChild(r); gsap.fromTo(r, { scale: 0.5, opacity: 0.95 }, { scale: 2.6, opacity: 0, duration: 0.5, ease: 'power2.out', onComplete: () => r.remove() }); }
     gsap.fromTo(el.querySelector('svg:not(.ring)'), { scale: 1.7, rotate: spin }, { scale: 1, rotate: 0, duration: 0.42, ease: 'back.out(3)' });
-    const f = document.querySelector('.flash') as HTMLElement | null; if (f) { f.style.setProperty('--fx', tint); gsap.fromTo(f, { opacity: 0.55 }, { opacity: 0, duration: 0.3, ease: 'power2.out' }); }
+    const f = document.querySelector('.flash') as HTMLElement | null; if (f) { f.style.setProperty('--fx', tint); f.style.visibility = 'visible'; gsap.fromTo(f, { opacity: 0.55 }, { opacity: 0, duration: 0.3, ease: 'power2.out', overwrite: true, onComplete: () => { f.style.visibility = 'hidden'; } }); }   /* hidden when spent: a full-screen blend layer at opacity 0 still costs the phone's compositor every frame */
 };
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
@@ -93,7 +93,7 @@ export function App() {
             { const jb = document.querySelector('.ico.jump'); if (jb) jb.classList.toggle('inv', sim.mode === 'play' && sim.swim && !sim.dive); }
             { const pv = wprev.current; if (!mutedRef.current && sim.mode === 'play' && ((sim.swim && !pv.swim) || (sim.dive !== pv.dive) || (!sim.swim && pv.swim))) buzz(25); pv.swim = sim.swim; pv.dive = sim.dive; }   // splash sound: src/audio/director.ts
             { const ds = (window as any).__dbgStats; setDbg(Math.round(perf.fps) + ' fps · res ' + perf.scale.toFixed(2) + (isGl2() ? ' · WebGL2' : ' · WebGL1') + (ds ? ' · ' + ds.calls + ' calls · ' + Math.round(ds.tris / 1000) + 'k tris · cpu ' + ds.cpu.toFixed(1) + ' ms (game ' + (ds.logic || 0).toFixed(1) + ' / draw ' + Math.max(0, ds.cpu - (ds.logic || 0)).toFixed(1) + ') ' + (ds.progs || 0) + ' shaders' : '')); }
-            document.documentElement.style.setProperty('--spd', String(Math.min(1, Math.max(0, (perf.speed - 18) / 40))));
+            { const spd = Math.min(1, Math.max(0, (perf.speed - 18) / 40)); document.documentElement.style.setProperty('--spd', String(spd)); const sl = document.querySelector('.speedlines') as HTMLElement | null; if (sl) { const v = spd > 0 ? 'visible' : 'hidden'; if (sl.style.visibility !== v) sl.style.visibility = v; } }   /* speed lines off the compositor when idle */
             setHud((h) => {
                 const ctx = actionCtx(sim); const n = { score: sim.score, time: Math.ceil(sim.time), mode: sim.mode, best: sim.best, bn: sim.beaconN, hp: Math.round(sim.hp), ko: sim.kos, gr: ctx.grab, me: ctx.melee, sh: ctx.shot, sn: ctx.snare, wb: sim.web, rd: 0, sc: Math.round(Math.min(1, ((sim as any).snareCd || 0) / 9) * 20) / 20, bd: Math.round(Math.hypot(sim.beacon[0] - sim.pos[0], sim.beacon[1] - sim.pos[1], sim.beacon[2] - sim.pos[2]) / 5) * 5 };
                 if (sim.score > sim.best) { sim.best = sim.score; n.best = sim.best; try { localStorage.setItem('webswinger3d-best', String(sim.best)); } catch (e) { /* ignore */ } }
