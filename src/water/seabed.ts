@@ -45,9 +45,13 @@ export function oceanGeo() {
             if (Math.hypot(cx, cz) < OCEAN_INNER_R) inner.push(...t); else outer.push({ a: Math.atan2(cx, cz), t });
         }
     }
-    outer.sort((p, q) => p.a - q.a);
+    /* within each slice keep the grid's own row order (was: sorted by exact angle, which scattered neighbouring triangles and broke the GPU's
+       vertex reuse - each vertex ran the wave math up to 6x; on a tiling phone GPU that is paid again per screen tile). Same triangles per slice. */
+    const binOf = (a: number) => Math.min(OCEAN_BINS - 1, Math.floor((a + Math.PI) / (Math.PI * 2) * OCEAN_BINS));
+    outer.forEach((o, k) => { (o as any).b = binOf(o.a); (o as any).k = k; });
+    outer.sort((p: any, q: any) => p.b - q.b || p.k - q.k);
     const idx = inner.slice(), binStart = new Int32Array(OCEAN_BINS + 1); let bi = 0;
-    outer.forEach((o, k) => { const b = Math.min(OCEAN_BINS - 1, Math.floor((o.a + Math.PI) / (Math.PI * 2) * OCEAN_BINS)); while (bi <= b) binStart[bi++] = inner.length + k * 3; idx.push(...o.t); });
+    outer.forEach((o, k) => { const b = (o as any).b; while (bi <= b) binStart[bi++] = inner.length + k * 3; idx.push(...o.t); });
     while (bi <= OCEAN_BINS) binStart[bi++] = idx.length;
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
     g.userData = { inner: inner.length, binStart };
