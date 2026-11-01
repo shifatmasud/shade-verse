@@ -397,7 +397,10 @@ function DebugStats() {
     return null;
 }
 
-export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
+/* Shifat 11:13 PM phone perf: the App HUD updates 10x a second (fps text, beacon distance); without memo every HUD tick re-rendered this whole
+   3D tree through React (thousands of prop diffs on a slow phone CPU). Props here are stable refs, so the 3D tree now renders once. */
+export const Scene = React.memo(SceneImpl);
+function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
     const web = useRef<THREE.Mesh>(null!), webB = useRef<THREE.Mesh>(null!), arrow = useRef<THREE.Mesh>(null!), cores = useRef<THREE.InstancedMesh>(null!), glows = useRef<THREE.InstancedMesh>(null!);
