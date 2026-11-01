@@ -4,7 +4,7 @@ import { audio, STEP_SPRITE, VO_N, type Vec3 } from './engine';
 import { WEATHER } from '../world/env';
 // Mix (Shifat Oct 31 6:27 PM): ambience 1x, background strings/pads 0.8x (engine MUSIC_MIX), hero dialogue 1.2x
 const VO_MIX = 1.2;
-import { FALLS, HARBOR, ISLAND, isIsland, inHarbor, bridgeDeckY } from '../seaWorld';
+import { FALLS, HARBOR, ISLAND, isIsland, inHarbor, bridgeDeckY, isFarm, isIce, isPirate } from '../seaWorld';
 import { BANTER, type BanterTrig } from './banter';
 import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, PED_VOICE, type Sim } from '../sim';
 
@@ -70,8 +70,18 @@ export class SoundDirector {
         return true;
     }
     private endBanter() { this.bBusy = false; this.voGap = 1.5; this.bCd = 9 + Math.random() * 7;   /* Shifat 7:26 PM "they should talk more with each other": was 30-60 s */ this.voCd.ghost = Math.max(this.voCd.ghost, 6); this.voCd.shadow = Math.max(this.voCd.shadow, 6); audio.voDuck = 1; }
+    private zoneWas: BanterTrig | null = null; private zoneAt: Record<string, number> = {};
     private banterTick(dt: number, day: number, near: number) {
-        const s = this.sim; this.bCd = Math.max(0, this.bCd - dt); this.bCombatCd = Math.max(0, this.bCombatCd - dt); if (this.bBusy) { this.voGap = Math.max(this.voGap, 0.5); return; }
+        const s = this.sim; this.bCd = Math.max(0, this.bCd - dt); this.bCombatCd = Math.max(0, this.bCombatCd - dt);
+        { // arrival exchanges (Shifat Oct 31 7:10 PM): the first moment the heroes reach Ice Isle, the pirate ship, the jungle island or Farm Isle they talk about it
+            const ax = s.pos[0], az = s.pos[2];
+            const zone: BanterTrig | null = isPirate(ax, az, 1.0) ? 'ship' : isFarm(ax, az, 1.0) ? 'farm' : isIce(ax, az, 1.0) ? 'ice' : isIsland(ax, az, 1.0) ? 'arrive_island' : null;
+            if (zone !== this.zoneWas && !this.bBusy) {
+                this.zoneWas = zone; const now = performance.now() / 1000;
+                if (zone && now - (this.zoneAt[zone] ?? -1e9) > 150) { this.zoneAt[zone] = now; setTimeout(() => this.banter(zone, true), 900); }
+            }
+        }
+        if (this.bBusy) { this.voGap = Math.max(this.voGap, 0.5); return; }
         const low = s.hp > 0 && s.hp < 30; if (low && !this.lowWas) this.banter('low', true); this.lowWas = low;
         if (this.combatT > 0 && near > 0) { this.bIdleT = 0; if (this.bCombatCd <= 0 && this.bCd <= 0 && Math.random() < dt * 0.3) { if (this.banter('combat')) this.bCombatCd = 16; } return; }
         this.bIdleT += dt; if (this.bIdleT < this.bIdleAt) return;

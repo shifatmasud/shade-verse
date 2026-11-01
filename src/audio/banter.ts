@@ -3,7 +3,7 @@
 // teamwork calls, encouragement, pride after wins, light teasing, sightseeing. Family friendly. The one "Love you" exchange is kept by request.
 // Each exchange is a line plus a reply (sometimes three lines). Clips: public/audio/vo/cg_<i> (Ghost) and cs_<i> (Shadow), generated with the
 // same voices, settings and post-processing as the existing ghost_* / shadow_* lines.
-export type BanterTrig = 'idle' | 'combat' | 'kill' | 'boss' | 'swing' | 'low' | 'hurt' | 'swim' | 'island' | 'harbor' | 'bridge' | 'night';
+export type BanterTrig = 'idle' | 'combat' | 'kill' | 'boss' | 'swing' | 'low' | 'hurt' | 'swim' | 'island' | 'harbor' | 'bridge' | 'night' | 'farm' | 'ice' | 'ship' | 'arrive_island';
 export interface Exchange { t: BanterTrig; l: ['g' | 's', number, string][] }
 export const BANTER: Exchange[] = [
     { t: 'idle', l: [['g', 0, "You've been quiet. Everything okay?"], ['s', 0, "Yeah, just thinking. Thanks for asking."]] },
@@ -84,5 +84,16 @@ export const BANTER: Exchange[] = [
     { t: 'combat', l: [['s', 92, "I'll take the big one. You take the small ones."], ['g', 100, "So I do all the work again."], ['s', 93, "Teamwork!"]] },
     { t: 'idle', l: [['g', 101, "You snore, you know."], ['s', 94, "I do not."], ['g', 102, "The neighbors filed a complaint."], ['s', 95, "Those were robots."]] },
     { t: 'idle', l: [['s', 96, "Your sparkles are really bright today."], ['g', 103, "Jealous?"], ['s', 97, "A little, yeah."]] },
+    // Arrival exchanges (Shifat Oct 31 7:10 PM: back-and-forth when they arrive at Ice Isle, the pirate ship, the jungle island and Farm Isle)
+    { t: 'ice', l: [['g', 104, "Brr! Ice Isle. Zip up your jacket."], ['s', 98, "I'm a shadow. I don't have a jacket."], ['g', 105, "Then stay close. I packed hot cocoa."]] },
+    { t: 'ice', l: [['s', 99, "Look, igloos! Does someone actually live here?"], ['g', 106, "Penguins with very good taste."], ['s', 100, "There are no penguins here."], ['g', 107, "Then they're hiding. Penguins are shy."]] },
+    { t: 'ice', l: [['g', 108, "Careful, those ice cracks are deep."], ['s', 101, "Got it. I'll swing right over them."]] },
+    { t: 'ship', l: [['s', 102, "Whoa. A pirate ship... with railguns?"], ['g', 109, "Modern pirates. They steal Wi-Fi."], ['s', 103, "Arr! Give me your password!"]] },
+    { t: 'ship', l: [['g', 110, "Holographic sails. Fancy."], ['s', 104, "I bet the captain has a parrot drone."], ['g', 111, "If he does, I'm adopting it."]] },
+    { t: 'ship', l: [['s', 105, "Permission to come aboard, Captain Ghost?"], ['g', 112, "Permission granted. Mind the cannons."]] },
+    { t: 'farm', l: [['g', 113, "Farm Isle! Smell that fresh hay."], ['s', 106, "Smells like... cows."], ['g', 114, "That's the countryside, city boy."]] },
+    { t: 'farm', l: [['s', 107, "Look at that windmill spin."], ['g', 115, "So peaceful. Let's take a little break here."], ['s', 108, "Five minutes. Then we save the world again."]] },
+    { t: 'farm', l: [['g', 116, "Those houses look so cozy."], ['s', 109, "Retire here someday?"], ['g', 117, "Only if you learn to milk a cow."]] },
+    { t: 'arrive_island', l: [['s', 110, "Back on the jungle island."], ['g', 118, "Stay close, the jungle gets thick."], ['s', 111, "Lead the way. I've got your back."]] },
 ];
 export const BANTER_N = { cg: 104, cs: 98 };
