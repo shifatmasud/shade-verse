@@ -81,6 +81,40 @@ function splashGeo() {
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6); return g;
 }
 
+// Shifat Nov 1 12:34 'rain drop splash need tiny drop particles to sell the splash': each impact throws 3 tiny beads up and out on a short arc
+// (same hashed spot and cycle as its ring, so they leave from the ring's centre). One draw call of camera-facing quads.
+const DROP_K = 3;
+const DROP_VS = `
+attribute vec3 aSeed; attribute vec2 aK; uniform float uT; uniform vec4 uHero; uniform float uG; varying vec2 vQ; varying float vA;
+float h1(float n){ return fract(sin(n) * 43758.5453); }
+void main(){
+  float P = 0.45 + aSeed.y * 0.35, tt = uT + aSeed.x * P * 7.0, cyc = floor(tt / P), ph = fract(tt / P);
+  float a = h1(cyc * 12.9898 + aSeed.x * 78.233) * 6.2832, rr = 1.2 + sqrt(h1(cyc * 4.1414 + aSeed.z * 17.17)) * 9.0;
+  vec3 wp = vec3(uHero.x + cos(a) * rr, uG + 0.05, uHero.z + sin(a) * rr);
+  float tp = ph * P, r1 = h1(cyc * 7.31 + aK.x * 3.7 + aSeed.z * 11.1), da = aK.x * 2.094 + r1 * 1.4 + a;
+  float vh = 0.45 + 0.5 * r1, vv = 1.3 + 0.9 * h1(cyc * 2.17 + aK.x * 5.3 + aSeed.y * 9.1);
+  wp += vec3(cos(da) * vh * tp, max(vv * tp - 4.9 * tp * tp, 0.0), sin(da) * vh * tp);
+  vA = step(0.012, tp) * (1.0 - smoothstep(0.18, 0.3, tp)) * step(vv * tp - 4.9 * tp * tp, 9.0);
+  vQ = position.xy * 2.0;
+  vec4 vp = viewMatrix * vec4(wp, 1.0); vp.xy += position.xy * (0.035 + 0.02 * r1);
+  gl_Position = projectionMatrix * vp;
+}`;
+const DROP_FS = `
+uniform float uRain; uniform float uDay; uniform float uOn; varying vec2 vQ; varying float vA;
+void main(){
+  float a = smoothstep(1.0, 0.3, length(vQ)) * vA * uRain * uOn * 0.8;
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(mix(vec3(0.55, 0.6, 0.68), vec3(0.95, 0.97, 1.0), uDay), a);
+}`;
+function dropGeo() {
+    const N = SPL_N * DROP_K, pos = new Float32Array(N * 12), seed = new Float32Array(N * 12), kk = new Float32Array(N * 8), idx = new Uint32Array(N * 6);
+    let r = 777; const rnd = () => { r ^= r << 13; r ^= r >>> 17; r ^= r << 5; return (r >>> 0) / 4294967296; };   // same sequence as splashGeo: drop i belongs to splash i
+    const cx = [-0.5, 0.5, 0.5, -0.5], cy = [-0.5, -0.5, 0.5, 0.5];
+    for (let i = 0; i < SPL_N; i++) { const a = rnd(), b = rnd(), c = rnd(); for (let d = 0; d < DROP_K; d++) { const q = i * DROP_K + d; for (let k = 0; k < 4; k++) { const j = (q * 4 + k) * 3; pos[j] = cx[k]; pos[j + 1] = cy[k]; seed[j] = a; seed[j + 1] = b; seed[j + 2] = c; kk[(q * 4 + k) * 2] = d; kk[(q * 4 + k) * 2 + 1] = 0; } idx.set([q * 4, q * 4 + 1, q * 4 + 2, q * 4, q * 4 + 2, q * 4 + 3], q * 6); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 3)); g.setAttribute('aK', new THREE.BufferAttribute(kk, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6); return g;
+}
+
 const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('rain') : null;
 if (q === '1') WEATHER.force = 1; else if (q === '0') WEATHER.force = 0;
 const CYCLE = 260, RAIN_FROM = 0.62;   // ~100 s of rain every ~4.3 min, eased in/out over ~8 s
@@ -91,6 +125,8 @@ export function Weather() {
         const mesh = new THREE.Mesh(rainGeo(), mat); mesh.frustumCulled = false; mesh.renderOrder = 5; mesh.name = 'rain';   // the camera actually drawing this pass
         const smat = new THREE.ShaderMaterial({ uniforms: { uT: mat.uniforms.uT, uRain: WEATHER.rain, uDay: TOD.day, uHero: { value: HERO_REFL.shadow }, uG: { value: 0 }, uOn: { value: 0 } }, vertexShader: SPL_VS, fragmentShader: SPL_FS, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
         const smesh = new THREE.Mesh(splashGeo(), smat); smesh.frustumCulled = false; smesh.renderOrder = 5; smesh.name = 'rain-splash';
+        const dmat = new THREE.ShaderMaterial({ uniforms: { uT: mat.uniforms.uT, uRain: WEATHER.rain, uDay: TOD.day, uHero: smat.uniforms.uHero, uG: smat.uniforms.uG, uOn: smat.uniforms.uOn }, vertexShader: DROP_VS, fragmentShader: DROP_FS, transparent: true, depthWrite: false, fog: false });
+        const dmesh = new THREE.Mesh(dropGeo(), dmat); dmesh.frustumCulled = false; dmesh.renderOrder = 5; dmesh.name = 'rain-drops'; smesh.add(dmesh);   // child: shown/hidden with the rings
         return { mesh, mat, smesh, smat };
     }, []);
     const gy = React.useRef({ y: 0, last: 0, t: 0 });
