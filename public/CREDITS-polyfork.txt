@@ -3,3 +3,10 @@ Asset: https://polyfork.dev/asset/brick-tenement-5257e9
 Source model: https://polyfork.dev/cdn/brick-tenement-5257e9.glb
 Licence: https://polyfork.dev/licensing (checked October 27, 2026)
 Free low-poly model. Personal/commercial game use and modification permitted, no attribution required. The game may ship the model inside it. Standalone asset redistribution is not permitted. No purchase made.
+
+
+Lily Pads by Polyfork. Used and modified inside Shade Verse (floating sea lilies, recoloured blooms).
+Asset: https://polyfork.dev/asset/lily-pads-b0c5d0
+Source model: https://polyfork.dev/cdn/lily-pads-b0c5d0.glb
+Licence: https://polyfork.dev/licensing (checked November 1, 2026)
+Free low-poly model. No purchase made.
