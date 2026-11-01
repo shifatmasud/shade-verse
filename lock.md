@@ -42,3 +42,6 @@ All shadows are faint, wide, blurred and cool-tinted (multiply toward rgb .80/.8
 
 ## Sea parity (Shifat Oct 31 10:02 PM)
 Phone and desktop sea water must look exactly the same (1:1). Optimizations are fine only if they apply to every device. No device-specific water branches.
+
+## Resolution floor (Shifat Oct 31 10:13 PM)
+The world (environment) render never goes below DPR 1 on any device. The fps scaler may not downscale below 1.
