@@ -92,10 +92,10 @@ export function OutlinePass() {
         rt.texture.minFilter = rt.texture.magFilter = THREE.NearestFilter; rt.texture.colorSpace = THREE.SRGBColorSpace;
         const mat = new THREE.ShaderMaterial({ uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture }, uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 700 }, uTh: { value: 1.0 }, uOn: { value: 1 }, uWL: { value: WATERLINE.v }, uWLy: { value: WATERLINE.y }, uUwC: { value: WATERLINE.col } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: OUT_FS, depthTest: false, depthWrite: false, toneMapped: false });
         const qs = new THREE.Scene(), q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); q.frustumCulled = false; qs.add(q);
-        const ft = new THREE.FramebufferTexture(4, 4); ft.minFilter = ft.magFilter = THREE.LinearFilter;
+        const r2 = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: false, stencilBuffer: false, samples: 0, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.UnsignedByteType }); const ft = r2.texture;   /* outline result goes to its own target that FXAA reads (was: drawn to the frame, then the whole frame copied) */
         const fm = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: ft }, uRes: { value: new THREE.Vector2(4, 4) }, tDepth: { value: rt.depthTexture }, uNear: { value: 0.5 }, uFar: { value: 700 }, uSharp: { value: SHARPEN.amount } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: FXAA_SHARP_FS, depthTest: false, depthWrite: false, toneMapped: false });
         const fs = new THREE.Scene(), fq = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fm); fq.frustumCulled = false; fs.add(fq);
-        return { rt, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), sz: new THREE.Vector2(), ft, fm, fs, sea: makeSeaPass() };
+        return { rt, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), sz: new THREE.Vector2(), r2, fm, fs, sea: makeSeaPass() };
     }, []);
     useEffect(() => { scene.matrixWorldAutoUpdate = false; return () => { scene.matrixWorldAutoUpdate = true; }; }, [scene]);
     useFrame(() => {
@@ -107,7 +107,7 @@ export function OutlinePass() {
         const cam = camera as THREE.PerspectiveCamera; st.mat.uniforms.uNear.value = cam.near; st.mat.uniforms.uFar.value = cam.far; st.fm.uniforms.uNear.value = cam.near; st.fm.uniforms.uFar.value = cam.far; st.fm.uniforms.uSharp.value = DBG && (window as any).__sharp !== undefined ? (window as any).__sharp : SHARPEN.amount;
         st.mat.uniforms.uTh.value = 1.0;
         st.mat.uniforms.uOn.value = (DBG && (window as any).__noOutline) ? 0 : 1;
-        if (st.ft.image.width !== st.sz.x || st.ft.image.height !== st.sz.y) { st.ft.dispose(); st.ft.image = { width: st.sz.x, height: st.sz.y } as any; st.fm.uniforms.uRes.value.copy(st.sz); }
+        if (st.r2.width !== st.sz.x || st.r2.height !== st.sz.y) { st.r2.setSize(st.sz.x, st.sz.y); st.fm.uniforms.uRes.value.copy(st.sz); }
         const out = worldTarget(gl); HD.depth = st.rt.depthTexture;   // hero HD pass: the world's final frame goes to the world RT, same size as before
         gl.setRenderTarget(st.rt);
         const sp = st.sea; gl.getSize(sp.css); const cy = camera.position.y, hk = (UW as any).on ? 1 : cy > 70 ? 0.35 : cy > 35 ? 0.5 : cy > 12 ? 0.75 : 1, high = hk < 1, sw = high ? Math.round(st.sz.x * hk) : Math.round(sp.css.x), sh = high ? Math.round(st.sz.y * hk) : Math.round(sp.css.y);   /* resolution steps down with height (quantised, so the target is not resized every frame) */   /* Shifat 2:03 PM 'you can approximate': flying high, the sea's shading runs at half res (ripples are sub-pixel from there), composited at full res with a per-pixel depth test */
@@ -127,7 +127,7 @@ export function OutlinePass() {
         } else {
             camera.layers.mask = cam0 | (1 << SEA_LAYER) | (1 << LATE_LAYER); gl.render(scene, camera); camera.layers.mask = cam0;   // desktop at 1 dpr: one pass as before
         }
-        gl.setRenderTarget(out); gl.render(st.qs, st.qc); gl.copyFramebufferToTexture(st.ft, _v0); gl.render(st.fs, st.qc);
+        gl.setRenderTarget(st.r2); gl.render(st.qs, st.qc); gl.setRenderTarget(out); gl.render(st.fs, st.qc);   /* Shifat 12:02 AM phone fps: no full-frame copy */
     }, 1);
     return null;
 }
