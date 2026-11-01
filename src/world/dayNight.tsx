@@ -1,3 +1,4 @@
+import { WEATHER } from './env';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useRef } from 'react';
@@ -21,7 +22,7 @@ export function DayNight() {
         TOD.sun.set(-0.5, Math.sin(ph) * 0.95, Math.cos(ph) * 0.85 + 0.3).normalize();
         const sy = TOD.sun.y, day = sstep(-0.12, 0.3, sy), warm = 1 - sstep(0.25, 0.7, sy);
         if (DBG) (window as any).__tod = { sy, day, warm, fog: TOD.fog.toArray() }; TOD.day.value = day; TOD.warm.value = warm; TOD.noon.value = sstep(0.3, 0.95, sy);
-        _c1.copy(_cnoon).lerp(_cwarm, warm).lerp(_cn, 1 - day); TOD.fog.copy(_c1); TOD.sky.copy(_c1).lerp(_c2.set('#c4dcef'), 0.3 * day);
+        _c1.copy(_cnoon).lerp(_cwarm, warm).lerp(_cn, 1 - day); if (WEATHER.rain.value > 0.001) _c1.lerp(_c2.setRGB(0.4, 0.44, 0.5).multiplyScalar(0.3 + 0.7 * day), WEATHER.rain.value * 0.7); TOD.fog.copy(_c1); TOD.sky.copy(_c1).lerp(_c2.set('#c4dcef'), 0.3 * day);
         if (!UW.on) (scene.background as THREE.Color).copy(_c1);
         UWF.value.set('#0e3a5e').lerp(_uwDay.set('#1a7f9c'), day);   /* Shifat 2:31 PM 'dive too dark, colourless': moonlit deep blue at night (was 20% of the day teal = near black), clearer turquoise by day */
         { const wu = waterMat.uniforms, k = 0.16 + 0.84 * day; wu.uDeep.value.set('#0a6f92').multiplyScalar(k); wu.uShallow.value.set('#2fa8c4').multiplyScalar(k); }   // water body colour follows the light level (sky reflection already follows TOD.sky)
@@ -29,7 +30,7 @@ export function DayNight() {
         h.color.set('#d4e4ff').lerp(_c2.set('#3a4c8c'), 1 - day); h.intensity = 0.5 + 0.75 * day;
         const up = sy > 0;
         a.position.set(TOD.sun.x * 70 * (up ? 1 : -1), Math.abs(TOD.sun.y) * 70 + 8, TOD.sun.z * 70 * (up ? 1 : -1));
-        a.color.set('#fff6ea').lerp(_c2.set('#ffd2a0'), warm).lerp(_c2.set('#ff9a5a'), sstep(0.0, 0.2, 0.2 - sy) * day * 0.7).lerp(_c2.set('#8fb0ff'), 1 - day); a.intensity = 0.5 + 1.3 * day * (1 - 0.4 * TOD.noon.value);
+        a.color.set('#fff6ea').lerp(_c2.set('#ffd2a0'), warm).lerp(_c2.set('#ff9a5a'), sstep(0.0, 0.2, 0.2 - sy) * day * 0.7).lerp(_c2.set('#8fb0ff'), 1 - day); a.intensity = (0.5 + 1.3 * day * (1 - 0.4 * TOD.noon.value)) * (1 - 0.55 * WEATHER.rain.value);   /* overcast in rain: the sun goes soft */
         b.intensity = 0.25 + 0.55 * day;
     });
     return null;

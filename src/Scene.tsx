@@ -16,6 +16,7 @@ import clipRun from './clips/run.json';
 import { shadowGeo, shadowMat } from './shadowbot';
 import { withPedestrianHands } from './pedestrianHands';
 import { GiantBoss } from './GiantBoss';
+import { Weather } from './world/weather';
 import { BossArenaMarker } from './BossArenaMarker';
 import { poolAt, HBOSS } from './seaWorld';
 import { BOSS_BODY_OFFSET } from './bossConfig';
@@ -725,6 +726,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
         <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" />
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
         <DayNight />
+        <Weather />
         <DebugStats />
         {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={AA_FXAA} />}
         <SelectiveBloomPass />

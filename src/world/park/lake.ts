@@ -110,7 +110,7 @@ void main(){
  vec3 V=normalize(cameraPosition-vWorld);bool below=!gl_FrontFacing;float dist=length(cameraPosition-vWorld);
  float rf=1.0-smoothstep(22.0,75.0,dist);vec2 p=vWorld.xz;
  vec2 g=rip(p,vec2(0.80,0.60),1.9,1.35,0.020)+rip(p,vec2(-0.55,0.83),2.7,-1.7,0.013)+rip(p,vec2(0.97,-0.24),4.3,2.3,0.006)+rip(p,vec2(-0.2,-0.98),6.1,-2.9,0.0035);
- g+=fftSlope(p,uTime)*WATER_FFT_K*(1.0-smoothstep(30.0,220.0,dist));/* same FFT ripple detail as the sea (src/water/common.ts) */
+ g+=fftSlope(p,uTime)*WATER_FFT_K*(1.0-smoothstep(30.0,220.0,dist)); if(uRain>0.01) g+=rainSlope(p,uTime)*uRain*(1.0-smoothstep(15.0,90.0,dist));/* same FFT ripple detail as the sea (src/water/common.ts) */
  vec3 N=normalize(vNormal+vec3(-g.x,0.0,-g.y)*rf);if(below)N=-N;
  float ci=clamp(dot(N,V),0.0,1.0);float F=0.02+0.98*pow(1.0-ci,5.0);
  vec3 R=reflect(-V,N);vec3 Td=refract(-V,N,below?1.33:1.0/1.33);

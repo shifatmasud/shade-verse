@@ -1,3 +1,4 @@
+import { WEATHER } from '../world/env';
 // Island water materials (river strip, waterfall sheets + foam, lagoon/plunge pools). Moved verbatim from SouthSea.tsx.
 import * as THREE from 'three';
 import { CAUSTIC_TEX, CAUSTIC_GLSL, HERO_REFL, WATER_NRM } from '../caustics';
@@ -45,7 +46,7 @@ export const FOAM_MAT = new THREE.ShaderMaterial({
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
 export const RIVER_MAT = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost } },
+    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost } },
     vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `${CAUSTIC_GLSL}
     varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky; uniform sampler2D uNrm; uniform vec4 uHeroA, uHeroB;
@@ -67,6 +68,7 @@ export const RIVER_MAT = new THREE.ShaderMaterial({
       float fs = (1.2 + vSl * 20.0) * (1.0 - vCalm), p1 = fract(uT * 0.3), p2 = fract(uT * 0.3 + 0.5), wf = abs(p1 * 2.0 - 1.0);
       vec2 rg = mix(fftSlope(vW.xz - fl * fs * p1 / 0.3, uT), fftSlope(vW.xz - fl * fs * p2 / 0.3 + 7.3, uT), wf);
       vec3 V = normalize(cameraPosition - vW); rg *= WATER_FFT_K * (1.0 - smoothstep(30.0, 220.0, length(cameraPosition - vW)));
+      if (uRain > 0.01) rg += rainSlope(vW.xz, uT) * uRain * (1.0 - smoothstep(15.0, 90.0, length(cameraPosition - vW)));
       vec3 Nr = normalize(vec3(-rg.x, 1.0, -rg.y)); float fr = 0.03 + 0.97 * pow(1.0 - max(dot(Nr, V), 0.0), 5.0);
       vec3 body = mix(vec3(0.05, 0.42, 0.45), vec3(0.18, 0.66, 0.62), 0.5 + 0.5 * streak);
       { // Shifat 2:07 AM "transparency & refraction law": bend the view ray by Snell (1.333), march it across the channel's real depth profile
@@ -117,7 +119,7 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
     const bedTex = new THREE.DataTexture(bd, BN, BN, THREE.RGBAFormat); bedTex.magFilter = bedTex.minFilter = THREE.LinearFilter; bedTex.wrapS = bedTex.wrapT = THREE.ClampToEdgeWrapping; bedTex.needsUpdate = true;
     return new THREE.ShaderMaterial({
         transparent: true, depthWrite: false /* the outline pass inked a dark arc where the pool surface met other water in depth */, side: THREE.DoubleSide,
-        uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost }, uHeroDA: { value: HERO_REFL.shadowDir }, uNrm: { value: WATER_NRM } },
+        uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost }, uHeroDA: { value: HERO_REFL.shadowDir }, uNrm: { value: WATER_NRM } },
         vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
         fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3]; uniform sampler2D uBed; uniform vec4 uBB; uniform vec4 uHeroA, uHeroB, uHeroDA; uniform sampler2D uNrm;
         ${CAUSTIC_GLSL}
@@ -129,7 +131,8 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
         void main(){ float rr = length(vW.xz - uC) / uR; if (rr > 1.0) discard;
           float og = 0.0; for (int i = 0; i < 3; i++) og = max(og, 1.0 - smoothstep(uOut[i].z * 0.5, uOut[i].z * 1.3, length(vW.xz - uOut[i].xy)));
           vec2 q = vW.xz; vec2 g = vec2(cos(q.x * 1.7 + uT * 1.3) * 0.5 + cos(q.x * 0.9 - q.y * 1.3 + uT * 0.9) * 0.4, cos(q.y * 1.9 - uT * 1.1) * 0.5 + cos(q.y * 0.7 + q.x * 1.1 + uT * 0.8) * 0.4) * 0.06;
-          g += fftSlope(q, uT) * WATER_FFT_K * (1.0 - smoothstep(30.0, 220.0, length(cameraPosition - vW)));   /* same FFT ripple detail as the sea */
+          g += fftSlope(q, uT) * WATER_FFT_K * (1.0 - smoothstep(30.0, 220.0, length(cameraPosition - vW)));
+          if (uRain > 0.01) g += rainSlope(q, uT) * uRain * (1.0 - smoothstep(15.0, 90.0, length(cameraPosition - vW)));   /* same FFT ripple detail as the sea */
           vec3 n = normalize(vec3(-g.x, 1.0, -g.y)); vec3 v = normalize(cameraPosition - vW); bool below = !gl_FrontFacing;
           float fr = 0.03 + 0.97 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
           float deep = smoothstep(1.0, 0.35, rr);

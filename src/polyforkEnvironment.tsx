@@ -1,3 +1,4 @@
+import { WEATHER } from './world/env';
 import { worldBufferSize } from './heroHD';
 import { TREE_SSR_LAYER } from './renderLayers';
 import React, { useEffect, useMemo, useRef } from 'react';
@@ -530,7 +531,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
             uniforms: {
                 uTime: { value: 0 }, tScene: { value: copyTarget ? copyTarget.texture : null }, tDepth: { value: copyTarget ? copyTarget.depthTexture : null },
                 uUseScene: { value: 0 }, uSteps: { value: QK.lakeSteps }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() },
-                uPondCenter: { value: new THREE.Vector2(PARK_POND.cx, PARK_POND.cz) }, uNrm: { value: WATER_NRM }, uPondR: { value: PARK_POND.rx }, uShore: { value: LAKE_SHORE },
+                uPondCenter: { value: new THREE.Vector2(PARK_POND.cx, PARK_POND.cz) }, uRain: WEATHER.rain, uNrm: { value: WATER_NRM }, uPondR: { value: PARK_POND.rx }, uShore: { value: LAKE_SHORE },
                 uHero: { value: new THREE.Vector3(0, -999, 0) }, uHeroA: { value: HERO_REFL.shadow }, uSkyl: { value: POND_SKYL_TEX }, uHeroB: { value: HERO_REFL.ghost }, uHor: { value: new THREE.Color('#bcd3df') }, uZen: { value: new THREE.Color('#5b8fc4') },
                 uSun: { value: new THREE.Vector3(-0.36, 0.82, 0.44).normalize() }, uDay: { value: 1 },
             },

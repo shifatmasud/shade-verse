@@ -9,6 +9,14 @@ vec2 fftSlope(vec2 xz, float t){ vec4 c = texture2D(uNrm, xz * 0.045 + vec2(0.01
   float wt = 0.5 + 0.5 * sin(t * 0.83), wr = inversesqrt(wt * wt + (1.0 - wt) * (1.0 - wt)); vec2 s1 = (mix(c.rg, c.ba, wt) - 0.5) * wr * 2.0, s2 = mat2(0.755, 0.656, -0.656, 0.755) * ((mix(c2.ba, c2.rg, wt) - 0.5) * wr * 2.0);
   return (s1 * 0.8 + s2 * 0.6) * 0.8; }
 // reflections of cities / islands / trees: soft, subtle, leaning to the water's own blue (Shifat 3:49 PM)
+// Rain (Shifat Oct 31 5:42 PM): raindrop impact rings on every water body, scaled by the shared uRain uniform (src/world/env.ts WEATHER.rain).
+// Two jittered 0.9 m / 1.3 m cell grids, each cell one drop: an expanding ring that fades as it spreads. Returns a slope like fftSlope.
+uniform float uRain;
+float rainHash(vec2 c){ return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
+vec2 rainRing(vec2 xz, float t, float cs, float sp){ vec2 q = xz / cs, id = floor(q); float h = rainHash(id), h2 = rainHash(id + 17.3);
+  vec2 l = fract(q) - 0.5 - (vec2(h, h2) - 0.5) * 0.5; float age = fract(t * sp + h * 7.0), r = age * 0.42, d = length(l), x = d - r;
+  float ring = sin(x * 60.0) * exp(-x * x * 900.0) * (1.0 - age) * (1.0 - age); return l / max(d, 1e-3) * ring; }
+vec2 rainSlope(vec2 xz, float t){ return (rainRing(xz, t, 0.7, 1.3) + rainRing(xz + 3.7, t, 1.05, 1.05)) * 1.6; }
 vec3 reflTint(vec3 c, vec3 base){ return mix(c, dot(c, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + base * 0.25, 0.7); }
 // hero reflections (Shifat 4:26 PM): feathered (inner hit 1, outer fatter hit 0.45), sea-tinted, faded with distance - never a hard dark pill
 float heroSoftK(float inner, float outer){ return inner > 0.0 ? 1.0 : (outer > 0.0 ? 0.45 : 0.0); }
