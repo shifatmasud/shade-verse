@@ -272,7 +272,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       float fd = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK; float haze = max(1.0 - exp(-fd * fd), 1.0 - exp(-length(cameraPosition - vW) * 0.0035));
       if (below) col = mix(col, uWaterDisplay, smoothstep(45.0, 190.0, length(cameraPosition - vW)));
       if (below) col += uWaterDisplay * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5);   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
-      col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
+      /* Shifat 1:17 AM: no distance haze on the sea surface */
       if (!below) {
         col *= mix(0.3, 1.0, uDay);
         { float dR = length(cameraPosition - vW), hzW = min(0.93, 1.0 - exp(-dR * 0.0021));   // same haze the reflected buildings themselves get (HAZE_K)
@@ -302,7 +302,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       float aAbove = mix(nearClear, 0.3, heroSee * (1.0 - fr * 0.5)); aAbove = min(aAbove, mix(1.0, 0.5, nearK));
       /* Shifat 12:57 AM 'the actual sea gets hidden until I swim': clear water - looking down near you the surface is mostly see-through (the
          seagrass, fish and seabed below show like the underwater view); grazing angles and distance keep the reflective surface */
-      aAbove = min(aAbove, mix(mix(0.22, 1.0, fr * fr), 1.0, smoothstep(40.0, 150.0, dCam)));
+      aAbove = min(aAbove, mix(0.22, 1.0, fr * fr));   /* Shifat 1:17 AM 'remove the depth fog': no distance term - the surface stays see-through at any range (only Fresnel) */
       // soft shorelines (AAA depth fade): where the sea is only a few cm deep over terrain - inlets, coarse terrain edges - it thins to nothing
       // instead of ending in a hard polygon edge; uses the depth of the scene copy the refraction already makes (no extra pass)
       if (uUseScene > 0.5 && !below) { vec2 suvF = vScreen.xy / vScreen.w * 0.5 + 0.5; float thr = vView.z - oceanZ(suvF), thk = thr < -2.5 ? 9.0 : max(thr, 0.0); aAbove *= smoothstep(0.0, 0.9, thk);   /* thr < 0: the low-res copy has an occluder (tree/hero) in front at this pixel - not shallow water, keep it solid (fixes dark blocks along tree silhouettes) */ col = mix(vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), col, smoothstep(0.05, 0.6, thk) * 0.6 + 0.4); }
