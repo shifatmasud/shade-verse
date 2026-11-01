@@ -20,6 +20,19 @@ if (ON) {
         P.prototype.texStorage2D = function (this: WebGL2RenderingContext, t: number, lv: number, f: number, w: number, h: number) { ts.call(this, t, lv, f, w, h); const e = this.getError(); if (e && logs.length < 40) logs.push('texStorage2D err 0x' + e.toString(16) + ' fmt 0x' + f.toString(16) + ' ' + w + 'x' + h); };
         P.prototype.texImage2D = function (this: WebGL2RenderingContext, ...a: any[]) { (ti as any).apply(this, a); if (a.length >= 9 && a[8] == null) { const e = this.getError(); if (e && logs.length < 40) logs.push('texImage2D err 0x' + e.toString(16) + ' ifmt 0x' + (+a[2]).toString(16) + ' type 0x' + (+a[7]).toString(16) + ' ' + a[3] + 'x' + a[4]); } };
     }
+
+    // one-off device check: does this GPU report gl_FrontFacing correctly? (the sea used it to tell above from below water)
+    setTimeout(() => { try {
+        const c = document.createElement('canvas'); c.width = c.height = 4; const g = c.getContext('webgl2'); if (!g) return;
+        const sh = (t: number, s: string) => { const o = g.createShader(t)!; g.shaderSource(o, s); g.compileShader(o); return o; };
+        const p = g.createProgram()!; g.attachShader(p, sh(g.VERTEX_SHADER, '#version 300 es\nin vec2 a;void main(){gl_Position=vec4(a,0.,1.);}')); g.attachShader(p, sh(g.FRAGMENT_SHADER, '#version 300 es\nprecision highp float;out vec4 o;void main(){o=gl_FrontFacing?vec4(1,0,0,1):vec4(0,0,1,1);}')); g.linkProgram(p); g.useProgram(p);
+        const b = g.createBuffer(); g.bindBuffer(g.ARRAY_BUFFER, b); const res: string[] = [];
+        for (const [name, v] of [['ccw', [-1, -1, 3, -1, -1, 3]], ['cw', [-1, -1, -1, 3, 3, -1]]] as [string, number[]][]) {
+            g.bufferData(g.ARRAY_BUFFER, new Float32Array(v), g.STATIC_DRAW); g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 2, g.FLOAT, false, 0, 0);
+            g.clearColor(0, 0, 0, 1); g.clear(g.COLOR_BUFFER_BIT); g.drawArrays(g.TRIANGLES, 0, 3); const px = new Uint8Array(4); g.readPixels(1, 1, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px); res.push(name + '=' + (px[0] > 128 ? 'front' : px[2] > 128 ? 'back' : 'none'));
+        }
+        send('frontfacing', { res: res.join(' '), expect: 'ccw=front cw=back' });
+    } catch (e) { send('frontfacing', { err: String(e) }); } }, 4000);
     addEventListener('error', (e) => { if (logs.length < 40) logs.push('onerror: ' + e.message + ' ' + (e.filename || '') + ':' + (e.lineno || '')); });
     // where the frame time goes on the real device: CPU time inside renderer.render (scene walk + GL submit, incl. driver), main-thread long tasks
     let rMs = 0, rN = 0; const wrapGl = () => { const gl: any = (window as any).__gl; if (!gl || gl.__telWrapped) return; const rr = gl.render.bind(gl); gl.render = (...a: any[]) => { const t0 = performance.now(); try { return rr(...a); } finally { rMs += performance.now() - t0; rN++; } }; gl.__telWrapped = true; }; setInterval(wrapGl, 1000);   /* the renderer's render is an instance method (three r187) */
