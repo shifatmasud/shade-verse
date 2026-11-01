@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { ICE, iceRaw, iceRR , ICE_IGLOOS, ICE_HUT_K, ICE_HUT_SINK } from '../seaWorld';
 import { hutGeo } from './iceHuts';
+import { iglooModel } from './igloos';
 import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
 import { type SouthSeaKit, PHONE, hazeShader, colorize, merged, rnd, setSeed } from './southSea/common';
 
@@ -50,9 +51,9 @@ const iceShader = (sh: any) => {
 };
 
 function iglooGeo() {   // Shifat 9:56 PM: the igloos are now Polyfork alpine huts (refuge + patrol hut, alternating), lit windows glow at night
-    const shell: THREE.BufferGeometry[] = [], glow: THREE.BufferGeometry[] = [], base = [hutGeo(0), hutGeo(1)];
-    IGLOOS.forEach(([lx, lz, yaw, s], i) => {
-        const x = ICE.cx + lx, z = ICE.cz + lz, y = (iceRaw(x, z) ?? 4) - ICE_HUT_SINK, k = ICE_HUT_K * s, b = base[i % 2];
+    const shell: THREE.BufferGeometry[] = [], glow: THREE.BufferGeometry[] = [], huts = [hutGeo(0), hutGeo(1)], igl = [iglooModel(0), iglooModel(1), iglooModel(2)];
+    IGLOOS.forEach(([lx, lz, yaw, s], i) => {   // Shifat 10:42 PM: 3 custom igloos (even spots) + the 2 Polyfork huts (odd spots)
+        const x = ICE.cx + lx, z = ICE.cz + lz, y = (iceRaw(x, z) ?? 4) - ICE_HUT_SINK, k = ICE_HUT_K * s, b = i % 2 === 0 ? igl[i >> 1] : huts[(i >> 1) % 2];
         for (const [src, out] of [[b.body, shell], [b.glass, glow]] as [THREE.BufferGeometry, THREE.BufferGeometry[]][]) { const g = src.clone(); g.scale(k, k, k); g.rotateY(yaw); g.translate(x, y, z); out.push(g); }
     });
     return { shell: merged(shell), glow: merged(glow) };
