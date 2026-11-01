@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { QUALITY, LOWQ } from '../../quality';
+import { WEATHER } from '../env';
 
 // Shared South Sea helpers: the kit type, phone flag, haze shader, geometry colour/merge utilities and the seeded RNG.
 export interface SouthSeaKit {
@@ -16,10 +17,10 @@ export const HAZE_K = { value: 0.0021 };
 export const SKY_BLUE = new THREE.Color(0.42, 0.6, 0.78);
 // Distance haze toward the day/night fog colour (the city shaders fog much harder; the sea sights use a lighter haze so the
 // island and the far city read as silhouettes from the beach). Off underwater, where the scene fog takes over.
-export function hazeShader(tod: SouthSeaKit['tod'], inner?: (sh: any) => void) {
+export function hazeShader(tod: SouthSeaKit['tod'], inner?: (sh: any) => void, wet = false) {
     return (sh: any) => {
         inner?.(sh);
-        sh.uniforms.uHazeCol = { value: tod.fog }; sh.uniforms.uHazeK = HAZE_K;
+        sh.uniforms.uHazeCol = { value: tod.fog }; sh.uniforms.uHazeK = HAZE_K; if (wet) sh.uniforms.uWetR = WEATHER.rain;
         sh.vertexShader = 'varying vec3 vHzW;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
         { vec4 hzp = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
@@ -29,7 +30,9 @@ export function hazeShader(tod: SouthSeaKit['tod'], inner?: (sh: any) => void) {
         hzp = batchingMatrix * hzp;
         #endif
         vHzW = (modelMatrix * hzp).xyz; }`);
-        sh.fragmentShader = 'varying vec3 vHzW; uniform vec3 uHazeCol; uniform float uHazeK;\n' + sh.fragmentShader.replace('#include <fog_fragment>', `#include <fog_fragment>
+        sh.fragmentShader = 'varying vec3 vHzW; uniform vec3 uHazeCol; uniform float uHazeK;' + (wet ? ' uniform float uWetR;' : '') + '\n' + sh.fragmentShader.replace('#include <fog_fragment>', `#include <fog_fragment>
+        ${wet ? `{ vec3 wUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz); float wup = smoothstep(0.55, 0.9, dot(normal, wUp)); float wfr = pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 4.0);
+          gl_FragColor.rgb *= 1.0 - 0.3 * uWetR * wup; gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeCol * 0.9, uWetR * wup * (0.08 + 0.35 * wfr)); }` : ''}   // wet ground in rain: darker, glossy at grazing angles (terrain only)
         if (cameraPosition.y > -0.6) { float hzd = length(vHzW - cameraPosition); gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeCol, min(0.93, 1.0 - exp(-hzd * uHazeK))); }`);
     };
 }

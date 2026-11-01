@@ -161,7 +161,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
     const mats = useMemo(() => {
         const ck = (m: THREE.Material, k: string) => { (m as any).customProgramCacheKey = () => 'farm-' + k; return m; };
         return {
-            ground: ck(Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#16180f' }), { onBeforeCompile: hazeShader(kit.tod) }), 'g'),
+            ground: ck(Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#16180f' }), { onBeforeCompile: hazeShader(kit.tod, undefined, true) }), 'g'),
             bld: ck(Object.assign(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#151311' }), { onBeforeCompile: hazeShader(kit.tod) }), 'b'),
             puddle: ck(Object.assign(new THREE.MeshPhongMaterial({ color: '#41505c', specular: '#c8d4e0', shininess: 120, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), { onBeforeCompile: hazeShader(kit.tod) }), 'p'),
             trunk: ck(Object.assign(new THREE.MeshLambertMaterial({ map: tex.bark, bumpMap: tex.bark, bumpScale: 2.2, vertexColors: true, emissive: '#4a3a2c', side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.trunkWindShader) }), 't'),

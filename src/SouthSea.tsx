@@ -24,7 +24,7 @@ export type { SouthSeaKit };
 
 function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     const terrain = useMemo(islandTerrainGeo, []);
-    const terrainMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1d1b16' }); m.onBeforeCompile = hazeShader(kit.tod, beachShader); return m; }, []);
+    const terrainMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1d1b16' }); m.onBeforeCompile = hazeShader(kit.tod, beachShader, true); return m; }, []);
     useFrame((_, dt) => { BEACH_T.value += Math.min(dt, 0.1); });
     const lh = useMemo(lighthouseGeo, []), shacks = useMemo(shacksGeo, []), dock = useMemo(dockGeo, []);
     const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.15, 0.0), fallsSheet(FALLS.w, 0.7), fallsSheet(FALLS.w * 0.8, 1.4)], []);

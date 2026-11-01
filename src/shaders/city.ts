@@ -3,7 +3,7 @@ export const CITY_VS = `attribute vec3 aCol;attribute float aSeed;
 varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
 void main(){vPos=position;vNor=normal;vCol=aCol;vSeed=aSeed;gl_Position=projectionMatrix*viewMatrix*vec4(position,1.0);}`;
 export const CITY_FS = `varying vec3 vPos;varying vec3 vNor;varying vec3 vCol;varying float vSeed;
-uniform vec3 uFog;uniform float uTime;uniform vec3 uSunV;uniform float uDay;uniform float uNoon;
+uniform vec3 uFog;uniform float uTime;uniform vec3 uSunV;uniform float uDay;uniform float uNoon;uniform float uRain;
 void main(){
  if(vSeed>10.0)discard;
  vec3 n=normalize(vNor);
@@ -30,7 +30,15 @@ void main(){
   float fx=abs(mod(vPos.x,40.0)-20.0);float fz=abs(mod(vPos.z,40.0)-20.0);
   float dash=step(2.0,mod(vPos.z,4.0));float dash2=step(2.0,mod(vPos.x,4.0));
   col+=vec3(0.85,0.78,0.5)*(step(fx,0.2)*dash+step(fz,0.2)*dash2);
+  if(uRain>0.01){   // wet street (Shifat Oct 31 rain: 'wet look'): darker asphalt, glossy sky sheen at grazing angles, mirror-like puddle patches
+   vec3 V=normalize(cameraPosition-vPos);float fr=pow(1.0-max(V.y,0.0),5.0);
+   float pn=sin(vPos.x*0.37+sin(vPos.z*0.21)*2.0)*sin(vPos.z*0.29-vPos.x*0.11);float pud=smoothstep(0.35,0.6,pn);
+   col*=1.0-0.38*uRain;
+   vec3 skyC=mix(uFog*0.55,uFog*1.05+vec3(0.04,0.05,0.07),uDay);
+   col=mix(col,skyC,uRain*clamp(0.18+0.6*fr+0.45*pud*(0.4+0.6*fr),0.0,0.85));
+  }
  }
+ else if(uRain>0.01&&n.y>0.5){col*=1.0-0.18*uRain;}   // wet roofs read a little darker
  float q=length(vPos-cameraPosition)*0.0058;float fog=1.0-exp(-q*q*1.4);
  gl_FragColor=vec4(mix(col,uFog,clamp(fog,0.0,1.0)),1.0);
 }`;

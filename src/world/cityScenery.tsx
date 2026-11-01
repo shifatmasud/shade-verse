@@ -20,7 +20,7 @@ export function City() {
         g.setIndex(new THREE.BufferAttribute(world.idx, 1));
         return g;
     }, []);
-    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: CITY_VS, fragmentShader: CITY_FS, uniforms: { uFog: { value: TOD.fog }, uTime: { value: 0 }, uSunV: TOD.sunU, uDay: TOD.day, uNoon: TOD.noon } }), []);
+    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: CITY_VS, fragmentShader: CITY_FS, uniforms: { uFog: { value: TOD.fog }, uTime: { value: 0 }, uSunV: TOD.sunU, uDay: TOD.day, uNoon: TOD.noon, uRain: WEATHER.rain } }), []);
     return <mesh geometry={geo} material={mat} frustumCulled={false} />;
 }
 
