@@ -56,12 +56,12 @@ export const RECIPES: Record<string, Recipe> = {
         }
         for (let i = 0; i < 2; i++) { const t0 = 2 + r() * 9, o = O(c, 'sawtooth', 330 + r() * 80, t0, t0 + 0.35), f = F(c, 'lowpass', 900), g = G(c, 0); E(g.gain, [[t0, 0], [t0 + 0.03, 0.025], [t0 + 0.3, 0.02], [t0 + 0.35, 0]]); chain(o, f, g, c.destination); }   // far horn
     } },
-    rain: { dur: 12, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 6:40 PM 'must feel like subtle lite rain': no rumble, a faint airy hush + sparse soft droplets
-        const h = N(c, 'pink', 0, 13, 71), hb = F(c, 'bandpass', 2400, 0.7), hl = F(c, 'lowpass', 4200), hh = F(c, 'highpass', 900), hg = G(c, 0.16); chain(h, hh, hb, hl, hg, c.destination);
-        const pts: [number, number][] = []; for (let i = 0; i <= 24; i++) pts.push([i * 0.5, 0.12 + 0.05 * Math.sin(i * 0.9 + r() * 2)]); E(hg.gain, pts);
-        for (let i = 0; i < 22; i++) {   // light drops: few, short, soft (Shifat 7:02 PM 'too much rain drops')
-            const t = r() * 11.8, d = N(c, 'white', t, 0.04, 100 + i), bp = F(c, 'bandpass', 2200 + r() * 2600, 3.5), g = hit(c, t, 0.003, 0.025 + r() * 0.03), v = G(c, 0.015 + r() * 0.035);
-            chain(d, bp, g, v, c.destination);
+    rain: { dur: 14, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 7:09 PM 'no continuous rainfall, subtle gapped rain drops only': silence between a few soft drops
+        let t = 0.3 + r() * 0.6;
+        while (t < 13.6) {
+            const d = N(c, 'white', t, 0.05, 100 + Math.floor(t * 97)), bp = F(c, 'bandpass', 1600 + r() * 2400, 3.0), lp = F(c, 'lowpass', 5000), g = hit(c, t, 0.004, 0.035 + r() * 0.04), v = G(c, 0.05 + r() * 0.06);
+            chain(d, bp, lp, g, v, c.destination);
+            t += r() < 0.25 ? 0.12 + r() * 0.2 : 0.55 + r() * 1.3;   // mostly lone drops with gaps, now and then a quick pair
         }
     } },
     waves: { dur: 13, sr: 22050, loop: 2, build: (c, r) => {
