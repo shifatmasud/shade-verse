@@ -458,7 +458,7 @@ export function Scene({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (sd !== 0 && hyst.current.n >= 2 && (sd < 0 || sim.t - hyst.current.down > 6)) { ns = sd < -0.06 ? ns - 0.1 : sd < 0 ? Math.max(1, ns - 0.05) : ns + 0.05; hyst.current.n = 0; if (sd < 0) hyst.current.down = sim.t; }   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;
             if (DQ_RES) ns = DQ_RES;   // ?debug&res=x: hold the world resolution for an on-device fill-rate test   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, Math.max(1, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns)); }
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, DQ_RES ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * ns : Math.max(1, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns)); }   /* ?debug&res=x bypasses the dpr-1 floor (on-device fill-rate test only) */
         }
         if (sim.mode === 'play') {
             { const n = Math.max(2, Math.ceil(dt / 0.025)); for (let i = 0; i < n; i++) stepSim(sim, dt / n, ev); }   // same <=25 ms physics steps as before
