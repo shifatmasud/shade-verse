@@ -232,6 +232,13 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
           float sh = 1.0 - smoothstep(0.93, 1.5, irr);
           vec3 tq = mix(vec3(0.07, 0.55, 0.62), vec3(0.42, 0.9, 0.84), 1.0 - smoothstep(0.92, 1.18, irr)) * mix(0.25, 1.0, uDay);
           col = mix(col, mix(tq, col, fr * 0.55), sh * 0.85 * (1.0 - bedA * 0.9));
+          { // FBM shallows (Shifat 7:11 PM 'near the shore use fbm noise layers to make shallow water surface beautiful'): 3 drifting octaves of the
+            // caustic-cell field at different scales/directions -> soft lighter/darker current patches + bright slicks, all islands, same on all devices
+            float fb = 0.5 * texture2D(uCaus, vW.xz * 0.017 + uTime * vec2(0.006, 0.004)).r + 0.3 * texture2D(uCaus, vW.xz * 0.046 + vec2(0.37, 0.11) - uTime * vec2(0.010, 0.007)).r
+                     + 0.2 * texture2D(uCaus, vW.xz * 0.118 + vec2(0.71, 0.53) + uTime * vec2(0.021, -0.016)).r;
+            float fk = sh * (1.0 - fr * 0.5) * (1.0 - smoothstep(60.0, 260.0, length(vW.xz - cameraPosition.xz)) * 0.6);
+            col *= mix(1.0, 0.8 + 0.42 * fb, fk);
+            col += vec3(0.05, 0.09, 0.08) * smoothstep(0.58, 0.82, fb) * fk * uDay; }
           // shore foam (AAA swash zone, e.g. Sea of Thieves / Uncharted 4): driven by REAL water depth over the traced bed, not rings.
           // Each wave set runs up the beach as a front that travels with depth (surge), leaves a lacy sheet (caustic-cell lace) that thins as it
           // drains back, and the fronts are broken along the coast by low-frequency variation, so nothing repeats.
