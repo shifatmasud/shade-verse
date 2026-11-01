@@ -106,7 +106,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec3 Tb = exp(-vec3(0.17, 0.040, 0.026) * (t1 + dep * 0.6));
         vec3 scat = mix(vec3(0.06, 0.52, 0.58), uDeep * 0.85, smoothstep(4.0, 24.0, dep)) * mix(0.25, 1.0, uDay);
         vec3 seen = bedL * Tb + scat * (1.0 - Tb);
-        bedA = 1.0 - smoothstep(18.0, 34.0, dep); bedShore = smoothstep(0.1, 1.1, vW.y - bedY(vW.xz));   // at the waterline let the real beach mesh show through so there is no seam
+        bedA = 1.0 - smoothstep(3.0, 9.0, dep);   /* Shifat 3:39 AM 'sea near shore doesn't need to show what's underneath the land': only the shallow band shows the bed */ bedShore = smoothstep(0.1, 1.1, vW.y - bedY(vW.xz));   // at the waterline let the real beach mesh show through so there is no seam
         body = mix(body, seen, bedA);
       }
       vec3 r = reflect(-v, n);
@@ -122,7 +122,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         // refraction: the real seabed / shore / swimmer behind the surface, absorbed by the water thickness (red dies first)
         float dd = max(wz - oceanZ(suv), 0.0); vec3 Nv = (viewMatrix * vec4(n, 0.0)).xyz; vec2 uv2 = suv + Nv.xy * 0.04 * clamp(dd * 0.3, 0.0, 1.0);
         float sz2 = oceanZ(uv2); if (sz2 > wz) { uv2 = suv; sz2 = oceanZ(suv); }
-        float th = clamp(wz - sz2, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
+        float th = clamp((wz - sz2) * 3.5, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
         body = mix(sceneCol(uv2) * Tr + body * (1.0 - Tr), body, (1.0 - smoothstep(12.0, 32.0, length(cameraPosition - vW))) * 0.85);   /* near you the real fish/bed already show through (clear water); the low-res scene copy would only add blocky doubles */
       }
       vec3 nGlow = vec3(0.0); vec3 skR = vec3(0.0); float skA = 0.0;   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
@@ -306,6 +306,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       /* Shifat 12:57 AM 'the actual sea gets hidden until I swim': clear water - looking down near you the surface is mostly see-through (the
          seagrass, fish and seabed below show like the underwater view); grazing angles and distance keep the reflective surface */
       aAbove = min(aAbove, mix(mix(0.22, 1.0, fr * fr), 1.0, smoothstep(40.0, 150.0, dCam)));
+      { float bdS = vW.y - bedY(vW.xz); aAbove = mix(aAbove, 1.0, smoothstep(3.0, 9.0, bdS) * (1.0 - smoothstep(45.0, 70.0, bdS))); }   /* Shifat 3:39 AM: near shore the sea no longer shows the land under it - see-through only in the shallow band and over open deep water */
       // soft shorelines (AAA depth fade): where the sea is only a few cm deep over terrain - inlets, coarse terrain edges - it thins to nothing
       // instead of ending in a hard polygon edge; uses the depth of the scene copy the refraction already makes (no extra pass)
       if (uUseScene > 0.5 && !below) { vec2 suvF = vScreen.xy / vScreen.w * 0.5 + 0.5; float thr = vView.z - oceanZ(suvF), thk = thr < -2.5 ? 9.0 : max(thr, 0.0); aAbove *= smoothstep(0.0, 0.9, thk);   /* thr < 0: the low-res copy has an occluder (tree/hero) in front at this pixel - not shallow water, keep it solid (fixes dark blocks along tree silhouettes) */ col = mix(vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), col, smoothstep(0.05, 0.6, thk) * 0.6 + 0.4); }
