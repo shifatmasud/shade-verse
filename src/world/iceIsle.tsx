@@ -101,9 +101,10 @@ export function IceIsle({ kit }: { kit: SouthSeaKit }) {
         return { ground: iceMat('g'), chunks: iceMat('c'), shell: ck(shell, 's'), glow, fogM, iceU };
     }, []);
     const glowRef = useRef<THREE.MeshBasicMaterial>(mats.glow);
-    useFrame(() => { const d = kit.tod.day.value; glowRef.current.color.setRGB(1.0, 0.62 + 0.1 * d, 0.3 + 0.15 * d).multiplyScalar(0.85 + 1.4 * (1 - d)); });
+    const grpRef = useRef<THREE.Group>(null!);
+    useFrame((st) => { const c = st.camera.position; if (grpRef.current) grpRef.current.visible = Math.hypot(c.x - ICE.cx, c.z - ICE.cz) < 900; const d = kit.tod.day.value; glowRef.current.color.setRGB(1.0, 0.62 + 0.1 * d, 0.3 + 0.15 * d).multiplyScalar(0.85 + 1.4 * (1 - d)); });
     return (
-        <group name="ice-isle">
+        <group name="ice-isle" ref={grpRef}>
             <mesh geometry={terrain} material={mats.ground} />
             <mesh geometry={chunks} material={mats.chunks} />
             <mesh geometry={ig.shell} material={mats.shell} />

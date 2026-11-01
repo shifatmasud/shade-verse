@@ -180,7 +180,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
         // pines as windbreaks round the rim
         for (let t = 0; pines.length < 30 && t < 6000; t++) { const a = rnd() * 6.283, r = FARM.R * (0.6 + rnd() * 0.18), lx = Math.cos(a) * r, lz = Math.sin(a) * r; if (lz > 50 && Math.abs(lx) < 20) continue; const y = okSpot(lx, lz, 5, 5); if (y === null || pines.some((o) => Math.hypot(o[0] - lx, o[1] - lz) < 7)) continue; pines.push([lx, y, lz, 0.9 + rnd() * 0.5, rnd() * 6.28]); }
         // tall grass: verges along the roads and field edges
-        const NT = PHONE ? 3600 : 7200;   // Shifat 6:39 PM 'reuse more long grasses'
+        const NT = PHONE ? 2800 : 7200;   // Shifat 6:39 PM 'reuse more long grasses'
         for (let t = 0; tufts.length < NT && t < NT * 8; t++) { const lx = (rnd() - 0.5) * 170, lz = (rnd() - 0.5) * 170, x = FARM.cx + lx, z = FARM.cz + lz, y = farmRaw(x, z); if (y === null || y < 0.8 || farmRR(x, z) > 0.8) continue; const rd = farmRoadD(x, z); if (rd < 4.0 || nearBuilding(lx, lz, 1) || (rd > 12 && rnd() < 0.45)) continue; tufts.push([lx, y, lz, 1.1 + rnd() * 0.9, rnd() * 6.28]); }
         return { oaks, pines, tufts };
     }, []);
@@ -196,9 +196,15 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
     ], []);
     const sailRef = useRef<THREE.Mesh>(null!);
     const mill = useMemo(() => { const [x, z] = L(MILL.x, MILL.z), y0 = groundAt(MILL.x, MILL.z, 3.5) - 0.5, yaw = 0.9; return { x: x + Math.sin(yaw) * 2.7, y: y0 + 11.6, z: z + Math.cos(yaw) * 2.7, yaw }; }, []);
-    useFrame((_, dt) => { if (sailRef.current) sailRef.current.rotation.z -= Math.min(dt, 0.1) * 0.55; });
+    const grpRef = useRef<THREE.Group>(null!);
+    useFrame((st, dt) => {
+        const c = st.camera.position, d = Math.hypot(c.x - FARM.cx, c.z - FARM.cz);
+        if (grpRef.current) grpRef.current.visible = d < 900;            // past the haze the island is invisible anyway
+        objs[4].visible = d < FARM.R + 160;                               // long grass only when close enough to read
+        if (sailRef.current && d < 500) sailRef.current.rotation.z -= Math.min(dt, 0.1) * 0.55;
+    });
     return (
-        <group name="farm-isle">
+        <group name="farm-isle" ref={grpRef}>
             <mesh geometry={terrain} material={mats.ground} receiveShadow />
             <mesh geometry={puddles} material={mats.puddle} />
             <mesh geometry={blds} material={mats.bld} />
