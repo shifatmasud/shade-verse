@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildings, WATER_Y } from '../sim';
-import { ISLAND, islandH, PIRATE, ICE, iceRaw, FARM, farmRaw } from '../seaWorld';
+import { ISLAND, islandH, PIRATE, ICE, iceRaw, FARM, farmRaw, BRIDGE, BRIDGE_L, bridgeDeckU } from '../seaWorld';
 
 /* Reflection illusion (Shifat Oct 31 12:58 'illusion of reflection, super performant for all devices'). Nothing is rendered: the skyline
    around the camera (city + harbor towers from the building list, the island's hills) is projected on the CPU into a 512-px ring
@@ -12,27 +12,33 @@ export const SKYLINE_TEX = new THREE.DataTexture(data, SKYLINE_N, 2, THREE.RGBAF
 export const SKY_D_MAX = 4000;
 export const SKYLINE_C = new THREE.Vector2(0, -560);   /* ring centre: the sea shader parallax-corrects each pixel's lookup against it (Shifat Nov 1 11:13 'reflection moves with camera') */
 SKYLINE_TEX.wrapS = THREE.RepeatWrapping; SKYLINE_TEX.magFilter = SKYLINE_TEX.minFilter = THREE.LinearFilter; SKYLINE_TEX.needsUpdate = true;
-const el = new Float32Array(SKYLINE_N), dd = new Float32Array(SKYLINE_N), cr = new Float32Array(SKYLINE_N), cg = new Float32Array(SKYLINE_N), cb = new Float32Array(SKYLINE_N);
+const bt = new Float32Array(SKYLINE_N), el = new Float32Array(SKYLINE_N), dd = new Float32Array(SKYLINE_N), cr = new Float32Array(SKYLINE_N), cg = new Float32Array(SKYLINE_N), cb = new Float32Array(SKYLINE_N);
 const PAL = [[0.74, 0.76, 0.8], [0.62, 0.65, 0.7], [0.8, 0.76, 0.7], [0.55, 0.58, 0.64], [0.7, 0.72, 0.68], [0.72, 0.6, 0.55], [0.82, 0.82, 0.85]];   // sunlit facades: brighter than the blue water they lie on, so the mirrored skyline reads as pale streaks (like a real bay at noon)
 const TAU = Math.PI * 2;
 const bin = (a: number) => (((Math.round((a / TAU + 0.5) * SKYLINE_N) % SKYLINE_N) + SKYLINE_N) % SKYLINE_N);
-function put(a0: number, a1: number, e: number, r: number, g: number, b: number, dist = 0) {
+function put(a0: number, a1: number, e: number, r: number, g: number, b: number, dist = 0, eb = 0) {
     let d = a1 - a0; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU;
     const n = Math.max(1, Math.ceil(Math.abs(d) / TAU * SKYLINE_N)), s = d / n;
-    for (let k = 0; k <= n; k++) { const i = bin(a0 + s * k); if (e > el[i]) { el[i] = e; cr[i] = r; cg[i] = g; cb[i] = b; dd[i] = dist; } }
+    for (let k = 0; k <= n; k++) { const i = bin(a0 + s * k); if (e > el[i]) { el[i] = e; bt[i] = eb; cr[i] = r; cg[i] = g; cb[i] = b; dd[i] = dist; } }
 }
 function fillRing(cx: number, cz: number, baseY: number, island: boolean) {
-    el.fill(0); dd.fill(0);
+    el.fill(0); dd.fill(0); bt.fill(0);
     for (let i = 0; i < buildings.length; i++) {
         const b = buildings[i]; if (b.host !== undefined) continue;
         const mx = (b.x0 + b.x1) * 0.5 - cx, mz = (b.z0 + b.z1) * 0.5 - cz, dist = Math.max(8, Math.hypot(mx, mz) - 0.5 * Math.hypot(b.x1 - b.x0, b.z1 - b.z0));
         if (dist > 1600) continue;
-        const e = Math.atan2((b.y0 || 0) + b.h - baseY, dist); if (e < 0.004) continue;
+        const e = Math.atan2(b.h - baseY, dist);   /* b.h is the absolute top (sim collision uses it so); adding y0 sank the bridge towers to 36 m and lifted raised solids */ if (e < 0.004) continue;
         const a = [Math.atan2(b.x0 - cx, b.z0 - cz), Math.atan2(b.x1 - cx, b.z0 - cz), Math.atan2(b.x0 - cx, b.z1 - cz), Math.atan2(b.x1 - cx, b.z1 - cz)];
         let lo = a[0], hi = a[0]; for (const v of a) { let dv = v - a[0]; if (dv > Math.PI) dv -= TAU; if (dv < -Math.PI) dv += TAU; lo = Math.min(lo, a[0] + dv); hi = Math.max(hi, a[0] + dv); }
         const bb = b as any, tree = bb.kind === 'solid' && b.x1 - b.x0 < 1.5 && b.z1 - b.z0 < 1.5;   /* Shifat 9:58 PM 'blue layer hides reflection': every solid now mirrors in its own colour - trees green, the pirate hull dark, igloos white */
-        const p = tree ? [0.16, 0.36, 0.2] : bb.kind === 'solid' && Math.abs((b.x0 + b.x1) / 2 - PIRATE.cx) < 70 && Math.abs((b.z0 + b.z1) / 2 - PIRATE.cz) < 30 ? [0.16, 0.17, 0.21] : bb.kind === 'solid' && Math.hypot((b.x0 + b.x1) / 2 - ICE.cx, (b.z0 + b.z1) / 2 - ICE.cz) < 80 ? [0.9, 0.94, 0.98] : PAL[(i * 2654435761 >>> 0) % PAL.length];
+        const p = bb.kind === 'tower' ? [0.77, 0.27, 0.18] : tree ? [0.16, 0.36, 0.2] : bb.kind === 'solid' && Math.abs((b.x0 + b.x1) / 2 - PIRATE.cx) < 70 && Math.abs((b.z0 + b.z1) / 2 - PIRATE.cz) < 30 ? [0.16, 0.17, 0.21] : bb.kind === 'solid' && Math.hypot((b.x0 + b.x1) / 2 - ICE.cx, (b.z0 + b.z1) / 2 - ICE.cz) < 80 ? [0.9, 0.94, 0.98] : PAL[(i * 2654435761 >>> 0) % PAL.length];
         put(lo, hi, e, p[0], p[1], p[2], dist);
+    }
+    /* Shifat Nov 1 12:18 'why bridge doesn't have reflection': the deck mirrors as a band with sky under it (bottom elevation in row 1 B) */
+    for (let u = 0; u < BRIDGE_L; u += 8) { const z = BRIDGE.z0 - u - 4, dx = BRIDGE.x - cx, dz = z - cz, dist = Math.hypot(dx, dz); if (dist > 1600 || dist < 45) continue;   /* the deck right around the camera is underfoot / overhead, not a mirrored band */
+        const y = bridgeDeckU(u + 4), a = [Math.atan2(BRIDGE.x - BRIDGE.hw - cx, z - 4 - cz), Math.atan2(BRIDGE.x + BRIDGE.hw - cx, z - 4 - cz), Math.atan2(BRIDGE.x - BRIDGE.hw - cx, z + 4 - cz), Math.atan2(BRIDGE.x + BRIDGE.hw - cx, z + 4 - cz)];
+        let lo = a[0], hi = a[0]; for (const v of a) { let dv = v - a[0]; if (dv > Math.PI) dv -= TAU; if (dv < -Math.PI) dv += TAU; lo = Math.min(lo, a[0] + dv); hi = Math.max(hi, a[0] + dv); }
+        const eT = Math.atan2(y + 1.2 - baseY, dist); if (eT < 0.004) continue; put(lo, hi, eT, 0.5, 0.48, 0.46, dist, y > 4 ? Math.max(0, Math.atan2(y - 2.2 - baseY, dist)) : 0);
     }
     if (!island) return;
     const R = ISLAND.R * 1.15;
@@ -52,7 +58,7 @@ function fillRing(cx: number, cz: number, baseY: number, island: boolean) {
 }
 function writeRing(d: Uint8Array, tex: THREE.DataTexture) {
     for (let i = 0; i < SKYLINE_N; i++) { const o = i * 4; d[o] = cr[i] * 255; d[o + 1] = cg[i] * 255; d[o + 2] = cb[i] * 255; d[o + 3] = Math.min(255, el[i] / SKY_EL_MAX * 255);
-        if (d.length >= SKYLINE_N * 8) { const q = Math.round(Math.min(1, dd[i] / SKY_D_MAX) * 65535), o2 = (SKYLINE_N + i) * 4; d[o2] = q >> 8; d[o2 + 1] = q & 255; d[o2 + 2] = 0; d[o2 + 3] = 255; } }
+        if (d.length >= SKYLINE_N * 8) { const q = Math.round(Math.min(1, dd[i] / SKY_D_MAX) * 65535), o2 = (SKYLINE_N + i) * 4; d[o2] = q >> 8; d[o2 + 1] = q & 255; d[o2 + 2] = Math.min(255, bt[i] / SKY_EL_MAX * 255); d[o2 + 3] = 255; } }
     tex.needsUpdate = true;
 }
 export function projectSkyline(cx: number, cz: number) { fillRing(cx, cz, WATER_Y, true); writeRing(data, SKYLINE_TEX); SKYLINE_C.set(cx, cz); }
