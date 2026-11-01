@@ -229,7 +229,9 @@ for (const [lx, lz, yaw, s] of FARM_HOUSES) { const y0 = farmGroundAt(lx, lz, 5 
 { const y0 = farmGroundAt(FARM_MILL.x, FARM_MILL.z, 3.5) - 0.5; solidBox(FARM.cx + FARM_MILL.x, FARM.cz + FARM_MILL.z, 0.39, 2.6, 2.6, y0 - 2, y0 + 15); }
 // Ice Isle igloos (layout shared with src/world/iceIsle.tsx): domes of radius 4.8*s -> a box of 0.75 R half width, the dome top is landable
 export const ICE_IGLOOS: [number, number, number, number][] = [[18, 20, 2.4, 1], [30, 4, 0.9, 0.85], [10, 34, 3.6, 0.8], [34, 24, 1.8, 0.75], [-30, 30, 4.4, 0.9]];   // local x, z, door yaw, size
-for (const [lx, lz, , s] of ICE_IGLOOS) { const x = ICE.cx + lx, z = ICE.cz + lz, y = (iceRaw(x, z) ?? 4) - 0.25, R = 4.8 * s; solidBox(x, z, 0.785, R * 0.72, R * 0.72, y - 2, y + R * 0.82); }
+export const ICE_HUT_K = 1.4, ICE_HUT_SINK = 0.35;   // Polyfork huts (src/world/iceHuts.ts) at the igloo spots: scale per size unit, sunk into the snow
+const ICE_HUT_HALF: [number, number, number][] = [[3, 4.41, 3], [1.98, 4.66, 1.98]];   // refuge hut, patrol hut (half x, height, half z) - alternate by index
+ICE_IGLOOS.forEach(([lx, lz, yaw, s], i) => { const x = ICE.cx + lx, z = ICE.cz + lz, y = (iceRaw(x, z) ?? 4) - ICE_HUT_SINK, k = ICE_HUT_K * s, [hx, h, hz] = ICE_HUT_HALF[i % 2]; solidBox(x, z, yaw, hx * k, hz * k, y - 2, y + h * k * 0.9); });
 // ---------------------------------------------------------------- STEP 3: the long bridge (east side, clear of the island)
 // From the city's south beach (street at x=141) straight south over the ocean into Neon Harbor's north edge. Suspension bridge:
 // 3 towers, two main cables + hangers. Deck is walkable (one-way from above, so you can swim under it); towers are solid; towers and

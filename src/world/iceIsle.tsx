@@ -5,7 +5,8 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { ICE, iceRaw, iceRR , ICE_IGLOOS } from '../seaWorld';
+import { ICE, iceRaw, iceRR , ICE_IGLOOS, ICE_HUT_K, ICE_HUT_SINK } from '../seaWorld';
+import { hutGeo } from './iceHuts';
 import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
 import { type SouthSeaKit, PHONE, hazeShader, colorize, merged, rnd, setSeed } from './southSea/common';
 
@@ -48,16 +49,12 @@ const iceShader = (sh: any) => {
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.06, 0.32, 0.55), clamp(cr, 0.0, 1.0) * (1.0 - vIce) * 0.85 * step(5.0, vIy)); }`);
 };
 
-function iglooGeo() {
-    const shell: THREE.BufferGeometry[] = [], glow: THREE.BufferGeometry[] = [];
-    for (const [lx, lz, yaw, s] of IGLOOS) {
-        const x = ICE.cx + lx, z = ICE.cz + lz, y = (iceRaw(x, z) ?? 4) - 0.25, R = 4.8 * s;
-        const d = new THREE.SphereGeometry(R, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2); d.translate(x, y, z); colorize(d, '#eef4fa'); shell.push(d);
-        for (let k = 1; k < 4; k++) { const r = new THREE.TorusGeometry(R * Math.cos(k * 0.38) + 0.02, 0.05, 3, 24); r.rotateX(Math.PI / 2); r.translate(x, y + R * Math.sin(k * 0.38), z); colorize(r, '#c8d6e4'); shell.push(r); }   // snow-block courses
-        const t = new THREE.CylinderGeometry(1.5 * s, 1.5 * s, 3.2 * s, 10, 1, true, 0, Math.PI); t.rotateZ(Math.PI / 2); t.rotateY(yaw); const fx = Math.sin(yaw), fz = Math.cos(yaw); t.translate(x + fx * (R + 0.6 * s), y, z + fz * (R + 0.6 * s)); colorize(t, '#e6eef6'); shell.push(t);   // entrance tunnel
-        const door = new THREE.CircleGeometry(1.3 * s, 12, 0, Math.PI); door.rotateY(yaw); door.translate(x + fx * (R + 2.22 * s), y + 0.02, z + fz * (R + 2.22 * s)); glow.push(door);
-        for (const a of [yaw + 1.6, yaw - 1.4]) { const w = new THREE.CircleGeometry(0.6 * s, 8); w.rotateY(a); w.translate(x + Math.sin(a) * (R * 0.93), y + R * 0.38, z + Math.cos(a) * (R * 0.93)); glow.push(w); }   // ice windows
-    }
+function iglooGeo() {   // Shifat 9:56 PM: the igloos are now Polyfork alpine huts (refuge + patrol hut, alternating), lit windows glow at night
+    const shell: THREE.BufferGeometry[] = [], glow: THREE.BufferGeometry[] = [], base = [hutGeo(0), hutGeo(1)];
+    IGLOOS.forEach(([lx, lz, yaw, s], i) => {
+        const x = ICE.cx + lx, z = ICE.cz + lz, y = (iceRaw(x, z) ?? 4) - ICE_HUT_SINK, k = ICE_HUT_K * s, b = base[i % 2];
+        for (const [src, out] of [[b.body, shell], [b.glass, glow]] as [THREE.BufferGeometry, THREE.BufferGeometry[]][]) { const g = src.clone(); g.scale(k, k, k); g.rotateY(yaw); g.translate(x, y, z); out.push(g); }
+    });
     return { shell: merged(shell), glow: merged(glow) };
 }
 function chunksGeo() {   // floating ice chunks: flattened, jagged low-poly bergs scattered round the island
@@ -98,11 +95,8 @@ export function IceIsle({ kit }: { kit: SouthSeaKit }) {
         const ck = (m: THREE.Material, k: string) => { (m as any).customProgramCacheKey = () => 'ice-' + k; return m; };
         const iceU = { value: 1 };
         const iceMat = (k: string) => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#0b1820' }); m.onBeforeCompile = (sh: any) => { sh.uniforms.uIceDay = kit.tod.day; hazeShader(kit.tod, iceShader)(sh); }; return ck(m, k); };
-        const shell = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#000000' });
-        shell.onBeforeCompile = (sh: any) => { sh.uniforms.uIceDay = kit.tod.day; hazeShader(kit.tod, (s2: any) => {
-            s2.vertexShader = 'varying float vGy;\n' + s2.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGy = position.y;');
-            s2.fragmentShader = 'varying float vGy; uniform float uIceDay;\n' + s2.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vec3(1.0, 0.62, 0.32) * (0.10 + 0.5 * (1.0 - uIceDay)) * 0.55;');   // warm lamplight glowing through the snow shell
-        })(sh); };
+        const shell = new THREE.MeshLambertMaterial({ vertexColors: true });   /* Polyfork huts: their own baked colours, flat shaded */
+        shell.onBeforeCompile = (sh: any) => { hazeShader(kit.tod, () => {})(sh); };
         const glow = new THREE.MeshBasicMaterial({ color: '#ffb766', side: THREE.DoubleSide, toneMapped: false });
         const fogM = new THREE.ShaderMaterial({ vertexShader: FOG_VS, fragmentShader: FOG_FS, uniforms: { uFogC: { value: kit.tod.fog }, uDay: kit.tod.day }, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false });
         return { ground: iceMat('g'), chunks: iceMat('c'), shell: ck(shell, 's'), glow, fogM, iceU };
