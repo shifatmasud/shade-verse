@@ -281,8 +281,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the
       // horizon edge of big water bodies (and lets the far shading/mirror work stop early). Phones fog a little closer.
       float fd = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK; float haze = max(1.0 - exp(-fd * fd), 1.0 - exp(-length(cameraPosition - vW) * 0.0035));
-      if (below) col = mix(col, uWaterDisplay, smoothstep(45.0, 190.0, length(cameraPosition - vW)));
-      if (below) col += uWaterDisplay * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5);   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
+      if (below) col = mix(col, mix(uUWF, uWaterDisplay, 0.65) * (1.0 + 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5)), smoothstep(45.0, 190.0, length(cameraPosition - vW)));   /* Shifat Nov 1 'one world': far off, the underside takes exactly the sea wall's junction colour (seabed.ts), so surface, wall and bed meet at the horizon with no band */
+      if (below) col += uWaterDisplay * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5) * (1.0 - smoothstep(45.0, 190.0, length(cameraPosition - vW)));   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
       col = mix(col, uSky, haze * (below ? 0.0 : 0.75));
       if (!below) {
         col *= mix(0.3, 1.0, uDay);
