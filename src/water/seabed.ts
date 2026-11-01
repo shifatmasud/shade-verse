@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ISLAND } from '../seaWorld';
 import { SEA, WATER_Z, HALF, seabedAt } from '../sim';
 import { CAUSTIC_TEX, CAUSTIC_GLSL } from '../caustics';
 import { TOD, UWF } from '../world/env';
@@ -60,7 +61,8 @@ export function oceanGeo() {
 // Seabed with the real depth profile (shelf -> slope -> trench), shared with the swim floor in the sim.
 export function seabedGeo() {
     const nx = 80, nz = 110, x0 = -(HALF + 500), x1 = HALF + 500, z0 = WATER_Z + 1, z1 = SEA.zMin - 450, pos: number[] = [], idx: number[] = [];
-    for (let j = 0; j <= nz; j++) { const tz = j / nz, z = z0 + (z1 - z0) * Math.pow(tz, 1.25); for (let i = 0; i <= nx; i++) { const x = x0 + (x1 - x0) * i / nx; pos.push(x, Math.min(seabedAt(x, z), -3.2), z); } }   // the island's own terrain mesh covers anything shallower
+    for (let j = 0; j <= nz; j++) { const tz = j / nz, z = z0 + (z1 - z0) * Math.pow(tz, 1.25); for (let i = 0; i <= nx; i++) { const x = x0 + (x1 - x0) * i / nx; const ex = Math.max(Math.abs(x - ISLAND.cx), Math.abs(z - ISLAND.cz)), sink = 3.5 * (1 - THREE.MathUtils.smoothstep(ex, ISLAND.R * 1.22 - 24, ISLAND.R * 1.22));   /* under the island's terrain square the coarse (~19 m) sea floor is sunk out of sight: its facets poked through the finer island slope as dark wedges; at the square's edge it meets the terrain exactly */
+        pos.push(x, Math.min(seabedAt(x, z), -3.2) - sink, z); } }   // the island's own terrain mesh covers anything shallower
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, b = a + nx + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
 }
