@@ -216,7 +216,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
           wk = max(wk, (exp(-arm * arm / aw) * 0.55 + trail * 0.45) * fade + bow * 0.45); }
         if (wk > 0.01) { float lace = texture2D(uCaus, vW.xz * 0.23 + vec2(uTime * 0.01, 0.0)).r + 0.5 * texture2D(uCaus, vW.xz * 0.61).g;
           col = mix(col, vec3(0.95, 0.98, 1.0) * mix(0.35, 1.0, uDay), clamp(wk * smoothstep(0.05, 1.2, lace * 0.8 + wk * 0.35), 0.0, 1.0) * 0.6);
-          n = normalize(n + vec3(lace - 0.75, 0.0, texture2D(uCaus, vW.xz * 0.37 + 0.3).b - 0.5) * min(wk, 1.0) * 0.4);   /* churned wake water: the bent normal breaks the sun glitter into scattered sparkles along the arms and trail */
+          n = normalize(n + vec3(texture2D(uCaus, vW.xz * 0.23 + 0.5).r - texture2D(uCaus, vW.xz * 0.23).r, 0.0, texture2D(uCaus, vW.xz * 0.37 + 0.3).b - texture2D(uCaus, vW.xz * 0.37 + 0.8).b) * smoothstep(0.01, 0.3, wk) * 0.4);   /* zero-mean bend that fades in with the foam: the old (lace - 0.75) tilted the whole Kelvin wedge one way, so its Fresnel / clarity flipped at the wk > 0.01 edge -> a hard-edged clear-water box behind boats (Shifat Nov 1 2:14 PM screenshot) */   /* churned wake water: the bent normal breaks the sun glitter into scattered sparkles along the arms and trail */
           col *= 1.0 - 0.07 * exp(-pow(abs(wk - 0.2) * 3.0, 2.0)); }   /* faint troughs just outside the foam give the wake relief */
       }
       col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.5);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
