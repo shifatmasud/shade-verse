@@ -366,8 +366,57 @@ const OCEAN_GEO = oceanGeo(), SEABED_GEO = seabedGeo();
    ?debug&noout turns the ink outline pass off - so a phone can tell GPU fill vs CPU vs a single pass. */
 const DQ = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams('');
 const DQ_HIDE = (DQ.has('debug') && DQ.get('hide')) ? DQ.get('hide')!.split(',') : [];
-const DQ_ON = DQ.has('debug'), DQ_RES = DQ_ON && DQ.get('res') ? Math.max(0.2, Math.min(2, +DQ.get('res')!)) : 0, DQ_NOSEA = DQ_ON && DQ.has('nosea');
+const DQ_ON = DQ.has('debug'), DQ_BENCH = DQ_ON && DQ.has('bench'), DQ_RES = DQ_ON && DQ.get('res') ? Math.max(0.2, Math.min(2, +DQ.get('res')!)) : 0, DQ_NOSEA = DQ_ON && DQ.has('nosea');
 if (DQ_ON && DQ.has('noout')) OUTLINE_STATE.on = false;
+
+/* Shifat 11:22 PM: on-device bisect in ONE link. ?debug&bench: holds the view, switches one thing off at a time for 6 s each
+   (3 s settle + 3 s measure, frame-time average), then shows a table: ms per frame and fps for each step, and the saving vs base. */
+function Bench() {
+    const gl = useThree((s) => s.gl), scene = useThree((s) => s.scene);
+    const st = useRef({ i: -1, t: 0, n: 0, acc: 0, last: 0, res: [] as [string, number][], hid: [] as THREE.Object3D[], el: null as HTMLDivElement | null }).current;
+    const hideBy = (pred: (o: any) => boolean) => (on: boolean) => {
+        if (!on) { for (const o of st.hid) o.visible = true; st.hid.length = 0; return; }
+        scene.traverse((o: any) => { if ((o.isMesh || o.isPoints || o.isLine) && o.visible && pred(o)) { o.visible = false; st.hid.push(o); } });
+    };
+    const top = (o: any) => { let t = '', q = o; while (q) { if (q.name) t = q.name; q = q.parent; } return t; };
+    const W = window as any;
+    const steps = useMemo<[string, (on: boolean) => void][]>(() => [
+        ['base', () => {}],
+        ['no sea', hideBy((o) => o.material === waterMat)],
+        ['sea flat (no wave math)', (on) => { waterMat.uniforms.uBench.value.x = on ? 1 : 0; }],
+        ['sea plain colour', (on) => { waterMat.uniforms.uBench.value.y = on ? 1 : 0; }],
+        ['no reflection probe', (on) => { W.__bench = { ...(W.__bench || {}), noProbe: on }; }],
+        ['no ink outline', (on) => { OUTLINE_STATE.on = !on; }],
+        ['no glow/bloom', (on) => { W.__bench = { ...(W.__bench || {}), noBloom: on }; }],
+        ['no seabed', hideBy((o) => o.material === seabedMat)],
+        ['no city', hideBy((o) => top(o).startsWith('polyfork-city') || top(o) === 'street-props' || top(o) === 'roof-props')],
+        ['no islands', hideBy((o) => top(o) === 'south-sea')],
+        ['no skinned (heroes/bots)', hideBy((o) => o.isSkinnedMesh)],
+        ['no instanced (crowd/trees/props)', hideBy((o) => o.isInstancedMesh)],
+        ['res x0.5', (on) => { W.__benchRes = on ? 0.5 : 0; }],
+        ['base again', () => {}],
+    ], []);
+    useFrame(() => {
+        if (!DQ_BENCH) return;
+        const now = performance.now(), dt = st.last ? now - st.last : 16; st.last = now;
+        if (st.i === -1) { if (now > 9000) { st.i = 0; st.t = now; } return; }   // let shaders compile + scene settle first
+        if (st.i >= steps.length) return;
+        if (st.t === now) steps[st.i][1](true);
+        for (const o of st.hid) o.visible = false;   // components that re-show meshes every frame
+        const el = now - st.t;
+        if (el > 3000) { st.acc += dt; st.n++; }
+        if (el > 6000) {
+            const ms = st.acc / Math.max(1, st.n); st.res.push([steps[st.i][0], ms]); steps[st.i][1](false);
+            st.i++; st.t = now + 0.001; st.acc = 0; st.n = 0;
+            if (st.i < steps.length) { st.t = now; steps[st.i][1](true); }
+            if (!st.el) { st.el = document.createElement('div'); st.el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99999;background:rgba(0,0,0,.78);color:#fff;font:12px/1.35 monospace;padding:8px 10px;border-radius:8px;white-space:pre;pointer-events:none'; document.body.appendChild(st.el); }
+            const b = st.res[0][1];
+            st.el.textContent = 'BENCH ' + (st.i < steps.length ? '(' + st.i + '/' + steps.length + ' running: ' + steps[st.i][0] + ')' : 'DONE') + '\n' + st.res.map(([n, m]) => n.padEnd(34) + m.toFixed(1).padStart(6) + ' ms ' + (1000 / m).toFixed(1).padStart(5) + ' fps' + (n === 'base' ? '' : ((b - m) >= 0 ? '  -' : '  +') + Math.abs(b - m).toFixed(1) + ' ms')).join('\n');
+        }
+    }, -999);
+    return null;
+}
+
 function DebugStats() {
     const gl = useThree((s) => s.gl), scene = useThree((s) => s.scene);
     const st = useRef({ t0: 0, end: 0, n: 0, cpu: 0, rs: 0, logic: 0, hid: [] as THREE.Object3D[] }).current;
@@ -460,8 +509,9 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             const sg = Math.sign(sd); hyst.current.n = sg !== 0 && sg === hyst.current.s ? hyst.current.n + 1 : sg !== 0 ? 1 : 0; hyst.current.s = sg;
             if (sd !== 0 && hyst.current.n >= 2 && (sd < 0 || sim.t - hyst.current.down > 6)) { ns = sd < -0.06 ? ns - 0.1 : sd < 0 ? Math.max(1, ns - 0.05) : ns + 0.05; hyst.current.n = 0; if (sd < 0) hyst.current.down = sim.t; }   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;
+            if (DQ_BENCH) ns = (window as any).__benchRes || 1;   // bench holds the scaler (steps must compare like with like)
             if (DQ_RES) ns = DQ_RES;   // ?debug&res=x: hold the world resolution for an on-device fill-rate test   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, DQ_RES ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * ns : Math.max(1, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns)); }   /* ?debug&res=x bypasses the dpr-1 floor (on-device fill-rate test only) */
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, (DQ_RES || (DQ_BENCH && ns < 1)) ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * ns : Math.max(1, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns)); }   /* ?debug&res=x bypasses the dpr-1 floor (on-device fill-rate test only) */
         }
         if (sim.mode === 'play') {
             { const n = Math.max(2, Math.ceil(dt / 0.025)); for (let i = 0; i < n; i++) stepSim(sim, dt / n, ev); }   // same <=25 ms physics steps as before
@@ -731,7 +781,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" />
         <DayNight />
         <Weather />
-        <DebugStats />
+        <DebugStats /><Bench />
         {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={AA_FXAA} />}
         <SelectiveBloomPass />
         {OUTLINE_STATE.on && HD.enabled ? <HeroHDPass /> : null}

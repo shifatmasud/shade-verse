@@ -48,6 +48,7 @@ export function SelectiveBloomPass() {
     }, [state]);
 
     useFrame(() => {
+        if ((window as any).__bench?.noBloom) return;   // ?debug&bench step only
         // Shifat 11:07 AM: glow pass always on, day and night ('always glow mode')
         const oldMask = camera.layers.mask;
         const oldBackground = scene.background;

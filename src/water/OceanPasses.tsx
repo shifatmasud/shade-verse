@@ -44,7 +44,7 @@ export function IslandReflection({ waterRef, sim, perf }: { waterRef: React.Muta
         const zone = d < 520 || cam.position.z > WATER_Z - 320 || (cam.position.x > -40 && cam.position.z < -760);
         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
         const ok = !!w && zone && cam.position.z < WATER_Z + 40 && cam.position.y > WATER_Y + 0.3 && cam.position.y < 110 && !(UW as any).on && st.fr.intersectsBox(_oceanBox);   /* only when the sea is actually in view */
-        if (!ok || NOPROBE) { u.uUseRefl.value = 0; return; }
+        if (!ok || NOPROBE || (window as any).__bench?.noProbe) { u.uUseRefl.value = 0; return; }
         if (!st.tagged || st.n % 3600 === 0) {   /* was every 300 frames: a whole-scene walk on the CPU */   // (re)tag big opaque shapes - island, city blocks, bridges, harbor - plus lights (three culls lights by layer too)
             const sp = new THREE.Sphere(); let nT = 0;
             scene.traverse((o: any) => { if (o.isLight) { o.layers.enable(REFL_LAYER); return; } if (!o.isMesh || o.isPoints || o.isSkinnedMesh || o.layers.isEnabled(REFL_LAYER)) return;
