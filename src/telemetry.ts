@@ -1,7 +1,7 @@
 // Real-device diagnostics for the tab.bot build (Shifat's phone/laptop): shader errors, GPU limits, fps and render size,
 // sent to the site's own /__log so device-only bugs can be found without asking anyone to test. Only on *.sites.tab.bot.
 import { QUALITY } from './quality';
-const ON = typeof location !== 'undefined' && /\.sites\.tab\.bot$/.test(location.hostname);
+const ON = typeof location !== 'undefined' && (/\.sites\.tab\.bot$/.test(location.hostname) || /[?&]tel\b/.test(location.search));
 const id = Math.random().toString(36).slice(2, 10), logs: string[] = [];
 function send(kind: string, data: any) {
     try { const b = JSON.stringify({ id, kind, t: Math.round(performance.now()), ua: navigator.userAgent, data }); if (!navigator.sendBeacon('/__log', b)) fetch('/__log', { method: 'POST', body: b, keepalive: true }); } catch { /* ignore */ }
@@ -35,7 +35,9 @@ if (ON) {
     } catch (e) { send('frontfacing', { err: String(e) }); } }, 4000);
     addEventListener('error', (e) => { if (logs.length < 40) logs.push('onerror: ' + e.message + ' ' + (e.filename || '') + ':' + (e.lineno || '')); });
     // where the frame time goes on the real device: CPU time inside renderer.render (scene walk + GL submit, incl. driver), main-thread long tasks
-    let rMs = 0, rN = 0; const wrapGl = () => { const gl: any = (window as any).__gl; if (!gl || gl.__telWrapped) return; const rr = gl.render.bind(gl); gl.render = (...a: any[]) => { const t0 = performance.now(); try { return rr(...a); } finally { rMs += performance.now() - t0; rN++; } }; gl.__telWrapped = true; }; setInterval(wrapGl, 1000);   /* the renderer's render is an instance method (three r187) */
+    let rMs = 0, rN = 0; const wrapGl = () => { const gl: any = (window as any).__gl; if (!gl || gl.__telWrapped) return; const rr = gl.render.bind(gl); gl.render = (...a: any[]) => { const P = gpuP; const cx = P ? gl.getContext() : null; if (cx) cx.finish(); const t0 = performance.now(); try { return rr(...a); } finally { if (cx) { cx.finish(); const rt = gl.getRenderTarget(); const c = a[1]; P!.push([(c && c.isOrthographicCamera ? 'q' : 'L' + (c ? c.layers.mask : 0)) + '@' + (rt ? rt.width + 'x' + rt.height : 'cv'), Math.round((performance.now() - t0) * 10) / 10]); } rMs += performance.now() - t0; rN++; } }; gl.__telWrapped = true; }; setInterval(wrapGl, 1000);
+    /* on-device GPU cost per render call (Shifat's phone has no timer queries): one frame every 20 s, gl.finish() around each call. No visual change; one slower frame. */
+    let gpuP: any[] | null = null; setInterval(() => { if (!(window as any).__gl || document.hidden) return; gpuP = []; requestAnimationFrame(() => requestAnimationFrame(() => { const r = gpuP; gpuP = null; if (r && r.length) { const tl: any = ((window as any).__tel ||= {}); tl.gpu = r; } })); }, 20000);   /* the renderer's render is an instance method (three r187) */
     let busy = 0; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) busy += e.duration; }).observe({ type: 'longtask', buffered: false } as any); } catch { /* ignore */ }
     let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     let n = 0, last = performance.now(), sentGpu = false;
