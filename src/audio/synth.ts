@@ -56,12 +56,12 @@ export const RECIPES: Record<string, Recipe> = {
         }
         for (let i = 0; i < 2; i++) { const t0 = 2 + r() * 9, o = O(c, 'sawtooth', 330 + r() * 80, t0, t0 + 0.35), f = F(c, 'lowpass', 900), g = G(c, 0); E(g.gain, [[t0, 0], [t0 + 0.03, 0.025], [t0 + 0.3, 0.02], [t0 + 0.35, 0]]); chain(o, f, g, c.destination); }   // far horn
     } },
-    rain: { dur: 10, sr: 22050, loop: 1, build: (c, r) => {   // steady rain: soft hiss + low wash + scattered close drops
-        const h = N(c, 'white', 0, 11, 71), hb = F(c, 'bandpass', 3800, 0.45), hl = F(c, 'lowpass', 7000), hg = G(c, 0.32); chain(h, hb, hl, hg, c.destination);
-        const p = N(c, 'pink', 0, 11, 72), pl = F(c, 'lowpass', 900), pg = G(c, 0.45);
-        const pts: [number, number][] = []; for (let i = 0; i <= 20; i++) pts.push([i * 0.5, 0.36 + 0.12 * Math.sin(i * 1.3 + r() * 2)]); E(pg.gain, pts); chain(p, pl, pg, c.destination);
-        for (let i = 0; i < 140; i++) {   // drops on leaves / pavement
-            const t = r() * 9.8, d = N(c, 'white', t, 0.05, 100 + i), bp = F(c, 'bandpass', 1800 + r() * 4200, 2.5), g = hit(c, t, 0.002, 0.03 + r() * 0.04), v = G(c, 0.08 + r() * 0.22);
+    rain: { dur: 10, sr: 22050, loop: 1, build: (c, r) => {   // Shifat 6:31 PM 'subtle rain sounds, not heavy': a soft, dark patter (no bright hiss), sparse gentle drops
+        const h = N(c, 'pink', 0, 11, 71), hb = F(c, 'bandpass', 1500, 0.4), hl = F(c, 'lowpass', 2600), hg = G(c, 0.5); chain(h, hb, hl, hg, c.destination);
+        const p = N(c, 'brown', 0, 11, 72), pl = F(c, 'lowpass', 600), pg = G(c, 0.35);
+        const pts: [number, number][] = []; for (let i = 0; i <= 20; i++) pts.push([i * 0.5, 0.3 + 0.08 * Math.sin(i * 1.3 + r() * 2)]); E(pg.gain, pts); chain(p, pl, pg, c.destination);
+        for (let i = 0; i < 60; i++) {   // soft drops on leaves
+            const t = r() * 9.8, d = N(c, 'pink', t, 0.08, 100 + i), bp = F(c, 'bandpass', 900 + r() * 1600, 1.4), g = hit(c, t, 0.006, 0.05 + r() * 0.05), v = G(c, 0.05 + r() * 0.1);
             chain(d, bp, g, v, c.destination);
         }
     } },
