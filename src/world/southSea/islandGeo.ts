@@ -22,7 +22,10 @@ export function beachShader(sh: any) {
       float foam = exp(-pow((yb - wash - 0.05) / 0.07, 2.0)) * (0.6 + 0.4 * sin(bxz.x * 1.7 + bxz.y * 1.3 + uBT * 2.0));
       sc = mix(sc, vec3(1.0), clamp(foam, 0.0, 1.0) * 0.75);
       diffuseColor.rgb = mix(diffuseColor.rgb, sc, sandM); }
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.11, 0.17), smoothstep(-9.0, -14.0, vHzW.y));   /* deep shelf fades to the open-seabed tone: the terrain mesh ends at -14 m and its edge no longer draws a sawtooth through clear water */`);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.11, 0.17), max(smoothstep(-9.0, -14.0, vHzW.y), 0.55 * smoothstep(-2.5, -10.0, vHzW.y)));   /* + deeper sand gradually takes the seabed tone (smooth falloff, no pale shelf) */
+    { float uwA = 1.0 - smoothstep(-3.0, -1.2, cameraPosition.y); if (uwA > 0.0 && vHzW.y < -0.6) {   /* Shifat Nov 1 11:27 'underwater parts of land look bad': seen from under the water, submerged ground now loses red then green with depth + distance (Beer-Lambert, same as the kelp/fish), so slopes read as soft teal forms, not bright white facets */
+        float dep = max(-1.0 - vHzW.y, 0.0), dd = length(vHzW - cameraPosition), path = dep * 0.6 + dd * 0.35;
+        vec3 ab = exp(-vec3(0.45, 0.07, 0.02) * path * 0.35); diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * ab + vec3(0.04, 0.2, 0.26) * (1.0 - ab.g) * 0.8, uwA * smoothstep(-0.6, -1.4, vHzW.y)); } }   /* deep shelf fades to the open-seabed tone: the terrain mesh ends at -14 m and its edge no longer draws a sawtooth through clear water */`);
 }
 // ---------------------------------------------------------------- island terrain
 export function islandTerrainGeo(stepLod?: number) {
