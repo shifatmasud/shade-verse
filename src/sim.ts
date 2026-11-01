@@ -173,6 +173,15 @@ for (const b of SEA_BLDS) blds.push(b);   // South Sea: lighthouse, shacks (and 
 /* tree trunks are solid (Shifat Oct 31 8:51 PM 'many things need collision'): the renderers register what they actually placed, once per key.
    A slim box round the trunk (side collision) whose top sits at the canopy, so the crown is a perch you can land on. */
 const _trunkKeys = new Set<string>();
+/** what a soft contact shadow under (x, y, z) lands on: street/park, bridge deck, island/dock/harbor, or a roof below; null over open water */
+export function shadowFloorAt(x: number, y: number, z: number): number | null {
+    let g = -Infinity;
+    if (z >= WATER_Z) g = parkH(x, z);
+    const br = bridgeSurfaceAt(x, z); if (br !== null && br <= y + 0.3) g = Math.max(g, br);
+    if (z < WATER_Z + 40) { const sf = seaSurface(x, z, y); if (sf !== null && sf <= y + 0.3) g = Math.max(g, sf); }
+    for (let i = 0; i < blds.length; i++) { const b = blds[i]; if (b.h > g && b.h <= y + 0.3 && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && !(b as any).ob) g = b.h; }
+    return g === -Infinity ? null : g;
+}
 export function addTrunkSolids(key: string, pts: { x: number; y: number; z: number; s: number }[], r = 0.45, canopy = 8) {
     if (_trunkKeys.has(key)) return; _trunkKeys.add(key);
     for (const p of pts) { const hr = r * p.s; blds.push({ x0: p.x - hr, x1: p.x + hr, z0: p.z - hr, z1: p.z + hr, y0: p.y - 1.5, h: p.y + canopy * p.s, sea: true, kind: 'solid' } as any); }
@@ -220,6 +229,7 @@ export const input: Input = { rideQ: false, attackQ: false, dodgeQ: false, mx: 0
 (globalThis as any).__svMainInput = input;
 let companionSim: Sim | null = null;
 export function setCompanionSim(s: Sim | null) { companionSim = s; }
+export function getCompanionSim() { return companionSim; }
 
 export function createSim(): Sim {
     let best = 0;
