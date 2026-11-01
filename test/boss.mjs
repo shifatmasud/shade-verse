@@ -188,8 +188,7 @@ for (const [name, width, height, mobile] of cases) {
     const requiredArmor = ['abdomen', 'back', 'boot', 'chest', 'elbow', 'forearm', 'gauntlet', 'knee', 'neck', 'pelvis', 'shin', 'shoulder', 'thigh', 'upper-arm'];
     const armorOK = visual.armorMeshes >= 40 && visual.redArmorMeshes >= visual.armorMeshes - 2 /* Oct 31: the war-helm skull + mask are dark gunmetal */ && visual.armorBoneAttached === visual.armorMeshes
         && requiredArmor.every((part) => visual.armorCoverage.includes(part)) && visual.armorMetadataCount === visual.armorMeshes
-        && requiredArmor.every((part) => visual.armorMetadataCoverage.includes(part))   /* Oct 31: closed war-helm by design (Shifat redesign), so the old open-face aperture check is gone */
-        && visual.eyeLenses === 2 && visual.redEyeLenses === 2;
+        && requiredArmor.every((part) => visual.armorMetadataCoverage.includes(part))   /* Oct 31: closed war-helm by design (Shifat redesign), so the old open-face aperture check is gone */;   /* Oct 31: eyes are the emissive lens pixels now (redEyePixels), no separate eye meshes */
     const modelOK = visual.bodyModel === 'Shadow hero mesh' && visual.scaleFactor === 3 && visual.shadowScale === 1.5
         && visual.skinned && visual.bones === 17 && visual.vertices === 5172 && visual.bodyWidth > 0.98
         && visual.materialColor === 'ffffff' && visual.textureReady && visual.redEyePixels >= 100 && armorOK;

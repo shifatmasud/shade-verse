@@ -56,10 +56,6 @@ function muscularShadowGeometry(data: any) {
         // Keep Shadow's mesh and joints, with a pronounced athletic chest, shoulders, and limbs.
         positions[i] = x * (1 + torso * (0.14 + chest * 0.12) + arms * (0.18 + shoulders * 0.12) + thighs * 0.14);
         positions[i + 2] = z * (1 + arms * 0.25 + thighs * 0.16) + (z > 0 ? torso * chest * 0.09 : 0);
-        // Boss v4 (Shifat 5:15 PM 'just remove the hood'): Shadow's cowl is part of his mesh, so the BOSS copy tucks the whole hooded
-        // head inside a sculpted bald head (built on the head bone below). Shadow's own mesh is untouched.
-        const hood = smoothstep(1.70, 1.76, y);
-        if (hood > 0) { const k = 1 - 0.58 * hood; positions[i] = positions[i] * k; positions[i + 1] = 1.82 + (y - 1.82) * k; positions[i + 2] = 0.07 + (positions[i + 2] - 0.07) * k; }
     }
 
     const geometry = new THREE.BufferGeometry();
@@ -86,6 +82,8 @@ function redArmorUnderlayMaterial() {
         ctx.drawImage(image, 0, 0);
         const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = pixels.data;
+        const glowCanvas = document.createElement('canvas'); glowCanvas.width = canvas.width; glowCanvas.height = canvas.height;
+        const gctx = glowCanvas.getContext('2d'); const glow = gctx ? gctx.createImageData(canvas.width, canvas.height) : null;   // Shifat 5:24 PM: his real eyes glow hot crimson
         for (let i = 0; i < data.length; i += 4) {
             const r = data[i], g = data[i + 1], b = data[i + 2];
             const luminance = r * 0.2126 + g * 0.7152 + b * 0.0722;
@@ -93,6 +91,7 @@ function redArmorUnderlayMaterial() {
             if (lens) {
                 const shade = 0.84 + 0.16 * (luminance / 255);
                 data[i] = 255 * shade; data[i + 1] = 20 * shade; data[i + 2] = 32 * shade;
+                if (glow) { glow.data[i] = 255; glow.data[i + 1] = 255; glow.data[i + 2] = 255; glow.data[i + 3] = 255; }
             } else {
                 const shade = 0.72 + 0.28 * (luminance / 255);
                 data[i] = 106 * shade; data[i + 1] = 16 * shade; data[i + 2] = 29 * shade;
@@ -101,7 +100,9 @@ function redArmorUnderlayMaterial() {
         ctx.putImageData(pixels, 0, 0);
         const painted = new THREE.CanvasTexture(canvas);
         painted.flipY = false; painted.colorSpace = THREE.SRGBColorSpace; painted.anisotropy = 2;
-        material.map = painted; material.needsUpdate = true;
+        material.map = painted;
+        if (gctx && glow) { gctx.putImageData(glow, 0, 0); const gm = new THREE.CanvasTexture(glowCanvas); gm.flipY = false; material.emissiveMap = gm; material.emissive.setRGB(1.0, 0.03, 0.06); material.emissiveIntensity = 2.4; }
+        material.needsUpdate = true;
         source.dispose();
     });
     return material;
@@ -171,27 +172,10 @@ function buildBossRig(): BossRig {
         addMuscle(byName[side < 0 ? 'thighL' : 'thighR'], `boss-quad-${label}`, [side * 0.045, -0.18, 0.035], [0.082, 0.17, 0.095], muscleGeometry, muscleMaterial, muscleOutline);
     }
 
-    // Boss face v3 (Shifat 5:14-5:15 PM: 'just remove the hood', face red, eyes glowing hot crimson, neck needs work): bare red Shadow
-    // head (no helmet), hot HDR crimson eye slits + soft additive halo on the original lens spot (bloom layer), armoured layered gorget.
-    const HY = 0.04, HZ = 0.2;   // head centre in head-bone space (Shadow's lens sits at z 0.335)
-    const visorMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.7, 0.015, 0.03), toneMapped: false });
-    const haloMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.0, 0.015), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1), ringGeo = new THREE.CylinderGeometry(1, 1.12, 1, 12, 1, true);
+    // Boss face (Shifat 5:14-5:24 PM): no added helmet or eye pieces; his own red hooded head, his real eyes glow hot crimson
+    // (emissive lens mask in redArmorUnderlayMaterial), plus an armoured layered gorget on the neck.
+    const ringGeo = new THREE.CylinderGeometry(1, 1.12, 1, 12, 1, true);
     const hp = (shape: THREE.BufferGeometry, mat: THREE.Material, pos: [number, number, number], scl: [number, number, number], rot: [number, number, number] = [0, 0, 0], bone = byName.head, part = 'helmet') => { const m = plate(bone, part, pos, scl, mat as THREE.MeshLambertMaterial, shape); m.rotation.set(...rot); return m; };
-    const skinMat = new THREE.MeshLambertMaterial({ color: '#a8162a', emissive: '#2a0309', emissiveIntensity: 0.15 });
-    hp(armorSphereGeometry, skinMat, [0, 0.0, 0.085], [0.1, 0.125, 0.115]);                                    // bald red skull
-    hp(armorSphereGeometry, armorTrimMaterial, [0, 0.032, 0.17], [0.088, 0.024, 0.045]);                        // heavy brow ridge
-    hp(armorSphereGeometry, skinMat, [0, -0.07, 0.13], [0.072, 0.058, 0.075]);                                  // jaw
-    for (const side of [-1, 1]) hp(armorSphereGeometry, skinMat, [side * 0.055, -0.025, 0.155], [0.032, 0.03, 0.04]);   // cheekbones
-    for (const side of [-1, 1]) {
-        const slit = new THREE.Mesh(boxGeo, visorMat);
-        slit.name = `boss-visor-${side < 0 ? 'left' : 'right'}`;
-        slit.position.set(side * 0.036, 0.012, 0.198); slit.scale.set(0.036, 0.012, 0.01); slit.rotation.z = side * 0.3;
-        slit.userData.bossEyeLens = true; slit.layers.enable(SELECTIVE_BLOOM_LAYER); byName.head.add(slit);
-        const halo = new THREE.Mesh(boxGeo, haloMat);
-        halo.position.set(side * 0.036, 0.012, 0.203); halo.scale.set(0.052, 0.022, 0.003); halo.rotation.z = side * 0.3;
-        halo.layers.enable(SELECTIVE_BLOOM_LAYER); byName.head.add(halo);
-    }
     // gorget: three stacked flared rings (red / dark trim / red) + a front throat plate, so the neck reads armoured, not a thin stalk
     hp(ringGeo, armorMaterial, [0, -0.005, 0.02], [0.11, 0.06, 0.11], [0, 0, 0], byName.neck, 'neck');
     hp(ringGeo, armorTrimMaterial, [0, 0.045, 0], [0.1, 0.05, 0.1], [0, 0, 0], byName.neck, 'neck');
