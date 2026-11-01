@@ -173,6 +173,8 @@ for (const b of SEA_BLDS) blds.push(b);   // South Sea: lighthouse, shacks (and 
 /* tree trunks are solid (Shifat Oct 31 8:51 PM 'many things need collision'): the renderers register what they actually placed, once per key.
    A slim box round the trunk (side collision) whose top sits at the canopy, so the crown is a perch you can land on. */
 const _trunkKeys = new Set<string>();
+/** every registered tree: x, ground y, z, canopy height (for the baked soft ground shade) */
+export const TRUNKS: number[] = [];
 /** what a soft contact shadow under (x, y, z) lands on: street/park, bridge deck, island/dock/harbor, or a roof below; null over open water */
 export function shadowFloorAt(x: number, y: number, z: number): number | null {
     let g = -Infinity;
@@ -183,7 +185,7 @@ export function shadowFloorAt(x: number, y: number, z: number): number | null {
     return g === -Infinity ? null : g;
 }
 export function addTrunkSolids(key: string, pts: { x: number; y: number; z: number; s: number }[], r = 0.45, canopy = 8) {
-    if (_trunkKeys.has(key)) return; _trunkKeys.add(key);
+    if (_trunkKeys.has(key)) return; _trunkKeys.add(key); for (const p of pts) TRUNKS.push(p.x, p.y, p.z, p.s * canopy);
     for (const p of pts) { const hr = r * p.s; blds.push({ x0: p.x - hr, x1: p.x + hr, z0: p.z - hr, z1: p.z + hr, y0: p.y - 1.5, h: p.y + canopy * p.s, sea: true, kind: 'solid' } as any); }
 }
 
