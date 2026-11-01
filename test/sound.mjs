@@ -29,6 +29,10 @@ await poke(() => { window.__game.sim.atkT = 0.32; });
 await poke(() => { window.__game.sim.snareT = 1.65; });
 await sleep(1600);
 out.edgesPlayed = (await p.evaluate(() => window.__audio.engine.stats.played)) - s0;
+// audible output: the master bus must actually carry signal (Oct 31 bug: world/music were never routed to master and every check above still passed)
+out.audible = await p.evaluate(async () => { const E = window.__audio.engine, c = E.ctx, an = c.createAnalyser(); an.fftSize = 2048; E.master.connect(an); const d = new Float32Array(2048); let pk = 0;
+  for (let k = 0; k < 12; k++) { E.play('metal', { gain: 0.8, prio: 5 }); await new Promise((r) => setTimeout(r, 120)); an.getFloatTimeDomainData(d); for (const v of d) pk = Math.max(pk, Math.abs(v)); }
+  E.master.disconnect(an); return pk; });
 // voice cap: fire 40 one-shots at once
 out.cap = await p.evaluate(() => { const E = window.__audio.engine; const st0 = { ...E.stats }; for (let i = 0; i < 40; i++) E.play('metal', { gain: 0.1, prio: 1 }); const live = E.voices.filter((v) => v.end > E.ctx.currentTime).length; return { live, max: E.maxVoices, stolen: E.stats.stolen - st0.stolen, dropped: E.stats.dropped - st0.dropped }; });
 // mute + hidden duck
@@ -37,5 +41,5 @@ out.hidden = await p.evaluate(async () => { const E = window.__audio.engine; E.s
 // procedural render cost (all recipes, one at a time)
 out.render = await p.evaluate(async () => { const { RECIPES, renderRecipe } = window.__svSynth; const t0 = performance.now(); let audioSec = 0; const per = {}; for (const k of Object.keys(RECIPES)) { const a = performance.now(); const b = await renderRecipe(k, RECIPES[k]); per[k] = Math.round(performance.now() - a); audioSec += b.duration; } return { recipes: Object.keys(RECIPES).length, ms: Math.round(performance.now() - t0), audioSec: +audioSec.toFixed(1), slowest: Object.entries(per).sort((x, y) => y[1] - x[1]).slice(0, 4) }; });
 for (const [k, v] of Object.entries({ before, title, ...out, errors: errs })) console.log(k, JSON.stringify(v));
-const ok = !before && title.state === 'running' &&  out.start.score && out.edgesPlayed >= 6 && out.cap.live <= out.cap.max && out.mute.mutedGain < 0.01 && out.hidden.hiddenState === 'suspended' && out.hidden.back === 'running' && errs.length === 0;
+const ok = out.audible > 0.005 && !before && title.state === 'running' &&  out.start.score && out.edgesPlayed >= 6 && out.cap.live <= out.cap.max && out.mute.mutedGain < 0.01 && out.hidden.hiddenState === 'suspended' && out.hidden.back === 'running' && errs.length === 0;
 console.log(ok ? 'SOUND PASS' : 'SOUND FAIL'); await b.close(); process.exit(ok ? 0 : 1);

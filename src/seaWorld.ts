@@ -288,7 +288,7 @@ export function harborVoid(x: number, z: number) {
 /** highest walkable surface under a foot at footY: island ground always counts; decks only from above (one-way) */
 export function seaSurface(x: number, z: number, footY: number): number | null {
     let best: number | null = null;
-    const ih = islandRaw(x, z);
+    const ih = islandRaw(x, z) ?? farmRaw(x, z) ?? iceRaw(x, z);   // Oct 31 7:45 PM fix: Farm Isle + Ice Isle ground was not walkable (Shifat)
     if (ih !== null && ih > W_Y - 0.6 && !poolAt(x, z)) best = ih;
     for (const d of DECKS) if (x > d.x0 && x < d.x1 && z > d.z0 && z < d.z1 && footY >= d.y - 0.7 && (best === null || d.y > best)) best = d.y;
     const by = bridgeDeckY(x, z); if (by !== null && footY >= by - 0.7 && (best === null || by > best)) best = by;
