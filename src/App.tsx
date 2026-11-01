@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, motion } from 'framer-motion';
 import gsap from 'gsap';
-import { Scene } from './Scene';
-import { GhostCompanion } from './Ghost';
+const Scene = React.lazy(() => import('./Scene').then((m) => ({ default: m.Scene })));   /* Shifat Nov 1 2:14 PM 'UI first': the 3D world's code loads and runs only after Play */
+const GhostCompanion = React.lazy(() => import('./Ghost').then((m) => ({ default: m.GhostCompanion })));
 import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
 import { installDesktopInput, MAP_KB, MAP_PAD } from './desktopInput';
 import { QUALITY, QK, AA_MSAA } from './quality';
@@ -130,6 +130,7 @@ export function App() {
     }, []); // eslint-disable-line
 
     function start() {
+        setBoot(true);
         // Fullscreen needs the Play gesture; rejection or unsupported browsers must not block play.
         if (coarse && !document.fullscreenElement && document.documentElement.requestFullscreen) {
             try { const f = document.documentElement.requestFullscreen({ navigationUI: 'hide' }); f?.catch(() => {}); } catch (e) { /* browser keeps its bar */ }
@@ -159,10 +160,11 @@ export function App() {
     const [charge, setCharge] = useState(false), [locked, setLocked] = useState(false);
     useEffect(() => { if (!ctrlToast) return; const id = setTimeout(() => setCtrlToast(null), 4200); return () => clearTimeout(id); }, [ctrlToast]);
     const [swingOn, setSwingOn] = useState(false);
+    const [boot, setBoot] = useState(false);   // no WebGL canvas, no scene build, no render loop until the first Play
 
     return <div className={(hud.mode === 'play' ? 'stage' : 'stage menu') + (desk ? ' desk' : '')} onContextMenu={(e) => e.preventDefault()}>
         <div id="uw" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3, opacity: 0, transition: 'opacity .15s', background: 'linear-gradient(180deg, rgba(110,215,235,.24), rgba(30,140,175,.30) 45%, rgba(8,70,105,.5))' }} />
-        <Canvas
+        {boot && <Canvas
             dpr={[1, QK.dprCap]}
             gl={{ antialias: AA_MSAA, powerPreference: 'high-performance', alpha: false, stencil: false }}
             camera={{ fov: 62, near: 0.5, far: 1600, position: [0, 40, -10] }}
@@ -176,9 +178,9 @@ export function App() {
             onPointerUp={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
             onPointerCancel={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
             onLostPointerCapture={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
-        ><Scene sim={sim} ev={ev} coarse={coarse} fx={fx} perf={perf} />
-            <GhostCompanion sim={sim} />
-        </Canvas>
+        ><React.Suspense fallback={null}><Scene sim={sim} ev={ev} coarse={coarse} fx={fx} perf={perf} />
+            <GhostCompanion sim={sim} /></React.Suspense>
+        </Canvas>}
 
         <div className="hud">
             <div className="chip orbs" aria-label="orbs (tap to mute or unmute)" onPointerDown={() => { mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); audio.setMuted(mutedRef.current); }}><IOrb /><Pips n={hud.score > 0 ? ((hud.score - 1) % 10) + 1 : 0} /><span className="tiers">{Array.from({ length: Math.min(6, Math.floor(Math.max(0, hud.score - 1) / 10)) }, (_, i) => <i key={i} />)}</span>{muted && <span className="mutedmark"><ISpeaker off /></span>}</div>
@@ -190,7 +192,7 @@ export function App() {
         <div className="flash" /><i className="impact" />
         <div className="speedlines" />
         {hud.mode !== 'play' && <button className="mute" aria-label={muted ? 'Unmute' : 'Mute'} onClick={() => { audio.unlock(); mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); audio.setMuted(mutedRef.current); }}><ISpeaker off={muted} /></button>}
-        <AnimatePresence>{hud.mode !== 'play' && <><motion.div className="bar top" initial={{ y: -60 }} animate={{ y: 0 }} exit={{ y: -60 }} /><motion.div className="bar bot" initial={{ y: 60 }} animate={{ y: 0 }} exit={{ y: 60 }} /></>}</AnimatePresence>
+        {/* Shifat Nov 1 2:14 PM 'weird black lines in title screen': the cinematic letterbox bars over the menus are gone */}
 
         {hud.mode === 'play' && <>
             <div className="padzone" onPointerDown={padStart} onPointerMove={(e) => { if (e.pointerId === stickId.current) padMove(e); }} onPointerUp={stickEnd} onPointerCancel={stickEnd} />

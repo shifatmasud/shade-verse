@@ -102,7 +102,7 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 .ctoast li,.tmaps li{display:flex;gap:10px;align-items:baseline}
 kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;color:#e9dcff;opacity:.95}
 /* title screen (refs: Hollow Knight, Journey, Ori title screens — big mark, minimal type, world alive behind) */
-.overlay.title{justify-content:center!important;gap:6px;cursor:pointer;background:radial-gradient(120% 90% at 50% 45%,rgba(8,6,22,.05),rgba(8,6,22,.55) 70%,rgba(4,3,12,.82))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.overlay.title{justify-content:center!important;gap:6px;cursor:pointer;background:radial-gradient(ellipse farthest-corner at 50% 45%,rgba(8,6,22,.05),rgba(8,6,22,.42) 60%,rgba(4,3,12,.7))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 .tmark{width:clamp(54px,12vh,96px);height:clamp(54px,12vh,96px);color:#fff;filter:drop-shadow(0 0 18px rgba(170,140,255,.55)) drop-shadow(0 4px 14px rgba(0,0,0,.6));animation:tglow 4s ease-in-out infinite}
 .tmark svg{width:100%;height:100%;display:block}
 @keyframes tglow{0%,100%{filter:drop-shadow(0 0 14px rgba(170,140,255,.4)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}50%{filter:drop-shadow(0 0 26px rgba(190,160,255,.8)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}}
