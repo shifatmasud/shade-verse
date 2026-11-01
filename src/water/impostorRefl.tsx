@@ -37,7 +37,7 @@ export function ImpostorBake({ waterRef }: { waterRef: React.MutableRefObject<TH
         /* the sky dome, clouds and other huge / see-through things are not landmarks: hidden for the bake so the cards are clear where there is sky */
         const hid: THREE.Object3D[] = [];
         scene.traverse((o: any) => { if (!o.visible || !(o.isMesh || o.isPoints || o.isSprite)) return; const g = o.geometry; if (g && !g.boundingSphere) g.computeBoundingSphere();
-            const m = Array.isArray(o.material) ? o.material[0] : o.material; if (o.isPoints || o.isSprite || (g && g.boundingSphere && g.boundingSphere.radius > 1500 && !o.isInstancedMesh) || (m && m.transparent && !m.depthWrite)) { o.visible = false; hid.push(o); } });
+            const m = Array.isArray(o.material) ? o.material[0] : o.material; if (o.isPoints || o.isSprite || (g && g.boundingSphere && g.boundingSphere.radius > 1500 && !o.isInstancedMesh) || (m && ((m.transparent && !m.depthWrite) || m.side === THREE.BackSide || m.depthTest === false))) { o.visible = false; hid.push(o); } });
         cards().forEach((c, i) => {
             const span = c.u1 - c.u0, W = Math.min(2048, Math.max(256, Math.round(span / 1.2))), H = Math.round(W * IMP_HMAX / span * 2) ;
             const rt = new THREE.WebGLRenderTarget(W, Math.max(64, Math.min(1024, H)), { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true }); st.rts.push(rt);
