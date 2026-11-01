@@ -512,7 +512,7 @@ function findAnchor(s: Sim, strict = false): V3 {
         const dot = (dx * fx + dz * fz) / dh;
         if (dot < 0.3) continue;
         const sc = Math.abs(dist - 40) + (1 - dot) * 50 + (dy > 75 ? 25 : 0);
-        if (sc < bs) { bs = sc; const ox = -dx / dh, oz = -dz / dh; best = [qx + ox * 10, b.h + 3, qz + oz * 10]; }
+        if (sc < bs) { bs = sc; const ox = -dx / dh, oz = -dz / dh; best = [qx + ox * 10, b.h + 3, qz + oz * 10]; (best as any).roof = [Math.max(b.x0 + 1.5, Math.min(b.x1 - 1.5, qx - ox * 5)), b.h, Math.max(b.z0 + 1.5, Math.min(b.z1 - 1.5, qz - oz * 5))]; }   /* roof landing point for the spring (Shifat 3:39 AM) */
     }
     if (Math.abs(p[0] - BRIDGE.x) < 150) for (const a of SEA_ANCHORS) {   // South Sea 3: bridge cables + tower tops take webs
         const dx = a[0] - p[0], dz = a[2] - p[2], dh = Math.hypot(dx, dz), dy = a[1] - p[1];
@@ -661,7 +661,13 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         input.jumpQ = false;
         (s as any).anchorCar = (springAnchor as any).car ?? ((springAnchor === s.anchor) ? (s as any).anchorCar ?? -1 : -1); s.anchor = springAnchor; s.grappleFlight = true;
         const d = norm(sub(s.anchor, p)); s.web = false; s.spring = 0.4; s.ground = false;
-        v[0] = v[0] * 0.3 + d[0] * 24; v[1] = Math.max(v[1], 0) * 0.3 + d[1] * 24 + 7; v[2] = v[2] * 0.3 + d[2] * 24; ev.jump(); ev.attach();
+        const R = (springAnchor as any).roof as V3 | undefined;
+        if (R) {   /* Shifat 3:39 AM 'web spring must take you on top of the attached object': a ballistic arc that clears the roof edge and lands on top */
+            const H = Math.max(R[1], p[1]) + 6, vy = Math.sqrt(2 * G * Math.max(1, H - p[1])), T = vy / G + Math.sqrt(2 * Math.max(0.5, H - R[1] - 1) / G_FALL);
+            const kd = -60 * Math.log(0.992), hv = kd / (1 - Math.exp(-kd * T));   // air drag below (0.992 per 60 Hz frame) is undone so the arc ends on the roof
+            v[0] = (R[0] - p[0]) * hv; v[1] = vy; v[2] = (R[2] - p[2]) * hv; (s as any).springRoof = R;
+        } else { v[0] = v[0] * 0.3 + d[0] * 24; v[1] = Math.max(v[1], 0) * 0.3 + d[1] * 24 + 7; v[2] = v[2] * 0.3 + d[2] * 24; }
+        ev.jump(); ev.attach();
     }
     if (input.jumpQ) {
         input.jumpQ = false; s.grappleFlight = false;
