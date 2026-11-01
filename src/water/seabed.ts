@@ -29,12 +29,29 @@ export const seabedMat = mkSea(false), wallMat = mkSea(true);
 // draw calls). The vertex shader folds anything north of the shoreline onto it, so the sheet never covers land.
 export const OCEAN_HALF = 1500, OCEAN_SNAP = 8;   // South Sea 3: 900 -> 1500 so the sheet reaches past the raised far plane (no seabed band at the horizon)
 export const OCEAN_N = 170, OCEAN_WARP = 2.1;
+export const OCEAN_BINS = 180, OCEAN_INNER_R = 60;
 export function oceanGeo() {
-    const n = OCEAN_N, pos: number[] = [], idx: number[] = [];   /* keep 170: 124 made the camera-follow snap visibly shift the coarser wave mesh (Shifat 4:40 AM 'sea is glitching') */
+    const n = OCEAN_N, pos: number[] = [];   /* keep 170: 124 made the camera-follow snap visibly shift the coarser wave mesh (Shifat 4:40 AM 'sea is glitching') */
     const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), OCEAN_WARP) * OCEAN_HALF;
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(warp(i / n * 2 - 1), 0, warp(j / n * 2 - 1));
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i, b = a + n + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;
+    /* Shifat 11:44 PM 'sea wave math is the cause' (no sea = 2x fps on his phone): the sheet is a full 360 deg disc round the camera and every vertex
+       runs the wave math, including the ~60% behind the camera that is never seen. Triangles are stored as: the inner disc (always drawn), then the
+       rest sorted by angle round the centre in OCEAN_BINS slices, so OceanSlices can draw only the slices inside the view. Same triangles, same look. */
+    const inner: number[] = [], outer: { a: number; t: number[] }[] = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        const a = j * (n + 1) + i, b = a + n + 1;
+        for (const t of [[a, b, a + 1], [a + 1, b, b + 1]]) {
+            const cx = (pos[t[0] * 3] + pos[t[1] * 3] + pos[t[2] * 3]) / 3, cz = (pos[t[0] * 3 + 2] + pos[t[1] * 3 + 2] + pos[t[2] * 3 + 2]) / 3;
+            if (Math.hypot(cx, cz) < OCEAN_INNER_R) inner.push(...t); else outer.push({ a: Math.atan2(cx, cz), t });
+        }
+    }
+    outer.sort((p, q) => p.a - q.a);
+    const idx = inner.slice(), binStart = new Int32Array(OCEAN_BINS + 1); let bi = 0;
+    outer.forEach((o, k) => { const b = Math.min(OCEAN_BINS - 1, Math.floor((o.a + Math.PI) / (Math.PI * 2) * OCEAN_BINS)); while (bi <= b) binStart[bi++] = inner.length + k * 3; idx.push(...o.t); });
+    while (bi <= OCEAN_BINS) binStart[bi++] = idx.length;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+    g.userData = { inner: inner.length, binStart };
+    return g;
 }
 // Seabed with the real depth profile (shelf -> slope -> trench), shared with the swim floor in the sim.
 export function seabedGeo() {

@@ -8,7 +8,7 @@ import { ISLAND } from '../seaWorld';
 import { HERO_REFL } from '../caustics';
 import { worldBufferSize } from '../heroHD';
 import { UW } from '../world/env';
-import { OCEAN_SNAP } from './seabed';
+import { OCEAN_SNAP, OCEAN_BINS } from './seabed';
 import { waterMat } from './oceanMaterial';
 import { projectSkyline } from './skylineRefl';
 
@@ -17,6 +17,35 @@ const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrum
 
 export function OceanFollow({ waterRef }: { waterRef: React.MutableRefObject<THREE.Mesh | null> }) {
     useFrame(({ camera }) => { const w = waterRef.current; if (!w) return; const so = DBG ? ((window as any).__seaSnapOff || 0) : 0; w.position.set(Math.round(camera.position.x / OCEAN_SNAP) * OCEAN_SNAP + so, WATER_Y, Math.round(camera.position.z / OCEAN_SNAP) * OCEAN_SNAP + so); });   /* __seaSnapOff: sea sim test hook (shifts the sheet by whole snaps; a correct sea renders identically) */
+    return null;
+}
+
+
+/* Draws only the sea slices inside the camera's horizontal view (plus margin); everything when looking steeply down or flying high,
+   where the visible sea surrounds the camera. Three draws share one geometry: inner disc (always) + up to two angle ranges (wrap). */
+export function OceanSlices({ waterRef, geo }: { waterRef: React.MutableRefObject<THREE.Mesh | null>; geo: THREE.BufferGeometry }) {
+    const parts = useMemo(() => [0, 1].map(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', geo.attributes.position); g.setIndex(geo.index); g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e9); return g; }), [geo]);
+    const meshes = useMemo(() => parts.map((g) => { const m = new THREE.Mesh(g, waterMat); m.frustumCulled = false; m.name = 'ocean-slice'; return m; }), [parts]);
+    const st = useMemo(() => ({ dir: new THREE.Vector3(), added: false }), []);
+    useFrame(({ camera, size }) => {
+        const w = waterRef.current; if (!w) return;
+        if (!st.added) { for (const m of meshes) w.add(m); st.added = true; }
+        const ud = geo.userData as { inner: number; binStart: Int32Array }, B = OCEAN_BINS;
+        const cam = camera as THREE.PerspectiveCamera; cam.getWorldDirection(st.dir);
+        const pitch = Math.asin(THREE.MathUtils.clamp(st.dir.y, -1, 1)), high = cam.position.y - WATER_Y > 45;
+        const off = DBG && (window as any).__seaAll;
+        if (off || pitch < -0.45 || high || (UW as any).on) { w.geometry.setDrawRange(0, Infinity); meshes[0].visible = meshes[1].visible = false; return; }
+        const hh = Math.atan(Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * (size.width / Math.max(1, size.height))) + 0.35 + Math.max(0, -pitch) * 0.6;   // half the horizontal view + margin (more when tilted down)
+        if (hh >= Math.PI) { w.geometry.setDrawRange(0, Infinity); meshes[0].visible = meshes[1].visible = false; return; }
+        const yaw = Math.atan2(st.dir.x, st.dir.z);   // same angle convention as the slices (atan2(x, z))
+        const a0 = yaw - hh, a1 = yaw + hh, toBin = (a: number) => Math.floor(((a + Math.PI) / (Math.PI * 2)) * B);
+        let b0 = toBin(a0), b1 = toBin(a1) + 1;
+        w.geometry.setDrawRange(0, ud.inner);   // the main mesh draws the inner disc only
+        const rng = (m: THREE.Mesh, s: number, e: number) => { s = Math.max(0, Math.min(B, s)); e = Math.max(0, Math.min(B, e)); m.visible = e > s; if (e > s) m.geometry.setDrawRange(ud.binStart[s], ud.binStart[e] - ud.binStart[s]); };
+        if (b0 < 0) { rng(meshes[0], 0, b1); rng(meshes[1], b0 + B, B); }
+        else if (b1 > B) { rng(meshes[0], b0, B); rng(meshes[1], 0, b1 - B); }
+        else { rng(meshes[0], b0, b1); meshes[1].visible = false; }
+    }, -1);
     return null;
 }
 
