@@ -80,6 +80,17 @@ export const RECIPES: Record<string, Recipe> = {
         E(g.gain, pts); chain(s, hp, g, c.destination);
         const s2 = N(c, 'pink', 0, 8, 72), bp = F(c, 'bandpass', 1500, 0.6), g2 = G(c, 0.08); chain(s2, bp, g2, c.destination);
     } },
+    harbor: { dur: 10, sr: 22050, loop: 1, build: (c, r) => {   // Neon Harbor at night: neon tube buzz + water lapping at the piers + far city hum
+        for (const [f0, a] of [[120, 0.035], [240, 0.03], [360, 0.02], [480, 0.012], [600, 0.006]] as [number, number][]) { const o = O(c, 'sawtooth', f0, 0, 11), bp = F(c, 'bandpass', f0, 4), g = G(c, a); chain(o, bp, g, c.destination);
+            const fl = O(c, 'sine', 0.13 + r() * 0.2, 0, 11), fg = G(c, a * 0.35); fl.connect(fg); fg.connect(g.gain); }   // slow neon swell
+        for (let i = 0; i < 4; i++) { const t0 = 0.5 + r() * 9, g = G(c, 0); E(g.gain, [[t0, 1], [t0 + 0.02, 0.15], [t0 + 0.05, 1], [t0 + 0.09, 0.3], [t0 + 0.12, 1]]); const o = O(c, 'square', 120, t0, t0 + 0.13), lp = F(c, 'lowpass', 900), gg = G(c, 0.02); chain(o, lp, gg, g, c.destination); }   // tube flicker crackle
+        let t = 0.1; while (t < 10.6) {   // laps against wooden piers (hollow knock)
+            const d = 0.3 + r() * 0.45, s = N(c, 'brown', t, d + 0.1, 300 + Math.floor(t * 100)), f = F(c, 'bandpass', 180 + r() * 220, 2.2), g = hit(c, t, d * 0.3, d * 0.7), sc = G(c, 1.4 + r() * 0.8); chain(s, f, g, sc, c.destination); t += 0.6 + r() * 0.9;
+        }
+        const hum = N(c, 'brown', 0, 11, 333), lp = F(c, 'lowpass', 140), gh = G(c, 0.1); chain(hum, lp, gh, c.destination);   // far city rumble
+        const air = N(c, 'pink', 0, 11, 334), bp2 = F(c, 'bandpass', 700, 0.5), ga = G(c, 0.03); chain(air, bp2, ga, c.destination);
+        const sz = N(c, 'white', 0, 11, 335), bp3 = F(c, 'bandpass', 3200, 3), gz = G(c, 0.012); chain(sz, bp3, gz, c.destination);   // faint neon sizzle
+    } },
     crickets: { dur: 6, sr: 22050, loop: 0.5, build: (c, r) => {
         for (let k = 0; k < 3; k++) { const f0 = 4200 + k * 350 + r() * 200; let t = r() * 0.5; while (t < 6.4) { for (let j = 0; j < 3; j++) { const t0 = t + j * 0.045, o = O(c, 'sine', f0, t0, t0 + 0.03), g = G(c, 0); E(g.gain, [[t0, 0], [t0 + 0.005, 0.05 / (k + 1)], [t0 + 0.03, 0]]); chain(o, g, c.destination); } t += 0.5 + r() * 0.5; } }
     } },

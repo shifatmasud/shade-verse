@@ -19,7 +19,7 @@ export const VO_N: Record<string, number> = { shadow: 16, ghost: 8, robot: 8, bo
 for (const k in VO_N) for (let i = 0; i < VO_N[k]; i++) FILES[`vo_${k}_${i}`] = `vo/${k}_${i}`;
 // footstep sprite: 4 takes per surface, 0.32 s slots (mp3 has ~26 ms encoder delay, compensated at play time)
 export const STEP_SPRITE: Record<'concrete' | 'grass' | 'sand', number[]> = { concrete: [0, 0.32, 0.64, 0.96], grass: [1.28, 1.6, 1.92, 2.24], sand: [2.56, 2.88, 3.2, 3.52] };
-const BED_LEVEL: Record<string, number> = { city: 0.32, wind: 0.42, waves: 0.55, lake: 0.36, birds: 0.34, leaves: 0.2, crickets: 0.12, underwater: 0.45, glide: 0.4, swingair: 0.4, beam: 0.6 };
+const BED_LEVEL: Record<string, number> = { city: 0.32, wind: 0.42, waves: 0.55, lake: 0.36, birds: 0.34, leaves: 0.2, crickets: 0.12, harbor: 0.4, underwater: 0.45, glide: 0.4, swingair: 0.4, beam: 0.6 };
 
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
