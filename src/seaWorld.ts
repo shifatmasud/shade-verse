@@ -159,6 +159,32 @@ export const DOCK = { x: ISLAND.cx + 18, z0: 0, z1: 0, w: 4.2, y: 0.55 };
 }
 export const decks = DECKS;
 
+// ---------------------------------------------------------------- Tech pirate ship (Shifat Oct 31 7:05 PM: 'another island like big ship on another side, like big pirate
+// ship ... modern pirate ship full of tech'). A 120 m carbon-black galleon moored in the far south-west sea. Its decks are one-way walkable rectangles
+// (the same deck rule as the dock and the harbor), so you can land on it, run its length and swing off its masts.
+export const PIRATE = { cx: -440, cz: -1090, L: 120, B: 26, deck: 7.5 };
+/** half-beam of the hull at local x (stern at -L/2, bow at +L/2); also used by the renderer's loft */
+export function pirateHalfBeam(lx: number) {
+    const t = (lx + PIRATE.L / 2) / PIRATE.L;
+    if (t < 0 || t > 1) return 0;
+    const bow = t > 0.55 ? Math.sqrt(Math.max(0, 1 - ((t - 0.55) / 0.45) ** 2)) : 1, stern = 0.82 + 0.18 * Math.min(1, t / 0.12);
+    return (PIRATE.B / 2) * bow * stern;
+}
+export function pirateDeckY(lx: number) {   // sheer: the deck sweeps up to the forecastle and the stern castle
+    const t = (lx + PIRATE.L / 2) / PIRATE.L;
+    return PIRATE.deck + 3.2 * Math.max(0, (t - 0.8) / 0.2) ** 2;
+}
+{
+    const P = PIRATE, step = 6;
+    for (let lx = -P.L / 2 + 0.5; lx < P.L / 2 - 3; lx += step) {
+        const hw = Math.min(pirateHalfBeam(lx), pirateHalfBeam(lx + step)) - 1.0; if (hw < 1.5) continue;
+        DECKS.push({ x0: P.cx + lx, x1: P.cx + lx + step, z0: P.cz - hw, z1: P.cz + hw, y: pirateDeckY(lx + step / 2) });
+    }
+    DECKS.push({ x0: P.cx - P.L / 2 + 1, x1: P.cx - P.L / 2 + 23, z0: P.cz - 9, z1: P.cz + 9, y: P.deck + 6.2 });   // stern castle roof
+    DECKS.push({ x0: P.cx - 18, x1: P.cx - 6, z0: P.cz - 4, z1: P.cz + 4, y: P.deck + 13.5 });                     // bridge tower roof
+}
+export function isPirate(x: number, z: number, pad = 1.2) { return Math.abs(x - PIRATE.cx) < PIRATE.L / 2 * pad && Math.abs(z - PIRATE.cz) < PIRATE.B / 2 * pad + 4; }
+
 // ---------------------------------------------------------------- solid shapes (collision + web anchors)
 export const SEA_BLDS: SeaBld[] = [];
 export const LIGHTHOUSE = { x: PEAK.x, z: PEAK.z, base: 0, h: 27, r: 2.6 };
@@ -271,5 +297,5 @@ export function seaSurface(x: number, z: number, footY: number): number | null {
 /** seabed lifted by the island so the swim floor and the seabed mesh follow its underwater slopes */
 export function seaLift(x: number, z: number, y: number) { const ih = islandRaw(x, z, false) ?? farmRaw(x, z) ?? iceRaw(x, z); return ih === null ? y : Math.max(y, ih - 0.3); }
 /** enemies never spawn or roam here */
-export function inCalmZone(x: number, z: number) { return isIsland(x, z, 1.45) || isFarm(x, z, 1.45) || isIce(x, z, 1.45); }
+export function inCalmZone(x: number, z: number) { return isIsland(x, z, 1.45) || isFarm(x, z, 1.45) || isIce(x, z, 1.45) || isPirate(x, z, 1.6); }
 export const SEA_W = { W_Z, W_Y };
