@@ -1,6 +1,7 @@
 // Real-device diagnostics for the tab.bot build (Shifat's phone/laptop): shader errors, GPU limits, fps and render size,
 // sent to the site's own /__log so device-only bugs can be found without asking anyone to test. Only on *.sites.tab.bot.
 import { QUALITY } from './quality';
+import { HD } from './heroHD';
 const ON = typeof location !== 'undefined' && /\.sites\.tab\.bot$/.test(location.hostname);
 const id = Math.random().toString(36).slice(2, 10), logs: string[] = [];
 function send(kind: string, data: any) {
@@ -15,13 +16,15 @@ if (ON) {
     let rMs = 0, rN = 0; const wrapGl = () => { const gl: any = (window as any).__gl; if (!gl || gl.__telWrapped) return; const rr = gl.render.bind(gl); gl.render = (...a: any[]) => { const t0 = performance.now(); try { return rr(...a); } finally { rMs += performance.now() - t0; rN++; } }; gl.__telWrapped = true; }; setInterval(wrapGl, 1000);   /* the renderer's render is an instance method (three r187) */
     let busy = 0; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) busy += e.duration; }).observe({ type: 'longtask', buffered: false } as any); } catch { /* ignore */ }
     let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
-    let n = 0, last = performance.now(), sentGpu = false;
+    let n = 0, last = performance.now(), sentGpu = false, expN = 0;
     setInterval(() => {
         const now = performance.now(), span = now - last, fps = Math.round(frames * 1000 / span * 10) / 10; const perF = Math.max(1, frames); const cpu = { renderMsPerFrame: Math.round(rMs / perF * 10) / 10, rendersPerFrame: Math.round(rN / perF * 10) / 10, longTaskPct: Math.round(busy / span * 100) }; rMs = 0; rN = 0; busy = 0; frames = 0; last = now;
         const c = document.querySelector('canvas') as HTMLCanvasElement | null; const d: any = { build: ((document.querySelector('script[src*="index-"]') as HTMLScriptElement | null)?.src || '').split('/').pop(), fps, cpu, dpr: devicePixelRatio, css: c ? [c.clientWidth, c.clientHeight] : null, buf: c ? [c.width, c.height] : null, hud: (document.querySelector('[data-perf]') as any)?.textContent || null };
         const tl: any = (window as any).__tel; if (tl) d.tel = tl; const g: any = (window as any).__game; if (g && g.sim) d.pos = g.sim.pos.map((v: number) => Math.round(v)), d.swim = !!g.sim.swim;
         if (!sentGpu && c) { const gl = (c.getContext('webgl2') || c.getContext('webgl')) as WebGL2RenderingContext | null; if (gl) { const di = gl.getExtension('WEBGL_debug_renderer_info'); d.gpu = { renderer: di ? gl.getParameter(di.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), maxTex: gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS), maxVary: gl.getParameter(gl.MAX_VARYING_VECTORS), maxFragU: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS), maxVertU: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS), prec: (() => { const p = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT); return p ? p.precision : null; })(), exts: gl.getSupportedExtensions() }; d.quality = QUALITY; sentGpu = true; } }
-        d.logs = logs.splice(0); send('sample', d);
+        d.exp = { hd: HD.enabled }; d.logs = logs.splice(0); send('sample', d);
+        /* one-off device A/B (first 2 min of play): screen at native density (hero HD) vs screen at world density, alternating per 15 s sample */
+        if (d.tel && d.tel.mode === 'play' && expN < 8) { expN++; HD.enabled = expN >= 8 ? true : expN % 2 === 0; }
         if (++n > 40) n = 40;   // keeps going, 1 per 15 s
     }, 15000);
 }
