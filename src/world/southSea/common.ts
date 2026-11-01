@@ -33,7 +33,7 @@ export function hazeShader(tod: SouthSeaKit['tod'], inner?: (sh: any) => void, w
         sh.fragmentShader = 'varying vec3 vHzW; uniform vec3 uHazeCol; uniform float uHazeK;' + (wet ? ' uniform float uWetR;' : '') + '\n' + sh.fragmentShader.replace('#include <fog_fragment>', `#include <fog_fragment>
         ${wet ? `{ vec3 wUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz); float wup = smoothstep(0.55, 0.9, dot(normal, wUp)); float wfr = pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 4.0);
           gl_FragColor.rgb *= 1.0 - 0.3 * uWetR * wup; gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeCol * 0.9, uWetR * wup * (0.08 + 0.35 * wfr)); }` : ''}   // wet ground in rain: darker, glossy at grazing angles (terrain only)
-        if (cameraPosition.y > -0.6) { float hzd = length(vHzW - cameraPosition); gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeCol, min(0.93, 1.0 - exp(-hzd * uHazeK))); }`);
+        { float hzA = smoothstep(-3.0, -1.2, cameraPosition.y); if (hzA > 0.0) { float hzd = length(vHzW - cameraPosition); gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeCol, hzA * min(0.93, 1.0 - exp(-hzd * uHazeK))); } }   /* air haze fades out over the first metres of a dive (was a switch at the waterline) */`);
     };
 }
 export const colorize = (g: THREE.BufferGeometry, c: THREE.ColorRepresentation) => { const cc = new THREE.Color(c), n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = cc.r; a[i * 3 + 1] = cc.g; a[i * 3 + 2] = cc.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); if (g.attributes.uv) g.deleteAttribute('uv'); return g.index ? g.toNonIndexed() : g; };

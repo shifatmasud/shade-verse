@@ -54,8 +54,8 @@ void main(){
       float below = clamp(-wd, 0.0, 2.0);
       // true underworld (the sea surface discards below the line): same linear fog as diving (55 -> 190 m) plus the dive light wash
       vec3 fogc = uUwC * vec3(0.85, 1.38, 1.18) * mix(1.2, 0.85, smoothstep(0.0, 1.6, below));
-      vec3 cu = mix(c, c * vec3(0.55, 0.88, 0.95) + fogc * 0.18, 0.75);
-      cu = mix(cu, fogc, smoothstep(12.0, 150.0, z));
+      vec3 cu = mix(c, c * vec3(0.55, 0.88, 0.95) + fogc * 0.18, 0.35 + 0.4 * smoothstep(0.0, 1.2, below));   /* Shifat Nov 1 'one world': just under the line it looks like the first metre of a dive, deeper down like the dive itself */
+      cu = mix(cu, fogc, smoothstep(55.0, 190.0, z));   /* same fog law as diving (was 12 -> 150 m: the split half read murkier than the dive) */
       c = mix(c, cu, un);
     }
     float mn = 1.0 - smoothstep(0.0, 0.018, abs(wd));
