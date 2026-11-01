@@ -38,6 +38,9 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       vec2 o = uSceneTx * vec2(0.7, 0.45); vec3 c = texture2D(tScene, uv + o).rgb + texture2D(tScene, uv - o).rgb; return linearToOutputTexel(vec4(c * 0.5, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
     uniform vec4 uWL; uniform float uWLy[9];
     float wlY(float x){ float f = clamp(x * 4.0 + 4.0, 0.0, 7.999); int i = int(f); float t = f - float(i); t = t * t * (3.0 - 2.0 * t); return mix(uWLy[i], uWLy[i + 1], t); }
+    /* Shifat's Adreno 506 phone drew the sea as solid blue from above (the underwater look): gl_FrontFacing is unreliable on that GPU, so the
+       side of the surface is decided by the camera height against the live wave at the camera, and the hardware flag only within 0.4 m of it */
+    bool seaFF(){ float dc = cameraPosition.y - vHw.z; return dc > 0.4 ? true : (dc < -0.4 ? false : gl_FrontFacing); }
     void main(){ if (uBench.y > 0.5) { gl_FragColor = vec4(uDeep, 0.95); return; }   /* ?debug&bench step: sea shading off */
 
       if (uWL.w > 0.5) { vec2 sn = vScreen.xy / vScreen.w; bool airHalf = sn.y > wlY(sn.x);   /* split lens: the upper half of the lens is in air (sees only the top of the sea), the lower half is under water (sees only the wavy underside) */
@@ -50,7 +53,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       // AAA-style micro detail (Sea of Thieves / Uncharted use scrolling normal maps over the big waves): two layers of a tileable ripple normal
       // map drifting in different directions; mipmaps + a distance fade stop far-field shimmer. Above the surface only.
       float wDist = length(cameraPosition - vW);
-      if (gl_FrontFacing && !farS) { vec2 wq = vW.xz + 9.0 * vec2(sin(vW.z * 0.013 + uTime * 0.02), cos(vW.x * 0.011 - uTime * 0.017));   /* slow domain warp: the ripple tile never lines up into a grid */
+      if (seaFF() && !farS) { vec2 wq = vW.xz + 9.0 * vec2(sin(vW.z * 0.013 + uTime * 0.02), cos(vW.x * 0.011 - uTime * 0.017));   /* slow domain warp: the ripple tile never lines up into a grid */
         // texture bombing (Quilez 'texture no-tile' v3): a low-frequency variation value picks which randomly offset copy of the ripple map each patch
         // uses and blends neighbours, so the 22 m tile never shows as a repeat
         float kk = texture2D(uCaus, wq * 0.0031 + 0.37).r * 0.6 + 0.4 * (0.5 + 0.5 * sin(wq.x * 0.0071 + sin(wq.y * 0.0053) * 2.0));
@@ -74,7 +77,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       if (uRain > 0.01) g += rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 90.0, length(cameraPosition - vW)));   /* raindrop impact rings */
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
-      bool below = !gl_FrontFacing;
+      bool below = !seaFF();
       if (below) n = -n;
       // exact unpolarised Fresnel for n_air = 1.0, n_water = 1.333 (replaces the Schlick approximation); total internal reflection gives fr = 1
       float ci = clamp(dot(n, v), 0.0, 1.0), ni = below ? 1.333 : 1.0, nt = below ? 1.0 : 1.333, s2 = (ni / nt) * (ni / nt) * (1.0 - ci * ci);

@@ -133,7 +133,7 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
           vec2 q = vW.xz; vec2 g = vec2(cos(q.x * 1.7 + uT * 1.3) * 0.5 + cos(q.x * 0.9 - q.y * 1.3 + uT * 0.9) * 0.4, cos(q.y * 1.9 - uT * 1.1) * 0.5 + cos(q.y * 0.7 + q.x * 1.1 + uT * 0.8) * 0.4) * 0.06;
           g += fftSlope(q, uT) * WATER_FFT_K * (1.0 - smoothstep(30.0, 220.0, length(cameraPosition - vW)));
           if (uRain > 0.01) g += rainSlope(q, uT) * uRain * (1.0 - smoothstep(15.0, 90.0, length(cameraPosition - vW)));   /* same FFT ripple detail as the sea */
-          vec3 n = normalize(vec3(-g.x, 1.0, -g.y)); vec3 v = normalize(cameraPosition - vW); bool below = !gl_FrontFacing;
+          vec3 n = normalize(vec3(-g.x, 1.0, -g.y)); vec3 v = normalize(cameraPosition - vW); bool below = abs(cameraPosition.y - vW.y) > 0.3 ? cameraPosition.y < vW.y : !gl_FrontFacing;   /* Adreno 5xx: gl_FrontFacing unreliable */
           float fr = 0.03 + 0.97 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
           float deep = smoothstep(1.0, 0.35, rr);
           vec3 body = mix(mix(vec3(0.52, 0.9, 0.84), vec3(0.04, 0.46, 0.52), deep), vec3(0.1, 0.53, 0.53), og * 0.7);   // matches the river body at an outlet

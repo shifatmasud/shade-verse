@@ -107,7 +107,7 @@ vec3 heroCol(vec3 n){return vec3(0.025,0.022,0.04)+vec3(0.10,0.09,0.16)*max(n.y,
 vec3 sky(vec3 R){float h=max(R.y,0.0);vec3 c=mix(uHor,uZen,pow(h,0.5));c=mix(c,vec3(0.06,0.11,0.07)*(0.2+0.8*uDay),(1.0-smoothstep(0.02,0.16,h))*0.85);float s=max(dot(R,uSun),0.0);return c+vec3(1.0,0.88,0.66)*(pow(s,600.0)*3.5+pow(s,10.0)*0.12)*uDay;}
 vec2 rip(vec2 p,vec2 d,float f,float sp,float a){float ph=dot(p,d)*f+uTime*sp;return d*(cos(ph)*a*f);}
 void main(){
- vec3 V=normalize(cameraPosition-vWorld);bool below=!gl_FrontFacing;float dist=length(cameraPosition-vWorld);
+ vec3 V=normalize(cameraPosition-vWorld);bool below=abs(cameraPosition.y-vWorld.y)>0.3?cameraPosition.y<vWorld.y:!gl_FrontFacing;float dist=length(cameraPosition-vWorld);
  float rf=1.0-smoothstep(22.0,75.0,dist);vec2 p=vWorld.xz;
  vec2 g=rip(p,vec2(0.80,0.60),1.9,1.35,0.020)+rip(p,vec2(-0.55,0.83),2.7,-1.7,0.013)+rip(p,vec2(0.97,-0.24),4.3,2.3,0.006)+rip(p,vec2(-0.2,-0.98),6.1,-2.9,0.0035);
  g+=fftSlope(p,uTime)*WATER_FFT_K*(1.0-smoothstep(30.0,220.0,dist)); if(uRain>0.01) g+=rainSlope(p,uTime)*uRain*(1.0-smoothstep(15.0,90.0,dist));/* same FFT ripple detail as the sea (src/water/common.ts) */
