@@ -1,6 +1,7 @@
 // Real-device diagnostics for the tab.bot build (Shifat's phone/laptop): shader errors, GPU limits, fps and render size,
 // sent to the site's own /__log so device-only bugs can be found without asking anyone to test. Only on *.sites.tab.bot.
 import { QUALITY } from './quality';
+import { addEffect, addAfterEffect } from '@react-three/fiber';
 const ON = typeof location !== 'undefined' && (/\.sites\.tab\.bot$/.test(location.hostname) || /[?&]tel\b/.test(location.search));
 const id = Math.random().toString(36).slice(2, 10), logs: string[] = [];
 function send(kind: string, data: any) {
@@ -35,9 +36,17 @@ if (ON) {
     } catch (e) { send('frontfacing', { err: String(e) }); } }, 4000);
     addEventListener('error', (e) => { if (logs.length < 40) logs.push('onerror: ' + e.message + ' ' + (e.filename || '') + ':' + (e.lineno || '')); });
     // where the frame time goes on the real device: CPU time inside renderer.render (scene walk + GL submit, incl. driver), main-thread long tasks
-    let rMs = 0, rN = 0; const wrapGl = () => { const gl: any = (window as any).__gl; if (!gl || gl.__telWrapped) return; const rr = gl.render.bind(gl); gl.render = (...a: any[]) => { const P = gpuP; const cx = P ? gl.getContext() : null; if (cx) cx.finish(); const t0 = performance.now(); try { return rr(...a); } finally { if (cx) { cx.finish(); const rt = gl.getRenderTarget(); const c = a[1]; P!.push([(c && c.isOrthographicCamera ? 'q' : 'L' + (c ? c.layers.mask : 0)) + '@' + (rt ? rt.width + 'x' + rt.height : 'cv'), Math.round((performance.now() - t0) * 10) / 10]); } rMs += performance.now() - t0; rN++; } }; gl.__telWrapped = true; }; setInterval(wrapGl, 1000);
+    let rMs = 0, rN = 0; const wrapGl = () => { const gl: any = (window as any).__gl; if (!gl || gl.__telWrapped) return; const rr = gl.render.bind(gl); gl.render = (...a: any[]) => { (window as any).__telMark(); const P = gpuP; const cx = P ? gl.getContext() : null; if (cx) cx.finish(); const t0 = performance.now(); try { return rr(...a); } finally { if (cx) { cx.finish(); const rt = gl.getRenderTarget(); const c = a[1]; P!.push([(c && c.isOrthographicCamera ? 'q' : 'L' + (c ? c.layers.mask : 0)) + '@' + (rt ? rt.width + 'x' + rt.height : 'cv'), Math.round((performance.now() - t0) * 10) / 10]); } rMs += performance.now() - t0; rN++; (window as any).__telMarkEnd(); } }; gl.__telWrapped = true; }; setInterval(wrapGl, 1000);
     /* on-device GPU cost per render call (Shifat's phone has no timer queries): one frame every 20 s, gl.finish() around each call. No visual change; one slower frame. */
-    let gpuP: any[] | null = null; setInterval(() => { if (!(window as any).__gl || document.hidden) return; gpuP = []; requestAnimationFrame(() => requestAnimationFrame(() => { const r = gpuP; gpuP = null; if (r && r.length) { const tl: any = ((window as any).__tel ||= {}); tl.gpu = r; } })); }, 20000);   /* the renderer's render is an instance method (three r187) */
+    let gpuP: any[] | null = null; setInterval(() => { if (!(window as any).__gl || document.hidden) return; gpuP = []; requestAnimationFrame(() => requestAnimationFrame(() => { const r = gpuP; gpuP = null; if (r && r.length) { const tl: any = ((window as any).__tel ||= {}); tl.gpu = r; } })); }, 20000);
+    /* where a frame's wall time goes (10 frames every 20 s, no gl.finish): gap = start-to-start, js = frame start -> first render, rend = first -> last render end, tail = after the renders, out = time outside the frame (browser/GPU/idle) */
+    let fN = -1, fS = 0, fPrev = 0, fFirst = 0, fLast = 0; const fAcc = [0, 0, 0, 0, 0];
+    addEffect((t) => { const n = performance.now(); if (fN >= 0) { if (fPrev) fAcc[0] += n - fPrev; fPrev = n; } fS = n; fFirst = 0; fLast = 0; });
+    addAfterEffect(() => { if (fN < 0) return; const n = performance.now(); if (fFirst) { fAcc[1] += fFirst - fS; fAcc[2] += fLast - fFirst; fAcc[3] += n - fLast; } fAcc[4] += n - fS;
+        if (++fN >= 11) { const k = 10, tl: any = ((window as any).__tel ||= {}); const g = fAcc[0] / k; tl.frame = { gap: Math.round(g), js: Math.round(fAcc[1] / 11), rend: Math.round(fAcc[2] / 11), tail: Math.round(fAcc[3] / 11), out: Math.round(g - fAcc[4] / 11) }; fN = -1; } });
+    setInterval(() => { if (document.hidden || fN >= 0) return; fN = 0; fAcc.fill(0); fPrev = 0; }, 20000);
+    (window as any).__telMark = () => { if (fN >= 0 && !fFirst) fFirst = performance.now(); };
+    (window as any).__telMarkEnd = () => { if (fN >= 0) fLast = performance.now(); };   /* the renderer's render is an instance method (three r187) */
     let busy = 0; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) busy += e.duration; }).observe({ type: 'longtask', buffered: false } as any); } catch { /* ignore */ }
     let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     let n = 0, last = performance.now(), sentGpu = false;
