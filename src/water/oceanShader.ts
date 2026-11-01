@@ -226,7 +226,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       float gl0 = pow(ndh, shin) * shin * (0.0075 + 0.012 * lowSun); gl0 = (0.55 + 0.6 * lowSun) * (1.0 - exp(-0.7 * gl0)) * mix(0.25, 1.0, smoothstep(6.0, 90.0, wDist));   /* frame-by-frame sim (Shifat 5:05 AM): the near glint saturated into flat white blobs (peak ~5 clamped at 2.2) - now sharper and softly compressed: sparkles, not foam-like patches */
       vec3 sunSpec = sunC * min(gl0 + pow(rs, 40.0) * 0.3 + pow(rs, 8.0) * 0.12 * (1.0 - smoothstep(0.1, 0.5, uSun.y)), 2.2) * smoothstep(-0.05, 0.04, uSun.y);   // + a broad warm sheen when the sun is low
       float hW = farS ? wh(vP0, uTime) : hW0;   /* evaluated once per pixel (was twice) */
-      col += vec3(0.1, 0.45, 0.5) * smoothstep(0.3, 0.8, hW) * 0.25 * (1.0 - fr);
+      col += vec3(0.1, 0.45, 0.5) * smoothstep(0.1, 1.0, hW) * 0.25 * (1.0 - fr) * (1.0 - smoothstep(60.0, 180.0, wDist));   /* Nov 1: the crest tint followed the wave height at the UNDISPLACED point, which the coarse far grid maps through big triangles; its sharp threshold drew blocky staircases on the sea from the air. Softer ramp, and faded past 60-180 m where the crests are sub-pixel anyway */
       // Whitecaps (ref: Sea of Thieves / AC Black Flag): foam where the wind-wave crests peak, broken into lacy cells by the caustic network
       // (same thin-line structure as real crest foam), drifting with the wave; thin streaks trail behind. One extra fetch; fades with distance.
       float crest = 0.0;   /* Shifat 4:30 AM 'Hate foams': open-sea whitecaps + crest foam removed (also 3 texture reads less per sea pixel) */
