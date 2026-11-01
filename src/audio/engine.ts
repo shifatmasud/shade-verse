@@ -15,6 +15,7 @@ const BASE = ((import.meta as any).env?.BASE_URL || '/') + 'audio/';
 // downloaded assets (all small; see public/audio/CREDITS.md)
 const FILES: Record<string, string> = { steps: 'steps', birds: 'birds', music_explore: 'music_explore', music_action: 'music_action', music_title: 'music_title' };
 // character voice lines (Shifat Oct 29: "funny popular family friendly meme voices for every character"): public/audio/vo/<kind>_<i>, lazy-loaded
+export const MUSIC_MIX = 0.8;   // Shifat Oct 31 6:27 PM: background strings/pads at 0.8x
 export const VO_N: Record<string, number> = { shadow: 16, ghost: 8, robot: 8, boss: 7, ped: 12, cg: 104, cs: 98 };   // cg / cs: Ghost & Shadow couple banter (src/audio/banter.ts)
 for (const k in VO_N) for (let i = 0; i < VO_N[k]; i++) FILES[`vo_${k}_${i}`] = `vo/${k}_${i}`;
 // footstep sprite: 4 takes per surface, 0.32 s slots (mp3 has ~26 ms encoder delay, compensated at play time)
@@ -57,7 +58,7 @@ export class AudioEngine {
                 const c: AudioContext = new AC({ latencyHint: 'interactive' }); this.ctx = c;
                 this.master = c.createGain(); this.master.gain.value = this.muted ? 0 : 1;
                 this.world = c.createGain(); this.sfx = c.createGain(); this.amb = c.createGain(); this.music = c.createGain();
-                this.sfx.gain.value = 0.9; this.amb.gain.value = 0.85; this.music.gain.value = 0.55;
+                this.sfx.gain.value = 0.9; this.amb.gain.value = 0.85; this.music.gain.value = 0.55 * MUSIC_MIX;
                 this.muffle = c.createBiquadFilter(); this.muffle.type = 'lowpass'; this.muffle.frequency.value = 20000; this.muffle.Q.value = 0.5;
                 this.sfx.connect(this.world); this.amb.connect(this.world); this.world.connect(this.muffle); this.muffle.connect(this.master); this.music.connect(this.master);
                 if (!this.phone) { const lim = c.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 6; lim.ratio.value = 8; lim.attack.value = 0.003; lim.release.value = 0.2; this.master.connect(lim); lim.connect(c.destination); }
@@ -203,7 +204,7 @@ export class AudioEngine {
         const c = this.ctx; if (!c || c.state !== 'running') return;
         const now = c.currentTime;
         this.muffle.frequency.setTargetAtTime(this.uw > 0.5 ? 650 : 20000, now, this.uw > 0.5 ? 0.06 : 0.15);
-        this.music.gain.setTargetAtTime((this.uw > 0.5 ? 0.3 : 0.55) * this.voDuck, now, 0.3);   // voDuck: music dips a little under the couple's banter
+        this.music.gain.setTargetAtTime((this.uw > 0.5 ? 0.3 : 0.55) * MUSIC_MIX * this.voDuck, now, 0.3);   // voDuck: music dips a little under the couple's banter
         this.tickBeds(dt); this.tickMusic();
     }
 }

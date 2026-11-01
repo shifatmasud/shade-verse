@@ -1,6 +1,9 @@
 // Sound director: reads the simulation every frame (no changes to sim.ts) and turns state changes into sound.
 // Ambient beds cross-fade by zone and position; hero / enemy one-shots fire on state edges; the score follows the action.
 import { audio, STEP_SPRITE, VO_N, type Vec3 } from './engine';
+import { WEATHER } from '../world/env';
+// Mix (Shifat Oct 31 6:27 PM): ambience 1x, background strings/pads 0.8x (engine MUSIC_MIX), hero dialogue 1.2x
+const VO_MIX = 1.2;
 import { FALLS, HARBOR, ISLAND, isIsland, inHarbor, bridgeDeckY } from '../seaWorld';
 import { BANTER, type BanterTrig } from './banter';
 import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, PED_VOICE, type Sim } from '../sim';
@@ -41,7 +44,7 @@ export class SoundDirector {
     vo(kind: string, pick?: number[], o: { pos?: Vec3; gain?: number; cd?: number; force?: boolean } = {}) {
         if (!o.force && (this.voGap > 0 || this.voCd[kind] > 0)) return;
         const n = VO_N[kind], i = pick ? pick[Math.floor(Math.random() * pick.length)] : Math.floor(Math.random() * n);
-        audio.playSoon(`vo_${kind}_${i}`, { gain: o.gain ?? 0.85, pos: o.pos ?? null, prio: 4, ref: 10, maxDist: 90 }, 1.2);
+        audio.playSoon(`vo_${kind}_${i}`, { gain: (o.gain ?? 0.85) * VO_MIX, pos: o.pos ?? null, prio: 4, ref: 10, maxDist: 90 }, 1.2);
         this.voGap = 2.2; this.voCd[kind] = o.cd ?? 6;
     }
     // ---- Ghost & Shadow banter (husband & wife): an exchange plays line by line, the reply 0.3 s after the line before it ends; never overlaps
@@ -59,7 +62,7 @@ export class SoundDirector {
             let j = 0;
             const next = () => {
                 if (j >= names.length || this.sim.mode !== 'play') { this.endBanter(); return; }
-                const [sp, , text] = ex.l[j]; audio.play(names[j], { gain: 0.85, prio: 4 }); caption(sp === 'g' ? 'Ghost' : 'Shadow', text);
+                const [sp, , text] = ex.l[j]; audio.play(names[j], { gain: 0.85 * VO_MIX, prio: 4 }); caption(sp === 'g' ? 'Ghost' : 'Shadow', text);
                 const dur = bufs[j]!.duration; j++; setTimeout(next, (dur + 0.3) * 1000);
             };
             next();
@@ -155,6 +158,7 @@ export class SoundDirector {
             const harborW = sstep(70, 10, harborD) * (1 - day) * (1 - under) * (menu ? 0 : 1);   // Neon Harbor night: neon buzz + pier laps + far city hum
             audio.bed('harbor', harborW * (1 - alt * 0.6), 0, 1);
             audio.bed('underwater', under, 0, 1);
+            audio.bed('rain', menu ? 0 : WEATHER.rain.value * (1 - under) * (s.swim ? 0.6 : 1), 0, 1);   // rain ambience at 1x, follows the weather cycle
             // swinging: continuous air rush whose pitch follows speed, plus a doppler-ish lift while accelerating
             const acc = (sp - p.speed) / Math.max(dt, 1e-3); this.swingVol += ((s.web ? clamp01((sp - 6) / 30) : 0) - this.swingVol) * Math.min(1, dt * 6);
             const dop = Math.max(-0.12, Math.min(0.15, acc * 0.006));
