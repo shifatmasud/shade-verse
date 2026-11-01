@@ -10,7 +10,7 @@ export interface SouthSeaKit {
     treeGeo: (kind: 'broad' | 'umbrella' | 'poplar' | 'cherry', seed: number, leafN: number, scaleMul?: number) => { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry };
     palmTrunkTex: () => THREE.Texture; palmFrondTex: () => THREE.Texture;
     palmFrondShader: (sh: any) => void; trunkWindShader: (sh: any) => void; leafWindShader: (sh: any) => void;
-    tuftGeo: () => THREE.BufferGeometry; parkBushGeo: () => THREE.BufferGeometry; parkGrassOnCompile: (uni: { uTime: { value: number }; uHero: { value: THREE.Vector3 }; uCam: { value: THREE.Vector3 } }) => (sh: any) => void;
+    tuftGeo: (segN?: number) => THREE.BufferGeometry; parkBushGeo: () => THREE.BufferGeometry; parkGrassOnCompile: (uni: { uTime: { value: number }; uHero: { value: THREE.Vector3 }; uCam: { value: THREE.Vector3 } }) => (sh: any) => void;
 }
 export const PHONE = QUALITY.coarse || (QUALITY as any).weakGpu || LOWQ;
 export const HAZE_K = { value: 0.0021 };
