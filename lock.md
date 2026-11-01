@@ -25,7 +25,7 @@ Use and cite real visual and motion references. Capture before-and-after screens
 - Map: Jungle Island has no bridge; the only bridge runs east, city to Neon Harbor.
 - Water look: reflections subtle, blurry and blue; caustics kept; waves never tile; all water bodies share one look (`src/water/common.ts`).
 - Same visuals on all devices; performance budget = Adreno 506 phone. No change that costs fps without Shifat's OK.
-- Fish and sea-life shapes as of Oct 30 2026.
+- Fish and sea-life shapes as of Oct 30 2026. Fish = low-poly pyramid look (5-sided cone body + 3-sided tail cone, `src/world/sealife.tsx`); Shifat Nov 1: 'old pyramid like fishes were beautiful, organic fish looks disgusting'. Never smooth them.
 
 ## Checkpoint `checkpoint-2026-10-31-water` (commit f5633ad) — LOCKED by Shifat 4:51 PM Oct 31
 Restore with: `git checkout checkpoint-2026-10-31-water` (or reset main to it).
