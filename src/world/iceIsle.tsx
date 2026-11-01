@@ -38,7 +38,14 @@ const iceShader = (sh: any) => {
     sh.fragmentShader = 'varying float vIce; varying float vIy; uniform float uIceDay;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       { float fr = pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 2.0);
         float thin = 1.0 - smoothstep(-8.0, 14.0, vIy);
-        totalEmissiveRadiance += vec3(0.10, 0.42, 0.55) * vIce * (0.35 + 0.65 * fr) * (0.45 + 0.55 * thin) * mix(0.35, 1.0, uIceDay); }`);
+        totalEmissiveRadiance += vec3(0.10, 0.42, 0.55) * vIce * (0.35 + 0.65 * fr) * (0.45 + 0.55 * thin) * mix(0.35, 1.0, uIceDay);
+        // snow sparkle: sparse sun glints on the flat snow that twinkle as the camera moves
+        vec2 sc = floor(vHzW.xz * 2.0 + cameraPosition.xz * 0.2); float hs = fract(sin(dot(sc, vec2(12.9898, 78.233))) * 43758.5453);
+        totalEmissiveRadiance += vec3(1.0) * step(0.985, hs) * (1.0 - vIce) * uIceDay * 1.6 * (1.0 - smoothstep(60.0, 220.0, length(vHzW - cameraPosition))); }`).replace('#include <color_fragment>', `#include <color_fragment>
+      { // crevasses: thin deep-blue cracks across the snow fields
+        vec2 q = vHzW.xz; float c1 = abs(sin(q.x * 0.21 + sin(q.y * 0.09) * 2.6 + q.y * 0.05)); float c2 = abs(sin(q.y * 0.17 - sin(q.x * 0.07) * 2.0));
+        float cr = (1.0 - smoothstep(0.0, 0.1, c1)) * step(0.55, fract(q.y * 0.031 + q.x * 0.013)) + (1.0 - smoothstep(0.0, 0.09, c2)) * step(0.6, fract(q.x * 0.027));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.06, 0.32, 0.55), clamp(cr, 0.0, 1.0) * (1.0 - vIce) * 0.85 * step(5.0, vIy)); }`);
 };
 
 function iglooGeo() {
