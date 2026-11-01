@@ -5,9 +5,10 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { PED_SHADOWS } from './civilians';
 import { getCompanionSim, shadowFloorAt, type Sim } from '../sim';
 
-const N = 48, MAX_H = 22, MAX_D = 70;
+const N = 64, MAX_H = 22, MAX_D = 70;
 const VS = `attribute float aK; varying vec2 vUv; varying float vK; void main(){ vUv = uv; vK = aK; gl_Position = projectionMatrix * viewMatrix * modelMatrix * instanceMatrix * vec4(position, 1.0); }`;
 // Shifat 9:39 PM 'still too strong, blur & fade more': tint .80/.85/.94, quad x3.8, gaussian 1.7.
 // Shifat 9:36 PM 'too harsh & too black, more blurry, ambient colour, more faded': a multiply by a sky-blue tint (the ground keeps its own
@@ -26,15 +27,16 @@ export function ContactShadows({ sim }: { sim: Sim }) {
     const o = useMemo(() => new THREE.Object3D(), []);
     useFrame(({ camera }) => {
         const m = ref.current; if (!m) return; let n = 0;
-        const put = (x: number, feet: number, z: number, r: number, str: number) => {
+        const put = (x: number, feet: number, z: number, r: number, str: number, ground?: number) => {
             if (n >= N || Math.hypot(x - camera.position.x, z - camera.position.z) > MAX_D) return;
-            const g = shadowFloorAt(x, feet, z); if (g === null) return; const h = Math.max(0, feet - g); if (h > MAX_H) return;
+            const g = ground ?? shadowFloorAt(x, feet, z); if (g === null) return; const h = Math.max(0, feet - g); if (h > MAX_H) return;
             const t = h / MAX_H; o.position.set(x, g + 0.05, z); const s = r * 3.8 * (1 + t * 1.6); o.scale.set(s, 1, s); o.updateMatrix(); m.setMatrixAt(n, o.matrix);
             (k.array as Float32Array)[n] = str * (1 - t) * (1 - t) * (1 - Math.max(0, (Math.hypot(x - camera.position.x, z - camera.position.z) - MAX_D * 0.6) / (MAX_D * 0.4))); n++;
         };
         if (sim.mode !== 'menu' && !sim.swim) put(sim.pos[0], sim.pos[1] - 1.0, sim.pos[2], 0.9, 0.75);
         const c = getCompanionSim(); if (c && c.mode !== 'menu' && !c.swim) put(c.pos[0], c.pos[1] - 1.0, c.pos[2], 0.9, 0.75);
         for (const e of sim.enemies) { if (e.hp <= 0 && e.down > 2) continue; const r = e.boss ? 3.2 : e.kind === 3 ? 1.7 : 1.45; put(e.x, e.y, e.z, r, 0.7); }
+        for (let i = 0; i + 2 < PED_SHADOWS.length; i += 3) put(PED_SHADOWS[i], PED_SHADOWS[i + 1], PED_SHADOWS[i + 2], 0.8, 0.6, PED_SHADOWS[i + 1]);   // peds walk the street: no floor query   // the street crowd
         m.count = n; m.instanceMatrix.needsUpdate = true; k.needsUpdate = true;
     });
     return <instancedMesh ref={ref} args={[geo, mat, N]} frustumCulled={false} renderOrder={1} />;
