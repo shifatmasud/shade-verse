@@ -94,7 +94,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       if (uBench.y > 2.5 && uBench.y < 3.5) { gl_FragColor = vec4(body, 0.95); return; }   /* telemetry stage bench */   // how much of this pixel is the traced seabed (drives opacity below)
       vec2 bq = bedUV(vW.xz);
       float bY0 = bedY(vW.xz);   /* Nov 1: the bed height under this pixel, read once (was read 4 times) */
-      if (!below && uUseScene < 0.5 && vW.z < -222.0 && vW.y - bY0 < 40.0) {   /* Shifat 9:16 AM phone fps: deep water (bed > 40 m down) shows no bed anyway (bedA = 0 past 34 m), so most of the open sea skips the whole refraction trace */   /* whole open sea, not just the island square */
+      if (!below && uUseScene < 0.5 && vW.z < -222.0 && vW.y - bY0 < 15.0) {   /* Nov 1: bedA is 0 past 9 m of water at the hit, so the trace only matters where the bed is < ~15 m down (margin for slopes the bent ray reaches) - was 40 m */   /* Shifat 9:16 AM phone fps: deep water (bed > 40 m down) shows no bed anyway (bedA = 0 past 34 m), so most of the open sea skips the whole refraction trace */   /* whole open sea, not just the island square */
         // Snell: td is the refracted ray (air 1.0 -> water 1.333). Fixed-point march to where it meets the bed: t = (surface - bed(xz(t))) / -td.y
         float sy = -td.y; sy = max(sy, 0.08); float t0 = max(vW.y - bY0, 0.0) / sy, t1 = t0;
         t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = max(vW.y - bedY(vW.xz + td.xz * t1), 0.0) / sy; t1 = mix(t0, t1, 0.85);
