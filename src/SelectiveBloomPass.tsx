@@ -11,8 +11,7 @@ void main(){
   b+=(texture2D(tGlow,vUv+vec2(p.x,0.0)).rgb+texture2D(tGlow,vUv-vec2(p.x,0.0)).rgb+texture2D(tGlow,vUv+vec2(0.0,p.y)).rgb+texture2D(tGlow,vUv-vec2(0.0,p.y)).rgb)*0.10;
   b+=(texture2D(tGlow,vUv+vec2(p.x,p.y)).rgb+texture2D(tGlow,vUv+vec2(-p.x,p.y)).rgb+texture2D(tGlow,vUv+vec2(p.x,-p.y)).rgb+texture2D(tGlow,vUv-vec2(p.x,p.y)).rgb)*0.05;
   b+=(texture2D(tGlow,vUv+vec2(p.x*2.0,0.0)).rgb+texture2D(tGlow,vUv-vec2(p.x*2.0,0.0)).rgb+texture2D(tGlow,vUv+vec2(0.0,p.y*2.0)).rgb+texture2D(tGlow,vUv-vec2(0.0,p.y*2.0)).rgb)*0.025;
-  vec4 base=texture2D(tBase,vUv);
-  gl_FragColor=vec4(base.rgb+b*0.32,1.0);
+  gl_FragColor=vec4(b*0.32,0.0);   /* added onto the frame by the blend unit (ONE, ONE): same result as base+b, without copying the whole frame first */
 }`;
 
 export function SelectiveBloomPass() {
@@ -30,6 +29,7 @@ export function SelectiveBloomPass() {
             uniforms: { tBase: { value: base }, tGlow: { value: target.texture }, uBloomRes: { value: new THREE.Vector2(4, 4) } },
             vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}',
             fragmentShader: BLOOM_FS, depthTest: false, depthWrite: false, toneMapped: false,
+            transparent: true, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
         });
         const overlay = new THREE.Scene();
         const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
@@ -69,7 +69,7 @@ export function SelectiveBloomPass() {
 
             // Preserve the already-rendered outline/FXAA frame and render only explicitly tagged lights.
             gl.setRenderTarget(out);
-            gl.copyFramebufferToTexture(state.base, state.origin);
+            /* Shifat 11:41 PM phone perf: no full-frame copy any more - the glow is blended straight onto the frame */
             scene.background = null;
             camera.layers.set(SELECTIVE_BLOOM_LAYER);
             gl.setRenderTarget(state.target);
@@ -78,7 +78,7 @@ export function SelectiveBloomPass() {
             gl.setRenderTarget(out);
             camera.layers.mask = oldMask;
             scene.background = oldBackground;
-            gl.render(state.overlay, state.camera);
+            { const ac = gl.autoClear; gl.autoClear = false; gl.render(state.overlay, state.camera); gl.autoClear = ac; }   // blend onto the frame, never clear it
         } finally {
             camera.layers.mask = oldMask;
             scene.background = oldBackground;
