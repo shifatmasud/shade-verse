@@ -1,6 +1,6 @@
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
-import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, HBLOCKS, HBRIDGES, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone } from './seaWorld';
+import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, HBLOCKS, HBRIDGES, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone, FARM, ICE } from './seaWorld';
 export type V3 = [number, number, number];
 export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number; y0?: number; sea?: true; kind?: string }
 
@@ -320,10 +320,10 @@ export function resetSim(s: Sim) {
 // Flying cars (Shifat Oct 29: "flying cars must have collision & web must work on them"). One deterministic traffic model shared by
 // the renderer and the sim: cars run along street lanes at fixed altitudes; the hero collides with them (stands on the roof and rides
 // along, bumps off the sides and underside) and web swings / spring shots can attach under a car and ride with it.
-export const CITY_CAR_N = 36, BRIDGE_CAR_N = 14, CAR_N = CITY_CAR_N + BRIDGE_CAR_N, CAR_SCALE = 2.4;   // South Sea 3b: 14 more flying cars hover along the long bridge
+export const CITY_CAR_N = 36, BRIDGE_CAR_N = 14, ISLE_CAR_N = 8, CAR_N = CITY_CAR_N + BRIDGE_CAR_N + ISLE_CAR_N, CAR_SCALE = 2.4;   // South Sea 3b: 14 more flying cars hover along the long bridge
 /** Nearest street ped to the hero, published by the renderer each frame (for ped voice lines). */
 export const PED_VOICE = { x: 0, y: 0, z: 0, d: 1e9, t: 0 };
-export const CARS = [...Array.from({ length: CITY_CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 })), ...Array.from({ length: BRIDGE_CAR_N }, (_, i) => ({ axis: 2, lane: i % 3, y: i % 2 ? 5 + (i % 3) * 1.5 : 10 + (i * 7) % 6, sp: 13 + (i * 5) % 9, off: (i * 211) % 1500 }))];   // bridge cars: off spreads them over the ~2.9 km loop
+export const CARS = [...Array.from({ length: CITY_CAR_N }, (_, i) => ({ axis: i % 2, lane: ((i * 7) % 15) - 7, y: 34 + (i * 13) % 40, sp: (12 + (i * 5) % 14) * (i % 4 < 2 ? 1 : -1), off: (i * 97) % 600 })), ...Array.from({ length: BRIDGE_CAR_N }, (_, i) => ({ axis: 2, lane: i % 3, y: i % 2 ? 5 + (i % 3) * 1.5 : 10 + (i * 7) % 6, sp: 13 + (i * 5) % 9, off: (i * 211) % 1500 })), ...Array.from({ length: ISLE_CAR_N }, (_, i) => ({ axis: 3, lane: i % 2, y: 16 + (i * 5) % 14, sp: (11 + (i * 3) % 6) * (i % 4 < 2 ? 1 : -1), off: i * 1.9 }))];   // Oct 31: 4 cars circle Farm Isle and 4 the Ice Isle (Shifat 5:48 PM: only drones + flying cars there)   // bridge cars: off spreads them over the ~2.9 km loop
 const CAR_HX = 1.0 * CAR_SCALE, CAR_HZ = 2.2 * CAR_SCALE, CAR_BOT = -0.5 * CAR_SCALE, CAR_TOP = 1.01 * CAR_SCALE;
 /** World position, velocity and half extents of car i at sim time t. */
 /** The car the player is flying (Shifat Oct 29: "let us ride flying cars", "Enter when close to vehicle to ride"). i = -1: none.
@@ -347,6 +347,11 @@ export function carAt(i: number, t: number) {
         else { const th = Math.PI + (q - 2 * S - Math.PI * RT) / RT; x = BRIDGE.x + RT * Math.cos(th); w = wMin + RT * Math.sin(th); vx = -Math.sin(th) * c.sp; vz = -Math.cos(th) * c.sp; yaw = Math.atan2(vx, vz); }
         const turning = Math.abs(vx) > 0.3 * c.sp;
         return { x, y: baseY(w) + c.y + Math.sin(t * 1.1 + i) * 0.5, z: BRIDGE.z0 - w, vx, vy: Math.cos(t * 1.1 + i) * 0.55, vz, hx: turning ? CAR_HZ : CAR_HX, hz: CAR_HZ, wrap: false, yaw };
+    }
+    if (c.axis === 3) {   // island loops: a lazy wobbling orbit round each new island
+        const I = c.lane === 0 ? FARM : ICE, R = I.R * (c.lane === 0 ? 0.75 : 0.9) + (i % 3) * 9, w = c.sp / R, th = c.off * 3.3 + t * w;
+        const x = I.cx + Math.cos(th) * R * (1 + 0.08 * Math.sin(th * 3 + i)), z = I.cz + Math.sin(th) * R, vx = -Math.sin(th) * R * w, vz = Math.cos(th) * R * w;
+        return { x, y: c.y + (c.lane === 1 ? 14 : 0) + Math.sin(t * 0.9 + i) * 0.8, z, vx, vy: Math.cos(t * 0.9 + i) * 0.7, vz, hx: CAR_HZ, hz: CAR_HZ, wrap: false, yaw: Math.atan2(vx, vz) };
     }
     const u = ((c.off + t * c.sp) % 640 + 640) % 640 - 320, l = c.lane * CELL + CELL / 2, y = c.y + Math.sin(t + i) * 0.6, vy = Math.cos(t + i) * 0.6;
     return c.axis === 0 ? { x: l, y, z: u, vx: 0, vy, vz: c.sp, hx: CAR_HX, hz: CAR_HZ, wrap: Math.abs(u) > 316, yaw: c.sp > 0 ? 0 : Math.PI } : { x: u, y, z: l, vx: c.sp, vy, vz: 0, hx: CAR_HZ, hz: CAR_HX, wrap: Math.abs(u) > 316, yaw: c.sp > 0 ? Math.PI / 2 : -Math.PI / 2 };
