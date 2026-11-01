@@ -210,14 +210,14 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         for (int i = 0; i < 5; i++) { vec4 b = uBoat[i]; vec2 d = vW.xz - b.xy; if (dot(d, d) > 6400.0 || below) continue;
           vec2 fw = vec2(sin(b.z), cos(b.z)); float s = dot(d, fw), l = dot(d, vec2(fw.y, -fw.x)), bk = -s;
           float fade = (1.0 - smoothstep(-7.0, -4.5, s)) * (1.0 - smoothstep(8.0, 75.0, bk)) * clamp(b.w * 0.6, 0.0, 1.0);
-          float arm = abs(abs(l) - max(bk - 5.0, 0.0) * 0.354 - 1.6), aw = 0.6 + max(bk, 0.0) * 0.06;
-          float trail = exp(-l * l / (3.0 + max(bk, 0.0) * 0.18)) * (1.0 - smoothstep(3.0, 45.0, bk));
+          float arm = abs(abs(l) - max(bk - 5.0, 0.0) * 0.354 - 1.6), aw = 1.6 + max(bk, 0.0) * 0.14;   /* Shifat Nov 1 2:14 PM 'wake trail harsh, blur soft it': wider, fainter arms that diffuse as they age */
+          float trail = exp(-l * l / (6.0 + max(bk, 0.0) * 0.4)) * (1.0 - smoothstep(3.0, 45.0, bk));
           float bow = exp(-pow(length(vec2(l * 0.8, s - 6.0)) - 2.8, 2.0) * 1.5) * smoothstep(2.0, 6.5, s);
-          wk = max(wk, (exp(-arm * arm / aw) * 0.9 + trail * 0.75) * fade + bow * 0.7); }
+          wk = max(wk, (exp(-arm * arm / aw) * 0.55 + trail * 0.45) * fade + bow * 0.45); }
         if (wk > 0.01) { float lace = texture2D(uCaus, vW.xz * 0.23 + vec2(uTime * 0.01, 0.0)).r + 0.5 * texture2D(uCaus, vW.xz * 0.61).g;
-          col = mix(col, vec3(0.95, 0.98, 1.0) * mix(0.35, 1.0, uDay), clamp(wk * smoothstep(0.25, 0.85, lace * 0.8 + wk * 0.35), 0.0, 1.0) * 0.85);
-          n = normalize(n + vec3(lace - 0.75, 0.0, texture2D(uCaus, vW.xz * 0.37 + 0.3).b - 0.5) * min(wk, 1.0) * 0.9);   /* churned wake water: the bent normal breaks the sun glitter into scattered sparkles along the arms and trail */
-          col *= 1.0 - 0.18 * exp(-pow(abs(wk - 0.25) * 4.0, 2.0)); }   /* faint troughs just outside the foam give the wake relief */
+          col = mix(col, vec3(0.95, 0.98, 1.0) * mix(0.35, 1.0, uDay), clamp(wk * smoothstep(0.05, 1.2, lace * 0.8 + wk * 0.35), 0.0, 1.0) * 0.6);
+          n = normalize(n + vec3(lace - 0.75, 0.0, texture2D(uCaus, vW.xz * 0.37 + 0.3).b - 0.5) * min(wk, 1.0) * 0.4);   /* churned wake water: the bent normal breaks the sun glitter into scattered sparkles along the arms and trail */
+          col *= 1.0 - 0.07 * exp(-pow(abs(wk - 0.2) * 3.0, 2.0)); }   /* faint troughs just outside the foam give the wake relief */
       }
       col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.5);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       if (uBench.y > 3.5 && uBench.y < 4.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
