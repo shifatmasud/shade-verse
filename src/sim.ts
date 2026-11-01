@@ -571,11 +571,25 @@ export function actionCtx(s: Sim) {
     return { grab, melee, shot, snare: snare && !((s as any).snareCd > 0) };
 }
 let hitN: [number, number] | null = null, hitB = -1;
+/* oriented box collision (Shifat Oct 31 8:51 PM 'houses etc need collision'): same rules as the AABB loop, done in the box's own frame */
+function collideOB(s: Sim, prevY: number, b: any, bi: number, hw: number, hh: number) {
+    const p = s.pos, v = s.vel, [cx, cz, yaw, ex, ez] = b.ob as number[];
+    if (Math.abs(p[0] - cx) > b.x1 - cx + hw || Math.abs(p[2] - cz) > b.z1 - cz + hw || p[1] - hh > b.h + 0.05 || p[1] + hh <= (b.y0 ?? 0)) return;
+    const c = Math.cos(yaw), sn = Math.sin(yaw), dx = p[0] - cx, dz = p[2] - cz, lx = dx * c - dz * sn, lz = dx * sn + dz * c;
+    if (Math.abs(lx) >= ex + hw || Math.abs(lz) >= ez + hw) return;
+    if (prevY - hh >= b.h - 0.6 && v[1] <= 0.5) { p[1] = b.h + hh; if (v[1] < 0) v[1] = 0; s.ground = true; s.safe = [p[0], p[1], p[2]]; return; }
+    const px = ex + hw - Math.abs(lx), pz = ez + hw - Math.abs(lz); let nx = 0, nz = 0, d = 0;
+    if (px < pz) { nx = Math.sign(lx) || 1; d = px; } else { nz = Math.sign(lz) || 1; d = pz; }
+    const wx = nx * c + nz * sn, wz = -nx * sn + nz * c;   // local normal -> world (rotateY)
+    p[0] += wx * d; p[2] += wz * d; const vn = v[0] * wx + v[2] * wz; if (vn < 0) { v[0] -= wx * vn * 1.1; v[2] -= wz * vn * 1.1; }
+    hitB = bi; hitN = [wx, wz];
+}
 function collide(s: Sim, prevY: number) {
     const p = s.pos, v = s.vel; s.ground = false; hitN = null; hitB = -1;
     const hw = 0.5, hh = 1.0;
     for (let bi = 0; bi < blds.length; bi++) {
         const b = blds[bi];
+        if ((b as any).ob) { collideOB(s, prevY, b, bi, hw, hh); continue; }   // rotated solid (farm houses, barn ...)
         if (p[0] + hw <= b.x0 || p[0] - hw >= b.x1 || p[2] + hw <= b.z0 || p[2] - hw >= b.z1 || p[1] - hh > b.h + 0.05 || p[1] + hh <= (b.y0 ?? 0)) continue;
         if (prevY - hh >= b.h - 0.6 && v[1] <= 0.5) { p[1] = b.h + hh; if (v[1] < 0) v[1] = 0; s.ground = true; s.safe = [p[0], p[1], p[2]]; continue; }
         const l = p[0] + hw - b.x0, r = b.x1 - (p[0] - hw), f = p[2] + hw - b.z0, k = b.z1 - (p[2] - hw), m = Math.min(l, r, f, k);

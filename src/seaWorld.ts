@@ -1,7 +1,7 @@
 // South Sea plan, steps 2-4 (Shifat Oct 29): the jungle island, the long bridge and the 2nd city.
 // Pure data + height functions shared by the sim (walk / land / swim / anchors) and the renderer. No imports from sim.ts
 // (sim.ts imports this file), so the few world constants it needs are repeated here.
-export interface SeaBld { x0: number; x1: number; z0: number; z1: number; h: number; y0?: number; sea: true; kind: 'light' | 'shack' | 'tower' | 'harbor'; host?: number }
+export interface SeaBld { x0: number; x1: number; z0: number; z1: number; h: number; y0?: number; sea: true; kind: 'light' | 'shack' | 'tower' | 'harbor' | 'solid'; host?: number; ob?: [number, number, number, number, number] }   // ob = oriented box [cx, cz, yaw, halfX, halfZ]; x0..z1 then encloses it
 const W_Z = -222, W_Y = -1.0;
 const sm = (a: number, b: number, v: number) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -201,6 +201,35 @@ for (const [a, c] of [[2.3, 0], [2.75, 1], [3.6, 2], [4.4, 3], [5.6, 4]] as [num
     SEA_BLDS.push({ x0: x - 2.4, x1: x + 2.4, z0: z - 2.4, z1: z + 2.4, h: y + 3.4, sea: true, kind: 'shack' });
 }
 
+
+// ---------------------------------------------------------------- solid props (Shifat Oct 31 8:51 PM 'many things need collision: bridge parts, houses etc')
+/** oriented solid box: centre, yaw (same convention as geometry.rotateY), half sizes, bottom / top y. The AABB encloses it for anchors and line-of-sight. */
+export function solidBox(cx: number, cz: number, yaw: number, hx: number, hz: number, y0: number, h: number) {
+    const c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw)), ex = hx * c + hz * s, ez = hx * s + hz * c;
+    SEA_BLDS.push({ x0: cx - ex, x1: cx + ex, z0: cz - ez, z1: cz + ez, h, y0, sea: true, kind: 'solid', ob: yaw ? [cx, cz, yaw, hx, hz] : undefined });
+}
+{   // pirate ship: hull below the decks (swim into it = blocked; decks stay one-way from above), stern castle, bridge tower, masts
+    const P = PIRATE;
+    for (let lx = -P.L / 2 + 3; lx < P.L / 2 - 3; lx += 8) { const m = lx + 4, hw = pirateHalfBeam(m) * 0.92; if (hw < 1.5) continue; solidBox(P.cx + m, P.cz, 0, 4, hw, -9, pirateDeckY(m) - 1.2); }
+    solidBox(P.cx - P.L / 2 + 12, P.cz, 0, 11, 9, P.deck, P.deck + 6.2);   // stern castle (its roof is also a deck)
+    solidBox(P.cx - 12, P.cz, 0, 6, 4, P.deck, P.deck + 13);             // bridge tower
+    for (const [mx, mh] of [[-30, 36], [4, 44], [34, 38]] as [number, number][]) solidBox(P.cx + mx, P.cz, 0, 0.8, 0.8, pirateDeckY(mx), pirateDeckY(mx) + mh);   // masts (= pirateShip MASTS)
+}
+// Farm Isle buildings (layout shared with src/world/farmIsle.tsx): two-storey houses, red barn, silo, windmill
+export const FARM_HOUSES: [number, number, number, number][] = [   // local x, z, yaw, size
+    [-26, 24, 0.25, 1], [-2, 30, -0.35, 0.92], [12, 2, 2.6, 1.05], [-30, -2, 1.7, 0.95], [-44, 18, 0.6, 0.9], [-8, -6, -1.2, 1], [6, -30, 2.2, 0.9], [-56, -10, 1.3, 0.95],
+];
+export const FARM_BARN = { x: -52, z: -50, yaw: 0.65 }, FARM_SILO = { x: -40, z: -60 }, FARM_MILL = { x: 34, z: 22 };
+export function farmGroundAt(lx: number, lz: number, r: number) {   // lowest ground under a footprint, so nothing floats on a slope
+    let m = 1e9; for (let k = 0; k < 8; k++) { const a = k * 0.785; m = Math.min(m, farmRaw(FARM.cx + lx + Math.cos(a) * r, FARM.cz + lz + Math.sin(a) * r) ?? 0); } return Math.min(m, farmRaw(FARM.cx + lx, FARM.cz + lz) ?? 0);
+}
+for (const [lx, lz, yaw, s] of FARM_HOUSES) { const y0 = farmGroundAt(lx, lz, 5 * s) - 0.8; solidBox(FARM.cx + lx, FARM.cz + lz, yaw, 3.3 * s + 0.15, 4.5 * s + 0.15, y0 - 2, y0 + 0.8 + 7.6 * s + 1.4 * s); }
+{ const b = FARM_BARN, y0 = farmGroundAt(b.x, b.z, 9) - 0.6; solidBox(FARM.cx + b.x, FARM.cz + b.z, b.yaw, 6, 8.5, y0 - 2, y0 + 8); }
+{ const y0 = farmGroundAt(FARM_SILO.x, FARM_SILO.z, 3) - 0.5; solidBox(FARM.cx + FARM_SILO.x, FARM.cz + FARM_SILO.z, 0.39, 2.6, 2.6, y0 - 2, y0 + 14); }
+{ const y0 = farmGroundAt(FARM_MILL.x, FARM_MILL.z, 3.5) - 0.5; solidBox(FARM.cx + FARM_MILL.x, FARM.cz + FARM_MILL.z, 0.39, 2.6, 2.6, y0 - 2, y0 + 15); }
+// Ice Isle igloos (layout shared with src/world/iceIsle.tsx): domes of radius 4.8*s -> a box of 0.75 R half width, the dome top is landable
+export const ICE_IGLOOS: [number, number, number, number][] = [[18, 20, 2.4, 1], [30, 4, 0.9, 0.85], [10, 34, 3.6, 0.8], [34, 24, 1.8, 0.75], [-30, 30, 4.4, 0.9]];   // local x, z, door yaw, size
+for (const [lx, lz, , s] of ICE_IGLOOS) { const x = ICE.cx + lx, z = ICE.cz + lz, y = (iceRaw(x, z) ?? 4) - 0.25, R = 4.8 * s; solidBox(x, z, 0.785, R * 0.72, R * 0.72, y - 2, y + R * 0.82); }
 // ---------------------------------------------------------------- STEP 3: the long bridge (east side, clear of the island)
 // From the city's south beach (street at x=141) straight south over the ocean into Neon Harbor's north edge. Suspension bridge:
 // 3 towers, two main cables + hangers. Deck is walkable (one-way from above, so you can swim under it); towers are solid; towers and
@@ -215,6 +244,18 @@ export const towerZ = (i: number) => BRIDGE.z0 - BRIDGE.towerU[i];
 for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) {
     const cx = BRIDGE.x + sx * BRIDGE.legX, cz = towerZ(i), hw = BRIDGE.legW / 2;
     SEA_BLDS.push({ x0: cx - hw, x1: cx + hw, z0: cz - hw * 1.3, z1: cz + hw * 1.3, h: BRIDGE.towerH, y0: -60, sea: true, kind: 'tower' });
+}
+{   // bridge parts (Shifat 8:51 PM): tower cross-beams, the concrete piers through the waterline, approach piers, and the railings
+    const floor = -32, H = BRIDGE.towerH;
+    for (let i = 0; i < 3; i++) {
+        const z = towerZ(i), dy = bridgeDeckU(BRIDGE.towerU[i]), bx = BRIDGE.legX + BRIDGE.legW / 2, bz = BRIDGE.legW * 0.55;
+        for (const [y, t] of [[44, 3.2], [70, 3.2], [H - 3, 3.2]] as [number, number][]) solidBox(BRIDGE.x, z, 0, bx, bz, y - t / 2, y + t / 2);   // the deck-level beam is under the deck (deck decks handle it)
+        solidBox(BRIDGE.x, z, 0, BRIDGE.legX + 4.5, 6, -60, floor + 35);   // concrete pier
+        void dy;
+    }
+    for (let u = 40; u < BRIDGE_L - 20; u += 45) { if (u > 150 && u < BRIDGE_L - 150) continue; const y = bridgeDeckU(u) - 1.9; for (const sx of [-1, 1]) solidBox(BRIDGE.x + sx * 3.8, BRIDGE.z0 - u, 0, 1.2, 1.2, -60, y); }
+    for (let u = 0; u < BRIDGE_L - 1; u += 6) { const u1 = Math.min(BRIDGE_L, u + 6), y = Math.min(bridgeDeckU(u), bridgeDeckU(u1)), zc = BRIDGE.z0 - (u + u1) / 2;   // railings: 1 m walls on both deck edges
+        for (const sx of [-1, 1]) solidBox(BRIDGE.x + sx * (BRIDGE.hw + 0.25), zc, 0, 0.2, (u1 - u) / 2, y + 0.1, Math.max(bridgeDeckU(u), bridgeDeckU(u1)) + 1.15); }
 }
 // main cables: end anchors near each end, up over the 3 tower tops, sagging to just above the deck mid-span
 export function cableY(u: number) {

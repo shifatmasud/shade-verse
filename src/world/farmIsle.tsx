@@ -5,7 +5,7 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { FARM, farmRaw, farmRR } from '../seaWorld';
+import { FARM, farmRaw, farmRR, FARM_HOUSES, FARM_BARN, FARM_SILO, FARM_MILL, farmGroundAt } from '../seaWorld';
 import { QK } from '../quality';
 import { coniferGeo } from './trees';
 import { PINE_URL } from '../texdata';
@@ -21,10 +21,7 @@ const ROADS: [number, number][][] = [
     [[-10, 12], [-28, 10], [-48, 6], [-66, 0]],                                     // west lane
     [[-22, -12], [-6, -26], [10, -44], [18, -62]],                                  // south track to the fields
 ];
-const HOUSES: [number, number, number, number][] = [   // x, z, yaw, size
-    [-26, 24, 0.25, 1], [-2, 30, -0.35, 0.92], [12, 2, 2.6, 1.05], [-30, -2, 1.7, 0.95], [-44, 18, 0.6, 0.9], [-8, -6, -1.2, 1], [6, -30, 2.2, 0.9], [-56, -10, 1.3, 0.95],
-];
-const BARN = { x: -52, z: -50, yaw: 0.65 }, SILO = { x: -40, z: -60 }, MILL = { x: 34, z: 22 };
+const HOUSES = FARM_HOUSES, BARN = FARM_BARN, SILO = FARM_SILO, MILL = FARM_MILL;   // layout lives in seaWorld (shared with the collision boxes)
 
 function segDist(px: number, pz: number, a: [number, number], b: [number, number]) {
     const vx = b[0] - a[0], vz = b[1] - a[1], t = Math.max(0, Math.min(1, ((px - a[0]) * vx + (pz - a[1]) * vz) / (vx * vx + vz * vz)));
@@ -72,9 +69,7 @@ function gable(w: number, rh: number, len: number) {   // triangular prism along
 function place(g: THREE.BufferGeometry, color: string, x: number, y: number, z: number, yaw = 0, sx = 1, sy = 1, sz = 1) {
     const q = (g.index ? g.toNonIndexed() : g.clone()); q.scale(sx, sy, sz); q.rotateY(yaw); q.translate(x, y, z); colorize(q, color); return q;
 }
-function groundAt(lx: number, lz: number, r: number) {   // lowest ground under a footprint, so nothing floats on a slope
-    let m = 1e9; for (let k = 0; k < 8; k++) { const a = k * 0.785; m = Math.min(m, farmRaw(FARM.cx + lx + Math.cos(a) * r, FARM.cz + lz + Math.sin(a) * r) ?? 0); } return Math.min(m, farmRaw(FARM.cx + lx, FARM.cz + lz) ?? 0);
-}
+const groundAt = farmGroundAt;
 
 function buildingsGeo() {
     const P: THREE.BufferGeometry[] = [], Wn: THREE.BufferGeometry[] = [], box = new THREE.BoxGeometry(1, 1, 1);

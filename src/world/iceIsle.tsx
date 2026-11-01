@@ -5,11 +5,11 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { ICE, iceRaw, iceRR } from '../seaWorld';
+import { ICE, iceRaw, iceRR , ICE_IGLOOS } from '../seaWorld';
 import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
 import { type SouthSeaKit, PHONE, hazeShader, colorize, merged, rnd, setSeed } from './southSea/common';
 
-const IGLOOS: [number, number, number, number][] = [[18, 20, 2.4, 1], [30, 4, 0.9, 0.85], [10, 34, 3.6, 0.8], [34, 24, 1.8, 0.75], [-30, 30, 4.4, 0.9]];   // local x, z, door yaw, size
+const IGLOOS = ICE_IGLOOS;   // layout lives in seaWorld (shared with the collision boxes)
 
 function terrainGeo() {
     const n = PHONE ? 130 : 180, half = ICE.R * 1.5, pos: number[] = [], col: number[] = [], ice: number[] = [], idx: number[] = [], ok: boolean[] = [];
