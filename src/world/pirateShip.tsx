@@ -116,7 +116,7 @@ export function PirateShip({ kit }: { kit: SouthSeaKit }) {
         return { solid, neon, sail };
     }, []);
     const grp = React.useRef<THREE.Group>(null!);
-    useFrame((st, dt) => { const c = st.camera.position, d = Math.hypot(c.x - PIRATE.cx, c.z - PIRATE.cz); if (grp.current) grp.current.visible = d < 1000; mats.sail.uniforms.uT.value += Math.min(dt, 0.1); });
+    useFrame((st, dt) => { const c = st.camera.position, d = Math.hypot(c.x - PIRATE.cx, c.z - PIRATE.cz); if (grp.current) { grp.current.visible = d < 900; const ch = grp.current.children; if (ch.length > 3) ch[3].visible = d < 450; }   /* far LOD: holo sails only within 450 m */ mats.sail.uniforms.uT.value += Math.min(dt, 0.1); });
     return (
         <group name="pirate-ship" ref={grp}>
             <mesh geometry={hull} material={mats.solid} />

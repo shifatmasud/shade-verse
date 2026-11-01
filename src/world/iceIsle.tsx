@@ -109,7 +109,7 @@ export function IceIsle({ kit }: { kit: SouthSeaKit }) {
     }, []);
     const glowRef = useRef<THREE.MeshBasicMaterial>(mats.glow);
     const grpRef = useRef<THREE.Group>(null!);
-    useFrame((st) => { const c = st.camera.position; if (grpRef.current) grpRef.current.visible = Math.hypot(c.x - ICE.cx, c.z - ICE.cz) < 900; const d = kit.tod.day.value; glowRef.current.color.setRGB(1.0, 0.62 + 0.1 * d, 0.3 + 0.15 * d).multiplyScalar(0.85 + 1.4 * (1 - d)); });
+    useFrame((st) => { const c = st.camera.position, dd = Math.hypot(c.x - ICE.cx, c.z - ICE.cz); if (grpRef.current) { grpRef.current.visible = dd < 900; const ch = grpRef.current.children, near = dd < 450; if (ch.length > 4) { ch[1].visible = near; ch[4].visible = near; ch[3].visible = near || kit.tod.day.value < 0.4; } }   /* far LOD: chunks, fog cards (and the igloo glow by day) only within 450 m */ const d = kit.tod.day.value; glowRef.current.color.setRGB(1.0, 0.62 + 0.1 * d, 0.3 + 0.15 * d).multiplyScalar(0.85 + 1.4 * (1 - d)); });
     return (
         <group name="ice-isle" ref={grpRef}>
             <mesh geometry={terrain} material={mats.ground} />

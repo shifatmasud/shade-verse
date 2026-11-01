@@ -205,6 +205,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
     useFrame((st, dt) => {
         const c = st.camera.position, d = Math.hypot(c.x - FARM.cx, c.z - FARM.cz);
         if (grpRef.current) grpRef.current.visible = d < 900;            // past the haze the island is invisible anyway
+        { const near = d < 450, ch = grpRef.current ? grpRef.current.children : []; for (let i = 1; i < ch.length; i++) if (i !== 2) ch[i].visible = near; }   // far LOD (regression Oct 31 8:05 PM: +15 draw calls at the harbor): past 450 m only terrain + buildings, the rest is haze-small
         objs[4].visible = d < FARM.R + 160;                               // long grass only when close enough to read
         { const dy = kit.tod.day.value, w = mats.win.color, k = 1 - THREE.MathUtils.smoothstep(dy, 0.25, 0.75); w.setRGB(0.17 + (1.0 - 0.17) * k, 0.23 + (0.66 - 0.23) * k, 0.28 + (0.32 - 0.28) * k).multiplyScalar(1 + 0.6 * k); }   // windows: dark glass by day, warm lamplight at dusk/night
         if (sailRef.current && d < 500) sailRef.current.rotation.z -= Math.min(dt, 0.1) * 0.55;
