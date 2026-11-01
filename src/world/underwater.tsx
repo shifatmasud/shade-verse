@@ -10,14 +10,14 @@ import { waterRenderY } from '../water/waveHeight';
 // Underwater life (user must-haves 10:29): kelp forest, jellyfish, tiny bubbles, god rays, current drift. Reference cues (viewed underwater shots): cyan light band near the surface, light shafts, sandy floor, haze to teal. All procedural approximations, small instance counts.
 const UW_FOG = 'vec3(0.09, 0.43, 0.55)';
 const kelpMat = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uDay: TOD.day },
     vertexShader: `uniform float uTime; varying vec3 vW; varying float vH;
     void main(){ vec3 p = position; float h = clamp(p.y / 6.0, 0.0, 1.0); vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
       float cur = sin(uTime * 0.7 + ip.x * 0.15 + ip.z * 0.1 + p.y * 0.5) * 0.7 + sin(uTime * 0.4 + p.y * 0.9) * 0.2;
       p.x += cur * h * h; p.z += cos(uTime * 0.6 + ip.z * 0.2 + p.y * 0.4) * 0.35 * h * h;
       vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0); vW = w.xyz; vH = h; gl_Position = projectionMatrix * viewMatrix * w; }`,
-    fragmentShader: `varying vec3 vW; varying float vH;
-    void main(){ vec3 col = mix(vec3(0.12, 0.30, 0.16), vec3(0.42, 0.62, 0.22), vH); float d = length(vW - cameraPosition); col = col * exp(-vec3(0.45, 0.07, 0.02) * d * 0.12) + ${UW_FOG} * (1.0 - exp(-d * 0.028)); gl_FragColor = vec4(col, 1.0); }`,
+    fragmentShader: `varying vec3 vW; varying float vH; uniform float uDay;
+    void main(){ vec3 col = mix(vec3(0.12, 0.30, 0.16), vec3(0.42, 0.62, 0.22), vH); float d = length(vW - cameraPosition); float wf = cameraPosition.y > -1.0 ? clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.01), 0.0, 1.0) : 1.0; float dw = d * wf, k = cameraPosition.y > -1.0 ? 3.5 : 1.0;   /* seen from above: only the underwater part of the sight line absorbs, and more strongly (light goes down and back up) */ col = col * exp(-vec3(0.45, 0.07, 0.02) * dw * 0.12 * k) + ${UW_FOG} * 0.75 * (1.0 - exp(-dw * 0.028 * k)); col *= mix(0.12, 1.0, uDay); gl_FragColor = vec4(col, 1.0); }`   /* night: dark blades, not bright teal streaks */,
     side: THREE.DoubleSide,
 });
 // God rays (Shifat Oct 29 "godrays can be better, ref real images"): long soft shafts from the surface, slanted along the sun,
@@ -68,7 +68,7 @@ export function Underwater({ sim }: { sim: Sim }) {
     useFrame((st) => {
         const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2], inBay = hz < WATER_Z + 6, inLake = isLakeWater(hx, hz), inWater = inBay || inLake, surfaceY = inLake ? waterSurfaceAt(hx, hz, t) : WATER_Y, under = inWater && st.camera.position.y < surfaceY + 1.5 && sim.mode === 'play';
         kelpMat.uniforms.uTime.value = t; rayMat.uniforms.uTime.value = t;
-        kelp.current.visible = inBay && under;   /* Shifat Oct 31 2:29 PM night screenshot: seen from above through the clear water the blades read as rain streaks over the whole sea - only drawn when the lens is at/below the surface */ const cu = under && st.camera.position.y < surfaceY - 0.05 && st.camera.position.y < waterRenderY(st.camera.position.x, st.camera.position.z, t) - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // env-iter3: also below the real (wave-displaced) sea surface, not just the flat sea level   // shafts and bubbles only once the camera is really below either water surface
+        kelp.current.visible = inBay && sim.mode === 'play' && st.camera.position.y < surfaceY + 14;   /* Shifat 12:57 AM: the underwater world must show from above too (was: only with the lens under) */   /* Shifat Oct 31 2:29 PM night screenshot: seen from above through the clear water the blades read as rain streaks over the whole sea - only drawn when the lens is at/below the surface */ const cu = under && st.camera.position.y < surfaceY - 0.05 && st.camera.position.y < waterRenderY(st.camera.position.x, st.camera.position.z, t) - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // env-iter3: also below the real (wave-displaced) sea surface, not just the flat sea level   // shafts and bubbles only once the camera is really below either water surface
         if (!inWater) return;
         if (under) {
             const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, ca = bub.current.geometry.attributes.color as THREE.BufferAttribute, za = bub.current.geometry.attributes.aSize as THREE.BufferAttribute;
