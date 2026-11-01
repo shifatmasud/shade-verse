@@ -96,3 +96,21 @@ function wdGoldV(w: string[]) { const [dx, dz, k] = kn(w, 6, 7); return `    ${e
 export const WAVES_V_GLSL = [
     '', 'float whV(vec2 p, float t, float sp){', '  float h = 0.0;', ...LONG_WAVES.map(whLongV), '  { float m;', ...GOLDEN_WAVES.map(whGoldV), '  }', '  return h * swellK(p);', '}',
     'vec2 wdispV(vec2 p, float t, float sp){', '  vec2 d = vec2(0.0);', ...LONG_WAVES.map(wdLongV), '  { float m;', ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(wdGoldV), '  }', '  return d * (GQ * swellK(p));', '}'].join('\n');
+
+/* Shifat 11:44 PM 'sea wave math is the cause': the vertex shader ran every train twice (whV for height, wdispV for the sideways Gerstner push, each
+   recomputing the same envelope and phase), and the pixel shader did the same with wh() + wgj(). These merged versions compute each train's
+   envelope + phase once and give both results: identical numbers, about half the trig. */
+function whdLongV(w: string[]) { const [dx, dz, k] = kn(w, 0, 1); return `  { float a = dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}; float f = ${w[3]} * ${aa(k)}; h += sin(a) * f; d -= cos(a) * f * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)}); }`; }
+function whdGoldV(w: string[]) { const [dx, dz, k] = kn(w, 6, 7); return `    ${env(w)} { float a = ${arg(w)}; float f = ${w[13]} * m * ${aa(k)}; h += sin(a) * f; d -= cos(a) * f * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)}); }`; }
+/** GLSL (vertex only): whdV = vec3(whV, wdispV) in one pass. Needs WAVES_GLSL + GERSTNER_GLSL (GQ) first. */
+export const WAVES_VD_GLSL = [
+    '', 'vec3 whdV(vec2 p, float t, float sp){', '  float h = 0.0; vec2 d = vec2(0.0);', ...LONG_WAVES.map(whdLongV), '  { float m;',
+    ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(whdGoldV), ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(whGoldV), '  }',
+    '  float s = swellK(p); return vec3(h * s, d * (GQ * s));', '}'].join('\n');
+function whjLong(w: string[]) { const [, , k] = kn(w, 0, 1); return `  { float a = dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}; float sa = sin(a); g += cos(a) * ${w[3]} * vec2(${w[0]}, ${w[1]}); j += sa * ${(Number(w[3]) * k).toFixed(5)}; h += sa * ${w[3]}; }`; }
+function whjGold(w: string[]) { const [, , k] = kn(w, 6, 7); return `    ${env(w)} { float a = ${arg(w)}; float sa = sin(a); g += cos(a) * ${w[13]} * m * vec2(${w[6]}, ${w[7]}); j += sa * ${(Number(w[13]) * k).toFixed(5)} * m; h += sa * ${w[13]} * m; }`; }
+/** GLSL (fragment): wghj = wgj() plus the wave height wh() in the same pass (out h). Chop trains skipped by WG_CHOP still add their height. */
+export const WGHJ_GLSL = [
+    '', 'vec3 wghj(vec2 p, float t, out float hOut){', '  vec2 g = vec2(0.0); float j = 0.0, h = 0.0;', ...LONG_WAVES.map(whjLong), '  { float m;',
+    ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(whjGold), '    if (WG_CHOP) {', ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(whjGold), '    } else {',
+    ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(whGold), '    }', '  }', '  float s = swellK(p); hOut = h * s; return vec3(g * s, j * GQ * s);', '}'].join('\n');
