@@ -91,7 +91,7 @@ POOL.y = (islandRaw(POOL.cx, POOL.cz, false) as number) - 1.2;
 mkRiver([[POOL.cx + 2, POOL.cz - 8], [POOL.cx - 2, POOL.cz - 22], [POOL.cx - 6, POOL.cz - 38], [POOL.cx - 4, POOL.cz - 56], [POOL.cx - 1, POOL.cz - 74], [POOL.cx + 1, POOL.cz - 92], [POOL.cx + 2, POOL.cz - 108]], POOL.y, -1.0, 4.2, 12);
 export const LAGOON_RIM = 0.93, POOL_RIM = 0.9;
 /** island ground height (may be under the sea near the edge), or null away from the island */
-export function islandH(x: number, z: number): number | null { return islandRaw(x, z) ?? farmRaw(x, z); }
+export function islandH(x: number, z: number): number | null { return islandRaw(x, z) ?? farmRaw(x, z) ?? iceRaw(x, z); }
 export function isIsland(x: number, z: number, pad = 1.3) { return Math.hypot(x - ISLAND.cx, z - ISLAND.cz) < ISLAND.R * pad; }
 export function islandPeakY() { return islandRaw(PEAK.x, PEAK.z) as number; }
 // waterfall: a free-falling sheet just in front of the cliff face, from the ledge down into the plunge pool
@@ -125,6 +125,28 @@ export function farmRaw(x: number, z: number): number | null {
     return y;
 }
 export function isFarm(x: number, z: number, pad = 1.3) { return Math.hypot(x - FARM.cx, z - FARM.cz) < FARM.R * pad; }
+
+// ---------------------------------------------------------------- Ice Isle (Shifat Oct 31 6:25 PM: 'Iceberg too is an island from another side of the city')
+// A glacier island west of the jungle island: an ice shelf with sheer blue ice cliffs into the sea, a snow-capped glacier dome in the middle.
+export const ICE = { cx: -440, cz: -500, R: 62 };
+export function iceRR(x: number, z: number) {
+    const dx = x - ICE.cx, dz = z - ICE.cz, a = Math.atan2(dz, dx);
+    const k = 1 + 0.11 * Math.sin(a * 2 + 1.9) + 0.07 * Math.sin(a * 5 + 0.4) + 0.04 * Math.sin(a * 11 + 2.7);
+    return Math.hypot(dx, dz) / (ICE.R * k);
+}
+export function iceRaw(x: number, z: number): number | null {
+    const rr = iceRR(x, z);
+    if (rr > 1.5) return null;
+    if (rr >= 0.97) return -9 - 25 * (rr - 0.97);                                                                  // sheer ice cliff foot, deep water
+    let y = 4.2 + 0.6 * Math.sin(x * 0.11 + z * 0.07) * Math.sin(x * 0.05 - z * 0.13);                               // shelf top
+    const dome = Math.max(0, 1 - Math.hypot(x - (ICE.cx - 8), z - (ICE.cz - 6)) / 40);
+    const d2 = Math.max(0, 1 - Math.hypot(x - (ICE.cx + 18), z - (ICE.cz - 20)) / 24);
+    const ridge = 1 - Math.abs(Math.sin(x * 0.16 + Math.sin(z * 0.07) * 2.2) * Math.cos(z * 0.13 - x * 0.04));          // sharp seracs / pressure ridges
+    y += 15 * dome * dome * (3 - 2 * dome) + 7 * d2 * d2 * (3 - 2 * d2) + 4.5 * ridge * ridge * Math.max(dome, d2) + 1.2 * ridge * (1 - dome);   // twin glacier domes
+    if (rr > 0.9) y = y + (-9 - y) * sm(0.9, 0.97, rr);                                                             // the cliff drop
+    return y;
+}
+export function isIce(x: number, z: number, pad = 1.3) { return Math.hypot(x - ICE.cx, z - ICE.cz) < ICE.R * pad; }
 
 // ---------------------------------------------------------------- walkable decks (dock now; bridge + harbor platform later)
 export interface Deck { x0: number; x1: number; z0: number; z1: number; y: number }
@@ -247,7 +269,7 @@ export function seaSurface(x: number, z: number, footY: number): number | null {
     return best;
 }
 /** seabed lifted by the island so the swim floor and the seabed mesh follow its underwater slopes */
-export function seaLift(x: number, z: number, y: number) { const ih = islandRaw(x, z, false) ?? farmRaw(x, z); return ih === null ? y : Math.max(y, ih - 0.3); }
+export function seaLift(x: number, z: number, y: number) { const ih = islandRaw(x, z, false) ?? farmRaw(x, z) ?? iceRaw(x, z); return ih === null ? y : Math.max(y, ih - 0.3); }
 /** enemies never spawn or roam here */
-export function inCalmZone(x: number, z: number) { return isIsland(x, z, 1.45) || isFarm(x, z, 1.45); }
+export function inCalmZone(x: number, z: number) { return isIsland(x, z, 1.45) || isFarm(x, z, 1.45) || isIce(x, z, 1.45); }
 export const SEA_W = { W_Z, W_Y };
