@@ -42,17 +42,18 @@ function fillRing(cx: number, cz: number, baseY: number, island: boolean) {
     }
     if (!island) return;
     const R = ISLAND.R * 1.15;
+    const fI = THREE.MathUtils.smoothstep(Math.hypot(cx - ISLAND.cx, cz - ISLAND.cz), ISLAND.R * 1.5, ISLAND.R * 4.5);   /* Nov 1: a ring can't mirror an island you stand next to (it drew a flat green slab on the water around it) - near an isle its mirror shrinks away */
     for (let j = -6; j <= 6; j++) for (let i = -6; i <= 6; i++) {
         const x = ISLAND.cx + i / 6 * R, z = ISLAND.cz + j / 6 * R, h = islandH(x, z); if (h == null || h < WATER_Y + 0.5) continue;
         const dx = x - cx, dz = z - cz, dist = Math.max(10, Math.hypot(dx, dz)), a = Math.atan2(dx, dz), w = (R / 6) / dist;
-        put(a - w, a + w, Math.atan2(h - WATER_Y, dist), 0.16, 0.42, 0.2, dist);
+        if (fI > 0.01) put(a - w, a + w, Math.atan2(h - WATER_Y, dist) * fI, 0.16, 0.42, 0.2, dist);
     }
     for (const [I, raw, col] of [[FARM, farmRaw, [0.3, 0.5, 0.22]], [ICE, iceRaw, [0.82, 0.9, 0.96]]] as [{ cx: number; cz: number; R: number }, (x: number, z: number) => number | null, number[]][]) {   // Farm + Ice isles mirror too
-        const R2 = I.R * 1.15;
+        const R2 = I.R * 1.15; const fJ = THREE.MathUtils.smoothstep(Math.hypot(cx - I.cx, cz - I.cz), I.R * 1.5, I.R * 4.5); if (fJ < 0.01) continue;
         for (let j = -5; j <= 5; j++) for (let i = -5; i <= 5; i++) {
             const x = I.cx + i / 5 * R2, z = I.cz + j / 5 * R2, h = raw(x, z); if (h == null || h < WATER_Y + 0.5) continue;
             const dx = x - cx, dz = z - cz, dist = Math.max(10, Math.hypot(dx, dz)), a = Math.atan2(dx, dz), w = (R2 / 5) / dist;
-            put(a - w, a + w, Math.atan2(h - WATER_Y, dist), col[0], col[1], col[2], dist);
+            put(a - w, a + w, Math.atan2(h - WATER_Y, dist) * fJ, col[0], col[1], col[2], dist);
         }
     }
 }
