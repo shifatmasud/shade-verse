@@ -1,0 +1,11 @@
+import puppeteer from 'puppeteer-core';
+const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage(); await p.setViewport({width:1280,height:720});
+const w=ms=>new Promise(r=>setTimeout(r,ms)); await p.goto('http://127.0.0.1:4311/',{waitUntil:'load'}); await w(2500);
+await p.evaluate(()=>window.__game.start()); await w(3000); await p.mouse.click(640,360); await w(300);
+const st=async(n)=>{const r=await p.evaluate(()=>{const s=window.__game.sim;return {y:+s.pos[1].toFixed(1),vy:+s.vel[1].toFixed(1),glide:s.glideOn,fly:!!s.flightBoost,ground:s.ground}}); console.log(n,JSON.stringify(r)); return r;};
+await p.evaluate(()=>{const s=window.__game.sim; s.pos=[0,60,0]; s.vel=[0,0,0]; s.ground=false;}); await w(200);
+await w(1000); await p.keyboard.down('Space'); await w(3000); const a=await st('hold'); await p.keyboard.up('Space'); await w(800); const bb=await st('release');
+await p.keyboard.down('Space'); await w(60); await p.keyboard.up('Space'); await w(1500); const c=await st('tap');
+await p.keyboard.down('Space'); await w(3000); const d=await st('holdAgain'); await p.keyboard.up('Space');
+const ok=a.fly&&a.glide&&!bb.fly&&bb.glide&&!c.glide&&d.fly; console.log(ok?'FLIGHT PASS':'FLIGHT FAIL'); await b.close(); process.exit(ok?0:1);

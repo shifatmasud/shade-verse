@@ -115,10 +115,10 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
 }
 
 export const MAP_KB: [string, string][] = [
-    ['WASD', 'Move'], ['Mouse', 'Camera (click to lock, Esc frees)'], ['Space / I', 'Tap jump · 2× double jump · hold glide · hold in glide fly · tap in glide cancel'],
+    ['WASD', 'Move'], ['Mouse', 'Camera (click to lock, Esc frees)'], ['Space / I', 'Tap jump · 2× double jump · hold fly · release glide · tap cancel'],
     ['Left click / L / Alt', 'Tap web shot · hold Web Shock'], ['Right click / J / Shift', 'Tap web spring · hold swing'], ['K / Ctrl / M / .', 'Melee'],
 ];
 export const MAP_PAD: [string, string][] = [
-    ['L-stick', 'Move'], ['R-stick', 'Camera'], ['A', 'Tap jump · 2× double · hold glide/fly'],
+    ['L-stick', 'Move'], ['R-stick', 'Camera'], ['A', 'Tap jump · 2× double · hold fly · release glide'],
     ['RB', 'Tap web shot · hold Web Shock'], ['LT', 'Tap web spring · hold swing'], ['X', 'Melee'],
 ];

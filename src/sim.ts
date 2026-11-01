@@ -648,7 +648,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         if (s.web || s.swim || s.wall || (s.ground && !gl.pressGround)) gl.pressT = undefined;
         else {
             if (heldNow) gl.pressT += dt;
-            if (!gl.pressGl && gl.pressT >= HOLD && !s.ground) gl.glideMode = true;   // hold = glide (from a ground jump too)
+            if (!gl.pressGl && gl.pressT >= HOLD && !s.ground) gl.glideMode = true;   // hold = flight mode (from a ground jump too); flightBoost below while held
             if (input.jumpReleased || !heldNow) {
                 if (gl.pressT < HOLD && !gl.pressGround) {
                     if (gl.pressGl) { gl.glideMode = false; v[1] = Math.max(v[1], 0) + JUMP_V * 0.8; s.grappleFlight = false; ev.jump(); }   // tap while gliding: cancel + direct jump
@@ -659,7 +659,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         }
     }
     input.jumpReleased = false;
-    gl.flightBoost = gl.pressT !== undefined && !!gl.pressGl && gl.pressT >= HOLD && heldNow && !!gl.glideMode;   // hold while gliding = flight
+    gl.flightBoost = gl.pressT !== undefined && gl.pressT >= HOLD && heldNow && !!gl.glideMode;   /* Shifat Oct 31 8:32 PM: holding space ALWAYS flies (was: first hold = glide, second hold = flight); release = auto glide while in flight mode; tap = cancel; press again = fly */
     const prevY = p[1];
     s.spring = Math.max(0, s.spring - dt); s.shotT = Math.max(0, s.shotT - dt);
     s.airT = (!s.ground && !s.swim && !s.wall && !s.web) ? s.airT + dt : 0;
