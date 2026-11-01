@@ -170,6 +170,14 @@ export const world = buildWorld();
 const blds = world.blds;
 for (const b of SEA_BLDS) blds.push(b);   // South Sea: lighthouse, shacks (and later bridge towers, harbor towers) collide and take webs like buildings
 
+/* tree trunks are solid (Shifat Oct 31 8:51 PM 'many things need collision'): the renderers register what they actually placed, once per key.
+   A slim box round the trunk (side collision) whose top sits at the canopy, so the crown is a perch you can land on. */
+const _trunkKeys = new Set<string>();
+export function addTrunkSolids(key: string, pts: { x: number; y: number; z: number; s: number }[], r = 0.45, canopy = 8) {
+    if (_trunkKeys.has(key)) return; _trunkKeys.add(key);
+    for (const p of pts) { const hr = r * p.s; blds.push({ x0: p.x - hr, x1: p.x + hr, z0: p.z - hr, z1: p.z + hr, y0: p.y - 1.5, h: p.y + canopy * p.s, sea: true, kind: 'solid' } as any); }
+}
+
 // Fixed rooftop arena on the central tower, distinct from the player's spawn roof.
 const arenaRoof = blds.find((b) => b.host === undefined && Math.abs((b.x0 + b.x1) / 2 - 40) < 1 && Math.abs((b.z0 + b.z1) / 2) < 1);
 if (!arenaRoof) throw new Error('Boss arena rooftop was not generated');

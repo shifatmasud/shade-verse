@@ -1,3 +1,4 @@
+import { addTrunkSolids } from '../sim';
 // Farm Isle (Shifat Oct 31 5:48 PM: 'cozy farm village: white farmhouses with red gable roofs, red barn, windmill, big oaks + pines, muddy rutted
 // roads with puddles, tall grass; only drones and flying cars, no animals or pedestrians'; 6:25 PM: 'Village should be a separate island on sea,
 // from another side of city'). Ground = seaWorld farmRaw (the sim walks the same function). Budget (Adreno 506): ~9 draw calls, all static
@@ -182,6 +183,7 @@ export function FarmIsle({ kit }: { kit: SouthSeaKit }) {
         // tall grass: verges along the roads and field edges
         const NT = PHONE ? 2800 : 7200;   // Shifat 6:39 PM 'reuse more long grasses'
         for (let t = 0; tufts.length < NT && t < NT * 8; t++) { const lx = (rnd() - 0.5) * 170, lz = (rnd() - 0.5) * 170, x = FARM.cx + lx, z = FARM.cz + lz, y = farmRaw(x, z); if (y === null || y < 0.8 || farmRR(x, z) > 0.8) continue; const rd = farmRoadD(x, z); if (rd < 4.0 || nearBuilding(lx, lz, 1) || (rd > 12 && rnd() < 0.45)) continue; tufts.push([lx, y, lz, 1.1 + rnd() * 0.9, rnd() * 6.28]); }
+        addTrunkSolids('farm-oaks', oaks.map((o) => ({ x: FARM.cx + o[0], y: o[1], z: FARM.cz + o[2], s: o[3] })), 0.4, 6.5); addTrunkSolids('farm-pines', pines.map((o) => ({ x: FARM.cx + o[0], y: o[1], z: FARM.cz + o[2], s: o[3] })), 0.35, 10);
         return { oaks, pines, tufts };
     }, []);
     const inst = (g: THREE.BufferGeometry, m: THREE.Material, list: number[][], tA: string, tB: string, sy = 1) => {

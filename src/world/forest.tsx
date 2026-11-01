@@ -1,4 +1,4 @@
-import { BEACH_DIR, HALF, LAKE_SHORE, PARK, PARK_POND, WATER_Z, bridgeSurfaceAt, buildings, parkH, sandWeight, world, type Sim } from '../sim';
+import { BEACH_DIR, HALF, LAKE_SHORE, PARK, PARK_POND, WATER_Z, bridgeSurfaceAt, buildings, parkH, sandWeight, world, addTrunkSolids, type Sim } from '../sim';
 import * as THREE from 'three';
 import { TREE_PATTERN, TREE_TYPES, cherryLeafShader, coniferGeo, leafWindShader, palmFrondShader, palmFrondTex, palmGeo, palmTrunkTex, treeGeo, treeWindTime, trunkWindShader } from './trees';
 import { QK } from '../quality';
@@ -58,6 +58,7 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
         for (let i = 0; i < n; i++) { const t = ch[i % ch.length], a = rnd() * 6.28, d = rnd() * 4.5 * t.s; P[i * 3] = t.x + Math.cos(a) * d; P[i * 3 + 2] = t.z + Math.sin(a) * d; P[i * 3 + 1] = parkH(t.x, t.z) + 0.05; ph[i] = rnd(); }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g;
     }, [pts]);
+    useMemo(() => addTrunkSolids('park+street', pts.map((p) => ({ x: p.x, y: parkH(p.x, p.z), z: p.z, s: p.s }))), [pts]);
     if (DBG) (window as any).__treePts = pts;
     const NT = TREE_TYPES.length;
     const place = (hx: number, hz: number) => {

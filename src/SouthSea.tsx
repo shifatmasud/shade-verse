@@ -6,7 +6,7 @@ import { useFrame } from '@react-three/fiber';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Sim } from './sim';
 import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, LIGHTHOUSE, islandH, islandPeakY, coastK, islandRR, poolAt, RIVERS, riverNear, riverHW, POOL, FALL_WALL, riverY, RIVER_DEEP, BRIDGE, BRIDGE_L, bridgeDeckU, cableY, CABLE_X, towerZ, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, HBOSS, HCOLS, HROWS, AVENUE } from './seaWorld';
-import { buildings } from './sim';
+import { buildings , addTrunkSolids } from './sim';
 import { QUALITY, QK, LOWQ } from './quality';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 import { CAUSTIC_TEX, CAUSTIC_GLSL, HERO_REFL } from './caustics';
@@ -66,6 +66,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         const half = 110, n = 220, mask = new Float32Array(n * n).fill(NaN);
         for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = ISLAND.cx - half + i + 0.5, z = ISLAND.cz - half + j + 0.5, y = islandH(x, z); if (y === null || y < 2.7) continue; if (slopeAt(x, z) > 1.3 || !clear(x, z, 0.5)) continue; mask[j * n + i] = y; }
         (out as any).mask = { half, n, mask };
+        for (const k of ['palmA', 'palmB', 'broad', 'tall', 'pine', 'spruce', 'cherry']) addTrunkSolids('isle-' + k, out[k], k.startsWith('palm') ? 0.35 : 0.45, k.startsWith('palm') ? 9 : 8);   // trunks are solid (Shifat 8:51 PM)
         return out;
     }, []);
     const geos = useMemo(() => {
