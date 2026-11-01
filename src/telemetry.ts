@@ -44,7 +44,7 @@ if (ON) {
     const seaBench = () => { const gl: any = (window as any).__gl, B = seaB; seaB = null; if (!gl || !B) return; const cx = gl.getContext(); let wm: any = null; B.s.traverse((o: any) => { if (!wm && o.material && o.material.uniforms && o.material.uniforms.uBench) wm = o.material; }); if (!wm) return;
         const T = gl.getRenderTarget(); if (!seaRT || seaRT.width !== B.w || seaRT.height !== B.h) { seaRT?.dispose(); seaRT = new (T ? T.constructor : Object)(B.w, B.h); }
         const mask = B.c.layers.mask, ub = wm.uniforms.uBench.value, ox = ub.x, oy = ub.y, out: number[] = [];
-        try { B.c.layers.mask = 512; for (const [x, y] of [[0, 0], [0, 0], [0, 1], [1, 0], [0, 0]]) { ub.set(x, y); gl.setRenderTarget(seaRT); gl.clear(); gsync(cx); const t0 = performance.now(); gl.render(B.s, B.c); gsync(cx); out.push(Math.round((performance.now() - t0) * 10) / 10); } }
+        try { B.c.layers.mask = 512; for (const [x, y] of [[0, 0], [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 0]]) { ub.set(x, y); gl.setRenderTarget(seaRT); gl.clear(); gsync(cx); const t0 = performance.now(); gl.render(B.s, B.c); gsync(cx); out.push(Math.round((performance.now() - t0) * 10) / 10); } }
         finally { B.c.layers.mask = mask; ub.set(ox, oy); gl.setRenderTarget(T); }
         (((window as any).__tel ||= {}) as any).sea = out.slice(1); };
     let gpuP: any[] | null = null; setInterval(() => { if (!(window as any).__gl || document.hidden) return; gpuP = []; requestAnimationFrame(() => requestAnimationFrame(() => { const r = gpuP; gpuP = null; if (r && r.length) { const tl: any = ((window as any).__tel ||= {}); tl.gpu = r; } seaBench(); })); }, 20000);

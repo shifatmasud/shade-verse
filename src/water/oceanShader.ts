@@ -42,7 +42,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
     /* Shifat's Adreno 506 phone drew the sea as solid blue from above (the underwater look): gl_FrontFacing is unreliable on that GPU, so the
        side of the surface is decided by the camera height against the live wave at the camera, and the hardware flag only within 0.4 m of it */
     bool seaFF(){ float dc = cameraPosition.y - vHw.z; return dc > 0.4 ? true : (dc < -0.4 ? false : gl_FrontFacing); }
-    void main(){ if (uBench.y > 0.5) { gl_FragColor = vec4(uDeep, 0.95); return; }   /* ?debug&bench step: sea shading off */
+    void main(){ if (uBench.y > 0.5 && uBench.y < 1.5) { gl_FragColor = vec4(uDeep, 0.95); return; }   /* ?debug&bench step: sea shading off */
 
       if (uWL.w > 0.5) { vec2 sn = vScreen.xy / vScreen.w; bool airHalf = sn.y > wlY(sn.x);   /* split lens: the upper half of the lens is in air (sees only the top of the sea), the lower half is under water (sees only the wavy underside) */
         if (airHalf != gl_FrontFacing) discard; }
@@ -78,6 +78,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       if (uRain > 0.01) g += rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 90.0, length(cameraPosition - vW)));   /* raindrop impact rings */
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
+      if (uBench.y > 1.5 && uBench.y < 2.5) { gl_FragColor = vec4(n * 0.5 + 0.5, 0.95); return; }   /* telemetry stage bench */
       bool below = !seaFF();
       if (below) n = -n;
       // exact unpolarised Fresnel for n_air = 1.0, n_water = 1.333 (replaces the Schlick approximation); total internal reflection gives fr = 1
@@ -89,7 +90,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       vec3 absorb = vec3(0.45, 0.07, 0.02), Tw = exp(-absorb * path);
       vec3 body = vec3(0.62, 0.72, 0.62) * 0.9 * Tw + mix(uShallow, uDeep, depthMix * 0.7) * (1.0 - exp(-0.02 * path)) * 0.9;
       body = mix(body, uDeep * 0.5, smoothstep(-300.0, -800.0, vW.z) * 0.55);   // deep offshore water reads darker blue
-      float bedA = 0.0, bedShore = 0.0;   // how much of this pixel is the traced seabed (drives opacity below)
+      float bedA = 0.0, bedShore = 0.0;
+      if (uBench.y > 2.5 && uBench.y < 3.5) { gl_FragColor = vec4(body, 0.95); return; }   /* telemetry stage bench */   // how much of this pixel is the traced seabed (drives opacity below)
       vec2 bq = bedUV(vW.xz);
       if (!below && uUseScene < 0.5 && vW.z < -222.0 && vW.y - bedY(vW.xz) < 40.0) {   /* Shifat 9:16 AM phone fps: deep water (bed > 40 m down) shows no bed anyway (bedA = 0 past 34 m), so most of the open sea skips the whole refraction trace */   /* whole open sea, not just the island square */
         // Snell: td is the refracted ray (air 1.0 -> water 1.333). Fixed-point march to where it meets the bed: t = (surface - bed(xz(t))) / -td.y
@@ -217,6 +219,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
           col *= 1.0 - 0.18 * exp(-pow(abs(wk - 0.25) * 4.0, 2.0)); }   /* faint troughs just outside the foam give the wake relief */
       }
       col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.5);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
+      if (uBench.y > 3.5 && uBench.y < 4.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
       col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
       // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
@@ -232,6 +235,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       float crest = 0.0;   /* Shifat 4:30 AM 'Hate foams': open-sea whitecaps + crest foam removed (also 3 texture reads less per sea pixel) */
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
       col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
+      if (uBench.y > 4.5 && uBench.y < 5.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
       float aOut = mix(0.82, 1.0, max(fr, 0.0)); aOut = mix(aOut, 1.0, bedA * bedShore);
       { // South Sea 2b (real tropical refs: Maldives / Bora Bora): turquoise shallows around the island's white sand + a foam line at the shore
         vec2 iq = vW.xz - vec2(-160.0, -820.0); float ia = atan(iq.y, iq.x); float irr = length(iq) / (92.0 * (1.0 + 0.13 * sin(2.0 * ia + 3.16) + 0.085 * sin(3.0 * ia + 5.06) + 0.05 * sin(5.0 * ia + 0.83) + 0.03 * sin(8.0 * ia + 4.71) + 0.018 * sin(13.0 * ia + 2.25)));   // = seaWorld coastK
@@ -280,6 +284,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
       }
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the
       // horizon edge of big water bodies (and lets the far shading/mirror work stop early). Phones fog a little closer.
+      if (uBench.y > 5.5 && uBench.y < 6.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
       float fd = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK; float haze = max(1.0 - exp(-fd * fd), 1.0 - exp(-length(cameraPosition - vW) * 0.0035));
       if (below) col = mix(col, mix(uUWF, uWaterDisplay, 0.65) * (1.0 + 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5)), smoothstep(45.0, 190.0, length(cameraPosition - vW)));   /* Shifat Nov 1 'one world': far off, the underside takes exactly the sea wall's junction colour (seabed.ts), so surface, wall and bed meet at the horizon with no band */
       if (below) col += uWaterDisplay * 0.9 * pow(1.0 - clamp(abs(v.y), 0.0, 1.0), 2.5) * (1.0 - smoothstep(45.0, 190.0, length(cameraPosition - vW)));   // soft light band toward the horizon, dark overhead (ref: Abzu key art vertical gradient)
