@@ -23,6 +23,7 @@ void main(){
   col*=0.82+0.18*step(0.12,f.y);col*=1.0-0.22*step(f.y,0.08)-0.12*step(f.x,0.06);
   col=mix(col,wc+vec3(0.12,0.1,0.2)*(1.0-onA)*d,w);
  }
+ if(abs(n.y)<0.5&&vPos.y>0.01&&vSeed<1.5){col*=mix(vec3(0.80,0.85,0.94),vec3(1.0),smoothstep(0.0,3.2,vPos.y));}   // soft ambient occlusion at the foot of every wall (Shifat 9:24 PM soft diffused shadows; 9:39 'faint'): cool, never black
  if(vSeed>1.5){col=vCol*1.25;}
  if(vPos.y<0.01&&vPos.x>100.0&&vPos.x<260.0&&vPos.z>20.0&&vPos.z<180.0)discard;   // valley: the park floor mesh replaces the street slab here
  if(vPos.y<0.01){
