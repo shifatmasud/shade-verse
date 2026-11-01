@@ -39,3 +39,6 @@ Locked looks (change only on Shifat's word):
 
 ## Shadow style (Shifat Oct 31 9:41-9:42 PM: 'Perfect', 'Every other shadows must be like this')
 All shadows are faint, wide, blurred and cool-tinted (multiply toward rgb .80/.85/.94, never black): character contact shadows, wall-foot occlusion, baked ground shade. Any new shadow must match `src/world/contactShadows.tsx`.
+
+## Sea parity (Shifat Oct 31 10:02 PM)
+Phone and desktop sea water must look exactly the same (1:1). Optimizations are fine only if they apply to every device. No device-specific water branches.
