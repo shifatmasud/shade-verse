@@ -1,3 +1,4 @@
+import { seabedAt } from '../sim';
 // Ice Isle (Shifat Oct 31 5:48 PM: 'iceberg island: translucent blue ice, snow cap, glowing igloos, floating chunks, cold fog'; 6:25 PM: 'an island
 // from another side of the city'). Ground = seaWorld iceRaw (the sim walks it). Refs: Antarctic tabular bergs / Greenland glacier fronts:
 // sheer cliffs glow cyan where light passes through thin ice, deep blue in the cracks, white snow on every flat top.
@@ -17,10 +18,10 @@ function terrainGeo(nLod?: number) {
     const n = nLod ?? (PHONE ? 130 : 180), half = ICE.R * 1.5, pos: number[] = [], col: number[] = [], ice: number[] = [], idx: number[] = [], ok: boolean[] = [];
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
         const x = ICE.cx - half + (i / n) * 2 * half, z = ICE.cz - half + (j / n) * 2 * half, h = iceRaw(x, z);
-        pos.push(x, h ?? -40, z); ok.push(h !== null && h > -30);
+        pos.push(x, Math.max(h ?? -99, seabedAt(x, z) - 0.5), z); ok.push(h !== null);   /* Nov 1: runs down onto the sea floor - no stair-stepped cliff edge seen from under water */
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i, b = a + 1, d = a + n + 1, e = d + 1; if (ok[a] && ok[b] && ok[d] && ok[e]) idx.push(a, d, b, b, d, e); }
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const a = j * (n + 1) + i, b = a + 1, d = a + n + 1, e = d + 1; if (ok[a] || ok[b] || ok[d] || ok[e]) idx.push(a, d, b, b, d, e); }
     g.setIndex(idx); g.computeVertexNormals();
     const nr = g.attributes.normal as THREE.BufferAttribute, c = new THREE.Color(), snow = new THREE.Color('#f3f7fb'), snow2 = new THREE.Color('#dfe9f2'), iceHi = new THREE.Color('#9fe3f2'), iceLo = new THREE.Color('#2a86b4'), crack = new THREE.Color('#0f4f80');
     for (let k = 0; k < nr.count; k++) {
