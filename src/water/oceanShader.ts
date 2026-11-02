@@ -159,7 +159,7 @@ ${GRID_TRACE_GLSL}
         float th = clamp((wz - sz2) * 3.5, 0.0, 60.0); vec3 Tr = exp(-vec3(0.30, 0.065, 0.04) * th);
         body = mix(sceneCol(uv2) * Tr + body * (1.0 - Tr), body, (1.0 - smoothstep(12.0, 32.0, length(cameraPosition - vW))) * 0.85);   /* near you the real fish/bed already show through (clear water); the low-res scene copy would only add blocky doubles */
       }
-      vec3 nGlow = vec3(0.0); vec3 skR = vec3(0.0); float skA = 0.0;   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
+      vec3 nGlow = vec3(0.0); vec3 nGW = vec3(0.0); vec3 skR = vec3(0.0); float skA = 0.0;   // bright mirrored lights (neon, windows, lamps): at night they streak across the water regardless of Fresnel, like real harbor reflections
       float fdE = max(length(cameraPosition - vW) - 35.0, 0.0) * uFogK;
       if (uUseRefl > 0.5 && !below && fdE < 1.9) {   // mirrored island / city / bridge shapes (skipped where the fog has swallowed them), rippled by the surface normal (more distortion with distance to the plane)
         /* reflection probe (Shifat 4:30 PM 'cheap techniques?' + 4:57 PM 'super blurry ok'): the rippled reflection ray looks up a tiny cubemap of the
@@ -175,7 +175,7 @@ ${GRID_TRACE_GLSL}
         if (uHF > 5.5) {   /* ANALYTIC RAYTRACE, EVERY BUILDING (src/water/gridRefl.ts, Shifat 3:57 PM): the rippled reflected ray walks the map grid (2D DDA)
              and is tested exactly against the boxes of each cell it crosses (nearest hit), plus the 3 isle domes. Lit by the face it hit, windows
              on the walls (lit warm at night), softer with distance. The ray's climb is halved: mirrored shapes stretch ~2x downward. */
-          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.38, rd.z)), nb; vec4 at = airTrace(ro, hd, nb, 1.8); vec3 cb = at.rgb; float cov = at.a;
+          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.38, rd.z)), nb; vec4 at = airTrace(ro, hd, nb, 1.8); vec3 cb = at.rgb; float cov = at.a; nGW = gGlow;
 
 
           float ah = cov; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
@@ -298,6 +298,7 @@ ${GRID_TRACE_GLSL}
       col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.5);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       if (uBench.y > 3.5 && uBench.y < 4.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
       col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
+      col += nGW * 1.30 * smoothstep(15.0, 60.0, length(cameraPosition.xz - vW.xz)) * (1.0 - uDay) * (1.0 - 0.5 * fr);   /* the city's night light, mirrored soft (coverage-weighted, no threshold: no hard edges) */
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
       // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
       vec3 sunC = mix(vec3(1.0, 0.42, 0.16), vec3(1.0, 0.93, 0.82), smoothstep(0.02, 0.35, uSun.y));

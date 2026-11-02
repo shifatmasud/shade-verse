@@ -60,8 +60,9 @@ export function bakeGrid() {
    Needs GRID_UNIFORMS_GLSL. Used by the sea (reflection + underwater Snell window) and the park pond. */
 export const GRID_UNIFORMS_GLSL = 'uniform highp sampler2D uGrid; uniform highp sampler2D uGBox; uniform vec4 uGB; uniform vec2 uGN;';
 export const GRID_TRACE_GLSL = `
+    vec3 gGlow;   // night: the lit-window / neon light of the cells the trace passed through, soft-coverage weighted like acc
     void gridTrace(vec3 ro, vec3 hd, inout float tb, inout vec3 nb, inout vec3 acc, inout float cov) {
-          vec3 ih = 1.0 / hd;
+          vec3 ih = 1.0 / hd; gGlow = vec3(0.0); float gCv = 0.0;
           /* clip the ray to the grid's rectangle first: open-sea rays start outside it and would burn steps on empty cells */
           vec2 gmn = uGB.xy, gmx = uGB.xy + uGN * uGB.z; vec2 ta = (gmn - ro.xz) / hd.xz, tbb = (gmx - ro.xz) / hd.xz; vec2 tlo = min(ta, tbb), thi = max(ta, tbb);
           float te = max(max(tlo.x, tlo.y), 0.0), tx = min(min(min(thi.x, thi.y), 170.0 / max(hd.y, 1e-3)), 800.0);   /* past ~800 m the sea fog owns the water anyway */
@@ -81,6 +82,11 @@ export const GRID_TRACE_GLSL = `
                 float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
                 if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf, bx.y - sf, hd.y * max(a, 0.5));
                   if (tb > 9e4) { tb = max(a, 0.5); nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
+                  vec2 cw = uGB.xy + (vec2(c) + 0.5) * uGB.z; float hs = fract(sin(dot(vec2(c), vec2(12.9898, 78.233))) * 43758.5453);
+                  /* Shifat Nov 1 7:50 PM 'nighttime glow reflections are missing': each block's light at night - warm windows across the city, magenta/cyan neon in Neon Harbor */
+                  vec3 gc = (cw.x > -40.0 && cw.y < -760.0) ? mix(vec3(1.0, 0.3, 0.85), vec3(0.25, 0.8, 1.0), step(0.5, hs)) : vec3(1.0, 0.72, 0.42) * (0.45 + 0.55 * hs);
+                  float kg = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf * 6.0, bx.y - sf * 3.0, hd.y * max(a, 0.5) * 2.4);   // true mirror height (the trace ray climbs squashed): light sits under each building, like a real night mirror
+                  gGlow += (1.0 - gCv) * kg * gc; gCv += (1.0 - gCv) * kg;
                   acc += (1.0 - cov) * k * cc.rgb; cov += (1.0 - cov) * k; }
               }
             }
