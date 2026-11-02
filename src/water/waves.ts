@@ -135,3 +135,23 @@ export function waveMeshJS(x: number, z: number, t: number, sp: number, out: num
         h += Math.sin(a) * f; if (i < PHYSICS_TRAINS) { const c = Math.cos(a); dx -= c * f * w[14]; dz -= c * f * w[15]; } }
     const s = swellKJS(x, z); out[0] = h * s; out[1] = dx * GERSTNER_Q * s; out[2] = dz * GERSTNER_Q * s; return out;
 }
+/* Perf (waterline re-measure, Nov 2): the two halves of waveMeshJS for the waterline solve, bit-identical to it (same terms, same order).
+   The Gerstner inversion only needs the sideways push (the 5 chop trains never push: skipped, no sin for heights), the final height needs no cos. */
+/** waveMeshJS()'s out[1], out[2] only. */
+export function waveDispJS(x: number, z: number, t: number, sp: number, out: number[]) {
+    let dx = 0, dz = 0;
+    for (const w of NLD) { if (sp >= w[6]) continue; const a = x * w[0] + z * w[1] + t * w[2], f = w[3] * sst(w[6], w[7], sp), c = Math.cos(a); dx -= c * f * w[4]; dz -= c * f * w[5]; }
+    for (let i = 0; i < PHYSICS_TRAINS; i++) { const w = NGD[i]; if (sp >= w[16]) continue;
+        const m = w[0] + w[1] * Math.sin(x * w[2] + z * w[3] + w[4] + t * w[5]), a = x * w[6] + z * w[7] + w[8] * Math.sin(x * w[9] + z * w[10] + w[11]) + t * w[12], f = w[13] * m * sst(w[16], w[17], sp);
+        const c = Math.cos(a); dx -= c * f * w[14]; dz -= c * f * w[15]; }
+    const s = swellKJS(x, z); out[1] = dx * GERSTNER_Q * s; out[2] = dz * GERSTNER_Q * s; return out;
+}
+/** waveMeshJS()'s out[0] only. */
+export function waveMeshHJS(x: number, z: number, t: number, sp: number) {
+    let h = 0;
+    for (const w of NLD) { if (sp >= w[6]) continue; const a = x * w[0] + z * w[1] + t * w[2], f = w[3] * sst(w[6], w[7], sp); h += Math.sin(a) * f; }
+    for (let i = 0; i < NGD.length; i++) { const w = NGD[i]; if (sp >= w[16]) continue;
+        const m = w[0] + w[1] * Math.sin(x * w[2] + z * w[3] + w[4] + t * w[5]), a = x * w[6] + z * w[7] + w[8] * Math.sin(x * w[9] + z * w[10] + w[11]) + t * w[12], f = w[13] * m * sst(w[16], w[17], sp);
+        h += Math.sin(a) * f; }
+    return h * swellKJS(x, z);
+}

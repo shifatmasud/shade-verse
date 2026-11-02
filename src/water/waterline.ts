@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { waveMeshJS } from './waves';
+import { waveDispJS, waveMeshHJS } from './waves';
 import { OCEAN_HALF, OCEAN_N, OCEAN_SNAP, OCEAN_WARP } from './seabed';
 import { WATER_Y } from '../sim';
 import { WATERLINE } from '../world/env';
@@ -38,11 +38,11 @@ export function seaMeshY(x: number, z: number, t: number, sx: number, sz: number
     let px = x, pz = z;
     for (let i = 0; i < iters; i++) {
         const lx = Math.abs(px - sx) / OCEAN_HALF, lz = Math.abs(pz - sz) / OCEAN_HALF, sp = SPK * Math.pow(Math.max(lx, lz, 1e-4), SPE);
-        const qz = Math.min(pz, -222); waveMeshJS(px, qz, t, sp, _o); const k = sst(-222, -232, qz);
+        const qz = Math.min(pz, -222); waveDispJS(px, qz, t, sp, _o); const k = sst(-222, -232, qz);
         px = x - _o[1] * k; pz = z - _o[2] * k;
     }
     const lx = Math.abs(px - sx) / OCEAN_HALF, lz = Math.abs(pz - sz) / OCEAN_HALF, sp = SPK * Math.pow(Math.max(lx, lz, 1e-4), SPE);
-    waveMeshJS(px, Math.min(pz, -222), t, sp, _o); return WATER_Y + _o[0];
+    return WATER_Y + waveMeshHJS(px, Math.min(pz, -222), t, sp);   // perf: push-only / height-only halves of waveMeshJS, bit-identical, ~40% fewer trig calls
 }
 
 /** Solve the line for this frame (sea: exact mesh surface; lake: its own surface function). Writes WATERLINE.q / .v.
