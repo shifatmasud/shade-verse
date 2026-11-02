@@ -369,7 +369,7 @@ ${GRID_TRACE_GLSL}
       if (!below) {
         col *= mix(0.3, 1.0, uDay);
         { float dR = length(cameraPosition - vW), hzW = min(0.93, 1.0 - exp(-dR * 0.0021));   // same haze the reflected buildings themselves get (HAZE_K)
-          col = mix(col, mix(skR * mix(0.75, 1.0, uDay), uSky * mix(0.3, 1.0, uDay), hzW), skA * clamp(fr * 1.6 + 0.08, 0.0, 0.85)); }   // physical Fresnel weight (strong at grazing, faint looking down)
+          col = mix(col, mix(skR * mix(0.75, 1.0, uDay), uSky * mix(0.3, 1.0, uDay), hzW), skA * clamp(fr * 2.0 + 0.22, 0.0, 0.88)); }   // physical Fresnel weight (strong at grazing, faint looking down)
         col += sunSpec * (1.0 - haze * 0.5);
         // Stylised cool night-sky lobe, not scene reflections or a physical moon model.
         col += vec3(0.18, 0.26, 0.38) * (1.0-uDay) * pow(max(dot(r, normalize(vec3(-0.3, 0.6, -0.5))), 0.0), 12.0);
