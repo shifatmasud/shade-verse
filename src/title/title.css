@@ -1,0 +1,52 @@
+/* Shade Verse title, in the aesthetic of Shifat's portfolio preloader (surface-tension src/styles/app.css .intro / .odo, tokens.css):
+   black, white / silver, Inter 400 only, giant display vs tiny labels, the house eases (expo-out entrances 1 s, in-out exits),
+   masked rolls for every change. Sizes come from the title box itself (container units), landscape phone to desktop. */
+@font-face{font-family:'SV Inter';src:url('./inter-title.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:block}
+.sv-title{--ease:cubic-bezier(0.19,1,0.22,1);--ease-io:cubic-bezier(0.65,0,0.35,1);--silver:#a9adb3;--silver3:#5f646b;
+  --pad-x:max(4.2cqw,20px,env(safe-area-inset-left),env(safe-area-inset-right));--pad-y:clamp(14px,4.2cqh,34px);
+  --fs-display:clamp(44px,min(12.4cqw,24cqh),220px);--fs-small:clamp(11px,1.9cqh,12.5px);
+  position:absolute;inset:0;z-index:2;container:svt/size;overflow:hidden;background:#000;color:#fafafa;
+  font-family:'SV Inter','Inter',system-ui,-apple-system,'Segoe UI',sans-serif;font-weight:400;cursor:pointer;touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;will-change:transform;backface-visibility:hidden}
+.sv-title.loading{z-index:40;cursor:default}
+.sv-title.lifting{pointer-events:none}
+/* the mark: calm and centred, ~46 % of the height (it fills ~58 % of its square canvas) */
+.sv-logo{position:absolute;left:50%;top:42%;width:min(46cqh,30cqw,400px);height:min(46cqh,30cqw,400px);transform:translate(-50%,-50%);pointer-events:none;
+  opacity:0;transition:opacity .45s var(--ease-io)}
+.sv-title.in .sv-logo{opacity:1}
+/* bottom-left: the name at display size; on Play it rolls up out of its mask and the counter rolls in from below in its place */
+.sv-bl{position:absolute;left:var(--pad-x);bottom:var(--pad-y);display:grid}
+.sv-bl>.sv-mask{grid-area:1/1}
+.sv-mask{overflow:hidden;padding:.12em .1em;margin:-.12em -.1em}
+.sv-name{margin:0;font-size:var(--fs-display);font-weight:400;line-height:.86;letter-spacing:-.06em;white-space:nowrap;margin-left:-.055em;
+  transform:translate3d(0,110%,0);transition:transform .6s var(--ease-io)}
+.sv-title.in .sv-name{transform:none;transition:transform 1s var(--ease) .15s}
+.sv-title.in.loading .sv-name{transform:translate3d(0,-110%,0);transition:transform .6s var(--ease-io)}
+.sv-cmask{padding:.12em .1em 0}
+.sv-count{display:flex;align-items:flex-start;font-size:var(--fs-display);line-height:.8;letter-spacing:-.06em;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;
+  transform:translate3d(0,115%,0);transition:transform .6s var(--ease-io)}
+.sv-title.loading .sv-count{transform:none;transition:transform 1s var(--ease) .12s}
+/* the reels (portfolio .odo): each column an overflow mask, the strip holds 0-9 three times and only translates */
+.sv-odo{display:inline-flex;height:1em;line-height:1em;clip-path:inset(0.1em -0.15em 0.135em)}
+.sv-col{display:block;position:relative;overflow:hidden;height:1em}
+.sv-strip{display:flex;flex-direction:column;will-change:transform;transform:translate3d(0,-33.333%,0)}
+.sv-strip span{display:block;height:1em;line-height:1em;text-align:center}
+.sv-pct{font-size:.3em;line-height:1;letter-spacing:0;color:var(--silver);margin:.42em 0 0 .3em}
+/* bottom-right: tiny silver labels and Play (Swiss controls: black / white, no shadows, borders or gradients) */
+.sv-br{position:absolute;right:var(--pad-x);bottom:var(--pad-y);display:flex;flex-direction:column;align-items:flex-end;gap:clamp(6px,2.2cqh,16px)}
+.sv-meta{font-size:var(--fs-small);line-height:1.45;color:var(--silver);letter-spacing:.01em;white-space:nowrap;display:flex;align-items:center;gap:8px;
+  transform:translate3d(0,110%,0);transition:transform .6s var(--ease-io)}
+.sv-extra{color:#fafafa}
+.sv-go{display:flex;align-items:center;justify-content:center;width:clamp(48px,14cqh,72px);height:clamp(48px,14cqh,72px);border-radius:999px;border:0;padding:0;
+  background:#fafafa;color:#000;cursor:pointer;transform:translate3d(0,110%,0);transition:transform .6s var(--ease-io),background-color .24s var(--ease)}
+.sv-go svg{width:36%;height:36%;margin-left:6%}
+.sv-gomask{padding:.2em;margin:-.2em}
+.sv-title.in .sv-meta,.sv-title.in .sv-go{transform:none;transition:transform 1s var(--ease) .3s,background-color .24s var(--ease)}
+.sv-title.in.loading .sv-meta,.sv-title.in.loading .sv-go{transform:translate3d(0,-115%,0);transition:transform .6s var(--ease-io)}
+@media (hover:hover){.sv-go:hover{background:#d4d6da}}
+.sv-go:active{background:#a9adb3}
+.sv-go:focus-visible{outline:1px solid #fafafa;outline-offset:4px}
+/* very short boxes: the credit steps aside so Play keeps its thumb room */
+@container svt (max-height:300px){.sv-br .sv-mask:not(.sv-gomask){display:none}}
+/* reduced motion: every change is instant */
+.sv-title.still *,.sv-title.still{transition:none!important}

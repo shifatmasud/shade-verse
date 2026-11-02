@@ -101,36 +101,7 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 .ctoast ul,.tmaps ul{list-style:none;margin:0;padding:0;display:grid;gap:3px}
 .ctoast li,.tmaps li{display:flex;gap:10px;align-items:baseline}
 kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;color:#e9dcff;opacity:.95}
-/* title screen (refs: Hollow Knight, Journey, Ori title screens — big mark, minimal type, world alive behind) */
-.overlay.title{container:ttl/size;padding:0!important;gap:0;overflow:hidden!important;justify-content:stretch!important;align-items:stretch;touch-action:manipulation;cursor:pointer;background:radial-gradient(ellipse farthest-corner at 50% 45%,rgba(8,6,22,.05),rgba(8,6,22,.42) 60%,rgba(4,3,12,.7))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-.tmark{width:var(--tm);height:var(--tm);flex:none;color:#fff;filter:drop-shadow(0 0 18px rgba(170,140,255,.55)) drop-shadow(0 4px 14px rgba(0,0,0,.6));animation:tglow 4s ease-in-out infinite}
-.tmark svg{width:100%;height:100%;display:block}
-@keyframes tglow{0%,100%{filter:drop-shadow(0 0 14px rgba(170,140,255,.4)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}50%{filter:drop-shadow(0 0 26px rgba(190,160,255,.8)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}}
-.otitle.tname{margin:0;font-size:var(--tn);line-height:1.1;white-space:nowrap;font-weight:800;text-transform:uppercase;letter-spacing:.18em;text-shadow:0 2px 24px rgba(0,0,0,.65),0 0 2px rgba(0,0,0,.6);max-width:none}
-.tprompt{font-size:var(--tp);line-height:1.25;letter-spacing:.14em;text-transform:uppercase;opacity:.85;animation:tpulse 2.2s ease-in-out infinite}
-@keyframes tpulse{0%,100%{opacity:.45}50%{opacity:1}}
-.tmaps{display:flex;gap:28px;margin-top:8px;font-size:11.5px;text-align:left;opacity:.9;background:rgba(10,8,26,.45);padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12)}
-.tmaps b{display:block;font-size:12px;margin-bottom:5px;opacity:.95}
-.tby{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.55}
-/* Shifat Nov 2 1:48 AM: the title screen adapts to portrait & landscape on any device (auto) - name on one line sized by the smaller of width/height */
-/* Shifat Nov 2 10:36 AM 'Title screen isn't auto responsive': every size below comes from the title box itself (container units cqh/cqw = the real stage box),
-   never from vh/vw, so a stale or oversized viewport unit can't push the group off-screen. Top/bottom bands are kept clear of the HUD pill + sound button
-   (portrait) and of the credit line; on short landscape the mark may rise into the band because the corners stay clear of the centred column. */
-.tcol{flex:1 1 auto;min-height:0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;box-sizing:border-box;
-  --tm:clamp(34px,min(18cqh,24cqw),120px);--tn:clamp(17px,min(8.6cqh,7.4cqw),64px);--tp:clamp(10px,3.4cqh,13px);--tg:clamp(3px,1.6cqh,14px);--gh:clamp(42px,14cqh,64px);
-  --pt:calc(env(safe-area-inset-top) + 64px);--pb:calc(env(safe-area-inset-bottom) + 64px);
-  gap:var(--tg);padding:var(--pt) max(12px,env(safe-area-inset-right)) var(--pb) max(12px,env(safe-area-inset-left))}
-.overlay.title .go{flex:none;height:var(--gh);width:calc(var(--gh) * 1.31);border-radius:calc(var(--gh) * .31);margin:clamp(0px,1cqh,10px) 0 0}
-.overlay.title .otext{flex:none}
-.tmaps{flex:none;max-width:calc(100cqw - 24px)}
-.overlay.title .tby{left:0;right:0;text-align:center;pointer-events:none}
-@container ttl (min-aspect-ratio:6/5){.tcol{--pt:calc(env(safe-area-inset-top) + clamp(6px,14cqh - 30px,64px));--pb:calc(env(safe-area-inset-bottom) + 36px)}}
-@container ttl (max-height:299px){.tby{display:none}.tcol{--pb:calc(env(safe-area-inset-bottom) + 6px)}}
-@container ttl (max-height:560px){.tmaps{display:none}}
-@container ttl (orientation:portrait){.tmaps{flex-direction:column;gap:12px}}
-@container ttl (orientation:portrait) and (max-height:820px){.tmaps{display:none}}
-
-.stage.desk .overlay.title .go{display:none}
+/* title screen: src/title/title.css (Nov 2 redesign, Shifat's portfolio preloader aesthetic) */
 
 .ico.ride{right:calc(96px + env(safe-area-inset-right));bottom:calc(200px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.35)!important}
 .ico.ride.on{background:rgba(255,209,102,.45)!important}

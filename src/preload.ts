@@ -34,6 +34,11 @@ export const pendingLoads = () => pending;
 let readyRes: () => void = () => {};
 /** resolves once the world has mounted, its loaders are idle and its shaders are compiled */
 export const worldReady = new Promise<void>((r) => { readyRes = r; });
-export function markWorldReady() { readyRes(); }
+export function markWorldReady() { stages.world = true; readyRes(); }
+/* the title odometer (src/title): REAL progress of everything Play waits for — files 70 %, the world mounted 8 %, its loaders idle 6 %,
+   its shaders compiled 6 %, every sound decoded 10 % (Nov 2 title redesign) */
+const stages = { mounted: false, idle: false, world: false, audio: false };
+export function markStage(k: keyof typeof stages) { stages[k] = true; }
+export function preloadProgress() { return (total ? 0.7 * done / total : 0) + (stages.mounted ? 0.08 : 0) + (stages.idle ? 0.06 : 0) + (stages.world ? 0.06 : 0) + (stages.audio ? 0.1 : 0); }
 /** gives up waiting after ms (a stuck file must never lock the player out) */
 export const capped = <T,>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]);

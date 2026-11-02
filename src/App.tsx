@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { preloadNet, onPreloadProgress, pendingLoads, worldReady, markWorldReady, capped } from './preload';
+import { preloadNet, pendingLoads, worldReady, markWorldReady, capped, markStage, preloadProgress } from './preload';
+import { TitleScreen } from './title/TitleScreen';
 import { AnimatePresence, motion } from 'framer-motion';
 import gsap from 'gsap';
 const Scene = React.lazy(() => import('./Scene').then((m) => ({ default: m.Scene })));   /* Shifat Nov 1 2:14 PM 'UI first': the 3D world's code loads and runs only after Play */
@@ -10,9 +11,11 @@ function SceneReady() {
     const { gl, scene, camera } = useThree();
     useEffect(() => {
         let quiet = 0, raf = 0; const t0 = performance.now();
+        markStage('mounted');   // title odometer: the world's code ran and its scene mounted
         const step = () => {
             quiet = pendingLoads() === 0 ? quiet + 1 : 0;
             if (quiet < 10 && performance.now() - t0 < 20000) { raf = requestAnimationFrame(step); return; }
+            markStage('idle');
             const c = (gl as any).compileAsync ? (gl as any).compileAsync(scene, camera) : Promise.resolve(gl.compile(scene, camera));
             capped(Promise.resolve(c).catch(() => null), 8000).then(markWorldReady);
         };
@@ -55,7 +58,6 @@ const IShock = () => <Svg s={48}><path d="M13.8 1.7 5.6 13.1h5.7l-1 9.2 8.1-12.3
 const IOrb = () => <Svg s={20}><circle cx="12" cy="12" r="6" /><path d="M9.5 10a3 3 0 012-1.6" /></Svg>;
 const IHeart = () => <Svg s={20}><path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" /></Svg>;
 const ISpeaker = ({ off }: { off: boolean }) => <Svg s={22}><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />{off ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11" />}</Svg>;
-const IPlay = () => <Svg s={30}><path d="M8 5.5l11 6.5-11 6.5z" fill="currentColor" /></Svg>;
 const Pips = ({ n, max = 10 }: { n: number; max?: number }) => <span className="pips">{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? 'on' : ''} />)}</span>;
 
 export function App() {
@@ -145,9 +147,10 @@ export function App() {
             try { const f = document.documentElement.requestFullscreen({ navigationUI: 'hide' }); f?.catch(() => {}); } catch (e) { /* browser keeps its bar */ }
         }
         audio.unlock(); if (DBG) (window as any).__audio = { engine: audio, director: snd, ctx: () => audio.ctx, muted: () => mutedRef.current };
-        setLoad({ on: true, pct: 0 }); void preloadNet();
-        /* gameplay begins only when every file is in memory, the world is built, its shaders compiled and every sound decoded (capped, never a lockout) */
-        capped(Promise.all([preloadNet(), worldReady]).then(() => capped(audio.loadAll(), 10000)), 45000).then(begin);
+        setLoad({ on: true, pct: 0 }); void preloadNet(); readyRef.current = false;
+        /* gameplay begins only when every file is in memory, the world is built, its shaders compiled and every sound decoded (capped, never a lockout);
+           Nov 2 title redesign: the title's odometer then rolls to 100 and calls begin() as its curtain lifts */
+        capped(Promise.all([preloadNet(), worldReady]).then(() => capped(audio.loadAll(), 10000)), 45000).then(() => { markStage('audio'); readyRef.current = true; });
     }
     function begin() {
         starting.current = false; setLoad({ on: false, pct: 100 });
@@ -177,8 +180,7 @@ export function App() {
     const [swingOn, setSwingOn] = useState(false);
     const holdR = useRef({ sw: false, swT: 0, swAt: 0, sk: false, skT: 0, skAt: 0 });   // *At: press time, so a release after HOLD_MS is a hold even if the timer was late
     const [load, setLoad] = useState<{ on: boolean; pct: number }>({ on: false, pct: 0 });   // Play pressed before everything was in memory
-    const starting = useRef(false);
-    useEffect(() => onPreloadProgress((d, n) => setLoad((l) => (l.on ? { on: true, pct: n ? Math.round((d / n) * 90) : 0 } : l))), []);   /* Shifat Nov 1 8:19 PM 'Only load when tap play': nothing downloads on the title; Play loads everything, then gameplay begins */
+    const starting = useRef(false), readyRef = useRef(false);   /* Shifat Nov 1 8:19 PM 'Only load when tap play': nothing downloads on the title; Play loads everything, then gameplay begins. The title odometer reads preloadProgress() itself (no App re-render per file) */
     const [boot, setBoot] = useState(false);   // no WebGL canvas, no scene build, no render loop until the first Play
 
     return <div className={(hud.mode === 'play' ? 'stage' : 'stage menu') + (desk ? ' desk' : '')} onContextMenu={(e) => e.preventDefault()}>
@@ -237,24 +239,9 @@ export function App() {
                 <ul>{(ctrlToast.kind === 'pad' ? MAP_PAD : MAP_KB).map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul>
             </motion.div>}
         </AnimatePresence>
-        <AnimatePresence>
-            {hud.mode !== 'play' && <motion.div className="overlay title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }} onClick={start}>
-                <div className="tcol">{/* Shifat Nov 2 10:36 'Title screen isn't auto responsive': the column is sized from the title box itself (container units), never from vh */}
-                <motion.div className="tmark" initial={{ scale: 0.6, opacity: 0, rotate: -8 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ delay: 0.05, duration: 0.9, ease: [0.2, 1.4, 0.4, 1] }}>
-                    {/* Shifat's mark, taken as-is from shifatmasud/surface-tension-case-study (site/index.html .wordmark__mark) */}
-                    <svg viewBox="0 0 200 200" fill="currentColor" aria-hidden="true"><path d="M100 0H200L100 100H0Z M100 100H200L100 200H0Z" /></svg>
-                </motion.div>
-                <motion.h1 className="otitle tname" initial={{ y: 16, opacity: 0, letterSpacing: '0.34em' }} animate={{ y: 0, opacity: 1, letterSpacing: '0.18em' }} transition={{ delay: 0.25, duration: 1.1, ease: 'easeOut' }}>Shade Verse</motion.h1>
-                {hud.mode === 'over' && <div className="otext"><IOrb /><Pips n={Math.min(10, hud.score)} /></div>}
-                <motion.button className="go" aria-label="play" whileTap={{ scale: 0.95 }} onClick={(e) => { e.stopPropagation(); start(); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}><IPlay /></motion.button>
-                <div className="tprompt">{load.on ? (load.pct < 90 ? `Loading ${load.pct}%` : 'Preparing world…') : desk ? 'Click or press any key to start' : 'Tap to start'}</div>
-                {desk && <div className="tmaps">
-                    <div><b>Mouse + keyboard</b><ul>{MAP_KB.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
-                    <div><b>Gamepad</b><ul>{MAP_PAD.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
-                </div>}
-                </div>
-                <div className="tby">by Shifat Masud</div>
-            </motion.div>}
-        </AnimatePresence>
+        {/* Nov 2 (Shifat 2:59 PM 'See my portfolio preloader & follow that aesthetics to redesign our title screen. Use the 3d logo'): black, his 3D mark,
+            Inter, masked-roll odometer on the real preload after Play, curtain lift into the game (src/title/) */}
+        <TitleScreen mode={hud.mode} loading={load.on} progress={preloadProgress} ready={() => readyRef.current} onStart={start} onReady={begin}
+            extra={hud.mode === 'over' ? <><IOrb /><Pips n={Math.min(10, hud.score)} /></> : null} />
     </div>;
 }
