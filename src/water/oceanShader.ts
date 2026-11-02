@@ -1,4 +1,3 @@
-import { SKY_D_MAX } from './skylineRefl';
 import { HF_HMAX, HF_BRIDGE, HF_DECK } from './heightRefl';
 import { IMP_HMAX } from './impostorRefl';
 import { HARBOR } from '../seaWorld';
@@ -145,22 +144,8 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         /* Shifat Nov 1 11:13 'reflection moves with the camera, feels wrong': the ring was looked up by direction alone (as if every silhouette were at infinity),
            so the mirrored city slid along with the camera. Now each pixel follows ITS OWN reflected ray to the silhouette's real distance (row 1 of the ring)
            and looks the ring up from there; the top elevation is re-scaled to this pixel's distance. Reflections stay fixed to the world. */
-        if (uHF < 5.5) {   /* the ring lookup only when the raytrace is off (it was computed and then overwritten) */
-        vec2 sq = vW.xz - uSkC, sdh = normalize(rd.xz + 1e-5); float sa = atan(rd.x, rd.z) * 0.15915494 + 0.5;
-        vec3 sdv = texture2D(uSkyl, vec2(sa, 0.75)).rgb; float sdc = (sdv.r * 255.0 * 256.0 + sdv.g * 255.0) / 65535.0 * ${SKY_D_MAX.toFixed(1)}, sdp = 1.0;
-        if (sdc > 4.0) { float sb = dot(sq, sdh), sc = dot(sq, sq) - sdc * sdc; float st = max(-sb + sqrt(max(sb * sb - sc, 0.0)), 4.0); vec2 sP = sq + sdh * st; sa = atan(sP.x, sP.y) * 0.15915494 + 0.5; sdp = st / sdc; }
-        vec4 sk = texture2D(uSkyl, vec2(sa, 0.25)); float skB = sdc > 4.0 ? texture2D(uSkyl, vec2(sa, 0.75)).b : sdv.b;   /* Nov 1: with no parallax shift sa is unchanged, so the row-1 texel is the one already read */
-        sk.a = atan(tan(sk.a * 0.35) / max(sdp, 0.05)) / 0.35; skB = atan(tan(skB * 0.35) / max(sdp, 0.05)) / 0.35;
-        /* Shifat 2:33 PM 'city/harbour/bridge/island reflection not seen': the far skyline stands only a few degrees tall, smaller than the ripple tilt, so a
-           rippled-ray test shattered it to nothing. Real water at a distance mirrors it as long vertical streaks: test the CALM mirror elevation (the view
-           elevation), stretch the image ~2x downward like wind-roughened water does, and let the ripples only fray the streak edges. */
-        float top = sk.a * 0.35, k = asin(clamp(v.y, 0.0, 1.0)) / max(top, 1e-3) + (n.x + n.z) * 1.2;
-        float cov = (1.0 - smoothstep(1.2, 2.4, k)) * mix(1.0, 0.6, smoothstep(0.5, 2.4, k)) * step(0.004, sk.a) * (1.0 - step(0.004, skB) * (1.0 - smoothstep(1.3, 1.9, asin(clamp(v.y, 0.0, 1.0)) / max(skB * 0.35, 1e-3) + (n.x + n.z) * 1.2)));   /* bridge deck: open sky under it */
-        vec4 rs = vec4(sk.rgb * mix(0.3, 1.0, uDay), cov);
-        vec3 rsb = mix(rs.rgb, reflTint(rs.rgb, refl), 0.45);   /* Shifat 1:21 'I don't see reflection': readable silhouettes - keeps their own colour, only half tinted to the water */
-        skR = rsb; skA = rs.a * 0.95; nGlow = sk.rgb * 0.35 * cov;   /* Shifat 8:35 PM 'reflections not showing': the skyline is laid in AFTER the sea haze (below) with the world's own haze rate - the sea fog is ~2x the city's, so mixing it in here faded the mirrored city to nothing right under the city */   /* night: the lit skyline as a soft glow band */
-                }
-if (uHF > 5.5) {   /* ANALYTIC RAYTRACE, EVERY BUILDING (src/water/gridRefl.ts, Shifat 3:57 PM): the rippled reflected ray walks the map grid (2D DDA)
+        /* Shifat Nov 1 4:39 PM "Ring reflection code, delete it": the skyline-ring lookup is gone; the analytic raytrace below is the sea reflection */
+        if (uHF > 5.5) {   /* ANALYTIC RAYTRACE, EVERY BUILDING (src/water/gridRefl.ts, Shifat 3:57 PM): the rippled reflected ray walks the map grid (2D DDA)
              and is tested exactly against the boxes of each cell it crosses (nearest hit), plus the 3 isle domes. Lit by the face it hit, windows
              on the walls (lit warm at night), softer with distance. The ray's climb is halved: mirrored shapes stretch ~2x downward. */
           vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.38, rd.z)), ih = 1.0 / hd; float tb = 1e5; vec3 cb = vec3(0.0), nb = vec3(0.0, 1.0, 0.0); float bh = 0.0;
