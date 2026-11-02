@@ -987,7 +987,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
           input.attackQ = false; const fShot = !!input.shotQ, fMelee = !!input.meleeQ; input.shotQ = false; input.meleeQ = false;
           const sa = s as any;
           if (sa.mv) { if (!fShot) sa.mvQ = true; }   // buffered: the next move starts at this move's cancel point, so the chain flows
-          else if (s.atkT <= 0) {
+          else if (s.atkT <= 0 || fShot) {   /* Shifat Nov 2 5:15 AM: no cooldown for anything - web shots fire on every tap */
               // web-yank: a web shot at a bot that is airborne (launched) yanks it down into the street
               const lifted = fShot ? nearLifted(s, 22) : null;
               if (lifted) startMove(s, 7, lifted, ev);
