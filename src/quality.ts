@@ -32,6 +32,7 @@ export const HQ = QUALITY.tier === 'high';
 export const LOWQ = QUALITY.tier === 'low';
 // Per-tier knobs used across the scene.
 export const QK = {
+    envDpr: 0.8,   /* Shifat Nov 2 2:17 AM: the environment (world) renders at a fixed 0.8 dpr on every device - headroom for fps; heroes stay native in the HD pass */
     dprCap: HQ ? 2 : QUALITY.coarse ? 1 : LOWQ ? 1 : 2,   /* touch: the world at 1 dpr, heroes stay native (HD pass) - Shifat 9:06 AM 'everything at dpr 1 except heroes' */
     maxScale: HQ ? 1.25 : 1.34,
     anisotropy: HQ ? 8 : 4,

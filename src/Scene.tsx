@@ -543,7 +543,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
-        { const want = Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * curScale.current; applyRatio(gl, Math.max(0.8, want)); }
+        { applyRatio(gl, DQ_RES ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * DQ_RES : QK.envDpr); }   /* fixed world dpr (Shifat Nov 2 2:17 AM) */
         { (window as any).__gl = gl; const tl = ((window as any).__tel ||= {}); tl.scale = Math.round(curScale.current * 100) / 100; tl.ms = Math.round(ema.current); tl.cam = [Math.round(state.camera.position.x), Math.round(state.camera.position.y), Math.round(state.camera.position.z)]; tl.mode = sim.mode; tl.swim = !!sim.swim; tl.calls = gl.info.render.calls; tl.tris = gl.info.render.triangles; }   /* device diagnostics (telemetry.ts) */   /* Shifat 10:13 PM 'phone environment dpr mustn't go below 1, no fps-based downscaling below 1' */   // world ratio unchanged; the canvas runs at native for the hero HD pass
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
@@ -556,7 +556,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;
             if (DQ_BENCH) ns = (window as any).__benchRes || 1;   // bench holds the scaler (steps must compare like with like)
             if (DQ_RES) ns = DQ_RES;   // ?debug&res=x: hold the world resolution for an on-device fill-rate test   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, (DQ_RES || (DQ_BENCH && ns < 1)) ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * ns : Math.max(0.8, Math.min(window.devicePixelRatio || 1, coarse ? QK.dprCap : QK.dprCap) * ns)); }   /* Shifat Nov 1 2:14 PM: min res dpr 0.8 for faster fps (was 1) */   /* ?debug&res=x bypasses the dpr-1 floor (on-device fill-rate test only) */
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, (DQ_RES || (DQ_BENCH && ns < 1)) ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * ns : QK.envDpr); }   /* Shifat Nov 1 2:14 PM: min res dpr 0.8 for faster fps (was 1) */   /* ?debug&res=x bypasses the dpr-1 floor (on-device fill-rate test only) */
         }
         if (sim.mode === 'play') {
             { const n = Math.max(2, Math.ceil(dt / 0.025)); for (let i = 0; i < n; i++) stepSim(sim, dt / n, ev); }   // same <=25 ms physics steps as before
