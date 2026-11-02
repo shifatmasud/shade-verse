@@ -493,6 +493,7 @@ function ShaderWarmup() {
     return null;
 }
 
+const _camTgt = new THREE.Vector3();   /* per-frame scratch (no garbage each frame) */
 function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
@@ -582,7 +583,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         const wsh = 0, wnx = sim.wall ? -sim.wall[1] : 0, wnz = sim.wall ? sim.wall[0] : 0; // Manual orbit has no forced wall-side offset
         const tx = p[0] - fxd * dist + wnx * wsh, ty = p[1] + (sim.swim ? 0.7 : 1.5) + sy * dist, tz = p[2] - fzd * dist + wnz * wsh;
-        if (sim.mode === 'menu' || sim.mode === 'over') { cam.current.set(tx, ty, tz); } else cam.current.lerp(new THREE.Vector3(tx, ty, tz), 1 - Math.pow(0.001, dt));
+        if (sim.mode === 'menu' || sim.mode === 'over') { cam.current.set(tx, ty, tz); } else cam.current.lerp(_camTgt.set(tx, ty, tz), 1 - Math.pow(0.001, dt));
         { // push smoothed camera out of buildings (post-lerp)
             const q = cam.current;
             for (const b of camB) if (q.x > b.x0 - 2 && q.x < b.x1 + 2 && q.z > b.z0 - 2 && q.z < b.z1 + 2 && q.y < b.h + 2) {

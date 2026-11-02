@@ -178,6 +178,7 @@ export function EnemyDeathFx({ sim }: { sim: Sim }) {
 // palm-charge glow and boss chest-charge glow (2 draw calls total with the beam), fresnel-faded so each reads as a soft light.
 // No real lights on any tier; tagged for the existing selective bloom.
 const ES_GLOW_N = ESHOT.MAX * 2 + 64, ES_BEAM_N = 4;
+const _Z1 = new THREE.Vector3(0, 0, 1);
 export function EnemyShotsFx({ sim }: { sim: Sim }) {
     const glow = useRef<THREE.InstancedMesh>(null!), beam = useRef<THREE.InstancedMesh>(null!);
     const mat = useMemo(() => new THREE.ShaderMaterial({ uniforms: { uT: { value: 0 } }, vertexShader: GLOW_VS, fragmentShader: GLOW_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }), []);
@@ -193,7 +194,7 @@ export function EnemyShotsFx({ sim }: { sim: Sim }) {
             const sp = Math.hypot(b.vx, b.vy, b.vz) || 1; d.set(b.vx / sp, b.vy / sp, b.vz / sp);
             o.quaternion.identity(); put(b.x, b.y, b.z, b.boss ? 0.4 : 0.32, b.boss ? 0.4 : 0.32, b.boss ? 0.4 : 0.32, 1.0, 1.0, 1.0);   // white-hot core
             const L = Math.min(2.4, 0.25 + b.t * 16) * (b.boss ? 1.3 : 1);   // streak grows out of the palm, then a fixed light trail
-            q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d); o.quaternion.copy(q);
+            q.setFromUnitVectors(_Z1, d); o.quaternion.copy(q);
             put(b.x - d.x * L * 0.5, b.y - d.y * L * 0.5, b.z - d.z * L * 0.5, 0.21, 0.21, L * 0.5, 0.35, 0.75, 1.0);
         }
         o.quaternion.identity();
