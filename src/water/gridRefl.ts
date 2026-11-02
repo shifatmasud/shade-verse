@@ -17,8 +17,10 @@ export function bakeGrid() {
     for (let n = 0; n < buildings.length; n++) {
         const b: any = buildings[n]; if (b.host !== undefined) continue; const top = b.h - WATER_Y; if (top < 3) continue;
         if (b.kind === 'solid') continue;   // trees: the isles carry their own look
-        const c = b.kind === 'tower' ? [0.77, 0.27, 0.18] : PAL[(n * 2654435761 >>> 0) % PAL.length];
-        L.push({ x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1, y0: Math.max(0, (b.y0 ?? WATER_Y) - WATER_Y), y1: top, c, h: (n * 0.6180339) % 1 });
+        const c = b.kind === 'tower' ? [0.77, 0.27, 0.18] : b.kind === 'light' ? [0.8, 0.52, 0.5] : PAL[(n * 2654435761 >>> 0) % PAL.length];
+        /* the lone lighthouse: its red-white bands averaged, and its height halved here so the 2x-stretched mirror ray gives a true-length reflection
+           instead of a long pale streak toward the camera (the city stays stretched - it is a dense skyline) */
+        L.push({ x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1, y0: Math.max(0, (b.y0 ?? WATER_Y) - WATER_Y), y1: b.kind === 'light' ? top * 0.5 : top, c, h: (n * 0.6180339) % 1 });
     }
     const NS = 16; for (let k = 0; k < NS; k++) { const u0 = k / NS * BRIDGE_L, u1 = (k + 1) / NS * BRIDGE_L, e = bridgeDeckU((u0 + u1) / 2) - WATER_Y;   // deck: 16 spans following its rise, open sky under
         L.push({ x0: BRIDGE.x - BRIDGE.hw, x1: BRIDGE.x + BRIDGE.hw, z0: BRIDGE.z0 - u1, z1: BRIDGE.z0 - u0, y0: Math.max(0, e - 1.0), y1: e + 1.4, c: [0.5, 0.48, 0.46], h: 0.5 }); }

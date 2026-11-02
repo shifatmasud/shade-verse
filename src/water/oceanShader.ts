@@ -40,17 +40,18 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
     /* the analytic air trace (map grid of buildings + bridge deck spans, then the isles), shared by the sea reflection and the
        underwater Snell window. Returns colour + soft coverage; nb = the face normal of the first hit. */
 ${GRID_TRACE_GLSL}
-    vec4 airTrace(vec3 ro, vec3 hd, out vec3 nb) {
+    vec4 airTrace(vec3 ro, vec3 hd, out vec3 nb, float ik) {
           vec3 ih = 1.0 / hd; float tb = 1e5; vec3 cb = vec3(0.0); nb = vec3(0.0, 1.0, 0.0); float bh = 0.0;
           float cov = 0.0; vec3 acc = vec3(0.0); gridTrace(ro, hd, tb, nb, acc, cov);
           if (cov > 0.01) cb = acc / cov;
+          vec3 hi = normalize(vec3(hd.x, hd.y * ik, hd.z));   /* isles climb less squashed than the city: the 2x stretch smeared the island as a long green streak toward the camera */
           for (int i = 0; i < 3; i++) {   /* isles: the dome only bounds the ray; inside it the real island height (the sea-bed map, which carries the
              coastline and low slopes; it clips at +10 m, so the dome takes over above that) is marched in 8 soft steps */
             if (cov > 0.97) break;
-            vec4 I = uArIsle[i]; vec3 sc = vec3(I.z, I.w, I.z); vec3 o = (ro - vec3(I.x, 0.0, I.y)) / sc, d = hd / sc; float A = dot(d, d), B = dot(o, d), C = dot(o, o) - 1.0, D = B * B - A * C;
+            vec4 I = uArIsle[i]; vec3 sc = vec3(I.z, I.w, I.z); vec3 o = (ro - vec3(I.x, 0.0, I.y)) / sc, d = hi / sc; float A = dot(d, d), B = dot(o, d), C = dot(o, o) - 1.0, D = B * B - A * C;
             if (D > 0.0) { float sq = sqrt(D); float t0 = max((-B - sq) / A, 0.5), t1 = min((-B + sq) / A, tb);
               if (t1 > t0) { float dt = (t1 - t0) / 8.0; float t = t0 + dt * 0.5;
-                for (int s = 0; s < 8; s++) { vec3 p = ro + hd * t; vec2 q = (p.xz - I.xy) / I.z; float dh = I.w * sqrt(max(0.0, 1.0 - dot(q, q)));
+                for (int s = 0; s < 8; s++) { vec3 p = ro + hi * t; vec2 q = (p.xz - I.xy) / I.z; float dh = I.w * sqrt(max(0.0, 1.0 - dot(q, q)));
                   float by = i == 2 ? dh : bedY(p.xz); float h = by > 9.0 ? dh : min(dh, by); float sf = 1.5 + t * 0.03;
                   float k = smoothstep(-sf, sf, h - p.y) * (1.0 - cov);
                   if (k > 0.01) { vec3 col = i == 2 ? vec3(0.82, 0.9, 0.96) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(1.5, 5.0, h));
@@ -174,7 +175,7 @@ ${GRID_TRACE_GLSL}
         if (uHF > 5.5) {   /* ANALYTIC RAYTRACE, EVERY BUILDING (src/water/gridRefl.ts, Shifat 3:57 PM): the rippled reflected ray walks the map grid (2D DDA)
              and is tested exactly against the boxes of each cell it crosses (nearest hit), plus the 3 isle domes. Lit by the face it hit, windows
              on the walls (lit warm at night), softer with distance. The ray's climb is halved: mirrored shapes stretch ~2x downward. */
-          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.38, rd.z)), nb; vec4 at = airTrace(ro, hd, nb); vec3 cb = at.rgb; float cov = at.a;
+          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.38, rd.z)), nb; vec4 at = airTrace(ro, hd, nb, 1.8); vec3 cb = at.rgb; float cov = at.a;
 
 
           float ah = cov; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
@@ -349,7 +350,7 @@ ${GRID_TRACE_GLSL}
         vec3 sr = mix(uSky, zc, smoothstep(0.0, 0.45, tr.y)), sg = mix(uSky, zc, smoothstep(0.0, 0.45, tg.y)), sb = mix(uSky, zc, smoothstep(0.0, 0.45, tb.y));
         vec3 win = vec3(sr.r, sg.g, sb.b);
         if (!tir) {   /* Shifat 2:36 PM 'water surface when underwater must show what's in the air': the skyline ring (city, bridge, island) inside Snell's window, refracted (squeezed toward the window rim) and wobbling with the surface - one fetch */
-          vec3 tn = normalize(tg), nbw; vec4 aw = airTrace(vec3(vW.x, 0.0, vW.z), tn, nbw);   /* Nov 1 4:39 PM ring deleted: the same analytic air trace as the reflection, along the refracted ray */
+          vec3 tn = normalize(tg), nbw; vec4 aw = airTrace(vec3(vW.x, 0.0, vW.z), tn, nbw, 1.0);   /* Nov 1 4:39 PM ring deleted: the same analytic air trace as the reflection, along the refracted ray */
           win = mix(win, aw.rgb * mix(0.3, 0.5, uDay), aw.a * 0.9); }   // seen from below against the bright sky disc, the shore reads as a darker silhouette band at the rim
         if (!tir) win += vec3(1.0, 0.95, 0.82) * (pow(max(dot(normalize(tg), uSun), 0.0), 220.0) * 3.0 + pow(max(dot(normalize(tg), uSun), 0.0), 12.0) * 0.25) * uDay;
         // A narrow rough-surface critical-angle transition avoids a binary colour/alpha rim.
