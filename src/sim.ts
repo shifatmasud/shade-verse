@@ -886,7 +886,8 @@ function stepMove(s: Sim, dt: number, ev: Events) {
                 if (M.lift > 0) oa.vy = Math.max(oa.vy || 0, M.lift); else if (M.lift < 0) { oa.vy = M.lift; oa.slam = 1; }
                 oa.hitDir = m.id; any = true; s.combo++; s.comboT = 1.4;
                 { const tx = p[0] - o.x, tz = p[2] - o.z, td = Math.hypot(tx, tz) || 1, nh = (sa.fxN = (sa.fxN || 0) + 1);   // hit FX on the body, nudged toward the hero (camera side)
-                  if (!any || nh < 3) fxMelee(o.x + tx / td * 0.45, bodyY(o) + 0.1, o.z + tz / td * 0.45, heroCol(s), m.id === 1 ? 1 : m.id === 2 ? 2 : 3, !((oa.ly || 0) > 0.5), -tx / td, -tz / td); }
+                  const hy = m.id === 3 || m.id === 6 ? Math.max(bodyY(o) + 0.1, Math.min(p[1] + 1.45, bodyY(o) + 0.55)) : bodyY(o) + 0.1;   // high kicks: FX at the foot (head / upper chest), never above the bot's head
+                  if (!any || nh < 3) fxMelee(o.x + tx / td * 0.45, hy, o.z + tz / td * 0.45, heroCol(s), m.id === 1 ? 1 : m.id === 2 ? 2 : 3, !((oa.ly || 0) > 0.5), -tx / td, -tz / td); }
                 if (o.hp <= 0) { o.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, o); }
             }
             if (any) { ev.hit(); sa.hitStop = M.stopT; sa.shake = Math.min(1, sa.shake + M.shake);
