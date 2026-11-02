@@ -187,8 +187,11 @@ ${GRID_TRACE_GLSL}
             float th = capHitP(ro, rr, c0 - fw * 4.6, c0 + fw * 4.2, 1.7);
             float ts = capHitP(ro, rr, c0 + vec3(0.0, 2.4, 0.0) - fw * 1.3, c0 + vec3(0.0, 10.3, 0.0) + fw * 0.95, 0.9);
             float tH = th > 0.0 ? th : 1e5, tS = ts > 0.0 ? ts : 1e5, tt = min(tH, tS);
+            float soft = 1.0; if (tt > 1e4) {   /* soft halo: a fatter capsule at reduced weight, so boats blur like the rest of the mirror (Shifat 9:17 PM) */
+              float th2 = capHitP(ro, rr, c0 - fw * 5.4, c0 + fw * 5.0, 2.9), ts2 = capHitP(ro, rr, c0 + vec3(0.0, 2.0, 0.0) - fw * 1.3, c0 + vec3(0.0, 11.0, 0.0) + fw * 0.95, 1.9);
+              if (th2 > 0.0) { tH = th2; tt = th2; soft = 0.45; } else if (ts2 > 0.0) { tS = ts2; tt = ts2; soft = 0.45; } }
             if (tt < 1e4) { vec3 bcol = (tH < tS ? vec3(0.78, 0.8, 0.82) : vec3(0.9, 0.9, 0.88)) * (0.75 + 0.3 * max(dot(normalize(uSun), vec3(0.0, 1.0, 0.0)), 0.0)) * mix(0.25, 1.0, uDay);
-              float kb = 1.0 - smoothstep(150.0, 300.0, length(dB));
+              float kb = (1.0 - smoothstep(150.0, 300.0, length(dB))) * soft;
               skR = mix(skR, mix(bcol, reflTint(bcol, refl), 0.4), kb); skA = mix(skA, 0.95, kb); } }
           /* Shifat 8:59 PM 'reflections should be darker blue tinted': water darkens what it mirrors and tints it toward its own deep blue */
           skR = mix(skR * vec3(0.5, 0.62, 0.78), vec3(0.04, 0.12, 0.2), 0.25);
