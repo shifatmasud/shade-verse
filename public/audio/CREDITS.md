@@ -7,8 +7,8 @@ and only what it needs: the score and the step sprite after the first tap, the b
 All ambience beds and every hero / enemy / UI sound effect are generated at runtime by `src/audio/synth.ts` (WebAudio oscillators,
 noise and filters rendered once through an OfflineAudioContext): city hum + traffic + horns, distant sirens, wind, ocean waves,
 lake lapping, leaves rustle, crickets, underwater rumble + bubbles, glide flutter, swing air rush, web thwip, web attach, swing whoosh,
-web spring, Web Shock charge + zap, punches, melee swish, landing thuds, jump, splash, orb chime, hurt, robot metal hits, robot KO,
-boss hit + boss KO, title "start" hit, and the hooks for the coming Iron Man-style weapons (repulsor charge + bolt, unibeam charge,
+web spring, Web Shock charge + zap, melee swish, landing thuds, jump, splash, orb chime, hurt, robot KO,
+boss KO, title "start" hit, and the hooks for the coming Iron Man-style weapons (repulsor charge + bolt, unibeam charge,
 fire burst and beam loop). Made for Shade Verse by Tab; dedicated to the public domain (CC0 1.0).
 
 ## Score (original, CC0)
@@ -26,11 +26,26 @@ fire burst and beam loop). Made for Shade Verse by Tab; dedicated to the public 
 | steps.ogg / .mp3 (2.56-3.84 s) | sand footsteps (4 takes) | [Footsteps_Mountain_Boots_Wet_Sand_Sequence_Mono](https://freesound.org/people/Nox_Sound/sounds/564893/) (#564893) | Nox_Sound | CC0 1.0 |
 | birds.ogg / .mp3 | daytime birds near the park trees (20 s loop, high-passed) | [forest-bird (2)](https://freesound.org/people/sama66/sounds/462136/) (#462136) | sama66 | CC0 1.0 |
 
+| hits.ogg / .mp3 | jab snap (3 takes), cross / launcher snap layer | [boxing mitt punches strike thud whack.wav](https://freesound.org/people/rsellick/sounds/545523/) (#545523) | rsellick | CC0 1.0 |
+| hits.ogg / .mp3 | skin-slap transient layered on jab, cross, kick, dunk, web pull, yank | [Slap on Skin](https://freesound.org/people/dav0r/sounds/346931/) (#346931) | dav0r | CC0 1.0 |
+| hits.ogg / .mp3 | cross body, kick low layer, web pull body | [210415 Punching bag, foley, ms.wav](https://freesound.org/people/TRP/sounds/616953/) (#616953) | TRP | CC0 1.0 |
+| hits.ogg / .mp3 | spin hook kick body, spike/dunk + slam body | [Power Kick, Body Impact, 7x](https://freesound.org/people/Kinoton/sounds/586841/) (#586841) | Kinoton | CC0 1.0 |
+| hits.ogg / .mp3 | launcher body, web yank body | [Face Punch, Body Impact, 4x](https://freesound.org/people/Kinoton/sounds/503277/) (#503277) | Kinoton | CC0 1.0 |
+| hits.ogg / .mp3 | spike/dunk + slam floor thud | [Falling body hits the floor](https://freesound.org/people/courtneyeck/sounds/673424/) (#673424) | courtneyeck | CC0 1.0 |
+| hits.ogg / .mp3 | spike/dunk floor layer, web yank floor thud | [Wooden Floor Body Slams](https://freesound.org/people/Project_Trident/sounds/128103/) (#128103) | Project_Trident | CC0 1.0 |
+| hits.ogg / .mp3 | web pull impact | [Hits & Fight - Punching](https://freesound.org/people/Vrymaa/sounds/753427/) (#753427) | Vrymaa | CC0 1.0 |
+| hits.ogg / .mp3 | robot metal clank (4 takes), boss clank layer | [metal clanks.wav](https://freesound.org/people/rsellick/sounds/545547/) (#545547) | rsellick | CC0 1.0 |
+| hits.ogg / .mp3 | boss robot metal hit | [MetalHit1.wav](https://freesound.org/people/ajanhallinta/sounds/650701/) (#650701) | ajanhallinta | CC0 1.0 |
 The CC0 status of each recording was read on its freesound page on 2026-10-29. The samples were trimmed, filtered, normalised and re-encoded.
+The CC0 status of each hits.* source was read on its freesound page on 2026-11-02 (license link creativecommons.org/publicdomain/zero/1.0/); the hits were built from
+the freesound high-quality previews of those recordings (same license), layered, trimmed tight and normalised by `tools/audio/build_hits.py`
+(Shifat Nov 2 3:42 PM: "Hit should sound like real hits"). The per-move slots are listed in `HIT_SPRITE` (src/audio/engine.ts).
 
 ## Sizes
 | file | bytes |
 |---|---|
+| hits.mp3 | 95,339 |
+| hits.ogg | 50,351 |
 | birds.mp3 | 100,406 |
 | birds.ogg | 125,494 |
 | music_action.mp3 | 209,286 |

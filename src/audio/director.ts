@@ -1,6 +1,6 @@
 // Sound director: reads the simulation every frame (no changes to sim.ts) and turns state changes into sound.
 // Ambient beds cross-fade by zone and position; hero / enemy one-shots fire on state edges; the score follows the action.
-import { audio, STEP_SPRITE, VO_N, type Vec3 } from './engine';
+import { audio, STEP_SPRITE, HIT_SPRITE, VO_N, type Vec3 } from './engine';
 import { WEATHER } from '../world/env';
 // Mix (Shifat Oct 31 6:27 PM): ambience 1x, background strings/pads 0.8x (engine MUSIC_MIX), hero dialogue 1.2x
 const VO_MIX = 1.2;
@@ -34,12 +34,22 @@ export function surfaceAt(x: number, z: number, y: number, groundY: number): Sur
 
 interface Prev { web: boolean; spring: number; shotT: number; atkT: number; snareT: number; swim: boolean; dive: boolean; glide: boolean; mode: string; hit: number[]; down: number[]; speed: number }
 
-/* Per-move hit weight (combat feel pass, Shifat Nov 2): [snap gain, snap pitch, body gain, body pitch]. The snap is the 'punch' crack, the body the
-   'punch_heavy' thump layered under it. Jab = light and bright; cross = a fuller crack with some body; spin hook kick = the heaviest, low thump;
-   launcher = an upward thump; the web moves sit between. Summed peaks stay at or under the old single punch + the robot clank (no clipping). */
-const HIT_W: Record<number, [number, number, number, number]> = {
-    1: [0.55, 1.16, 0, 1], 2: [0.5, 0.98, 0.3, 1.14], 3: [0.36, 0.84, 0.5, 0.94], 4: [0.42, 1.02, 0.4, 1.2], 5: [0.36, 0.8, 0.55, 0.86], 6: [0.46, 1.04, 0.3, 1.08], 7: [0.45, 1.0, 0.25, 1.1],
+/* Per-move hit sounds (Shifat Nov 2 3:42 PM on the synth layers of 77696ea: "Sounds wrong. Hit should sound like real hits. Study real sounds refs").
+   Every hit is now a REAL recording (CC0 foley: boxing-mitt and punching-bag hits, face/body punches, a power kick, body falls, metal clanks;
+   public/audio/CREDITS.md), cut tight into the 'hits' sprite: a short skin/cloth slap transient over a fast-decaying body thump, no synth ring, short tails.
+   Move -> [sprite set, gain, web character]. Jab = light snappy slap; cross = fuller bag hit; spin hook kick = heavier, more low body; launcher = a full
+   body punch pitched up a touch; spike/dunk = heavy body impact + floor thud; web pull / web yank = real impacts with the web 'attach' zip kept under them.
+   Takes round-robin (never the same take twice in a row), with small pitch (+-4%) and level (+-8%) variation. */
+const HIT_SET: Record<number, [string, number, number]> = {
+    1: ['jab', 0.78, 0], 2: ['cross', 0.78, 0], 3: ['kick', 0.8, 0], 4: ['launcher', 0.78, 0], 5: ['dunk', 0.85, 0], 6: ['webpull', 0.78, 0.22], 7: ['yank', 0.82, 0.25],
 };
+const hitRR: Record<string, number> = {};
+/** plays one take of a hit-sprite set: round-robin, small random pitch/level */
+function playHit(set: string, gain: number, o: { pos?: Vec3; prio?: number; ref?: number; rate?: number } = {}) {
+    const takes = HIT_SPRITE[set]; if (!takes) return;
+    const i = hitRR[set] = ((hitRR[set] ?? -1) + 1 + (takes.length > 2 && Math.random() < 0.3 ? 1 : 0)) % takes.length, [off, dur] = takes[i];
+    audio.play('hits', { offset: off, dur, gain: gain * (0.92 + Math.random() * 0.16), rate: (o.rate ?? 1) * (0.96 + Math.random() * 0.08), pos: o.pos, ref: o.ref, prio: o.prio ?? 3 });
+}
 export class SoundDirector {
     private p: Prev = { web: false, spring: 0, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
     private stepAcc = 0; private stepI = 0;
@@ -106,13 +116,13 @@ export class SoundDirector {
         audio.play(hard ? 'land' : 'land_soft', { gain: hard ? 0.85 : 0.45, rate: 0.95 + Math.random() * 0.1, prio: 3 });
         this.step(1.0);
     }
-    onHit() {   // combat feel pass (Shifat Nov 2): each combo hit has its own weight instead of one punch sample for everything
-        const m = (this.sim as any).mv, W = m ? HIT_W[m.id] : undefined, j = (a: number) => 1 - a + Math.random() * 2 * a;   // +-a pitch jitter so repeats never sound identical
-        if (!W) audio.play('punch', { gain: 0.62, rate: 0.9 + Math.random() * 0.25, prio: 3 });   // web-shot hits, slam (its blast layer comes from onBlast)
-        else { audio.play('punch', { gain: W[0], rate: W[1] * j(0.05), prio: 3 }); if (W[2] > 0) audio.play('punch_heavy', { gain: W[2], rate: W[3] * j(0.04), prio: 3 }); }
+    onHit() {   // real recorded hit per move (see HIT_SET)
+        const m = (this.sim as any).mv, H = m ? HIT_SET[m.id] : undefined;
+        if (!H) playHit('cross', 0.62);   // web-shot hits, slam (its heavy ground layer comes from onBlast)
+        else { playHit(H[0], H[1]); if (H[2] > 0) audio.play('attach', { gain: H[2], rate: 1.05 + Math.random() * 0.1, prio: 2 }); }
         this.combatT = 6;
     }
-    onBlast(x: number, y: number, z: number) { audio.play('punch_heavy', { gain: 0.9, rate: 0.9 + Math.random() * 0.15, pos: [x, y, z], prio: 3 }); this.combatT = 6; }
+    onBlast(x: number, y: number, z: number) { playHit('dunk', 0.9, { pos: [x, y, z], rate: 0.92 }); this.combatT = 6; }
     onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.55 && this.banter('hurt')) return; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
     onOrb() { audio.play('orb', { gain: 0.45, rate: 1 + Math.min(this.sim.score, 20) * 0.012, prio: 2 }); }
     onFall() { audio.play('whoosh', { gain: 0.6, rate: 0.55, prio: 3 }); }
@@ -121,7 +131,7 @@ export class SoundDirector {
     // ---- hooks for the coming Iron Man-style weapons (call from the enemy/boss code when it lands) ----
     repulsorCharge(pos: Vec3) { return audio.play('repulsor_charge', { gain: 0.6, pos, prio: 3, ref: 6 }); }
     repulsorBolt(pos: Vec3) { audio.play('repulsor_bolt', { gain: 0.8, pos, prio: 3, ref: 8 }); this.combatT = 6; }
-    repulsorImpact(pos: Vec3) { audio.play('punch_heavy', { gain: 0.7, pos, prio: 3 }); }
+    repulsorImpact(pos: Vec3) { playHit('kick', 0.7, { pos }); }
     unibeamCharge(pos: Vec3) { return audio.play('unibeam_charge', { gain: 0.9, pos, prio: 4, ref: 14, maxDist: 220 }); }
     private beamOn = false; private beamPos: Vec3 | null = null;
     unibeamStart(pos: Vec3) { audio.play('unibeam_fire', { gain: 1, pos, prio: 4, ref: 14, maxDist: 220 }); this.beamOn = true; this.beamPos = pos; this.combatT = 8; }
@@ -190,7 +200,7 @@ export class SoundDirector {
         audio.setUnderwater(under);
         // lazy-load the zone beds only when the hero is getting close to them
         if (oceanW > 0.01) audio.preload(['waves', 'splash']); if (harborD < 90) audio.preload(['harbor']); if (lakeW > 0.01 || parkW > 0.01 || fallsW > 0.01 || isleW > 0.01) audio.preload(['lake', 'birds', 'leaves', 'crickets', 'splash', 'underwater']);
-        if (play && s.enemies.some((e) => e.boss && e.down <= 0 && Math.hypot(e.x - x, e.z - z) < 120)) audio.preload(['boss_hit', 'boss_down']);
+        if (play && s.enemies.some((e) => e.boss && e.down <= 0 && Math.hypot(e.x - x, e.z - z) < 120)) audio.preload(['boss_down']);
 
         if (play) {
             // ---------- hero edges ----------
@@ -212,7 +222,7 @@ export class SoundDirector {
             for (let i = 0; i < E.length; i++) {
                 const e = E[i], ph = p.hit[i] ?? 0, pd = p.down[i] ?? 0, pos: Vec3 = [e.x, e.y + enemyBodyOffset(e), e.z];
                 if (e.down <= 0 && Math.hypot(e.x - x, e.z - z) < 30) near++;
-                if (e.hit > ph + 0.25 && e.down <= 0) audio.play(e.boss ? 'boss_hit' : 'metal', { gain: e.boss ? 0.9 : 0.55, rate: 0.9 + Math.random() * 0.2, pos, prio: 2, ref: e.boss ? 14 : 8 });
+                if (e.hit > ph + 0.25 && e.down <= 0) playHit(e.boss ? 'boss_metal' : 'metal', e.boss ? 0.7 : 0.34, { pos, prio: 2, ref: e.boss ? 14 : 8 });   // real metal clank, a touch under the flesh hit (robots)
                 if (e.hit > ph + 0.25 && e.down <= 0 && Math.random() < (e.boss ? 0.35 : 0.2)) this.vo(e.boss ? 'boss' : 'robot', e.boss ? [5] : [4], { pos, cd: 4 });
                 if (e.down > 0 && !(pd > 0)) { this.vo(e.boss ? 'boss' : 'robot', e.boss ? [6] : [6], { pos, force: e.boss, cd: 5 }); if (e.boss) setTimeout(() => this.banter('boss', true), 3200); else if (Math.random() < 0.35) setTimeout(() => this.banter('kill'), 1300); else if (!e.boss && Math.random() < 0.5) setTimeout(() => this.vo('shadow', [0, 2, 9, 14], { cd: 6 }), 1300); else if (!e.boss && Math.random() < 0.3) setTimeout(() => this.vo('ghost', undefined, { cd: 12 }), 1500); }
                 if (e.down > 0 && !(pd > 0)) audio.play(e.boss ? 'boss_down' : 'enemy_down', { gain: e.boss ? 1 : 0.75, rate: 0.92 + Math.random() * 0.16, pos, prio: e.boss ? 5 : 3, ref: e.boss ? 20 : 10, maxDist: 200 });

@@ -13,7 +13,7 @@ interface Bed { name: string; src: AudioBufferSourceNode | null; g: GainNode; p:
 
 const BASE = ((import.meta as any).env?.BASE_URL || '/') + 'audio/';
 // downloaded assets (all small; see public/audio/CREDITS.md)
-const FILES: Record<string, string> = { steps: 'steps', birds: 'birds', music_explore: 'music_explore', music_action: 'music_action', music_title: 'music_title' };
+const FILES: Record<string, string> = { steps: 'steps', hits: 'hits', birds: 'birds', music_explore: 'music_explore', music_action: 'music_action', music_title: 'music_title' };
 // character voice lines (Shifat Oct 29: "funny popular family friendly meme voices for every character"): public/audio/vo/<kind>_<i>, lazy-loaded
 const VO_KEEP = 24;   // decoded voice lines kept in memory (oldest dropped; bytes stay, re-decode is ~20 ms)
 export const MUSIC_MIX = 0.8;   // Shifat Oct 31 6:27 PM: background strings/pads at 0.8x
@@ -21,6 +21,19 @@ export const VO_N: Record<string, number> = { shadow: 16, ghost: 8, robot: 8, bo
 for (const k in VO_N) for (let i = 0; i < VO_N[k]; i++) FILES[`vo_${k}_${i}`] = `vo/${k}_${i}`;
 // footstep sprite: 4 takes per surface, 0.32 s slots (mp3 has ~26 ms encoder delay, compensated at play time)
 export const STEP_SPRITE: Record<'concrete' | 'grass' | 'sand', number[]> = { concrete: [0, 0.32, 0.64, 0.96], grass: [1.28, 1.6, 1.92, 2.24], sand: [2.56, 2.88, 3.2, 3.52] };
+// hit sprite (Shifat Nov 2 3:42 PM: "Hit should sound like real hits"): real recorded CC0 punches / bag hits / body falls / metal clanks
+// (public/audio/CREDITS.md), per move 2-4 takes, [offset s, dur s]; each slot has 30 ms of silence before it (mp3 encoder-delay margin)
+export const HIT_SPRITE: Record<string, [number, number][]> = {
+    jab: [[0.077, 0.101], [0.263, 0.106], [0.454, 0.093]],
+    cross: [[0.631, 0.164], [0.88, 0.149], [1.114, 0.141]],
+    kick: [[1.34, 0.328], [1.753, 0.279], [2.116, 0.249]],
+    launcher: [[2.45, 0.243], [2.779, 0.268], [3.132, 0.234]],
+    dunk: [[3.451, 0.466], [4.002, 0.473], [4.561, 0.288]],
+    webpull: [[4.934, 0.147], [5.166, 0.126], [5.377, 0.163]],
+    yank: [[5.625, 0.283], [5.994, 0.292]],
+    metal: [[6.371, 0.1], [6.556, 0.085], [6.725, 0.107], [6.917, 0.097]],
+    boss_metal: [[7.1, 0.305], [7.49, 0.333]],
+};
 const BED_LEVEL: Record<string, number> = { city: 0.32, wind: 0.42, waves: 0.55, lake: 0.36, birds: 0.34, leaves: 0.2, crickets: 0.12, harbor: 0.4, underwater: 0.45, glide: 0.4, swingair: 0.4, beam: 0.6 };
 
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
@@ -66,7 +79,7 @@ export class AudioEngine {
                 this.world.connect(this.muffle); this.muffle.connect(this.master); this.music.connect(this.master);   // Oct 31 7:50 PM fix: this routing had been swallowed by the comment above -> no sound at all (Shifat 7:44)
                 if (!this.phone) { const lim = c.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 6; lim.ratio.value = 8; lim.attack.value = 0.003; lim.release.value = 0.2; this.master.connect(lim); lim.connect(c.destination); }
                 else this.master.connect(c.destination);   // phone: no compressor (CPU); levels are set to leave headroom instead
-                this.preload(['start_hit', 'thwip', 'whoosh', 'attach', 'jump', 'land', 'land_soft', 'steps', 'wind', 'city', 'swingair', 'punch', 'swish', 'metal', 'orb']);
+                this.preload(['start_hit', 'thwip', 'whoosh', 'attach', 'jump', 'land', 'land_soft', 'steps', 'hits', 'wind', 'city', 'swingair', 'punch', 'swish', 'metal', 'orb']);
             }
             if (this.ctx.state !== 'running' && !this.hidden) { const p = this.ctx.resume(); if (p && (p as any).catch) (p as any).catch(() => { /* ignore */ }); }
         } catch (e) { /* audio is optional */ }
