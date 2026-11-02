@@ -30,3 +30,34 @@ vec3 moonSky(vec3 dn, vec3 sunV){ float mg=max(dot(dn,-sunV),0.0); return vec3(0
 vec3 starsLite(vec3 dn){ if(dn.y<0.06) return vec3(0.0); vec2 sp=dn.xz/(abs(dn.y)+0.2)*46.0; vec2 si=floor(sp),sf=fract(sp); float sh=fract(sin(dot(si,vec2(12.9898,78.233)))*43758.5);
   if(sh<=0.95) return vec3(0.0); vec2 so=vec2(fract(sh*91.7),fract(sh*57.3))*0.6+0.2; float dd=length(sf-so); return vec3(0.85,0.9,1.0)*smoothstep(0.18,0.0,dd)*mix(0.15,0.6,pow(fract(sh*29.7),4.0))*smoothstep(0.06,0.35,dn.y); }
 `;
+
+/* clouds shared by sky + sea */
+export const CLOUD_GLSL = `
+float cloudN(vec2 p){vec2 i=floor(p),u=fract(p);u=u*u*(3.0-2.0*u);
+ float a=fract(sin(dot(i,vec2(127.1,311.7)))*43758.5),b=fract(sin(dot(i+vec2(1,0),vec2(127.1,311.7)))*43758.5),
+       c2=fract(sin(dot(i+vec2(0,1),vec2(127.1,311.7)))*43758.5),d=fract(sin(dot(i+vec2(1,1),vec2(127.1,311.7)))*43758.5);
+ return mix(mix(a,b,u.x),mix(c2,d,u.x),u.y);}
+float cloudFbm(vec2 p){ p+=vec2(cloudN(p*0.5),cloudN(p*0.5+7.3))*0.9;   /* domain warp -> billowy cauliflower puffs */
+ float f=0.0,a=0.55; for(int i=0;i<5;i++){ f+=a*cloudN(p); p=mat2(1.6,1.2,-1.2,1.6)*p+vec2(3.1,1.7); a*=0.48; } return f; }
+vec4 cloudSky(vec3 dn, vec3 sun, float t, float warm, float rain, vec3 hor){
+  /* volumetric-look cumulus (Shifat 12:03 AM; refs Wikimedia 'White Cumulus Clouds against Blue Sky'): puffy domain-warped fbm, Beer-Lambert sunward tap + powder,
+     forward-scatter glowing thin edges / silver lining; shared by the sky dome and the sea reflection (Shifat 12:14 AM 'Must reflect') */
+  if(dn.y<=0.0) return vec4(0.0);
+  float g=max(dot(dn,sun),0.0);
+  vec2 cp=dn.xz/(dn.y+0.22)*0.7+vec2(t*0.006,t*0.002);
+  vec2 sd2=normalize(sun.xz+vec2(1e-4))*0.14;
+  float cl=smoothstep(0.25,0.75,cloudN(cp*0.32+11.0)); float f=cloudFbm(cp)+0.3*cl-0.12, f2=cloudFbm(cp+sd2)+0.3*cl-0.12;
+  float cov=mix(0.66,0.5,rain);
+  float d=smoothstep(cov,cov+0.16,f), d2=smoothstep(cov,cov+0.16,f2);
+  float hz=smoothstep(0.0,0.16,dn.y);
+  if(d<=0.001) return vec4(0.0);
+  float T=exp(-2.6*d2), pw=1.0-exp(-3.0*d);
+  float lit=clamp(T*mix(1.0,pw,0.6)*1.25,0.0,1.0);
+  float ph=pow(g,6.0)*0.6+pow(g,40.0)*0.9;
+  float sss=ph*(1.0-d)*1.6+ph*0.25;
+  vec3 sunC=mix(vec3(1.0,0.98,0.94),vec3(1.0,0.66,0.42),warm);
+  vec3 base=mix(vec3(0.5,0.56,0.68),vec3(0.42,0.36,0.46),warm);
+  vec3 cc=mix(base,sunC*1.08,lit)+sunC*sss+hor*0.12*(1.0-lit);
+  return vec4(cc,d*hz*0.95);
+}
+`;
