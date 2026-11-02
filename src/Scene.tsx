@@ -625,7 +625,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         OCC.uOccHero.value.set(p[0], p[1] + 1.0, p[2]);   // robots/peds between lens and hero dissolve (occlude.ts)
         const ov = DBG ? (window as any).__camOv : null; if (ov) { camera.position.set(ov[0], ov[1], ov[2]); look.current.set(ov[3], ov[4], ov[5]); }
         camera.lookAt(look.current);
-        { const tr = Math.min(1, (sim as any).shake || 0); if (tr > 0.001 && !ov) {   // trauma^2 ROTATIONAL shake (recipe D2): yaw/pitch <= 1.2 deg, roll <= 2 deg, <= 3 cm of position; smooth summed sines (~9/13/21 Hz)
+        { const tr = Math.min(1, (sim as any).shake || 0); if (tr > 0.001 && (!ov || (window as any).__camOvShake)) {   // trauma^2 ROTATIONAL shake (recipe D2): yaw/pitch <= 1.2 deg, roll <= 2 deg, <= 3 cm of position; smooth summed sines (~9/13/21 Hz)
             const k = tr * tr, t = sim.t, D2R = Math.PI / 180;
             const n1 = Math.sin(t * 57.0) * 0.6 + Math.sin(t * 82.0 + 1.3) * 0.4, n2 = Math.sin(t * 61.0 + 2.1) * 0.6 + Math.sin(t * 131.0 + 0.4) * 0.4, n3 = Math.sin(t * 53.0 + 4.2) * 0.6 + Math.sin(t * 89.0 + 2.9) * 0.4;
             camera.rotateY(n1 * 1.2 * D2R * k); camera.rotateX(n2 * 1.2 * D2R * k); camera.rotateZ(n3 * 2.0 * D2R * k);
