@@ -46,3 +46,25 @@ export function meleeBody(sim: any, rig: any, h: THREE.Object3D, dt: number, w: 
     if (D.heel && B.thighR && B.shinR) { B.thighR.rotation.x -= 0.22 * D.heel * dp; B.shinR.rotation.x += 0.5 * D.heel * dp; }   // rear knee in, heel up: the pivot
     if (D.lead && B.thighL) B.thighL.rotation.x -= D.lead * dp;                        // lead foot steps out
 }
+
+/* Charged Slam body (combat feel pass, Shifat Nov 2 2:58 PM). Was: the impact frame read as a face-plant: the slam's forward fold plus the
+   root's air lean and landing tip (up to ~0.5 rad) laid the body nearly flat, and with the hips held at standing height the bent knees lifted
+   the feet off the ground. Now the slam owns the body's pitch (blended by the combat weight) and drops the hips into each crouch:
+   charge = sinks deeper as it charges; crouch = loaded; rise = opening up; apex = arched back for the hammer (own pose in Scene.tsx);
+   dive = pitched ~0.5 rad down onto the target; impact = upright-ish three-point superhero landing (front knee up, back knee down, fist planted,
+   head up) with a deep compression that holds ~0.12 s, then rises to guard. Phases, timings, radius, damage and input are the sim's, unchanged. */
+const SLAM_PITCH = [0.06, 0.16, -0.1, -0.22, 0.5, 0.12];
+export function slamBody(sim: any, rig: any, dt: number, w: number) {
+    const S = sim.slam; if (!S) return;
+    const st = rig.__sb || (rig.__sb = { p: 0, ph: -1 }), pr = rig.poseRoot as THREE.Group, B = rig.b;
+    if (st.ph < 0) st.p = pr.rotation.x;
+    const tgt = SLAM_PITCH[S.ph] ?? 0;
+    st.p += (tgt - st.p) * Math.min(1, dt * (S.ph >= 4 ? 30 : 14)); st.ph = S.ph;
+    pr.rotation.x += (st.p - pr.rotation.x) * w;
+    let drop = 0;
+    if (S.ph === 0) drop = 0.08 + 0.14 * (S.c || 0);
+    else if (S.ph === 1) drop = 0.32;
+    else if (S.ph === 5) drop = 0.55 * (1 - ss((S.t - 0.12) / 0.23)) + 0.12 * Math.exp(-S.t / 0.06);   // the hit compresses past the pose, then holds and rises
+    if (drop > 0 && B.hips) B.hips.position.y -= drop * w;
+}
+export function slamBodyReset(rig: any) { if (rig.__sb) rig.__sb.ph = -1; }

@@ -30,7 +30,7 @@ if (scen === 'combo' || scen === 'slam' || scen === 'kick') {
   // frames keyed to the move clock (mv.id, mv.t) or the slam phase, so hit-stop freezes do not shift them
   const K = scen === 'kick' ? [[3, 0.27], [3, 0.27]] : scen === 'combo'
     ? [[1, 0.035], [1, 0.1], [1, 0.15], [2, 0.06], [2, 0.11], [2, 0.19], [3, 0.12], [3, 0.27]]
-    : [['hold', 0.5], ['ph', 1], ['ph', 2], ['ph', 3], ['ph', 4], ['ph', 5, 0.0], ['ph', 5, 0.1], ['ph', 5, 0.25]];
+    : [['hold', 0.5], ['ph', 1], ['ph', 2], ['ph', 3], ['ph', 4], ['ph', 5, 0.03], ['ph', 5, 0.12], ['ph', 5, 0.3]];
   const info = [];
   if (scen === 'slam') await p.evaluate(() => { const g = window.__game; g.input.meleeHeld = true; g.input.meleeAt = performance.now() - 230; g.input.slamHeld = true; window.__slamT0 = window.__game.sim.t; });
   else await p.evaluate(() => { const g = window.__game; g.input.attackQ = true; g.input.meleeQ = true; });

@@ -7,7 +7,7 @@ import { traversalBones, traversalRoot } from './heroTraversal';
 import { enemyReact } from './enemyReact';
 import { heroHurtBones } from './heroHurt';
 import { shotRecoilBones } from './heroRecoil';
-import { meleeBody } from './heroMelee';
+import { meleeBody, slamBody, slamBodyReset } from './heroMelee';
 import gsap from 'gsap';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
@@ -97,9 +97,10 @@ const SLAM_POSE: PoseK[] = [
     P({ spine: [0.55, 0, 0], chest: [0, 0.3, 0], uarmR: [0.7, 0, -0.25], farmR: [-1.8, 0, 0], uarmL: [0.5, 0, 0.25], farmL: [-1.6, 0, 0], thighL: [-1.25, 0, -0.1], shinL: [1.9, 0, 0], thighR: [-1.1, 0, 0.1], shinR: [1.8, 0, 0], head: [-0.35, 0, 0] }),   // 1 crouch: deep squash before the leap
     P({ spine: [-0.3, 0, 0], chest: [0, 0, 0], uarmR: [-2.95, 0, -0.25], farmR: [-0.45, 0, 0], uarmL: [-2.95, 0, 0.25], farmL: [-0.45, 0, 0], thighL: [-1.45, 0, 0], shinL: [2.0, 0, 0], thighR: [-1.2, 0, 0], shinR: [1.9, 0, 0], head: [0.25, 0, 0] }),   // 2/3 rise + hang: both fists overhead, knees tucked
     P({ spine: [0.55, 0, 0], chest: [0, 0, 0], uarmR: [-0.75, 0, -0.12], farmR: [-0.15, 0, 0], uarmL: [-0.75, 0, 0.12], farmL: [-0.15, 0, 0], thighL: [0.25, 0, 0], shinL: [0.5, 0, 0], thighR: [0.35, 0, 0], shinR: [0.6, 0, 0], head: [-0.45, 0, 0] }),   // 4 dive: double-fist hammer down, legs trail
-    P({ spine: [0.75, 0, 0], chest: [0, 0.2, 0], uarmR: [-0.55, 0, -0.05], farmR: [-0.1, 0, 0], uarmL: [-0.6, 0, 0.7], farmL: [-0.9, 0, 0], thighL: [-1.55, 0, 0], shinL: [1.65, 0, 0], thighR: [0.35, 0, 0], shinR: [1.95, 0, 0], head: [-0.5, 0, 0] }),   // 5 impact/recovery: kneel, fist planted
+    P({ spine: [0.45, 0, 0], chest: [0, 0.2, 0], uarmR: [-0.55, 0, -0.05], farmR: [-0.1, 0, 0], uarmL: [-0.6, 0, 0.7], farmL: [-0.9, 0, 0], thighL: [-1.55, 0, 0], shinL: [1.65, 0, 0], thighR: [0.35, 0, 0], shinR: [1.95, 0, 0], head: [-0.5, 0, 0] }),   // 5 impact/recovery: kneel, fist planted
+    P({ spine: [-0.5, 0, 0], chest: [0, 0, 0], uarmR: [-3.15, 0, -0.2], farmR: [-1.35, 0, 0], uarmL: [-3.15, 0, 0.2], farmL: [-1.35, 0, 0], thighL: [-1.0, 0, 0], shinL: [1.7, 0, 0], thighR: [-0.55, 0, 0], shinR: [1.5, 0, 0], head: [0.35, 0, 0] }),   // 5 apex (combat feel pass): the hammer wind-up - back arched, both fists cocked behind the head, eyes down on the target
 ];
-const SLAM_KEY = [0, 1, 2, 2, 3, 4];
+const SLAM_KEY = [0, 1, 2, 5, 3, 4];   // ph3 (hang at the apex) has its own hammer wind-up pose now; was the rise pose held
 const STRETCH_BONES = ['farmL', 'farmR', 'shinR'];
 const STRETCH_LIMB: Record<number, string> = { 1: 'farmL', 2: 'farmR', 3: 'shinR', 4: 'farmR', 5: 'shinR', 6: 'shinR', 7: 'farmR' };
 const SQUASH: Record<number, [number, number]> = { 1: [0.03, 0.03], 2: [0.04, 0.04], 3: [0.08, 0.06], 4: [0.14, 0.12], 5: [0, 0.1], 6: [0.05, 0.08], 7: [0.06, 0.05] };   // [anticipation squash, release stretch] of the body height
@@ -112,6 +113,8 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
     if (sl) {
         const K = SLAM_POSE[SLAM_KEY[sl.ph] ?? 0]; CP_BONES.forEach((n, i) => { const a = K[n]; state.t[i * 3] = a[0]; state.t[i * 3 + 1] = a[1]; state.t[i * 3 + 2] = a[2]; });
         if (sl.ph === 0) { const tr = 0.04 * sl.c * Math.sin(sim.t * 70); state.t[6 * 3] += tr; state.t[1 * 3] += tr * 0.5; }   // charge tremble grows with the charge
+        if (sl.ph === 0) { state.t[1 * 3] += 0.18 * sl.c; state.t[6 * 3] += 0.35 * sl.c; }   // the wind-up deepens with the charge: chest folds over, the fist draws further back
+        if (sl.ph === 5 && sl.t > 0.12) { const u = cstep(Math.min(1, (sl.t - 0.12) / 0.23)); CP_BONES.forEach((n, i) => { const a = SLAM_POSE[4][n], g = GUARD[n]; for (let j = 0; j < 3; j++) state.t[i * 3 + j] = a[j] + (g[j] - a[j]) * u; }); }   // hold the impact ~0.12 s, then rise to guard
     }
     else if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), state.t); }
     else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, state.t);
@@ -135,6 +138,7 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
         const sy = mv.t < hu ? 1 - A * cstep(Math.min(1, mv.t / (hu * 0.7))) + (A + B) * cstep(Math.max(0, (mv.t - hu * 0.7) / (hu * 0.3))) : 1 + B * (1 - cstep(Math.min(1, dh / 0.22)));
         if (Math.abs(sy - 1) > 0.002) { const s0 = h.scale.x, sxz = 1 / Math.sqrt(sy); h.scale.set(s0 * sxz, s0 * sy, s0 * sxz); }
     }
+    if (sl) slamBody(sim, rig, dt, w); else slamBodyReset(rig);   // slam root pitch + hips drop (src/heroMelee.ts)
     if (sl) {   // squash on the crouch / impact, stretch on the dive (volume kept: xz = 1/sqrt(y))
         const sy = sl.ph === 1 ? 0.85 : sl.ph === 0 ? 1 - 0.06 * sl.c : sl.ph === 4 ? 1.25 : sl.ph === 5 ? 0.82 + 0.18 * cstep(Math.min(1, sl.t / 0.25)) : 1;
         if (sy !== 1) { const s0 = h.scale.x, sxz = 1 / Math.sqrt(sy); h.scale.set(s0 * sxz, s0 * sy, s0 * sxz); }
