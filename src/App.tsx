@@ -156,7 +156,7 @@ export function App() {
         starting.current = false; setLoad({ on: false, pct: 100 });
         gsap.fromTo(fx, { fov: 22 }, { fov: 0, duration: 1.4, ease: 'power3.out' });
         resetSim(sim); lastScore.current = 0; sim.mode = 'play';
-        if (deskRef.current) { try { const c = document.querySelector('.stage canvas') as any; const p = c?.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-look fallback */ } if (!kbToastShown.current) { kbToastShown.current = true; setCtrlToast({ id: Date.now(), kind: 'kb' }); } }
+        if (deskRef.current) { try { const c = document.querySelector('.stage canvas') as any; const p = c?.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-look fallback */ } /* Nov 2 3:22 PM: the in-game control map (src/title/ControlMap.tsx) follows the curtain instead of the old 4 s keyboard toast */ }
     }
 
     // controls
@@ -241,7 +241,7 @@ export function App() {
         </AnimatePresence>
         {/* Nov 2 (Shifat 2:59 PM 'See my portfolio preloader & follow that aesthetics to redesign our title screen. Use the 3d logo'): black, his 3D mark,
             Inter, masked-roll odometer on the real preload after Play, curtain lift into the game (src/title/) */}
-        <TitleScreen mode={hud.mode} loading={load.on} progress={preloadProgress} ready={() => readyRef.current} onStart={start} onReady={begin}
+        <TitleScreen mode={hud.mode} loading={load.on} progress={preloadProgress} ready={() => readyRef.current} onStart={start} onReady={begin} desk={desk}
             extra={hud.mode === 'over' ? <><IOrb /><Pips n={Math.min(10, hud.score)} /></> : null} />
     </div>;
 }

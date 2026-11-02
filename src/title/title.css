@@ -10,8 +10,9 @@
   -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;will-change:transform;backface-visibility:hidden}
 .sv-title.loading{z-index:40;cursor:default}
 .sv-title.lifting{pointer-events:none}
-/* the mark: calm and centred, ~46 % of the height (it fills ~58 % of its square canvas) */
-.sv-logo{position:absolute;left:50%;top:42%;width:min(46cqh,30cqw,400px);height:min(46cqh,30cqw,400px);transform:translate(-50%,-50%);pointer-events:none;
+/* the mark: calm and centred, ~46 % of the height on desktop (it fills ~58 % of its square canvas); a short phone box gets up to 56 %
+   (at least ~230 px) so the mark still reads as the centrepiece above the name */
+.sv-logo{--ls:min(max(46cqh,min(56cqh,230px)),30cqw,400px);position:absolute;left:50%;top:41%;width:var(--ls);height:var(--ls);transform:translate(-50%,-50%);pointer-events:none;
   opacity:0;transition:opacity .45s var(--ease-io)}
 .sv-title.in .sv-logo{opacity:1}
 /* bottom-left: the name at display size; on Play it rolls up out of its mask and the counter rolls in from below in its place */
@@ -50,3 +51,20 @@
 @container svt (max-height:300px){.sv-br .sv-mask:not(.sv-gomask){display:none}}
 /* reduced motion: every change is instant */
 .sv-title.still *,.sv-title.still{transition:none!important}
+
+/* in-game control map after the curtain (ControlMap.tsx): soft black glass, Inter, silver keys, lines roll in/out of their masks */
+.sv-cmap{position:absolute;left:max(24px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));z-index:5;pointer-events:none;
+  display:flex;gap:28px;padding:16px 20px 18px;border-radius:14px;background:rgba(0,0,0,.52);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.1);color:#fafafa;font-family:'SV Inter','Inter',system-ui,sans-serif;font-weight:400;font-size:12.5px;line-height:1.5;
+  max-width:calc(100% - 48px);transition:opacity .6s cubic-bezier(0.65,0,0.35,1)}
+.sv-cmap.pre{opacity:0}.sv-cmap.out{opacity:0;transition-delay:.3s}
+.sv-cmap b{display:block;font-weight:400;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#a9adb3;margin-bottom:6px}
+.sv-cmap ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.sv-cl{display:flex;gap:14px;align-items:baseline;transform:translate3d(0,110%,0);transition:transform 1s cubic-bezier(0.19,1,0.22,1) var(--d)}
+.sv-cmap.in .sv-cl{transform:none}
+.sv-cmap.out .sv-cl{transform:translate3d(0,-110%,0);transition:transform .6s cubic-bezier(0.65,0,0.35,1) calc(var(--d) * .5)}
+.sv-cmap kbd{font:inherit;min-width:104px;color:#fafafa}
+.sv-cmap .sv-cl>span{color:#a9adb3}
+.sv-cmap.still,.sv-cmap.still *{transition:none!important}
+@media (max-height:520px),(max-width:900px){.sv-cmap{gap:18px;padding:12px 14px 14px;font-size:11.5px}.sv-cmap kbd{min-width:88px}}
+@media (max-height:430px){.sv-cmap .sv-ccol+.sv-ccol{display:none}}

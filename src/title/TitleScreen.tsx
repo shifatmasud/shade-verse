@@ -13,6 +13,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createTitleLogo, type TitleLogo } from './logo3d';
 import { paintReels, rollPositions, REEL } from './odometer';
+import { ControlMap } from './ControlMap';
 import './title.css';
 
 type Phase = 'title' | 'load' | 'lift' | 'gone';
@@ -28,16 +29,18 @@ export interface TitleProps {
     onStart: () => void;
     onReady: () => void;                // counter painted 100: gameplay begins as the curtain lifts
     extra?: React.ReactNode;            // game over: the orbs line
+    desk?: boolean;                     // mouse/keyboard or gamepad: the control map shows in game after the curtain
 }
 
-export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, extra }: TitleProps) {
+export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, extra, desk }: TitleProps) {
     const reduced = !!reducedMQ?.matches;
     const [phase, setPhase] = useState<Phase>(mode === 'play' ? 'gone' : 'title');
-    const [shown, setShown] = useState(false);          // entrance roll-in once the face is ready
+    const [shown, setShown] = useState(false);
+    const [lifts, setLifts] = useState(0);              // curtains lifted so far: the control map follows each one          // entrance roll-in once the face is ready
     const root = useRef<HTMLDivElement>(null), cv = useRef<HTMLCanvasElement>(null), count = useRef<HTMLDivElement>(null);
     const logo = useRef<TitleLogo | null>(null);
     const cb = useRef({ progress, ready, onReady }); cb.current = { progress, ready, onReady };
-    const dropNext = useRef(false);
+    const dropNext = useRef(false), sawPlay = useRef(mode === 'play');
     useLayoutEffect(() => {   // after a game over the panel comes back down from the top (the curtain, reversed)
         if (!dropNext.current || phase !== 'title') return; dropNext.current = false;
         if (root.current && !reduced) root.current.animate([{ transform: 'translateY(-100%)' }, { transform: 'translateY(0%)' }], { duration: 800, easing: EASE_INOUT });
@@ -45,7 +48,9 @@ export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, 
 
     // phase from the game's state: back to the title after a game over (the panel drops back down), into the load on Play
     useEffect(() => {
-        if (mode !== 'play' && phase === 'gone') { dropNext.current = true; setPhase('title'); }
+        // only a real return from play (a game over) brings it back: right after the lift the HUD's mode can still read 'title' for a beat
+        if (mode === 'play') sawPlay.current = true;
+        else if (phase === 'gone' && sawPlay.current) { sawPlay.current = false; dropNext.current = true; setPhase('title'); }
         if (loading && phase === 'title') setPhase('load');
     }, [mode, loading, phase]); // eslint-disable-line
 
@@ -103,6 +108,7 @@ export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, 
             logo.current?.exit();
             setPhase('lift');
             const el = root.current;
+            setLifts((n) => n + 1);
             if (!el || reduced) { setPhase('gone'); return; }
             const a = el.animate([{ transform: 'translateY(0%)' }, { transform: 'translateY(-100%)' }], { duration: LIFT_MS, easing: EASE_INOUT, fill: 'forwards' });
             a.onfinish = () => { setPhase('gone'); a.cancel(); };
@@ -112,7 +118,7 @@ export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, 
         return () => cancelAnimationFrame(raf);
     }, [phase]); // eslint-disable-line
 
-    if (phase === 'gone') return null;
+    if (phase === 'gone') return desk && lifts > 0 && mode === 'play' ? <ControlMap key={lifts} first={lifts === 1} /> : null;
     const cls = 'sv-title' + (shown ? ' in' : '') + (phase !== 'title' ? ' loading' : '') + (phase === 'lift' ? ' lifting' : '') + (reduced ? ' still' : '');
     return <div ref={root} className={cls} onClick={phase === 'title' ? onStart : undefined} role="presentation">
         <canvas ref={cv} className="sv-logo" aria-hidden="true" />
