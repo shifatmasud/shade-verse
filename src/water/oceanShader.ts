@@ -422,5 +422,8 @@ ${GRID_TRACE_GLSL}
       // soft shorelines (AAA depth fade): where the sea is only a few cm deep over terrain - inlets, coarse terrain edges - it thins to nothing
       // instead of ending in a hard polygon edge; uses the depth of the scene copy the refraction already makes (no extra pass)
       if (uUseScene > 0.5 && !below) { vec2 suvF = vScreen.xy / vScreen.w * 0.5 + 0.5; float thr = vView.z - oceanZ(suvF), thk = thr < -2.5 ? 9.0 : max(thr, 0.0); aAbove *= smoothstep(0.0, 0.9, thk);   /* thr < 0: the low-res copy has an occluder (tree/hero) in front at this pixel - not shallow water, keep it solid (fixes dark blocks along tree silhouettes) */ col = mix(vec3(1.0, 0.99, 0.96) * mix(0.35, 1.0, uDay), col, smoothstep(0.05, 0.6, thk) * 0.6 + 0.4); }
+      if (!below && uDay < 0.95) {   /* Shifat 10:37 PM 'reflection must' (ref: Wikimedia 'Aurora Borealis above Bear Lake, Alaska'): the aurora mirrored in the sea - soft, smeared by the ripples, strong where the curtain's bright hem sits low */
+        vec3 rm = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.45))); rm.y = abs(rm.y);
+        col += auroraSky(rm, uSkyT, 4.0) * (1.0 - uDay) * mix(0.5, 0.95, fr) * vec3(0.8, 0.95, 1.0) * (1.0 - smoothstep(300.0, 900.0, length(cameraPosition - vW))); }
       gl_FragColor = vec4(col, below ? aOut : aAbove);
     }`;
