@@ -5,9 +5,9 @@ vec3 auroraSky(vec3 dn, float uT, float ns){ vec3 ac=vec3(0.0); if(dn.y<=0.02) r
   for(int k=0;k<7;k++){ if(float(k)>=ns) break; float fk=float(k)/(ns-1.0);float H=1.0+fk*2.2;vec2 p=dn.xz/dn.y*H;
     float fx=-5.2+0.22*p.x+1.6*sin(p.x*0.35+uT*0.02)+0.7*sin(p.x*0.83-uT*0.03)+0.3*sin(p.x*1.9+uT*0.05);
     float d=abs(p.y-fx);float w=(0.5+fk*1.2)*(1.0+length(p)*0.07);   /* far curtains spread wider -> no thin streaks near the horizon */
-    float a=exp(-d*d/(w*w))*exp(-fk*2.6)*(0.55+0.45*sin(p.x*0.6+uT*0.04+fk))*(0.7+0.3*sin(p.x*2.3-uT*0.06))*(1.0-0.38*(1.0-smoothstep(8.0,18.0,length(p)))+0.38*(1.0-smoothstep(8.0,18.0,length(p)))*sin(p.x*5.1+sin(p.x*1.3+uT*0.05)*2.0)*sin(p.x*2.9-uT*0.03));   /* fine ray banding fades with distance (no fan streaks) */
-    a*=smoothstep(30.0,9.0,length(p))*smoothstep(-16.0,-6.0,p.y+8.0);
-    ac+=mix(mix(vec3(0.42,1.0,0.5),vec3(0.1,0.95,0.4),smoothstep(0.0,0.3,fk)),vec3(0.7,0.28,0.85),smoothstep(0.4,1.0,fk))*a*(7.0/ns);}   /* ref /tmp/aur/4.jpg: bright yellow-green lower hem, pure green body, violet-pink fringe on top */
+    float a=exp(-d*d/(w*w))*exp(-fk*2.0)*(0.55+0.45*sin(p.x*0.6+uT*0.04+fk))*(0.7+0.3*sin(p.x*2.3-uT*0.06))*(1.0-0.38*(1.0-smoothstep(8.0,18.0,length(p)))+0.38*(1.0-smoothstep(8.0,18.0,length(p)))*sin(p.x*5.1+sin(p.x*1.3+uT*0.05)*2.0)*sin(p.x*2.9-uT*0.03));   /* fine ray banding fades with distance (no fan streaks) */
+    a*=smoothstep(26.0,8.0,length(p))*smoothstep(-16.0,-6.0,p.y+8.0);
+    ac+=mix(mix(vec3(0.42,1.0,0.5),vec3(0.1,0.95,0.4),smoothstep(0.0,0.3,fk)),vec3(0.75,0.3,0.85)*0.95,smoothstep(0.35,0.9,fk))*a*(7.0/ns);}   /* ref /tmp/aur/4.jpg: bright yellow-green lower hem, pure green body, violet-pink fringe on top */
   return ac*0.8*smoothstep(0.03,0.17,dn.y); }
 vec3 rainbowSky(vec3 dn3, vec3 sunV, float rain, float day){
   float ra=acos(clamp(dot(dn3,-sunV),-1.0,1.0));float rw=smoothstep(0.03,0.25,rain)*(1.0-smoothstep(0.55,0.85,rain))*day*smoothstep(-0.02,0.08,sunV.y)*smoothstep(0.0,0.05,dn3.y);
