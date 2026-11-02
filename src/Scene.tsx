@@ -19,6 +19,7 @@ import { shadowGeo, shadowMat } from './shadowbot';
 import { withPedestrianHands } from './pedestrianHands';
 import { GiantBoss } from './GiantBoss';
 import { Weather } from './world/weather';
+import { Mist } from './world/mist';
 import { BossArenaMarker } from './BossArenaMarker';
 import { poolAt, HBOSS } from './seaWorld';
 import { BOSS_BODY_OFFSET } from './bossConfig';
@@ -833,6 +834,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" onUpdate={(o) => o.layers.enableAll()} />
         <DayNight />
         <Weather />
+        <Mist />
         <DebugStats /><Bench />
         {OUTLINE_STATE.on ? <OutlinePass /> : <FxaaPass enabled={AA_FXAA} />}
         <SelectiveBloomPass />
