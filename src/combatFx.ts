@@ -55,11 +55,11 @@ export function stepPools(dt: number) {
     }
 }
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
-function sparks(n: number, x: number, y: number, z: number, col: number, sp0: number, sp1: number, life0: number, life1: number, w = 0.05, upBias = 0.25, floor = -1e9) {
+function sparks(n: number, x: number, y: number, z: number, col: number, sp0: number, sp1: number, life0: number, life1: number, w = 0.05, upBias = 0.25, floor = -1e9, hot = 0xffffff) {
     if (LOW) n = Math.ceil(n / 2);
     for (let k = 0; k < n; k++) {
         const u = rnd(-1, 1), th = rnd(0, Math.PI * 2), r = Math.sqrt(1 - u * u), sp = rnd(sp0, sp1);
-        emit(SH_SPARK, x, y, z, Math.cos(th) * r * sp, (u * 0.8 + upBias) * sp, Math.sin(th) * r * sp, rnd(life0, life1), w, w * 0.6, k & 1 ? 0xffffff : col, 1, 4.9, 2.2, 0.12, 1, floor);
+        emit(SH_SPARK, x, y, z, Math.cos(th) * r * sp, (u * 0.8 + upBias) * sp, Math.sin(th) * r * sp, rnd(life0, life1), w, w * 0.6, k & 1 ? hot : col, 1, 4.9, 2.2, 0.12, 1, floor);
     }
 }
 // ---- ribbon trails: 4 slots (Shadow 0-1, Ghost 2-3), 12 points each, points expire by age ----
@@ -115,19 +115,24 @@ export function fxShot(x: number, y: number, z: number, col: number) {
     sparks(6, x, y, z, col, 5, 10, 0.12, 0.2);
     if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x, y, z, rnd(-0.8, 0.8), rnd(-0.3, 0.6), rnd(-0.8, 0.8), 0.5, 0.2, 0.6, 0xf2f2ff, 0.4, 0, 3);   // soft web mist
 }
-const CYAN = 0x7ff6ff;
-/** Shock hit: cyan-white flash, jagged lightning from (hx,hy,hz) to the target + crackle arcs on the bot, spark burst, glow */
-export function fxShock(x: number, y: number, z: number, hx: number, hy: number, hz: number) {
-    emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.8, 1.1, 0xe8ffff, 1);
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.2, 1.6, 1.8, CYAN, 0.9, 0, 0, 0.12, 2);
-    sparks(12, x, y, z, CYAN, 5, 12, 0.15, 0.32, 0.04, 0.25, y - 0.95);
-    bolt(hx, hy, hz, x, y, z, 0.25);
-    bolt(x, y + 0.6, z, x + rnd(-1, 1), y - 0.8, z + rnd(-1, 1), 0.2);
-    bolt(x, y, z, x + rnd(-0.9, 0.9), y + rnd(0.3, 0.9), z + rnd(-0.9, 0.9), 0.14);   // crackle arc on the bot
+/* Shifat Nov 2 10:40 AM: "Ghosts shock color must be pink, & purple for shadow" - every part of the Web Shock (tethers, hand glow, lightning,
+   ground arcs, discharge burst, sparks, glow) takes the caster's own colour: Shadow purple 0xa855f7, Ghost pink 0xff1a96 (sim fxCol). Was one cyan for both. */
+export const SHOCK_SHADOW = 0xa855f7, SHOCK_GHOST = 0xff1a96;
+/** caster colour lifted toward white by k (0..1): the hot core of a soft glow keeps the hue instead of going cyan/white */
+export function tint(col: number, k: number) { const r = (col >> 16) & 255, g = (col >> 8) & 255, b = col & 255; return (Math.round(r + (255 - r) * k) << 16) | (Math.round(g + (255 - g) * k) << 8) | Math.round(b + (255 - b) * k); }
+/** Shock hit: caster-coloured flash, jagged lightning from (hx,hy,hz) to the target + crackle arcs on the bot, spark burst, glow */
+export function fxShock(x: number, y: number, z: number, hx: number, hy: number, hz: number, col = SHOCK_SHADOW) {
+    const hot = tint(col, 0.72), mid = tint(col, 0.35);
+    emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.8, 1.1, hot, 1);
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.2, 1.6, 1.8, col, 0.9, 0, 0, 0.12, 2);
+    sparks(12, x, y, z, mid, 5, 12, 0.15, 0.32, 0.04, 0.25, y - 0.95, hot);
+    bolt(hx, hy, hz, x, y, z, 0.25, col);
+    bolt(x, y + 0.6, z, x + rnd(-1, 1), y - 0.8, z + rnd(-1, 1), 0.2, col);
+    bolt(x, y, z, x + rnd(-0.9, 0.9), y + rnd(0.3, 0.9), z + rnd(-0.9, 0.9), 0.14, col);   // crackle arc on the bot
 }
 export const BOLT_MAX = 10;
-function bolt(ax: number, ay: number, az: number, bx: number, by: number, bz: number, life: number) { bolts.push({ ax, ay, az, bx, by, bz, t: 0, life }); if (bolts.length > BOLT_MAX) bolts.shift(); }
-export const bolts: { ax: number; ay: number; az: number; bx: number; by: number; bz: number; t: number; life: number }[] = [];
+function bolt(ax: number, ay: number, az: number, bx: number, by: number, bz: number, life: number, col = SHOCK_SHADOW) { bolts.push({ ax, ay, az, bx, by, bz, t: 0, life, col }); if (bolts.length > BOLT_MAX) bolts.shift(); }
+export const bolts: { ax: number; ay: number; az: number; bx: number; by: number; bz: number; t: number; life: number; col: number }[] = [];
 /** Charged Slam impact on the ground at (x,gy,z), blast radius R. No ring mesh: a ground-hugging particle shockwave (soft light smears
  *  racing outward to R), radial dust, sparks + hot embers that bounce, white-hot core and a heat glow. */
 export function fxSlam(x: number, gy: number, z: number, R: number, col: number) {
@@ -161,15 +166,15 @@ export function fxChargeTick(hx: number, hy: number, hz: number, c: number, col:
 }
 export function resetFx() { pool.addN = 0; pool.alphaN = 0; for (const t of trails) t.n = 0; bolts.length = 0; screenFlash.frames = 0; }
 /** Shock discharge around the caster: lightning arcs racing out along the ground to the hit range, ground-hugging light burst,
- *  cyan spark burst, core flash, glow (no ring) */
+ *  caster-coloured spark burst, core flash, glow (no ring) */
 export function fxDischarge(x: number, gy: number, z: number, R: number, col: number) {
-    const y = gy + 0.08;
-    emit(SH_CORE, x, gy + 1.2, z, 0, 0, 0, 0.06, 1.2, 2.0, 0xe8ffff, 1);
-    emit(SH_GLOW, x, gy + 1.2, z, 0, 0, 0, 0.3, 2.4, 3.0, CYAN, 0.9, 0, 0, 0.12, 2);
+    const y = gy + 0.08, hot = tint(col, 0.72), mid = tint(col, 0.35);
+    emit(SH_CORE, x, gy + 1.2, z, 0, 0, 0, 0.06, 1.2, 2.0, hot, 1);
+    emit(SH_GLOW, x, gy + 1.2, z, 0, 0, 0, 0.3, 2.4, 3.0, col, 0.9, 0, 0, 0.12, 2);
     emit(SH_GPUFF, x, y, z, 0, 0, 0, 0.4, R * 0.4, R * 0.8, col, 0.35, 0, 0, 0.12, 2);
     const nb = LOW ? 4 : 6;
-    for (let k = 0; k < nb; k++) { const th = (k / nb) * Math.PI * 2 + rnd(-0.3, 0.3), L = R * rnd(0.6, 1); bolt(x, gy + 0.9, z, x + Math.cos(th) * L, y, z + Math.sin(th) * L, rnd(0.18, 0.26)); }
+    for (let k = 0; k < nb; k++) { const th = (k / nb) * Math.PI * 2 + rnd(-0.3, 0.3), L = R * rnd(0.6, 1); bolt(x, gy + 0.9, z, x + Math.cos(th) * L, y, z + Math.sin(th) * L, rnd(0.18, 0.26), col); }
     const np = LOW ? 10 : 16, d = 5;
-    for (let k = 0; k < np; k++) { const th = (k / np) * Math.PI * 2 + rnd(-0.15, 0.15), life = rnd(0.3, 0.4), v0 = R * d / (1 - Math.exp(-d * life)); emit(SH_GPUFF, x + Math.cos(th) * 0.3, y, z + Math.sin(th) * 0.3, Math.cos(th) * v0, 0, Math.sin(th) * v0, life, 0.3, 0.7, k & 1 ? 0xe8ffff : CYAN, 0.8, 0, d, 0.12, 1); }
-    sparks(16, x, gy + 1.0, z, CYAN, 6, 13, 0.2, 0.4, 0.045, 0.3, gy + 0.03);
+    for (let k = 0; k < np; k++) { const th = (k / np) * Math.PI * 2 + rnd(-0.15, 0.15), life = rnd(0.3, 0.4), v0 = R * d / (1 - Math.exp(-d * life)); emit(SH_GPUFF, x + Math.cos(th) * 0.3, y, z + Math.sin(th) * 0.3, Math.cos(th) * v0, 0, Math.sin(th) * v0, life, 0.3, 0.7, k & 1 ? hot : mid, 0.8, 0, d, 0.12, 1); }
+    sparks(16, x, gy + 1.0, z, mid, 6, 13, 0.2, 0.4, 0.045, 0.3, gy + 0.03, hot);
 }

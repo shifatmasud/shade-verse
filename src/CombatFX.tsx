@@ -176,14 +176,15 @@ export function CombatFX({ sim }: { sim: Sim }) {
             const s = h.getSim(); if (!s || !h.visible()) continue; const sa = s as any; if (!(sa.snareT > SNARE.IMPACT) || !sa.snareList) continue;
             _c.setHex(sa.fxCol ?? 0xa855f7); _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); _w.setFromMatrixPosition((h.rig.b.handL as THREE.Bone).matrixWorld);
             const hx = (_v.x + _w.x) / 2, hy = (_v.y + _w.y) / 2, hz = (_v.z + _w.z) / 2, grip = sa.snareT < SNARE.GATHER_END, fl = 0.75 + 0.25 * Math.sin(s.t * 60);
-            put(hx, hy, hz, grip ? 1.1 : 0.8, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.9, 0, 0, 0); put(hx, hy, hz, 0.35, 0, 0, 0, SH_CORE, 0.8, 1, 1, 0.9 * fl, 0, 0, 0);
-            for (const e of sa.snareList) { if (e.down > 0) continue; const ey = e.y + enemyBodyOffset(e); zig(hx, hy, hz, e.x, ey, e.z, fl, grip ? 0.09 : 0.06, 0.6, 0.97, 1); if (grip) zig(hx, hy, hz, e.x, ey, e.z, 0.6 * fl, 0.05, _c.r, _c.g, _c.b); put(e.x, ey, e.z, 1.0, 0, 0, 0, SH_GLOW, 0.5, 0.95, 1, 0.6 * fl, 0, 0, 0); }
+            const lr = _c.r + (1 - _c.r) * 0.4, lg = _c.g + (1 - _c.g) * 0.4, lb = _c.b + (1 - _c.b) * 0.4, hr = _c.r + (1 - _c.r) * 0.75, hg = _c.g + (1 - _c.g) * 0.75, hb = _c.b + (1 - _c.b) * 0.75;   // caster colour lifted toward white (Shadow purple / Ghost pink, Shifat 10:40 AM; was cyan for both)
+            put(hx, hy, hz, grip ? 1.1 : 0.8, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.9, 0, 0, 0); put(hx, hy, hz, 0.35, 0, 0, 0, SH_CORE, hr, hg, hb, 0.9 * fl, 0, 0, 0);
+            for (const e of sa.snareList) { if (e.down > 0) continue; const ey = e.y + enemyBodyOffset(e); zig(hx, hy, hz, e.x, ey, e.z, fl, grip ? 0.09 : 0.06, lr, lg, lb); if (grip) zig(hx, hy, hz, e.x, ey, e.z, 0.6 * fl, 0.05, _c.r, _c.g, _c.b); put(e.x, ey, e.z, 1.0, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.6 * fl, 0, 0, 0); }
         }
         for (const bo of bolts) {
-            const u = bo.t / bo.life, al = 1 - u; let px = bo.ax, py = bo.ay, pz = bo.az; const L = Math.hypot(bo.bx - bo.ax, bo.by - bo.ay, bo.bz - bo.az), j = Math.min(0.6, L * 0.12);
+            const u = bo.t / bo.life, al = 1 - u; _c.setHex(bo.col); const br = _c.r + (1 - _c.r) * 0.4, bg = _c.g + (1 - _c.g) * 0.4, bb = _c.b + (1 - _c.b) * 0.4; /* lightning in the caster's colour */ let px = bo.ax, py = bo.ay, pz = bo.az; const L = Math.hypot(bo.bx - bo.ax, bo.by - bo.ay, bo.bz - bo.az), j = Math.min(0.6, L * 0.12);
             for (let k = 1; k <= 7; k++) {
                 const f = k / 7, nx = k === 7 ? bo.bx : bo.ax + (bo.bx - bo.ax) * f + rnd() * j, ny = k === 7 ? bo.by : bo.ay + (bo.by - bo.ay) * f + rnd() * j, nz = k === 7 ? bo.bz : bo.az + (bo.bz - bo.az) * f + rnd() * j;
-                put((px + nx) / 2, (py + ny) / 2, (pz + nz) / 2, 0.07, nx - px, ny - py, nz - pz, SH_SEG, 0.6, 0.97, 1, al, u, 0, 0);
+                put((px + nx) / 2, (py + ny) / 2, (pz + nz) / 2, 0.07, nx - px, ny - py, nz - pz, SH_SEG, br, bg, bb, al, u, 0, 0);
                 px = nx; py = ny; pz = nz;
             }
         }
