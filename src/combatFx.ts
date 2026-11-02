@@ -13,7 +13,7 @@ export const SH_GLOW = 0, SH_SPARK = 2, SH_CORE = 3, SH_GPUFF = 4, SH_GSTREAK = 
 // alpha shapes
 // Nov 2 (Shifat: "Punch hit effect mustn't be comic like", "only glowing blurry vfx", "no sharp edges"): comic hit-star, ink web splat
 // and square debris removed; only soft dust remains on the alpha side.
-export const SH_DUST = 12;
+export const SH_DUST = 12, SH_SMOKE = 13;   // SH_SMOKE: soft dark-to-warm smoke puff (warm glowing centre early, dark soft edge, no rim)
 
 export const ADD_MAX = 128, ALPHA_MAX = 32;
 export const F = 21;   // floats per particle
@@ -77,24 +77,34 @@ export function stepTrails(dt: number) {
 export const screenFlash = { frames: 0, a: 0 };
 // ---- hit recipes (D4, D5, D6, D7) ----
 /** melee hit at (x,y,z); lvl 1/2/3 = combo hit 1, 2, finisher; (dx,dz) = direction of the blow (attacker -> target), sparks spray through.
- *  Cinematic, not comic (refs: Marvel's Spider-Man 2 / God of War / Ghost of Tsushima impacts): a 2-3 frame white-hot core, a white-orange
- *  flash bloom, hero-colour bloom, faint heat falloff, a high-velocity spark burst (velocity-stretched streaks that cool white -> orange,
- *  gravity, drag, bounce off the ground) and a small dust puff. Everything is soft-edged additive light except the dust. */
+ *  Cinematic, not comic (refs: Marvel's Spider-Man 2 / God of War / Ghost of Tsushima impacts): a 3-frame white-hot core, a white-orange
+ *  flash bloom, hero-colour bloom, faint heat falloff, a dense high-velocity PARTICLE BURST (velocity-stretched glowing streaks that cool
+ *  white -> orange, gravity, drag, bounce), a soft ember cloud that drifts and lingers briefly, and a soft dark-to-warm smoke puff
+ *  (alpha-blended, not additive) behind it so the burst still reads on bright roofs. Every shape is a soft falloff, no edge.
+ *  Nov 2 (Shifat: "Comic hit star must be replaced by particle burst"): ~2x sparks and size vs ca27334, life 250-380 ms. */
 export function fxMelee(x: number, y: number, z: number, col: number, lvl: number, grounded = true, dx = 0, dz = 0) {
     const sc = lvl >= 3 ? 1.5 : lvl === 2 ? 1.15 : 1, floor = grounded ? y - 1.0 : -1e9;
-    emit(SH_CORE, x, y, z, 0, 0, 0, 0.045, 0.45 * sc, 0.85 * sc, 0xfff4e6, 1);                     // white-hot core, ~3 frames
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.09, 0.75 * sc, 1.15 * sc, 0xffa65a, 0.95, 0, 0, 0.12, 2);    // white-orange flash bloom
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.24, 1.0 * sc, 1.6 * sc, col, 0.7, 0, 0, 0.12, 2);            // hero-colour bloom
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.42, 1.5 * sc, 2.3 * sc, 0xff9050, 0.14, 0, 0, 0.12, 1);      // faint heat falloff
-    let n = lvl >= 3 ? 20 : lvl === 2 ? 13 : 9; if (LOW) n = Math.ceil(n / 2);
     const dl = Math.hypot(dx, dz), bx = dl > 1e-3 ? dx / dl : 0, bz = dl > 1e-3 ? dz / dl : 0;
-    for (let k = 0; k < n; k++) {   // spark burst: biased along the blow, a few go back toward the camera side
-        const u = rnd(-0.6, 1), th = rnd(0, Math.PI * 2), r = Math.sqrt(1 - u * u * 0.5), sp = rnd(9, 20) * (k < n * 0.3 ? 1.2 : 1);
-        let vx = Math.cos(th) * r, vy = u * 0.7 + 0.25, vz = Math.sin(th) * r; const fw = Math.random() < 0.75 ? 1.6 : -0.4; vx += bx * fw; vz += bz * fw;
+    // soft dark-to-warm smoke puff first (alpha pool, drawn under the additive light): contrast on bright backgrounds
+    const ns = LOW ? 2 : 3;
+    for (let k = 0; k < ns; k++) emit(SH_SMOKE, x + rnd(-0.12, 0.12) + bx * 0.15, y + rnd(-0.08, 0.12), z + rnd(-0.12, 0.12) + bz * 0.15, bx * 1.6 + rnd(-0.5, 0.5), rnd(0.2, 0.7), bz * 1.6 + rnd(-0.5, 0.5), rnd(0.42, 0.55), 0.3 * sc, rnd(0.95, 1.2) * sc, 0x2a2026, 0.6, -0.4, 3);
+    emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.6 * sc, 1.15 * sc, 0xfff4e6, 1.35);                    // white-hot core, ~3 frames
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.1, 0.9 * sc, 1.4 * sc, 0xffa65a, lvl >= 3 ? 0.85 : 1.0, 0, 0, 0.12, 2);        // white-orange flash bloom
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.26, 1.1 * sc, 1.8 * sc, col, 0.8, 0, 0, 0.12, 2);            // hero-colour bloom
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.45, 1.6 * sc, 2.5 * sc, 0xff9050, 0.2, 0, 0, 0.12, 1);       // faint heat falloff
+    let n = lvl >= 3 ? 40 : lvl === 2 ? 26 : 18; if (LOW) n = Math.ceil(n / 2);
+    for (let k = 0; k < n; k++) {   // particle burst: radial spray biased along the blow, a few go back toward the camera side
+        const u = rnd(-0.7, 1), th = rnd(0, Math.PI * 2), r = Math.sqrt(1 - u * u * 0.5), sp = rnd(10, 22) * (k < n * 0.3 ? 1.2 : 1);
+        let vx = Math.cos(th) * r, vy = u * 0.75 + 0.25, vz = Math.sin(th) * r; const fw = Math.random() < 0.7 ? 1.4 : -0.4; vx += bx * fw; vz += bz * fw;
         const L = Math.hypot(vx, vy, vz) || 1, hot = Math.random() < 0.7;
-        emit(SH_SPARK, x, y, z, vx / L * sp, vy / L * sp, vz / L * sp, rnd(0.16, 0.38), rnd(0.035, 0.05) * sc, 0.02, hot ? 0xff8a3a : col, 1, 9.8, 3.2, 0.12, 1, floor);
+        emit(SH_SPARK, x, y, z, vx / L * sp, vy / L * sp, vz / L * sp, rnd(0.25, 0.38), rnd(0.07, 0.1) * sc, 0.035, hot ? 0xff8a3a : col, hot ? 1.5 : 1.25, 9.8, 2.4, 1.5, 1, floor);
     }
-    if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x + rnd(-0.15, 0.15), y + rnd(-0.1, 0.1), z + rnd(-0.15, 0.15), bx * 1.2 + rnd(-0.6, 0.6), rnd(0.1, 0.6), bz * 1.2 + rnd(-0.6, 0.6), 0.45, 0.25 * sc, 0.75 * sc, 0xb5aec2, 0.35, 0, 3);   // small dust puff
+    const ne = (lvl >= 3 ? 14 : lvl === 2 ? 10 : 8) >> (LOW ? 1 : 0);
+    for (let k = 0; k < ne; k++) {   // soft glowing ember cloud: slow, drifting up, lingers ~0.5-0.8 s
+        const th = rnd(0, Math.PI * 2), sp = rnd(1.2, 3.5);
+        emit(SH_GLOW, x + rnd(-0.15, 0.15), y + rnd(-0.12, 0.12), z + rnd(-0.15, 0.15), Math.cos(th) * sp + bx * 1.5, rnd(-0.4, 1.6), Math.sin(th) * sp + bz * 1.5, rnd(0.5, 0.8), rnd(0.09, 0.14) * sc, 0.04, Math.random() < 0.6 ? 0xffb060 : col, 1.1, -0.8, 3.5, 0.12, 1);
+    }
+    if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x + rnd(-0.15, 0.15), y + rnd(-0.1, 0.1), z + rnd(-0.15, 0.15), bx * 1.2 + rnd(-0.6, 0.6), rnd(0.1, 0.6), bz * 1.2 + rnd(-0.6, 0.6), 0.5, 0.25 * sc, 0.8 * sc, 0xb5aec2, 0.35, 0, 3);   // small dust puff
     if (lvl >= 3 && grounded && !LOW) for (let k = 0; k < 6; k++) { const th = rnd(0, Math.PI * 2), sp = rnd(1.5, 3); emit(SH_DUST, x + Math.cos(th) * 0.3, y - 0.9, z + Math.sin(th) * 0.3, Math.cos(th) * sp, rnd(0.4, 1.2), Math.sin(th) * sp, 0.45, 0.35, 0.9, 0xb9b2c6, 0.55, 0, 3); }
 }
 /** web-shot hit: soft white web burst + glow + sparks (no ink splat) */

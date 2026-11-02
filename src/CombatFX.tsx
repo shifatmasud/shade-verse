@@ -28,7 +28,7 @@ void main(){
   if (sh > 1.5 && sh < 2.5 || sh > 5.5 && sh < 6.5 || sh > 15.5 && sh < 16.5) {
     vec3 ax = iB.xyz; float L = length(ax); ax = L > 1e-4 ? ax / L : vec3(0.0, 1.0, 0.0);
     vec3 vd = normalize(P - cameraPosition); vec3 sd = cross(ax, vd); float sl = length(sd); sd = sl > 1e-4 ? sd / sl : vec3(1.0, 0.0, 0.0);
-    float W = sh > 5.5 && sh < 6.5 ? S * 2.6 : S;   // segments: room for the soft halo
+    float W = sh > 5.5 && sh < 6.5 ? S * 2.6 : sh < 2.5 ? S * 1.8 : S;   // segments + sparks: room for the soft halo
     mv = viewMatrix * vec4(P + ax * (position.y * 0.5 * L * (sh > 5.5 && sh < 6.5 ? 1.12 : 1.0)) + sd * (position.x * W), 1.0);
   } else if (sh > 3.5 && sh < 4.5) {   // ground light smear: flat on the ground, stretched along its velocity
     vec3 ax = vec3(iB.x, 0.0, iB.z); float L = length(ax); ax = L > 1e-4 ? ax / L : vec3(1.0, 0.0, 0.0); vec3 sd = vec3(-ax.z, 0.0, ax.x);
@@ -48,9 +48,11 @@ void main(){
   float sh = vD.x, r = length(vQ), a = 0.0; vec3 col = vC.rgb;
   if (sh < 0.5) { a = max(0.0, 1.0 - r); a *= a; col = mix(col, vec3(1.0), a * a * 0.6); }   // soft glow
   else if (sh > 3.5 && sh < 4.5) { a = max(0.0, 1.0 - r); a = a * a * a; col = mix(col, vec3(1.0), a * 0.5); }   // soft ground smear, no edge
-  else if (sh < 2.5) {   // spark streak: soft across, bright head, fading tail; cools white-hot -> its colour over its life
-    float ac = max(0.0, 1.0 - abs(vQ.x)); a = ac * ac * (1.0 - vQ.y * vQ.y) * (0.3 + 0.7 * smoothstep(-1.0, 0.8, vQ.y));
-    col = mix(vec3(1.0, 0.96, 0.88), col, smoothstep(0.05, 0.7, vD.y)); col = mix(col, vec3(1.0), ac * ac * ac * 0.6); r = 0.0; }
+  else if (sh < 2.5) {   // spark streak: gaussian hot core in a wide blurred halo, soft rounded ends (no needle tip), brighter head;
+    // cools white-hot -> its colour over its life (Nov 2, Shifat: "no sharp edges. Only soft edges for vfx")
+    float ax = abs(vQ.x), core = exp(-ax * ax * 16.0), halo = exp(-ax * ax * 3.5) * 0.42;
+    a = (core + halo) * (1.0 - ax) * smoothstep(1.0, 0.3, abs(vQ.y)) * (0.35 + 0.65 * smoothstep(-1.0, 0.6, vQ.y));
+    col = mix(vec3(1.0, 0.96, 0.88), col, smoothstep(0.05, 0.7, vD.y)); col = mix(col, vec3(1.0), core * 0.6); r = 0.0; }
   else if (sh > 5.5 && sh < 6.5) {   // lightning / tether / strand glow: thin hot core inside a wide blurred halo, soft ends
     float ac = max(0.0, 1.0 - abs(vQ.x)), c6 = pow(ac, 7.0); a = (c6 + 0.3 * ac * ac) * (1.0 - vQ.y * vQ.y * 0.85); col = mix(col, vec3(1.0), c6); r = 0.0; }
   else if (sh < 3.5) { a = exp(-r * r * 5.0) * (1.0 - r); col = mix(col, vec3(1.0), a); }   // hot core: gaussian, no disc edge
@@ -65,6 +67,9 @@ void main(){
   if (sh > 15.5) {   // web strand (pull / yank): soft white core with a soft falloff, ends tapered (no ink rim)
     float ax = abs(vQ.x), tip = smoothstep(1.0, 0.75, abs(vQ.y));
     a = exp(-ax * ax * 6.0) * tip; col = mix(col, vec3(0.72, 0.74, 0.86), smoothstep(0.1, 0.8, ax));
+  } else if (sh > 12.5) {   // dark-to-warm smoke puff: gaussian, warm glowing centre that cools to soft dark smoke over its life, no edge
+    a = exp(-r * r * 3.2) * (1.0 - r * r); float w = (1.0 - smoothstep(0.0, 0.55, vD.y)) * exp(-r * r * 6.0);
+    col = mix(col, vec3(1.0, 0.62, 0.3), w);
   } else { a = pow(max(0.0, 1.0 - r), 1.6) * 0.7; }   // soft dust
   a *= vC.a; if (a < 0.01) discard;
   gl_FragColor = vec4(col, a);
@@ -122,7 +127,8 @@ export function CombatFX({ sim }: { sim: Sim }) {
             let al = addP[o + 13] * (addP[o + 19] === 2 ? (1 - u) * (1 - u) : sh === 4 ? (1 - u) * (1 - u * 0.5) : sh === 5 ? (1 - u) * ((st.tick >> 1) & 1 ? 1 : 0.55) : 1 - u);
             let dx = addP[o + 3], dy = addP[o + 4], dz = addP[o + 5];
             if (sh === 4) { const k = 0.03; dx *= k; dy = 0; dz *= k; }
-            if (sh === 2) { const k = 0.035; dx *= k; dy *= k; dz *= k; const L = Math.hypot(dx, dy, dz); if (L < 0.08) { const s = 0.08 / Math.max(1e-4, L); dx *= s; dy *= s; dz *= s; } }
+            if (sh === 2) { const k = 0.035 * Math.max(1, addP[o + 18]);   // thick >= 1 on sparks = longer velocity stretch (melee burst)
+                dx *= k; dy *= k; dz *= k; const L = Math.hypot(dx, dy, dz); if (L < 0.08) { const s = 0.08 / Math.max(1e-4, L); dx *= s; dy *= s; dz *= s; } }
             put(addP[o], addP[o + 1], addP[o + 2], size, dx, dy, dz, sh, addP[o + 10], addP[o + 11], addP[o + 12], al, u, addP[o + 17], addP[o + 18]);
         }
         // per-frame state: Charged Slam fist glow, dive fists (the blast radius is shown by ground motes, see fxChargeTick)
