@@ -42,8 +42,8 @@ void main(){
      warmer when low (atmosphere), a tight bright halo plus a wide faint glow like the Gullmarn fjord photo */
    { vec3 md=-sun; vec3 mu=normalize(cross(md, abs(md.y)>0.98?vec3(1.0,0.0,0.0):vec3(0.0,1.0,0.0))); vec3 mv=cross(mu,md); vec2 q=vec2(dot(dn,mu),dot(dn,mv))/0.036; float mr=length(q);
      float disc=(1.0-smoothstep(0.95,1.03,mr))*step(0.0,dot(dn,md)); vec3 tint=mix(vec3(1.0,0.82,0.62),vec3(1.0,0.98,0.94),smoothstep(0.0,0.35,md.y));
-     float tx=texture2D(uMoon,clamp(q*0.5+0.5,0.0,1.0)).r; nc=mix(nc,tint*(0.25+1.25*pow(tx,1.15)),disc);
-     nc+=vec3(0.75,0.85,1.0)*(pow(mg,90.0)*0.32+pow(mg,10.0)*0.06)*(1.0-disc); }
+     float tx=texture2D(uMoon,clamp(q*0.5+0.5,0.0,1.0)).r; nc=mix(nc,tint*(1.9+0.5*tx),disc);   /* Shifat 11:51 PM: match the Gullmarn fjord photo - a blown-out glowing white disc, the photo texture only a faint hint */
+     nc+=vec3(0.82,0.88,1.0)*(pow(mg,260.0)*0.9+pow(mg,45.0)*0.42+pow(mg,7.0)*0.13);   /* bright corona + big milky halo like the photo */ }
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
  if(uRain>0.001){vec3 dn2=normalize(vDir);vec2 rq=dn2.xz/(abs(dn2.y)+0.25)*2.2+vec2(uT*0.012,0.0);float rn=fract(sin(dot(floor(rq),vec2(127.1,311.7)))*43758.5);vec2 rf=fract(rq);rf=rf*rf*(3.0-2.0*rf);float rn2=mix(mix(rn,fract(sin(dot(floor(rq)+vec2(1,0),vec2(127.1,311.7)))*43758.5),rf.x),mix(fract(sin(dot(floor(rq)+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(floor(rq)+vec2(1,1),vec2(127.1,311.7)))*43758.5),rf.x),rf.y);
