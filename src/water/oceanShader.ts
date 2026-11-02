@@ -325,7 +325,13 @@ ${GRID_TRACE_GLSL}
       col += vec3(0.1, 0.45, 0.5) * smoothstep(0.1, 1.0, hW) * 0.25 * (1.0 - fr) * (1.0 - smoothstep(60.0, 180.0, wDist));   /* Nov 1: the crest tint followed the wave height at the UNDISPLACED point, which the coarse far grid maps through big triangles; its sharp threshold drew blocky staircases on the sea from the air. Softer ramp, and faded past 60-180 m where the crests are sub-pixel anyway */
       // Whitecaps (ref: Sea of Thieves / AC Black Flag): foam where the wind-wave crests peak, broken into lacy cells by the caustic network
       // (same thin-line structure as real crest foam), drifting with the wave; thin streaks trail behind. One extra fetch; fades with distance.
-      float crest = 0.0;   /* Shifat 4:30 AM 'Hate foams': open-sea whitecaps + crest foam removed (also 3 texture reads less per sea pixel) */
+      float crest = 0.0;
+      if (!below && uRain > 0.3) {   /* storm spray (Shifat Nov 2 1:54 AM 'Don't drop. Lets try'; real photo 'Brighton stormy sea'): only in heavy rain, soft wind-blown spindrift streaks lifting off the higher swells - a haze, never surface foam patches */
+        vec2 wdS = normalize(vec2(1.0, 0.35)); float wDs = length(cameraPosition - vW);
+        vec2 qS = vec2(dot(vW.xz, wdS) * 0.012 - uTime * 0.25, dot(vW.xz, vec2(-wdS.y, wdS.x)) * 0.06);
+        float sS = texture2D(uCaus, qS).r * 0.6 + texture2D(uCaus, qS * 2.3 + 0.37).r * 0.4;
+        float spr = smoothstep(0.16, 0.5, sS) * smoothstep(-0.6, 0.4, hW0) * smoothstep(0.3, 0.8, uRain) * smoothstep(12.0, 40.0, wDs) * (1.0 - smoothstep(180.0, 420.0, wDs));
+        col = mix(col, vec3(0.84, 0.88, 0.93) * mix(0.3, 0.95, uDay), spr * 0.45); }   /* Shifat 4:30 AM 'Hate foams': open-sea whitecaps + crest foam removed (also 3 texture reads less per sea pixel) */
       float sd = -222.0 - vW.z; float sf = smoothstep(24.0, 0.0, sd) * (0.5 + 0.5 * sin(sd * 1.3 - uTime * 1.8 + sin(vW.x * 0.4) * 2.0));
       col = mix(col, vec3(1.0, 0.97, 0.92), clamp(sf, 0.0, 1.0) * step(0.0, sd) * 0.15);
       if (uBench.y > 4.5 && uBench.y < 5.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
