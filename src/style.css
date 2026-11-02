@@ -64,7 +64,7 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 .dpad svg{position:absolute;inset:0}
 .dpad .knob{position:relative;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.22)!important;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.6)}
 .tiers{display:flex;gap:3px}.tiers i{width:7px;height:7px;transform:rotate(45deg);background:#fff;box-shadow:0 0 6px rgba(255,255,255,.8)}
-.ico.special{right:calc(98px + env(safe-area-inset-right));bottom:calc(224px + env(safe-area-inset-bottom));width:84px;height:84px}.ico .ring{position:absolute;inset:6px;width:72px;height:72px;opacity:.9;pointer-events:none}.ico.special.cd{opacity:.55}
+.ico.special{right:calc(98px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom));width:84px;height:84px}.ico .ring{position:absolute;inset:6px;width:72px;height:72px;opacity:.9;pointer-events:none}.ico.special.cd{opacity:.55}
 
 .ico.jump svg{transition:transform .18s ease}.ico.jump.inv svg{transform:rotate(180deg)}
 

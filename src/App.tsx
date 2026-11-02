@@ -21,7 +21,7 @@ function SceneReady() {
     return null;
 }
 import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
-import { installDesktopInput, MAP_KB, MAP_PAD } from './desktopInput';
+import { installDesktopInput, MAP_KB, MAP_PAD, HOLD_MS } from './desktopInput';
 import { QUALITY, QK, AA_MSAA } from './quality';
 import { audio } from './audio/engine';
 import { SoundDirector } from './audio/director';
@@ -177,6 +177,7 @@ export function App() {
     const [charge, setCharge] = useState(false), [locked, setLocked] = useState(false);
     useEffect(() => { if (!ctrlToast) return; const id = setTimeout(() => setCtrlToast(null), 4200); return () => clearTimeout(id); }, [ctrlToast]);
     const [swingOn, setSwingOn] = useState(false);
+    const holdR = useRef({ sw: false, swT: 0, sk: false, skT: 0 });
     const [load, setLoad] = useState<{ on: boolean; pct: number }>({ on: false, pct: 0 });   // Play pressed before everything was in memory
     const starting = useRef(false);
     useEffect(() => onPreloadProgress((d, n) => setLoad((l) => (l.on ? { on: true, pct: n ? Math.round((d / n) * 90) : 0 } : l))), []);   /* Shifat Nov 1 8:19 PM 'Only load when tap play': nothing downloads on the title; Play loads everything, then gameplay begins */
@@ -217,12 +218,15 @@ export function App() {
         {hud.mode === 'play' && <>
             <div className="padzone" onPointerDown={padStart} onPointerMove={(e) => { if (e.pointerId === stickId.current) padMove(e); }} onPointerUp={stickEnd} onPointerCancel={stickEnd} />
             <div className="dpad" ref={padRef}><svg width="120" height="120" viewBox="0 0 120 120" {...IC} strokeWidth={2}><path d="M60 8l9 11H51zM60 112l-9-11h18zM8 60l11-9v18zM112 60l-11 9V51z" fill="currentColor" stroke="none" opacity=".85" /><circle cx="60" cy="60" r="38" opacity=".35" /></svg><div className="knob" ref={knobRef} /></div>
-            <button className={'ico swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web swing"
-                onPointerDown={(e) => { burst(e, '#8fe9ff', -25, false); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.swing = true; input.swingQ = true; setSwingOn(true); }}
-                onPointerUp={() => { input.swing = false; setSwingOn(false); }} onPointerCancel={() => { input.swing = false; setSwingOn(false); }}><ISwing /></button>
-            <button className={'ico grab' + (hud.gr ? '' : ' off')} aria-label="web grab" onPointerDown={(e) => { burst(e, '#ffffff', 20); input.grabQ = true; }}><IGrab /></button>
-            <button className={'ico shot' + (hud.sh ? '' : ' off')} aria-label="web shot" onPointerDown={(e) => { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; }}><IShot /></button>
-            <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn ? '' : ' off')} aria-label="Web Shock" onPointerDown={(e) => { burst(e, '#c9a7ff', 180); input.specialQ = true; }}><IShock /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
+            {/* Shifat Nov 2 4:26/4:30 AM: one button per pair, same as desktop - tap = web spring, hold = swing; tap = web shot, hold = Web Shock (HOLD_MS) */}
+            <button className={'ico swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web spring (tap) / web swing (hold)"
+                onPointerDown={(e) => { burst(e, '#8fe9ff', -25, false); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } const h = holdR.current; h.sw = false; clearTimeout(h.swT); h.swT = window.setTimeout(() => { h.sw = true; input.swing = true; input.swingQ = true; setSwingOn(true); }, HOLD_MS); }}
+                onPointerUp={() => { const h = holdR.current; clearTimeout(h.swT); if (h.sw) { input.swing = false; setSwingOn(false); } else input.grabQ = true; h.sw = false; }}
+                onPointerCancel={() => { const h = holdR.current; clearTimeout(h.swT); input.swing = false; setSwingOn(false); h.sw = false; }}><ISwing /></button>
+            <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn || hud.sh ? '' : ' off')} aria-label="web shot (tap) / Web Shock (hold)"
+                onPointerDown={(e) => { try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } const h = holdR.current; h.sk = false; clearTimeout(h.skT); const el = e.currentTarget; h.skT = window.setTimeout(() => { h.sk = true; burst({ currentTarget: el } as any, '#c9a7ff', 180); input.specialQ = true; }, HOLD_MS); }}
+                onPointerUp={(e) => { const h = holdR.current; clearTimeout(h.skT); if (!h.sk) { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; } h.sk = false; }}
+                onPointerCancel={() => { const h = holdR.current; clearTimeout(h.skT); h.sk = false; }}><IShock /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
             <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); input.meleeQ = true; input.attackQ = true; }}><IFist /></button>
             <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
         </>}
