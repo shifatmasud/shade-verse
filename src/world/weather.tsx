@@ -130,11 +130,19 @@ export function Weather() {
         return { mesh, mat, smesh, smat };
     }, []);
     const gy = React.useRef({ y: 0, last: 0, t: 0 });
+    const lt = React.useRef({ next: 3, start: -9, seed: 0 });
     useFrame((st, dt) => {
         const t = st.clock.elapsedTime, ph = (t / CYCLE) % 1;
         const target = WEATHER.force >= 0 ? WEATHER.force : (ph > RAIN_FROM ? 1 : 0);
         const r = WEATHER.rain; r.value += (target - r.value) * Math.min(1, dt / 8 * 3);
         if (WEATHER.force >= 0 && Math.abs(r.value - target) < 0.02) r.value = target;
+        { // storm lightning (Nov 2, real photos 'Lightning storm over ocean', 'Lightning over the Atlantic'): every few seconds in heavy rain a flash lights the
+            // cloud deck from inside near the horizon (double pulse, ~0.6 s); WEATHER.flash/fdir feed the sky dome and the sea (src/shaders/skyFx.ts lightningSky)
+            const L = lt.current; const f = WEATHER.flash;
+            if (r.value > 0.45 && t > L.next) { L.start = t; L.next = t + 5 + Math.random() * 9; const a = Math.random() * Math.PI * 2; WEATHER.fdir.value.set(Math.sin(a), 0, Math.cos(a)); L.seed = Math.random(); }
+            const u = t - L.start; f.value = u < 0 || u > 0.9 ? 0 : (Math.exp(-u * 9) + 0.7 * Math.exp(-Math.abs(u - 0.32) * 14)) * Math.min(1, (r.value - 0.4) * 3);
+            if ((import.meta as any).env?.VITE_DBG && (window as any).__flashPin != null) { f.value = (window as any).__flashPin; WEATHER.fdir.value.set(-0.6, 0, -0.8); }
+        }
         mat.uniforms.uT.value = t; mat.uniforms.uUnder.value = (UW as any).on ? 1 : 0;
         mesh.visible = r.value > 0.01;
         { // ground level under the hero (Shifat 9:56 PM: rings were floating in the sky while gliding - the old 'stopped moving vertically' guess took the

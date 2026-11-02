@@ -22,6 +22,15 @@ vec3 rainbowSky(vec3 dn3, vec3 sunV, float rain, float day){
   vec3 ins=vec3(0.07,0.075,0.08)*smoothstep(0.35,0.69,ra)*(1.0-smoothstep(0.69,0.71,ra));
   float alex=smoothstep(0.74,0.78,ra)*(1.0-smoothstep(0.86,0.9,ra));
   return ((rc*0.4+rc2*0.1+glow)*el*ptch+ins*el-vec3(0.035)*alex*el)*rw*(1.0-smoothstep(0.75,1.0,dn3.y)); }
+
+/* storm lightning (real photos: flash lights the cloud deck from inside near the horizon, a soft blurry bolt drops to the sea, the sea glows under it) */
+vec3 lightningSky(vec3 dn, vec3 fd, float f){ if(f<0.002) return vec3(0.0); vec3 lc=vec3(0.78,0.84,1.0);
+  float az=dot(normalize(dn.xz+1e-4),fd.xz), side=dn.x*fd.z-dn.z*fd.x;
+  vec2 cq=dn.xz/(dn.y+0.12)*3.0; float mot=0.55+0.45*sin(cq.x*1.7+sin(cq.y*2.3))*sin(cq.y*1.3+sin(cq.x*1.9)); float glow=exp((az-1.0)*5.0)*exp(-max(dn.y-0.05,0.0)*5.0)*smoothstep(-0.02,0.05,dn.y)*(0.45+0.9*mot);
+  float hy=clamp(dn.y/0.09,0.0,1.0); float jx=0.012*sin(hy*23.0+fd.x*40.0)+0.008*sin(hy*61.0+fd.z*17.0);
+  float bolt=exp(-pow((side-jx)/0.0045,2.0))*step(0.0,az)*step(-0.002,dn.y)*(1.0-smoothstep(0.07,0.1,dn.y));
+  float halo=exp(-pow((side-jx)/0.03,2.0))*step(0.0,az)*smoothstep(-0.01,0.02,dn.y)*(1.0-smoothstep(0.05,0.14,dn.y));
+  return lc*f*(glow*2.2+bolt*1.8+halo*0.45+0.07); }
 `;
 
 // moon + a sparse star field as functions of a direction, so the sea can mirror them too (Shifat 10:59 PM 'everything must be reflected')
