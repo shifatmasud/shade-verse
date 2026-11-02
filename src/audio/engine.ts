@@ -15,6 +15,7 @@ const BASE = ((import.meta as any).env?.BASE_URL || '/') + 'audio/';
 // downloaded assets (all small; see public/audio/CREDITS.md)
 const FILES: Record<string, string> = { steps: 'steps', birds: 'birds', music_explore: 'music_explore', music_action: 'music_action', music_title: 'music_title' };
 // character voice lines (Shifat Oct 29: "funny popular family friendly meme voices for every character"): public/audio/vo/<kind>_<i>, lazy-loaded
+const VO_KEEP = 24;   // decoded voice lines kept in memory (oldest dropped; bytes stay, re-decode is ~20 ms)
 export const MUSIC_MIX = 0.8;   // Shifat Oct 31 6:27 PM: background strings/pads at 0.8x
 export const VO_N: Record<string, number> = { shadow: 16, ghost: 8, robot: 8, boss: 7, ped: 12, cg: 119, cs: 112 };   // cg / cs: Ghost & Shadow couple banter (src/audio/banter.ts)
 for (const k in VO_N) for (let i = 0; i < VO_N[k]; i++) FILES[`vo_${k}_${i}`] = `vo/${k}_${i}`;
@@ -91,7 +92,15 @@ export class AudioEngine {
         return Promise.all(ps).then(() => undefined);
     }
     /** decodes every file and renders every synthesized sound (needs the AudioContext: call after unlock) */
-    loadAll(): Promise<void> { return Promise.all([...Object.keys(FILES), ...Object.keys(RECIPES)].map((n) => this.load(n))).then(() => undefined); }
+    /* voice lines (282 clips, ~93 MB once decoded) are downloaded up front but decoded only when first spoken (~20 ms each) and only the last
+       VO_KEEP stay decoded - phone RAM (Nov 2 perf). Everything else is decoded before play as before. */
+    loadAll(): Promise<void> { return Promise.all([...Object.keys(FILES).filter((n) => !n.startsWith('vo_')), ...Object.keys(RECIPES)].map((n) => this.load(n))).then(() => undefined); }
+    private voOrder: string[] = [];
+    private keepVo(name: string) {
+        if (!name.startsWith('vo_')) return;
+        const i = this.voOrder.indexOf(name); if (i >= 0) this.voOrder.splice(i, 1); this.voOrder.push(name);
+        while (this.voOrder.length > VO_KEEP) { const old = this.voOrder.shift()!; this.bufs.delete(old); this.loading.delete(old); }
+    }
     has(name: string) { return this.bufs.has(name); }
     load(name: string): Promise<AudioBuffer | null> {
         const hit = this.loading.get(name); if (hit) return hit;
@@ -101,7 +110,7 @@ export class AudioEngine {
             p = (this.bytes.get(name) || fetch(BASE + FILES[name] + '.' + this.ext).then((r) => r.arrayBuffer())).then((ab) => ab.slice(0)).then((ab) => new Promise<AudioBuffer>((res, rej) => { const q = c.decodeAudioData(ab, res, rej); if (q && (q as any).catch) (q as any).catch(rej); }));
         } else if (RECIPES[name]) { const rc = RECIPES[name]; p = this.q.then(() => renderRecipe(name, rc)); this.q = p.catch(() => null); }   // one offline render at a time: no load spike
         else p = Promise.resolve(null as any);
-        p = p.then((b) => { if (b) this.bufs.set(name, b); return b; }).catch(() => null);
+        p = p.then((b) => { if (b) { this.bufs.set(name, b); this.keepVo(name); } return b; }).catch(() => null);
         this.loading.set(name, p); return p;
     }
 
