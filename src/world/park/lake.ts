@@ -5,37 +5,6 @@ import { WATER_COMMON_GLSL } from '../../water/common';
 import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from '../../water/gridRefl';
 
 // Park lake: shoreline foam + bridge ramp geometry, and the lake / caustics / foam / contact shaders.
-function subdividePositions(source: THREE.BufferGeometry, levels = 2) {
-    const src = source.index ? source.toNonIndexed() : source;
-    const attr = src.getAttribute('position');
-    let triangles: number[][] = [];
-    for (let i = 0; i < attr.count; i += 3) {
-        triangles.push([
-            attr.getX(i), attr.getY(i), attr.getZ(i),
-            attr.getX(i + 1), attr.getY(i + 1), attr.getZ(i + 1),
-            attr.getX(i + 2), attr.getY(i + 2), attr.getZ(i + 2),
-        ]);
-    }
-    for (let level = 0; level < levels; level++) {
-        const next: number[][] = [];
-        const mid = (a: number[], b: number[]) => [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5];
-        const push = (a: number[], b: number[], c: number[]) => next.push([...a, ...b, ...c]);
-        for (const tri of triangles) {
-            const a = tri.slice(0, 3), b = tri.slice(3, 6), c = tri.slice(6, 9);
-            const ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
-            push(a, ab, ca); push(ab, b, bc); push(ca, bc, c); push(ab, bc, ca);
-        }
-        triangles = next;
-    }
-    const positions = new Float32Array(triangles.length * 9);
-    triangles.forEach((tri, i) => positions.set(tri, i * 9));
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.computeVertexNormals();
-    geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-    if (src !== source) src.dispose();
-    return geometry;
-}
 
 export function shorelineFoamGeometry(rx: number, rz: number) {
     const segments = 240, positions: number[] = [], uvs: number[] = [], indices: number[] = [];

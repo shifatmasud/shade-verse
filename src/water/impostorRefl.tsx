@@ -11,12 +11,3 @@ export const IMP_P = Array.from({ length: IMP_N }, () => new THREE.Vector4(0, 1e
 export const IMP_TEX: (THREE.Texture | null)[] = [null, null, null];
 export const IMP_ON = typeof location !== 'undefined' && /[?&]imp\b/.test(location.search);
 type Card = { axis: number; plane: number; u0: number; u1: number; camAt: number; dir: number; depth: number };
-function cards(): Card[] {
-    let cx0 = 1e9, cx1 = -1e9;
-    for (const b of buildings) { if (b.host !== undefined || b.z0 < WATER_Z || b.z0 > WATER_Z + 400) continue; cx0 = Math.min(cx0, b.x0); cx1 = Math.max(cx1, b.x1); }
-    return [
-        { axis: 0, plane: WATER_Z + 6, u0: Math.max(cx0, -1600), u1: Math.min(cx1, 1600), camAt: WATER_Z - 60, dir: 1, depth: 420 },   // city, seen from the sea (looking +z)
-        { axis: 1, plane: BRIDGE.x, u0: BRIDGE.z0 - BRIDGE_L, u1: BRIDGE.z0, camAt: BRIDGE.x - 60, dir: 1, depth: 120 },               // bridge, seen from the west (looking +x)
-        { axis: 0, plane: HARBOR.z1, u0: HARBOR.x0 - 20, u1: HARBOR.x1 + 20, camAt: HARBOR.z1 + 60, dir: -1, depth: 260 },            // harbor towers, seen from the north (looking -z)
-    ];
-}

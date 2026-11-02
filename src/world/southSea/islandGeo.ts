@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DOCK, FALLS, FALL_WALL, ISLAND, LIGHTHOUSE, POOL, POOLS, RIVERS, RIVER_DEEP, SHACKS, islandH, islandRR, poolAt, riverHW, riverY } from '../../seaWorld';
 import { seabedAt } from '../../sim';
-import { PHONE, colorize, hazeShader, merged, rnd, type SouthSeaKit } from './common';
+import { PHONE, colorize, merged, rnd } from './common';
 import { CAUSTIC_GLSL, CAUSTIC_TEX } from '../../caustics';
 
 // Island shape builders: beach shader, terrain, lighthouse/shacks/dock, waterfall sheets + spray, river strips, grass clumps and ferns.
@@ -145,31 +145,5 @@ export function riverGeo() {
 // long grass (2b): clumps of three crossed blades, swaying in the vertex shader; only on the meadow/jungle ground, never on sand
 export const GRASS_T = { value: 0 };
 export const GRASS_U = { uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uCam: { value: new THREE.Vector3() } };
-function grassClumpGeo() {
-    const pos: number[] = [], col: number[] = [], idx: number[] = [];
-    for (let b = 0; b < 6; b++) {
-        const a = b * 2.39 + 0.3, ca = Math.cos(a), sa = Math.sin(a), h = 0.9 + ((b * 7) % 5) * 0.12, base = pos.length / 3, segs = 3, ox = Math.cos(b * 1.7) * 0.18, oz = Math.sin(b * 2.3) * 0.18, lean = 0.12 + (b % 3) * 0.08;
-        for (let k = 0; k <= segs; k++) { const t = k / segs, w = 0.055 * (1 - t * 0.9), bend = lean * t * t; for (const sg of [-1, 1]) { pos.push(ox + ca * w * sg + sa * bend, h * t, oz + sa * w * sg - ca * bend); const g = 0.35 + 0.65 * t; col.push(0.36 * g, 0.62 * g, 0.2 * g); } }
-        for (let k = 0; k < segs; k++) { const i = base + k * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
-}
-const grassShader = (tod: SouthSeaKit['tod']) => hazeShader(tod, (sh: any) => {
-    sh.uniforms.uGrassT = GRASS_T;
-    sh.vertexShader = 'uniform float uGrassT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-    { vec2 root = instanceMatrix[3].xz; float ph = root.x * 0.13 + root.y * 0.11; float k = position.y * position.y;
-      transformed.x += k * (0.16 * sin(uGrassT * 1.6 + ph) + 0.06 * sin(uGrassT * 3.7 + ph * 2.3)); transformed.z += k * 0.08 * sin(uGrassT * 1.2 + ph * 1.7); }`);
-    sh.vertexShader = sh.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = vec3(0.0, 1.0, 0.0);');   // grass lit like the ground (no dark flipped backsides)
-});
-// ferns / bushes (2b): arched fronds from one root, no texture
-function fernGeo() {
-    const pos: number[] = [], col: number[] = [], idx: number[] = [], N = 9;
-    for (let f = 0; f < N; f++) {
-        const a = f * 2.399, ca = Math.cos(a), sa = Math.sin(a), L = 1.3 + (f % 3) * 0.3, up = 0.9 - (f % 3) * 0.25, base = pos.length / 3, segs = 5;
-        for (let k = 0; k <= segs; k++) { const t = k / segs, r = L * t, y = up * Math.sin(t * Math.PI * 0.8) * L * 0.7, w = 0.32 * Math.sin(Math.PI * Math.min(1, t * 1.15)); for (const sg of [-1, 1]) { pos.push(ca * r - sa * w * sg, y + 0.05, sa * r + ca * w * sg); const g = 0.5 + 0.5 * t; col.push(0.25 * g, 0.62 * g, 0.22 * g); } }
-        for (let k = 0; k < segs; k++) { const i = base + k * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
-}
 
 export type Inst = { x: number; y: number; z: number; s: number; r: number; sy?: number; tint?: number };

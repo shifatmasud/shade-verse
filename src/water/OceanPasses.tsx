@@ -2,8 +2,7 @@ import { waveH } from './waveHeight';
 import React, { useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { WATER_Y, WATER_Z, SEABED, HALF, SEA, type Sim } from '../sim';
-import { QUALITY, LOWQ } from '../quality';
+import { WATER_Y, WATER_Z, type Sim } from '../sim';
 import { HERO_REFL } from '../caustics';
 import { UW } from '../world/env';
 import { OCEAN_SNAP, OCEAN_BINS } from './seabed';
@@ -55,17 +54,6 @@ export function OceanSlices({ waterRef, geo }: { waterRef: React.MutableRefObjec
 
 // Ocean screen-space copy (same technique as the park lake): a low-res colour+depth copy of the scene without the sea, taken only
 // while the sea is on screen and near enough to matter; skipped when the frame budget is tight.
-const _oceanBox = new THREE.Box3(new THREE.Vector3(-HALF - 700, SEABED - 45, SEA.zMin - 600), new THREE.Vector3(HALF + 700, WATER_Y + 4, WATER_Z + 2));
-// Shifat 2:58 AM "reflection when?": real mirrored reflections of the island (terrain, palms, trees, rocks, lighthouse, shacks, dock) in the sea.
-// A Reflector-style virtual camera mirrored about the sea plane renders ONLY those opaque shapes (layer 7, ~15 draw calls, no grass/water/fx)
-// into a small target (1/4 res desktop, 1/5 phone; phones every 2nd frame); the ocean shader samples it with wave distortion and Fresnel.
-const REFL_LAYER = 7;
-const NOPROBE = typeof location !== 'undefined' && /[?&]debug/.test(location.search) && /[?&]noprobe/.test(location.search);   // ?debug&noprobe: A/B test on device
-const NOCOPY = typeof location !== 'undefined' && /[?&]debug/.test(location.search) && /[?&]nocopy/.test(location.search);   // ?debug&nocopy: only the scene copy off
-const PHONE_REFL = true;   /* Shifat 10:02 PM 'phone & desktop sea 1:1': every device takes the phone water path (analytic bed refraction, no second scene render) - identical look, desktop gets faster */
-// Phone GPUs (Adreno 506 etc.) often cannot RENDER into half-float targets (no EXT_color_buffer_half_float / _float): the copy came out empty, so on
-// Shifat's phone no reflections showed at all. Use half float only when the GPU can render to it, else plain 8-bit.
-function rtType(gl: THREE.WebGLRenderer) { const e = gl.extensions; return (e.has('EXT_color_buffer_float') || e.has('EXT_color_buffer_half_float')) && !(QUALITY.coarse || LOWQ) ? THREE.HalfFloatType : THREE.UnsignedByteType; }
 export function ReflectionIllusion({ sim }: { sim: Sim }) {
     const { camera } = useThree();
     const st = useMemo(() => ({ at: new THREE.Vector3(1e9, 0, 0) }), []);

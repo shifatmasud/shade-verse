@@ -436,50 +436,6 @@ export function rideTarget(s: Sim): number {
     for (let i = 0; i < BOATS.length; i++) { const b = boatAt(i, s.t), d = Math.hypot(b.x - s.pos[0], b.z - s.pos[2]) - 3; if (Math.abs(b.y + 1 - s.pos[1]) < 5 && d < bd) { bd = d; best = 100 + i; } }   // boats too (Shifat: "boat can be entered too?")
     return best;
 }
-function stepRide(s: Sim, dt: number, input: Input, ev: Events): boolean {
-    if (input.rideQ) {
-        input.rideQ = false;
-        if (PILOT.i >= 0 && !PILOT.parked) {   // hop out onto the roof; the car hovers where you left it
-            PILOT.parked = true; PILOT.vx = PILOT.vy = PILOT.vz = 0;
-            s.pos[0] = PILOT.x; s.pos[1] = PILOT.i >= 100 ? WATER_Y + BOAT_DECK + 1.1 : PILOT.y + CAR_TOP + 1.1; s.pos[2] = PILOT.z; s.vel = [0, 0, 0]; s.ground = true; (s as any).riding = false; ev.jump();
-            return false;
-        }
-        const i = rideTarget(s);
-        if (i >= 0) { const c: any = i >= 100 ? boatAt(i - 100, s.t) : carAt(i, s.t); Object.assign(PILOT, { i, x: c.x, y: c.y, z: c.z, yaw: c.yaw, vx: c.vx, vy: 0, vz: c.vz, parked: false, turn: 0 }); s.web = false; s.glideOn = false; s.wall = null; s.swim = false; s.dive = false; (s as any).riding = true; ev.attach(); }
-    }
-    if (!(PILOT.i >= 0 && !PILOT.parked)) { (s as any).riding = false; return false; }
-    // flying: throttle along the camera heading, climb/dive with the camera pitch, Space/jump to climb straight up, strafe to slide sideways
-    const k = input.keys; let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
-    const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
-    if (PILOT.i >= 100) {   // boat: throttle along the camera heading on the water surface, banks into turns, stays out at sea
-        const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx, MAX = 24, a = Math.min(1, dt * 1.1);
-        PILOT.vx += ((fx * my + rx * mx) * MAX - PILOT.vx) * a; PILOT.vz += ((fz * my + rz * mx) * MAX - PILOT.vz) * a;
-        PILOT.x += PILOT.vx * dt; PILOT.z += PILOT.vz * dt; PILOT.y = WATER_Y; PILOT.vy = 0;
-        const hs = Math.hypot(PILOT.vx, PILOT.vz); let dy2 = 0; if (hs > 1.5) { dy2 = Math.atan2(PILOT.vx, PILOT.vz) - PILOT.yaw; dy2 = Math.atan2(Math.sin(dy2), Math.cos(dy2)); PILOT.yaw += dy2 * Math.min(1, dt * 2.2); }
-        PILOT.turn += (Math.max(-1, Math.min(1, dy2 * 2)) * Math.min(1, hs / 10) - PILOT.turn) * Math.min(1, dt * 3);
-        if (PILOT.z > WATER_Z - 9) { PILOT.z = WATER_Z - 9; PILOT.vz = Math.min(0, PILOT.vz); }
-        PILOT.x = Math.max(-SEA.xMax + 6, Math.min(SEA.xMax - 6, PILOT.x)); PILOT.z = Math.max(SEA.zMin + 6, PILOT.z);
-        s.pos[0] = PILOT.x; s.pos[1] = WATER_Y + BOAT_DECK + 1.0; s.pos[2] = PILOT.z; s.vel = [PILOT.vx, 0, PILOT.vz]; s.ground = true; s.web = false; s.swim = false; s.safe = [PILOT.x, WATER_Y + BOAT_DECK + 1.0, PILOT.z];
-        return true;
-    }
-    const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx, MAX = 42;
-    const tx = (fx * my + rx * mx) * MAX, tz = (fz * my + rz * mx) * MAX, ty = (input.jumpHeld ? 14 : 0) + (-Math.sin(s.pitch - 0.25)) * Math.abs(my) * 22;
-    const a = Math.min(1, dt * 1.6);
-    PILOT.vx += (tx - PILOT.vx) * a; PILOT.vz += (tz - PILOT.vz) * a; PILOT.vy += (ty - PILOT.vy) * Math.min(1, dt * 2.5);
-    PILOT.x += PILOT.vx * dt; PILOT.y += PILOT.vy * dt; PILOT.z += PILOT.vz * dt;
-    const hs = Math.hypot(PILOT.vx, PILOT.vz); if (hs > 2) { let dy = Math.atan2(PILOT.vx, PILOT.vz) - PILOT.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); PILOT.yaw += dy * Math.min(1, dt * 4); }
-    // keep the car out of buildings and above street / water, inside the world
-    const floor = (PILOT.z < WATER_Z ? WATER_Y + 2.5 : 3);
-    if (PILOT.y < floor) { PILOT.y = floor; PILOT.vy = Math.max(0, PILOT.vy); } if (PILOT.y > 220) { PILOT.y = 220; PILOT.vy = Math.min(0, PILOT.vy); }
-    for (const b of blds) { const m = 2.6; if (PILOT.x > b.x0 - m && PILOT.x < b.x1 + m && PILOT.z > b.z0 - m && PILOT.z < b.z1 + m && PILOT.y < b.h + 1.4) {
-        const l = PILOT.x - (b.x0 - m), r = (b.x1 + m) - PILOT.x, f = PILOT.z - (b.z0 - m), kk = (b.z1 + m) - PILOT.z, top = b.h + 1.4 - PILOT.y, mn = Math.min(l, r, f, kk, top);
-        if (mn === top) { PILOT.y = b.h + 1.4; PILOT.vy = Math.max(0, PILOT.vy); } else if (mn === l) { PILOT.x = b.x0 - m; PILOT.vx = Math.min(0, PILOT.vx); } else if (mn === r) { PILOT.x = b.x1 + m; PILOT.vx = Math.max(0, PILOT.vx); } else if (mn === f) { PILOT.z = b.z0 - m; PILOT.vz = Math.min(0, PILOT.vz); } else { PILOT.z = b.z1 + m; PILOT.vz = Math.max(0, PILOT.vz); } } }
-    const xl = PILOT.z < WATER_Z - 4 ? SEA.xMax : HALF - 3; PILOT.x = Math.max(-xl, Math.min(xl, PILOT.x)); PILOT.z = Math.max(SEA.zMin, Math.min(HALF - 3, PILOT.z));
-    // the hero sits in the cabin and moves with the car
-    s.pos[0] = PILOT.x; s.pos[1] = PILOT.y + 1.6; s.pos[2] = PILOT.z; s.vel = [PILOT.vx, PILOT.vy, PILOT.vz]; s.ground = false; s.web = false; s.swim = false;
-    s.safe = [PILOT.x, Math.max(PILOT.y, 2), PILOT.z];
-    return true;
-}
 /** Web anchor under the nearest suitable car ahead (or null). Same distance/aim rules as building anchors. */
 function findCarAnchor(s: Sim, bestScore: number): { a: V3; sc: number; i: number } | null {
     const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let out: { a: V3; sc: number; i: number } | null = null;
@@ -942,7 +898,6 @@ function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
     if (e.down <= 0) e.hit = Math.max(e.hit, 0.12);
     return true;
 }
-function bossRoofClamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
 // Shifat Oct 29 "Boss should follow heroes & keep attacking": the boss is no longer leashed to the arena roof. When the hero is
 // off the boss's current surface (another roof, the street, the park, mid-swing) it hover-dashes after them: short take-off, a
 // propel that re-aims at the hero every frame (fast enough to keep up with a swing), and a landing on whatever is under the target

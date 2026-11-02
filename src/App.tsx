@@ -48,20 +48,16 @@ const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse
 const IC = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 const Svg = ({ children, s = 26 }: { children: React.ReactNode; s?: number }) => <svg width={s} height={s} viewBox="0 0 24 24" {...IC} aria-hidden>{children}</svg>;
 // custom icon set (own drawings): web, jump chevrons, fist, dash, orb, shield, beacon, speaker, play
-const IWeb = () => <Svg s={34}><circle cx="12" cy="12" r="1.2" fill="currentColor" /><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" opacity=".7" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="8.5" opacity=".6" /></Svg>;
 const IJump = () => <Svg s={44}><path d="M6 17l6-6 6 6M6 11l6-6 6 6" /></Svg>;
 const IFist = () => <Svg s={46}><rect x="6" y="8" width="12" height="11" rx="3.5" /><path d="M10 8v4M14 8v4M6 12.5h12" opacity=".7" /><path d="M18 10.5l3.5-1M18 15l3 1" opacity=".6" /><path d="M6 9.5L3.5 11M5 14.5l-2 1.5" opacity=".6" /></Svg>;
-const IDash = () => <Svg s={28}><path d="M4 8h6M2 12h9M4 16h6" opacity=".7" /><path d="M13 6l6 6-6 6M19 12H11" /></Svg>;
 const ISwing = () => <Svg s={48}><circle cx="20.5" cy="3.5" r="1.4" fill="currentColor" /><path d="M20.5 4.5C20 13 15 18 7 19" /><circle cx="6" cy="19.2" r="2.2" fill="currentColor" /><path d="M3 15.5l2 1.5M9 22l-1-2.5" opacity=".6" /></Svg>;
 const IGrab = () => <Svg s={48}><path d="M3 21l11-11" /><path d="M10.5 9.5H15V14" /><path d="M14 5h7v3h-1v4h-5V8h-1z" opacity=".85" /><path d="M16.5 12v-2" opacity=".6" /></Svg>;
 const IShot = () => <Svg s={48}><path d="M2 20l9-6" strokeDasharray="1 3" /><path d="M13 10.5l1.5-4 4 1.5 3 3-2 3.5-4 .5z" opacity=".9" /><path d="M14.5 6.5l1.5 6M18.5 8l-2 5M13 10.5l8 .5" opacity=".55" /></Svg>;
 const IShock = () => <Svg s={48}><path d="M13.8 1.7 5.6 13.1h5.7l-1 9.2 8.1-12.3h-5.5l.9-8.3Z" fill="currentColor" stroke="none" /></Svg>;
 const IOrb = () => <Svg s={20}><circle cx="12" cy="12" r="6" /><path d="M9.5 10a3 3 0 012-1.6" /></Svg>;
 const IHeart = () => <Svg s={20}><path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" /></Svg>;
-const IBeacon = () => <Svg s={20}><path d="M12 3l6 8-6 3-6-3 6-8zM12 14v7" /></Svg>;
 const ISpeaker = ({ off }: { off: boolean }) => <Svg s={22}><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />{off ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11" />}</Svg>;
 const IPlay = () => <Svg s={30}><path d="M8 5.5l11 6.5-11 6.5z" fill="currentColor" /></Svg>;
-const IStick = () => <Svg s={26}><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /></Svg>;
 const Pips = ({ n, max = 10 }: { n: number; max?: number }) => <span className="pips">{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? 'on' : ''} />)}</span>;
 
 export function App() {
@@ -71,8 +67,6 @@ export function App() {
     const perf = useRef({ scale: 1, fps: 60, speed: 0 }).current;
     const snd = useMemo(() => new SoundDirector(sim), [sim]);   // cinematic sound pass: beds, SFX and adaptive score (src/audio)
     const [hud, setHud] = useState({ score: 0, time: 0, mode: sim.mode, best: sim.best, bn: 0, bd: 0, hp: 100, ko: 0, sc: 0, gr: false, me: false, sh: false, sn: false, wb: false, rd: 0 });
-    const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
-    const toastId = useRef(0);
     const [muted, setMuted] = useState(audio.muted);
     const [dbg, setDbg] = useState('');
     const mutedRef = useRef(audio.muted);
