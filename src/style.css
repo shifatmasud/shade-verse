@@ -120,3 +120,9 @@ kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;c
 .ico.ride{right:calc(96px + env(safe-area-inset-right));bottom:calc(200px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.35)!important}
 .ico.ride.on{background:rgba(255,209,102,.45)!important}
 .ridehint{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);color:#fff;font:600 14px system-ui;padding:6px 12px;border-radius:14px;background:rgba(0,0,0,.45);pointer-events:none}
+
+/* Nov 2 4:56 AM HUD layout A (Shifat: container-less): Web biggest at the thumb rest, Jump/Shock/Melee in an arc one short move away */
+.ico.swing{right:calc(22px + env(safe-area-inset-right));bottom:calc(22px + env(safe-area-inset-bottom));width:92px;height:92px}
+.ico.jump{right:calc(124px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));width:70px;height:70px}
+.ico.special{right:calc(112px + env(safe-area-inset-right));bottom:calc(108px + env(safe-area-inset-bottom));width:74px;height:74px}
+.ico.melee{right:calc(26px + env(safe-area-inset-right));bottom:calc(126px + env(safe-area-inset-bottom));width:70px;height:70px}

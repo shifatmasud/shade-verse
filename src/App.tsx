@@ -49,8 +49,8 @@ const IC = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinec
 const Svg = ({ children, s = 26 }: { children: React.ReactNode; s?: number }) => <svg width={s} height={s} viewBox="0 0 24 24" {...IC} aria-hidden>{children}</svg>;
 // custom icon set (own drawings): web, jump chevrons, fist, dash, orb, shield, beacon, speaker, play
 const IJump = () => <Svg s={44}><path d="M6 17l6-6 6 6M6 11l6-6 6 6" /></Svg>;
-const IFist = () => <Svg s={46}><rect x="6" y="8" width="12" height="11" rx="3.5" /><path d="M10 8v4M14 8v4M6 12.5h12" opacity=".7" /><path d="M18 10.5l3.5-1M18 15l3 1" opacity=".6" /><path d="M6 9.5L3.5 11M5 14.5l-2 1.5" opacity=".6" /></Svg>;
-const ISwing = () => <Svg s={48}><circle cx="20.5" cy="3.5" r="1.4" fill="currentColor" /><path d="M20.5 4.5C20 13 15 18 7 19" /><circle cx="6" cy="19.2" r="2.2" fill="currentColor" /><path d="M3 15.5l2 1.5M9 22l-1-2.5" opacity=".6" /></Svg>;
+const IFist = () => <Svg s={46}><path d="M9 7.2h7.8A3.4 3.4 0 0 1 20.2 10.6v4A3.4 3.4 0 0 1 16.8 18H12a3 3 0 0 1-3-3z" /><path d="M9 12.6h4.6" /><path d="M13.6 7.2v2.4M17 7.2v2.4" /><path d="M2.8 10h3M2.2 12.6h3.6M2.8 15.2h3" opacity=".7" /></Svg>;   /* Nov 2 minimalist redesign (Lucide-style 24 grid) */
+const ISwing = () => <Svg s={50}><circle cx="19" cy="5" r="1.7" /><path d="M18 6.6C16.3 13.6 12.2 17.4 7.7 18.4" /><circle cx="5.4" cy="18.8" r="2.3" /></Svg>;   /* anchor -> web line -> hero dot (tap spring, hold swing) */
 const IShock = () => <Svg s={48}><path d="M13.8 1.7 5.6 13.1h5.7l-1 9.2 8.1-12.3h-5.5l.9-8.3Z" fill="currentColor" stroke="none" /></Svg>;
 const IOrb = () => <Svg s={20}><circle cx="12" cy="12" r="6" /><path d="M9.5 10a3 3 0 012-1.6" /></Svg>;
 const IHeart = () => <Svg s={20}><path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" /></Svg>;
