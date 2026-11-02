@@ -12,14 +12,16 @@ vec3 auroraSky(vec3 dn, float uT, float ns){ vec3 ac=vec3(0.0); if(dn.y<=0.02) r
 vec3 rainbowSky(vec3 dn3, vec3 sunV, float rain, float day){
   float ra=acos(clamp(dot(dn3,-sunV),-1.0,1.0));float rw=smoothstep(0.03,0.25,rain)*(1.0-smoothstep(0.55,0.85,rain))*day*smoothstep(-0.02,0.08,sunV.y)*smoothstep(0.0,0.05,dn3.y);
   if(rw<=0.001) return vec3(0.0);
-  float u=(ra-0.695)/0.065;vec3 rc=clamp(vec3(1.5-abs(u-0.85)*2.2,1.5-abs(u-0.5)*2.2,1.5-abs(u-0.15)*2.2),0.0,1.0)*smoothstep(-0.15,0.35,u)*(1.0-smoothstep(0.65,1.15,u));
-  float u2=(0.945-ra)/0.07;vec3 rc2=clamp(vec3(1.5-abs(u2-0.85)*2.2,1.5-abs(u2-0.5)*2.2,1.5-abs(u2-0.15)*2.2),0.0,1.0)*smoothstep(-0.2,0.4,u2)*(1.0-smoothstep(0.6,1.2,u2));
+  /* Shifat 11:29 PM 'more glow + more blur': gaussian colour bands (no triangle corners) wider than before, plus a wide warm-white glow around the bow */
+  float u=(ra-0.695)/0.075;vec3 rc=exp(-pow((vec3(u)-vec3(0.85,0.5,0.15))/0.38,vec3(2.0)))*smoothstep(-0.6,0.3,u)*(1.0-smoothstep(0.7,1.6,u));
+  float u2=(0.945-ra)/0.085;vec3 rc2=exp(-pow((vec3(u2)-vec3(0.85,0.5,0.15))/0.42,vec3(2.0)))*smoothstep(-0.6,0.3,u2)*(1.0-smoothstep(0.7,1.6,u2));
+  vec3 glow=vec3(1.0,0.96,0.9)*(exp(-pow((ra-0.725)/0.075,2.0))*0.09+exp(-pow((ra-0.98)/0.09,2.0))*0.025);
   /* ref Wikimedia 'Femø - Rainbows over the sea': brightest and most saturated at the feet, fading toward the top; brighter sky inside the
      primary, a darker (Alexander's) band between the two bows; strength varies softly along the arc where the rain curtain is thicker */
   float el=mix(1.15,0.35,smoothstep(0.05,0.55,dn3.y)); float az=atan(dn3.x,dn3.z); float ptch=0.7+0.3*sin(az*3.1+1.7)*sin(az*1.3+0.4);
   vec3 ins=vec3(0.07,0.075,0.08)*smoothstep(0.35,0.69,ra)*(1.0-smoothstep(0.69,0.71,ra));
   float alex=smoothstep(0.74,0.78,ra)*(1.0-smoothstep(0.86,0.9,ra));
-  return ((rc*0.42+rc2*0.11)*el*ptch+ins*el-vec3(0.035)*alex*el)*rw*(1.0-smoothstep(0.75,1.0,dn3.y)); }
+  return ((rc*0.4+rc2*0.1+glow)*el*ptch+ins*el-vec3(0.035)*alex*el)*rw*(1.0-smoothstep(0.75,1.0,dn3.y)); }
 `;
 
 // moon + a sparse star field as functions of a direction, so the sea can mirror them too (Shifat 10:59 PM 'everything must be reflected')
