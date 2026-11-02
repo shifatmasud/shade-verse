@@ -517,6 +517,7 @@ function deathBlast(s: Sim, e: Enemy) {
     if (s.blasts.length > BLAST_CAP) s.blasts.shift();
 }
 function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
+    { const dx = s.pos[0] - x, dy = s.pos[1] + 0.5 - y, dz = s.pos[2] - z, d = Math.hypot(dx, dy, dz) || 1, k = Math.min(0.7, d * 0.5) / d; fxShot(x + dx * k, y + dy * k, z + dz * k, heroCol(s)); }   // web splat + 4 sparks + small ring, on the shooter's side of the body
     s.blasts.push({ x, y, z, t: 0, r: BLAST_R });
     if (s.blasts.length > BLAST_CAP) s.blasts.shift();   // cap overlapping effects so repeated shots stay readable
     let any = false;
@@ -871,9 +872,10 @@ function stepMove(s: Sim, dt: number, ev: Events) {
     else if (m.id === 5 && m.t < M.hit + 0.1) v[1] = Math.max(v[1], -2);    // brief hang at the top of the aerial kick
     if (!m.hit && m.t >= M.hit) {
         m.hit = true;
-        if (m.id === 7) { if (e) { const ea = e as any; ea.vy = M.lift; ea.slam = 1; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1; e.kb = [dx / d * 9, dz / d * 9]; sa.shake = Math.max(sa.shake, M.shake); sa.hitStop = M.stopT; } }
+        if (m.id === 7) { if (e) { const ea = e as any; fxMelee(e.x, bodyY(e), e.z, heroCol(s), 2, false); ea.vy = M.lift; ea.slam = 1; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1; e.kb = [dx / d * 9, dz / d * 9]; sa.shake = Math.max(sa.shake, M.shake); sa.hitStop = M.stopT; } }
         else {
             const fx = Math.sin(s.ang), fz = Math.cos(s.ang); let any = false;
+            sa.fxN = 0;
             for (const o of s.enemies) {
                 if (o.down > 0 || o.boss) continue; const dx = o.x - p[0], dz = o.z - p[2], d = Math.hypot(dx, dz), dy = bodyY(o) - (p[1] + 0.5);
                 const reachOK = o === e ? d < M.reach + 0.8 : d < M.reach;
@@ -882,6 +884,8 @@ function stepMove(s: Sim, dt: number, ev: Events) {
                 const nx = d > 0.01 ? dx / d : fx, nz = d > 0.01 ? dz / d : fz; o.kb = [nx * M.kb, nz * M.kb];
                 if (M.lift > 0) oa.vy = Math.max(oa.vy || 0, M.lift); else if (M.lift < 0) { oa.vy = M.lift; oa.slam = 1; }
                 oa.hitDir = m.id; any = true; s.combo++; s.comboT = 1.4;
+                { const tx = p[0] - o.x, tz = p[2] - o.z, td = Math.hypot(tx, tz) || 1, nh = (sa.fxN = (sa.fxN || 0) + 1);   // hit FX on the body, nudged toward the hero (camera side)
+                  if (!any || nh < 3) fxMelee(o.x + tx / td * 0.45, bodyY(o) + 0.1, o.z + tz / td * 0.45, heroCol(s), m.id === 1 ? 1 : m.id === 2 ? 2 : 3, !((oa.ly || 0) > 0.5)); }
                 if (o.hp <= 0) { o.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, o); }
             }
             if (any) { ev.hit(); sa.hitStop = M.stopT; sa.shake = Math.max(sa.shake, M.shake); }
@@ -1095,7 +1099,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         if (sa.snareT > SNARE.IMPACT) { for (const e of L) { if (e.down > 0) continue; e.hit = Math.max(e.hit, 0.3); e.atk = 0; e.kb[0] = 0; e.kb[1] = 0;
           if (sa.snareT > SNARE.GATHER_END) { const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > SNARE.GROUP_RADIUS) { const st = Math.min(d - SNARE.GROUP_RADIUS, SNARE.PULL_SPEED * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } }
         } }
-        if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) { e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.max(sa.shake || 0, SNARE.SHAKE); } }
+        if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) { fxShock(e.x, e.y + enemyBodyOffset(e), e.z, p[0], p[1] + 0.9, p[2]); e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.max(sa.shake || 0, SNARE.SHAKE); } }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
     if (options.updateEnemies !== false) {

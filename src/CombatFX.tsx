@@ -210,7 +210,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
             const s = h.getSim(); if (!s || !h.visible()) continue; const sa = s as any, col = sa.fxCol ?? 0xa855f7, m = sa.mv, S = sa.slam;
             if (m && MOVES[m.id]) {
                 const M = MOVES[m.id];
-                if (m.t >= M.hit - 0.07 && m.t <= M.hit + 0.09) { _v.setFromMatrixPosition((h.rig.b[LIMB[m.id]] as THREE.Bone).matrixWorld); trailPoint(h.base, _v.x, _v.y, _v.z, col, m.id >= 3 ? 0.2 : 0.12, 0.22); if (m.id === 7) { _w.setFromMatrixPosition((h.rig.b.handL as THREE.Bone).matrixWorld); trailPoint(h.base + 1, _w.x, _w.y, _w.z, col, 0.12, 0.22); } }
+                if (m.t >= M.hit - 0.09 && m.t <= M.hit + 0.1) { _v.setFromMatrixPosition((h.rig.b[LIMB[m.id]] as THREE.Bone).matrixWorld); trailPoint(h.base, _v.x, _v.y, _v.z, col, m.id >= 3 ? 0.2 : 0.12, 0.3); if (m.id === 7) { _w.setFromMatrixPosition((h.rig.b.handL as THREE.Bone).matrixWorld); trailPoint(h.base + 1, _w.x, _w.y, _w.z, col, 0.12, 0.22); } }
             }
             if (S && S.ph >= 2 && S.ph <= 4) { _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); trailPoint(h.base, _v.x, _v.y, _v.z, col, 0.16, 0.26); _w.setFromMatrixPosition((h.rig.b.handL as THREE.Bone).matrixWorld); trailPoint(h.base + 1, _w.x, _w.y, _w.z, col, 0.16, 0.26); }
             if (S && S.ph === 0) { _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); fxChargeTick(_v.x, _v.y, _v.z, S.c, col, dt, h.acc); }

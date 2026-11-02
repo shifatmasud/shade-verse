@@ -77,7 +77,7 @@ export function fxMelee(x: number, y: number, z: number, col: number, lvl: numbe
     if (lvl >= 3 && grounded && !LOW) for (let k = 0; k < 6; k++) { const th = rnd(0, Math.PI * 2), sp = rnd(1.5, 3); emit(SH_DUST, x + Math.cos(th) * 0.3, y - 0.9, z + Math.sin(th) * 0.3, Math.cos(th) * sp, rnd(0.4, 1.2), Math.sin(th) * sp, 0.45, 0.35, 0.9, 0xb9b2c6, 0.55, 0, 3); }
 }
 export function fxShot(x: number, y: number, z: number, col: number) {
-    emit(SH_SPLAT, x, y, z, 0, 0, 0, 0.6, 0.55, 0.7, 0xffffff, 1, 0, 0, 0.12, 0);                  // web splat (fades over its last third)
+    emit(SH_SPLAT, x, y, z, 0, 0, 0, 0.6, 0.75, 0.95, 0xffffff, 1, 0, 0, 0.12, 0);                  // web splat (fades over its last third)
     emit(SH_CORE, x, y, z, 0, 0, 0, 0.035, 0.35, 0.5, 0xffffff, 1);
     emit(SH_RING, x, y, z, 0, 0, 0, 0.12, 0.1, 0.6, col, 1, 0, 0, 0.12);
     sparks(4, x, y, z, col, 5, 9, 0.12, 0.15);
