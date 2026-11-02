@@ -6,8 +6,8 @@ import { buildings, parkH } from './sim';
    SWING (reference 11.2-12.6 s, 20.0-20.9 s, 21.6-22.7 s): the body hangs from the line hand and pendulums with the rope, lagging it (spring), so right after
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
-type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number };
-const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0 });
+type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; flDir: number; sp: number; spW: number };
+const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const sstep = (x: number) => { x = cl(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -50,9 +50,14 @@ export function traversalRoot(sim: any, rig: any, dt: number, scale: number) {
     const lean0 = pr.rotation.x, bank0 = pr.rotation.z;
     T.fw = 0;
     if (T.fl && (sw || !free(sim))) { T.fl = 0; T.p = wrapPi(T.p); T.pv = cl(T.pv, -8, 8); }   // interrupted: hand the current angle on, no pop
-    if (!sw && T.on && !sim.web && free(sim) && sim.vel[1] > 3 && Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]) > 10) {   // released on the rise
-        T.fl = 1; T.flT = 0; T.flD = FLIP_DUR; T.flP0 = T.p; T.flV0 = cl(T.pv, -9, 0); T.flE = lean0 - Math.PI * 2;
+    if (!sw && T.on && !sim.web && free(sim) && !(sim.spring > 0) && sim.vel[1] > 3 && Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]) > 10) {   // released on the rise
+        T.fl = 1; T.flT = 0; T.flD = FLIP_DUR; T.flP0 = T.p; T.flV0 = cl(T.pv, -9, 0); T.flE = lean0 - Math.PI * 2; T.flDir = -1;
     }
+    // spring release: the pull's momentum rolls on into a front tuck flip when it lets go still rising fast (ref 25.2-25.9 s, 21.8-21.9 s)
+    if (T.sp > 0 && !(sim.spring > 0) && free(sim) && !sim.web && sim.vel[1] > 3) {
+        T.fl = 1; T.flT = 0; T.flD = FLIP_DUR; T.flP0 = T.p; T.flV0 = cl(T.pv, 0, 9); T.flE = lean0 + Math.PI * 2; T.flDir = 1;
+    }
+    T.sp = sim.spring > 0 && free(sim) ? 1 : 0;
     if (T.fl) {
         T.flT += h; const u = Math.min(1, T.flT / T.flD), D = T.flD;
         // cubic Hermite from the release angle/spin to one full turn back, ending at rest on the air lean
@@ -71,6 +76,14 @@ export function traversalRoot(sim: any, rig: any, dt: number, scale: number) {
         [T.p, T.pv] = spring(T.p, T.pv, tp, 42, 7.5, h);   // ~6.5 rad/s, under-damped: lags the rope and overshoots a little (follow-through)
         [T.r, T.rv] = spring(T.r, T.rv, tr, 30, 8, h);
         T.w += (1 - T.w) * Math.min(1, h * 14);
+    } else if (sim.spring > 0 && free(sim)) {
+        // WEB SPRING yank: the body snaps into line with the pull, head leading (stiff spring = a snap, small overshoot)
+        const v = sim.vel, vf = v[0] * Math.sin(sim.ang) + v[2] * Math.cos(sim.ang);
+        const u = 0.4 - sim.spring, tp = u < 0.05 ? lean0 + 0.25 : cl(Math.atan2(vf, Math.max(-2, v[1])), -0.4, 1.45);
+        if (T.w < 0.05) { T.p = lean0; T.pv = 0; }
+        [T.p, T.pv] = spring(T.p, T.pv, tp, 170, 17, h);
+        [T.r, T.rv] = spring(T.r, T.rv, 0, 40, 12, h);
+        T.w += (1 - T.w) * Math.min(1, h * 20); T.on = false;
     } else if ((T.fw = fallW(sim)) > 0.01) {
         T.on = false; const fw = T.fw;
         [T.p, T.pv] = spring(T.p, T.pv, lean0 + 0.95 + Math.sin(sim.t * 2.6) * 0.05, 30, 9, h);
@@ -84,6 +97,10 @@ export function traversalRoot(sim: any, rig: any, dt: number, scale: number) {
         if (T.w < 0.002) T.w = 0;
     }
     T.ya = sim.ang;
+    {   // yank stretch along the body (volume kept), ~0.15 s right after the line goes taut
+        const u = sim.spring > 0 && free(sim) ? 0.4 - sim.spring : 1, s = 1 + 0.09 * Math.max(0, Math.sin(cl((u - 0.05) / 0.17, 0, 1) * Math.PI));
+        if (s !== 1 || pr.scale.y !== 1) { const sx = 1 / Math.sqrt(s); pr.scale.set(sx, s, sx); }
+    }
     const w = T.w;
     if (w <= 0) return;
     _e0.set(lean0, 0, bank0, 'ZXY'); _v0.set(0, PIVOT_Y, 0).applyEuler(_e0);
@@ -112,8 +129,21 @@ export function traversalBones(sim: any, rig: any, dt: number) {
     T.bw += ((sw ? 1 : 0) - T.bw) * Math.min(1, h * (sw ? 14 : 8));
     if (T.bw < 0.003) { T.bw = 0; T.lg = 0; T.lgv = 0; } else swingBones(sim, rig, T, h, sw);
     fallBones(sim, rig, T, h);
+    springBones(sim, rig, T, h);
     flipBones(sim, rig, T, h);
     landBones(sim, rig, T, h);
+}
+/* WEB SPRING (ref 21.6-21.9 s, 25.9-26.2 s): the hands already reach the anchor (existing aim). The body coils for the first few frames
+   (knees in, chest curled = anticipation), then the yank snaps it out along the pull: legs straight and trailing together, back arched, head up into it.
+   Arms are left to the aim. */
+function springBones(sim: any, rig: any, T: TV, h: number) {
+    const B = rig.b, on = sim.spring > 0 && free(sim);
+    T.spW += ((on ? 1 : 0) - T.spW) * Math.min(1, h * (on ? 30 : 8));
+    const k = T.spW * (1 - T.tk); if (k < 0.01) return;
+    const u = on ? 0.4 - sim.spring : 0.4, c = 1 - sstep((u - 0.03) / 0.07);   // coil -> extend
+    setB(B.thighR, -1.05 * c + 0.28 * (1 - c), 0, 0.06, k); setB(B.thighL, -0.9 * c + 0.36 * (1 - c), 0, -0.06, k);
+    setB(B.shinR, 1.7 * c + 0.18 * (1 - c), 0, 0, k); setB(B.shinL, 1.75 * c + 0.3 * (1 - c), 0, 0, k);
+    setB(B.spine, 0.35 * c - 0.18 * (1 - c), 0, 0, k); setB(B.chest, 0.15 * c - 0.1 * (1 - c), 0, 0, k); setB(B.head, -0.1 * c - 0.35 * (1 - c), 0, 0, k);
 }
 /* LANDING (ref 4.1-4.9 s, 7.8 s, 13.8-14.0 s): touchdown drops into a crouch for a few frames: knees bend, hips sink, chest folds over, head up.
    A hard landing (sim.landHard) is the low superhero landing: front knee up, back knee down, one hand planted, the other arm out behind;
