@@ -15,8 +15,8 @@ uniform float uRain;
 float rainHash(vec2 c){ return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
 vec2 rainRing(vec2 xz, float t, float cs, float sp){ vec2 q = xz / cs, id = floor(q); float h = rainHash(id), h2 = rainHash(id + 17.3);
   vec2 l = fract(q) - 0.5 - (vec2(h, h2) - 0.5) * 0.5; float age = fract(t * sp + h * 7.0), r = age * 0.42, d = length(l), x = d - r;
-  float ring = sin(x * 60.0) * exp(-x * x * 900.0) * (1.0 - age) * (1.0 - age); return l / max(d, 1e-3) * ring; }
-vec2 rainSlope(vec2 xz, float t){ float px = length(fwidth(xz)); return (rainRing(xz, t, 0.7, 1.3) + rainRing(xz + 3.7, t, 1.05, 1.05)) * 1.6 * (1.0 - smoothstep(0.012, 0.045, px)); }   /* rings thinner than a pixel alias into dark specks: faded out by pixel footprint */
+  float ring = sin(x * 34.0) * exp(-x * x * 300.0) * (1.0 - age) * (1.0 - age); return l / max(d, 1e-3) * ring; }
+vec2 rainSlope(vec2 xz, float t){ float px = length(fwidth(xz)); return (rainRing(xz, t, 1.3, 1.3) + rainRing(xz + 3.7, t, 1.9, 1.05)) * 2.6 * (1.0 - smoothstep(0.06, 0.2, px)); }   /* Nov 2 (real ref 'Reeds and Rain'): rings bolder and kept to a coarser pixel footprint so they read from game camera height */   /* rings thinner than a pixel alias into dark specks: faded out by pixel footprint */
 vec3 reflTint(vec3 c, vec3 base){ return mix(c, dot(c, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + base * 0.25, 0.7); }
 // hero reflections (Shifat 4:26 PM): feathered (inner hit 1, outer fatter hit 0.45), sea-tinted, faded with distance - never a hard dark pill
 float heroSoftK(float inner, float outer){ return inner > 0.0 ? 1.0 : (outer > 0.0 ? 0.45 : 0.0); }

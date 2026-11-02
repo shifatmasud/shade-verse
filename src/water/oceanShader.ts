@@ -105,7 +105,7 @@ ${GRID_TRACE_GLSL}
       /* Shifat 5:32 PM 'breaking up the far sea': a second, much larger scale from the SAME fetch (the tile's other channel, domain-warped by the
          first) - slow colour patches over hundreds of metres (deeper blue vs. greener, like current lines / cloud shade on real ocean). */
       float swPatch = smoothstep(0.3, 0.7, texture2D(uCaus, vW.xz * 0.00042 + (gq.rg - 0.5) * 0.08 - vec2(0.0011, 0.0006) * uTime).g);
-      if (uRain > 0.01) g += rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 90.0, length(cameraPosition - vW)));   /* raindrop impact rings */
+      float rainK = 0.0; if (uRain > 0.01) { vec2 rsl = rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 110.0, length(cameraPosition - vW))); g += rsl * 3.0; rainK = length(rsl); }   /* raindrop impact rings */
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       if (uBench.y > 1.5 && uBench.y < 2.5) { gl_FragColor = vec4(n * 0.5 + 0.5, 0.95); return; }   /* telemetry stage bench */
@@ -440,6 +440,7 @@ ${GRID_TRACE_GLSL}
         vec4 cr = cloudSky(normalize(rc), uSun, uSkyT, 0.0, 0.0, uSky);
         float ck = cr.a * mix(0.55, 0.95, fr) * uDay * (1.0 - smoothstep(400.0, 1400.0, length(cameraPosition - vW)));
         col = mix(col, cr.rgb * vec3(0.78, 0.88, 0.98), ck); }
+      if (!below && rainK > 0.0) col = mix(col * mix(1.0, 0.82, uRain), vec3(0.75, 0.82, 0.9) * mix(0.25, 1.0, uDay), clamp(rainK * 0.9, 0.0, 0.45));   /* rain: darker glassy water, ring crests catch the grey sky */
       if (!below && uRain > 0.02 && uDay > 0.05) { vec3 rm2 = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.45))); rm2.y = abs(rm2.y); col += rainbowSky(rm2, uSun, uRain, uDay) * mix(0.35, 0.8, fr); }   /* rainbow mirrored too */
       gl_FragColor = vec4(col, below ? aOut : aAbove);
     }`;
