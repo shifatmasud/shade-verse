@@ -18,7 +18,7 @@ export function pickAnalytic(cx: number, cz: number) {
     if (!islesDone) { islesDone = true;
         ([[ISLAND, 0], [FARM, 1], [ICE, 2]] as [{ cx: number; cz: number; R: number }, number][]).forEach(([I, k]) => { let hm = 0, rm = 0;
             for (let j = -12; j <= 12; j++) for (let i = -12; i <= 12; i++) { const x = I.cx + i / 12 * I.R * 1.3, z = I.cz + j / 12 * I.R * 1.3, h = islandH(x, z); if (h == null || h < WATER_Y + 0.3) continue; hm = Math.max(hm, h - WATER_Y); rm = Math.max(rm, Math.hypot(x - I.cx, z - I.cz)); }
-            AR_ISLE[k].set(I.cx, I.cz, Math.max(rm, 10), Math.max(hm, 2)); });
+            AR_ISLE[k].set(I.cx, I.cz, Math.max(rm, 10), Math.max(hm, k === 1 ? 15 : 2)); });   /* Farm Isle: its low ground (~4 m) is not what you see from the sea - the orchard and village canopy (~15 m) is (Shifat 8:47 PM 'Farm village has no reflection') */
     }
     const L: Box[] = [];
     for (let n = 0; n < buildings.length; n++) {
