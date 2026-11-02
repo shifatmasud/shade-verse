@@ -26,9 +26,9 @@ const S = await p.evaluate((scen) => {
   return { t0: s.t };
 }, scen);
 
-if (scen === 'combo' || scen === 'slam') {
+if (scen === 'combo' || scen === 'slam' || scen === 'kick') {
   // frames keyed to the move clock (mv.id, mv.t) or the slam phase, so hit-stop freezes do not shift them
-  const K = scen === 'combo'
+  const K = scen === 'kick' ? [[3, 0.27], [3, 0.27]] : scen === 'combo'
     ? [[1, 0.035], [1, 0.1], [1, 0.15], [2, 0.06], [2, 0.11], [2, 0.19], [3, 0.12], [3, 0.27]]
     : [['hold', 0.5], ['ph', 1], ['ph', 2], ['ph', 3], ['ph', 4], ['ph', 5, 0.0], ['ph', 5, 0.1], ['ph', 5, 0.25]];
   const info = [];
@@ -38,7 +38,7 @@ if (scen === 'combo' || scen === 'slam') {
     for (let guard = 0; guard < 900; guard++) {
       const ok = await p.evaluate((k, scen) => {
         const g = window.__game, s = g.sim, e = s.enemies[0]; if (e.atk < -1 && e.atk > -60) e.atk = -50;
-        if (scen === 'combo') {
+        if (scen === 'combo' || scen === 'kick') {
           const m = s.mv; if (!m) { window.__ts = 0.05; return false; }
           if (m.id === 1 && m.t > 0.12 && !window.__q2) { g.input.attackQ = true; g.input.meleeQ = true; window.__q2 = 1; }
           if (m.id === 2 && m.t > 0.14 && !window.__q3) { g.input.attackQ = true; g.input.meleeQ = true; window.__q3 = 1; }
@@ -58,6 +58,8 @@ if (scen === 'combo' || scen === 'slam') {
     }
     await p.evaluate(() => { window.__ts = 0; const s = window.__game.sim, q = s.pos; const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
       window.__camOv = [q[0] + fz * 5.2 + fx * 2.2, q[1] + 1.0, q[2] - fx * 5.2 + fz * 2.2, q[0] + fx * 0.6, q[1] + 0.4, q[2] + fz * 0.6]; });
+    if (scen === 'kick' && i === 1) await p.evaluate(() => { const s = window.__game.sim, q = s.pos, h = (window.__kickAng ?? s.ang); const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
+      window.__camOv = [q[0] - fz * 4.2, q[1] + 0.7, q[2] + fx * 4.2, q[0], q[1] + 0.3, q[2]]; });   // the other side, level: the pure side view
     await raf(3);
     const st = await p.evaluate(() => { const s = window.__game.sim; return { t: +s.t.toFixed(3), mv: s.mv ? [s.mv.id, +s.mv.t.toFixed(3)] : null, slam: s.slam ? [s.slam.ph, +(s.slam.t ?? 0).toFixed(3)] : null, anim: window.__shadowAnimation?.action, ehp: s.enemies[0].hp }; });
     info.push(st);

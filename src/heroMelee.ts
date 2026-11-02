@@ -8,14 +8,14 @@ import * as THREE from 'three';
    Per hit (reads different on purpose):
    - 1 jab: lead step, quick, light: lunge 0.2 m, lean 0.17 rad, shoulders +0.2 rad into it, a slight rear-heel lift.
    - 2 cross: the big one: lunge 0.34 m, lean 0.26 rad, hips sink 10 cm, rear knee drives in and the rear heel comes up (pivot), shoulders turn hard.
-   - 3 spin hook kick: crouch to load, then a hop (16 cm) off the floor through the kick, counter-lean away.
+   - 3 spin hook kick: crouch to load, then a small rise (7 cm) off the floor through the kick, counter-lean away.
    - 4 launcher: deep load, then rises up with the uppercut.
    - 6 web pull: lean into it; 7 web yank: weight thrown back, pulling. 5 (air spike) is left to its pose. */
 type Drive = { L: number; D: number; lean: number; A: number; twist: number; heel: number; lead: number; hold: number };
 const DRIVE: Record<number, Drive> = {
     1: { L: 0.2, D: 0.05, lean: 0.17, A: 0.45, twist: 0.2, heel: 0.35, lead: 0.16, hold: 0.03 },
     2: { L: 0.34, D: 0.1, lean: 0.26, A: 0.6, twist: -0.3, heel: 1, lead: 0.1, hold: 0.04 },
-    3: { L: 0.06, D: -0.16, lean: -0.08, A: 0.7, twist: 0, heel: 0, lead: 0, hold: 0.06 },
+    3: { L: 0.06, D: -0.07, lean: -0.05, A: 0.7, twist: 0, heel: 0, lead: 0, hold: 0.06 },
     4: { L: 0.1, D: -0.08, lean: -0.1, A: 0.7, twist: 0, heel: 0, lead: 0, hold: 0.05 },
     6: { L: 0.12, D: 0.04, lean: 0.12, A: 0.4, twist: 0, heel: 0.5, lead: 0.1, hold: 0.04 },
     7: { L: -0.12, D: 0.05, lean: -0.14, A: 0.4, twist: 0, heel: 0, lead: 0, hold: 0.06 },
