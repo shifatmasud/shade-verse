@@ -338,7 +338,7 @@ function landTag(sh: any) { sh.fragmentShader = sh.fragmentShader.replace('#incl
 export function ParkGround() {
     const cx = (PARK.x0 + PARK.x1) * 0.5, cz = (PARK.z0 + PARK.z1) * 0.5;
     const terrain = useMemo(() => {
-        const floor = new THREE.PlaneGeometry(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, 144, 144);
+        const floor = new THREE.PlaneGeometry(PARK.x1 - PARK.x0, PARK.z1 - PARK.z0, PARK_SEG, PARK_SEG);   // 144 -> PARK_SEG (perf Nov 2: 41k -> 18k tris, same look checked)
         floor.rotateX(-Math.PI / 2);
         const pa = floor.attributes.position;
         const colours = new Float32Array(pa.count * 3);
@@ -380,6 +380,7 @@ export function ParkGround() {
     </group>;
 }
 
+const PARK_SEG = 96;
 export function createVegetationPlacements() {
     const trees: Record<string, Placement[]> = Object.fromEntries(TREE_ASSETS.slice(0, -1).map((a) => [a.id, []]));
     const bushes: Placement[] = [];
