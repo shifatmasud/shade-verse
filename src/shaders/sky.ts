@@ -8,7 +8,11 @@ void main(){
  vec3 c=mix(uHor,mid,smoothstep(0.0,0.25,t));c=mix(c,top,smoothstep(0.2,0.9,t));
  vec3 sun=uSunV;float g=max(dot(normalize(vDir),sun),0.0);
  c+=mix(vec3(1.0,0.95,0.85),vec3(1.0,0.78,0.5),uWarm)*(pow(g,24.0)*0.45+pow(g,220.0)*0.9);
- c=mix(c,vec3(1.0,0.93,0.75)*1.6,smoothstep(0.9975,0.9992,g));
+ { /* sun from real photos (Wikimedia 'Sunset over the North Sea'): a distinct round disc with limb darkening, white-hot core by day turning
+     golden-orange and dimmer near the horizon, a tight corona hugging the limb; soft anti-aliased edge, bloom adds the glare */
+    float sa=acos(clamp(g,-1.0,1.0))/0.05; float sd=1.0-smoothstep(0.8,1.12,sa); float mu=sqrt(max(1.0-sa*sa,0.0)); float limb=0.82+0.18*mu;
+    vec3 core=mix(vec3(1.0,0.98,0.94)*3.2,vec3(1.0,0.72,0.4)*2.4,uWarm*uWarm); vec3 rim=mix(vec3(1.0,0.9,0.7)*1.6,vec3(1.0,0.48,0.18)*1.3,uWarm*uWarm);
+    c=mix(c,mix(rim,core,limb)*limb*1.15,sd); c+=mix(vec3(1.0,0.9,0.75),vec3(1.0,0.55,0.25),uWarm)*exp(-max(sa-1.0,0.0)*1.6)*0.55; }
  c+=vec3(1.0,0.7,0.45)*0.28*uWarm*exp(-abs(vDir.y)*9.0)*(0.4+0.6*max(dot(normalize(vec3(vDir.x,0.0,vDir.z)),normalize(vec3(sun.x,0.0,sun.z))),0.0));
  {float ci=sin(vDir.x/(vDir.y+0.25)*3.0+uT*0.01)*0.5+0.5;c=mix(c,vec3(1.0,0.75,0.7),smoothstep(0.55,0.8,t)*smoothstep(0.7,1.0,ci)*0.18);}
  {vec2 st=floor(vDir.xz/(abs(vDir.y)+0.2)*90.0);float r=fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5);
