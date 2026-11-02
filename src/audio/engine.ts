@@ -83,13 +83,22 @@ export class AudioEngine {
 
     // ---------- loading ----------
     preload(names: string[]) { for (const n of names) void this.load(n); }
+    private bytes = new Map<string, Promise<ArrayBuffer>>();
+    /** downloads every sound file now (no AudioContext needed); load() decodes from these bytes, so nothing is fetched during play */
+    prefetch(): Promise<void> {
+        const ps: Promise<unknown>[] = [];
+        for (const n in FILES) { if (!this.bytes.has(n)) this.bytes.set(n, fetch(BASE + FILES[n] + '.' + this.ext).then((r) => r.arrayBuffer())); ps.push(this.bytes.get(n)!.catch(() => null)); }
+        return Promise.all(ps).then(() => undefined);
+    }
+    /** decodes every file and renders every synthesized sound (needs the AudioContext: call after unlock) */
+    loadAll(): Promise<void> { return Promise.all([...Object.keys(FILES), ...Object.keys(RECIPES)].map((n) => this.load(n))).then(() => undefined); }
     has(name: string) { return this.bufs.has(name); }
     load(name: string): Promise<AudioBuffer | null> {
         const hit = this.loading.get(name); if (hit) return hit;
         const c = this.ctx; if (!c) return Promise.resolve(null);
         let p: Promise<AudioBuffer | null>;
         if (FILES[name]) {
-            p = fetch(BASE + FILES[name] + '.' + this.ext).then((r) => r.arrayBuffer()).then((ab) => new Promise<AudioBuffer>((res, rej) => { const q = c.decodeAudioData(ab, res, rej); if (q && (q as any).catch) (q as any).catch(rej); }));
+            p = (this.bytes.get(name) || fetch(BASE + FILES[name] + '.' + this.ext).then((r) => r.arrayBuffer())).then((ab) => ab.slice(0)).then((ab) => new Promise<AudioBuffer>((res, rej) => { const q = c.decodeAudioData(ab, res, rej); if (q && (q as any).catch) (q as any).catch(rej); }));
         } else if (RECIPES[name]) { const rc = RECIPES[name]; p = this.q.then(() => renderRecipe(name, rc)); this.q = p.catch(() => null); }   // one offline render at a time: no load spike
         else p = Promise.resolve(null as any);
         p = p.then((b) => { if (b) this.bufs.set(name, b); return b; }).catch(() => null);

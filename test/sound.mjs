@@ -10,7 +10,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const before = await p.evaluate(() => !!(window.__audio && window.__audio.ctx()));
 await p.mouse.click(400, 50); await sleep(2500);   // first gesture on the title screen
 const title = await p.evaluate(() => { const A = window.__audio; return { state: A.ctx() && A.ctx().state, titleLoaded: A.engine.has('music_title'), beds: A.engine.activeBeds() }; });
-await p.evaluate(() => window.__game.start()); await sleep(3000);
+await p.evaluate(() => window.__game.start()); for (let i = 0; i < 120 && (await p.evaluate(() => window.__game.sim.mode)) !== 'play'; i++) await sleep(500); await sleep(3000);   // Play now loads everything first
 const out = {};
 out.start = await p.evaluate(() => { const A = window.__audio; return { beds: A.engine.activeBeds(), score: A.engine.has('music_explore') && A.engine.has('music_action'), dbg: A.director.debug }; });
 // teleport through zones

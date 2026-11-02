@@ -1,9 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
+import { preloadNet, onPreloadProgress, pendingLoads, worldReady, markWorldReady, capped } from './preload';
 import { AnimatePresence, motion } from 'framer-motion';
 import gsap from 'gsap';
 const Scene = React.lazy(() => import('./Scene').then((m) => ({ default: m.Scene })));   /* Shifat Nov 1 2:14 PM 'UI first': the 3D world's code loads and runs only after Play */
 const GhostCompanion = React.lazy(() => import('./Ghost').then((m) => ({ default: m.GhostCompanion })));
+/* mounts with the world (same Suspense): waits until no loader is busy for 10 frames, compiles every shader in the scene, then says ready */
+function SceneReady() {
+    const { gl, scene, camera } = useThree();
+    useEffect(() => {
+        let quiet = 0, raf = 0; const t0 = performance.now();
+        const step = () => {
+            quiet = pendingLoads() === 0 ? quiet + 1 : 0;
+            if (quiet < 10 && performance.now() - t0 < 20000) { raf = requestAnimationFrame(step); return; }
+            const c = (gl as any).compileAsync ? (gl as any).compileAsync(scene, camera) : Promise.resolve(gl.compile(scene, camera));
+            capped(Promise.resolve(c).catch(() => null), 8000).then(markWorldReady);
+        };
+        raf = requestAnimationFrame(step); return () => cancelAnimationFrame(raf);
+    }, []); // eslint-disable-line
+    return null;
+}
 import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
 import { installDesktopInput, MAP_KB, MAP_PAD } from './desktopInput';
 import { QUALITY, QK, AA_MSAA } from './quality';
@@ -130,12 +146,19 @@ export function App() {
     }, []); // eslint-disable-line
 
     function start() {
+        if (starting.current) return; starting.current = true;
         setBoot(true);
         // Fullscreen needs the Play gesture; rejection or unsupported browsers must not block play.
         if (coarse && !document.fullscreenElement && document.documentElement.requestFullscreen) {
             try { const f = document.documentElement.requestFullscreen({ navigationUI: 'hide' }); f?.catch(() => {}); } catch (e) { /* browser keeps its bar */ }
         }
         audio.unlock(); if (DBG) (window as any).__audio = { engine: audio, director: snd, ctx: () => audio.ctx, muted: () => mutedRef.current };
+        setLoad({ on: true, pct: 0 }); void preloadNet();
+        /* gameplay begins only when every file is in memory, the world is built, its shaders compiled and every sound decoded (capped, never a lockout) */
+        capped(Promise.all([preloadNet(), worldReady]).then(() => capped(audio.loadAll(), 10000)), 45000).then(begin);
+    }
+    function begin() {
+        starting.current = false; setLoad({ on: false, pct: 100 });
         gsap.fromTo(fx, { fov: 22 }, { fov: 0, duration: 1.4, ease: 'power3.out' });
         resetSim(sim); lastScore.current = 0; sim.mode = 'play';
         if (deskRef.current) { try { const c = document.querySelector('.stage canvas') as any; const p = c?.requestPointerLock?.(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-look fallback */ } if (!kbToastShown.current) { kbToastShown.current = true; setCtrlToast({ id: Date.now(), kind: 'kb' }); } }
@@ -160,6 +183,9 @@ export function App() {
     const [charge, setCharge] = useState(false), [locked, setLocked] = useState(false);
     useEffect(() => { if (!ctrlToast) return; const id = setTimeout(() => setCtrlToast(null), 4200); return () => clearTimeout(id); }, [ctrlToast]);
     const [swingOn, setSwingOn] = useState(false);
+    const [load, setLoad] = useState<{ on: boolean; pct: number }>({ on: false, pct: 0 });   // Play pressed before everything was in memory
+    const starting = useRef(false);
+    useEffect(() => onPreloadProgress((d, n) => setLoad((l) => (l.on ? { on: true, pct: n ? Math.round((d / n) * 90) : 0 } : l))), []);   /* Shifat Nov 1 8:19 PM 'Only load when tap play': nothing downloads on the title; Play loads everything, then gameplay begins */
     const [boot, setBoot] = useState(false);   // no WebGL canvas, no scene build, no render loop until the first Play
 
     return <div className={(hud.mode === 'play' ? 'stage' : 'stage menu') + (desk ? ' desk' : '')} onContextMenu={(e) => e.preventDefault()}>
@@ -179,7 +205,7 @@ export function App() {
             onPointerCancel={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
             onLostPointerCapture={(e) => { if (e.pointerId !== drag.current.id) return; drag.current.id = -1; sim.camHeld = false; sim.lastDrag = sim.t; }}
         ><React.Suspense fallback={null}><Scene sim={sim} ev={ev} coarse={coarse} fx={fx} perf={perf} />
-            <GhostCompanion sim={sim} /></React.Suspense>
+            <GhostCompanion sim={sim} /><SceneReady /></React.Suspense>
         </Canvas>}
 
         <div className="hud">
@@ -223,7 +249,7 @@ export function App() {
                 <motion.h1 className="otitle tname" initial={{ y: 16, opacity: 0, letterSpacing: '0.6em' }} animate={{ y: 0, opacity: 1, letterSpacing: '0.18em' }} transition={{ delay: 0.25, duration: 1.1, ease: 'easeOut' }}>Shade Verse</motion.h1>
                 {hud.mode === 'over' && <div className="otext"><IOrb /><Pips n={Math.min(10, hud.score)} /></div>}
                 <motion.button className="go" aria-label="play" whileTap={{ scale: 0.95 }} onClick={(e) => { e.stopPropagation(); start(); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}><IPlay /></motion.button>
-                <div className="tprompt">{desk ? 'Click or press any key to start' : 'Tap to start'}</div>
+                <div className="tprompt">{load.on ? (load.pct < 90 ? `Loading ${load.pct}%` : 'Preparing world…') : desk ? 'Click or press any key to start' : 'Tap to start'}</div>
                 {desk && <div className="tmaps">
                     <div><b>Mouse + keyboard</b><ul>{MAP_KB.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
                     <div><b>Gamepad</b><ul>{MAP_PAD.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
