@@ -46,6 +46,7 @@ import { Forest, Meadow, parkBushGeo, parkGrassOnCompile, tuftGeo } from './worl
 import { treeGeo, palmFrondTex, palmTrunkTex, palmGeo, palmFrondShader, trunkWindShader, leafWindShader } from './world/trees';
 import { FxaaPass, HeroHDPass, OutlinePass, OUTLINE_STATE } from './render/passes'
 import { WATERLINE } from './world/env';
+import { updateWaterline } from './water/waterline';
 export { SHARPEN, FXAA_STATE, OUTLINE_STATE } from './render/passes';
 import { City, TenementBlock, Sky } from './world/cityScenery';
 import { HD, applyRatio, registerHero, HERO_WATER } from './heroHD';
@@ -365,7 +366,6 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
 // Mixamo-derived clips, retargeted offline (tools/fbx2clip.mjs) onto the generated rig
 export type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
 export const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any, run: clipRun as any };
-const _wd = new THREE.Vector3(), _wr = new THREE.Vector3(), _wu = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
 export function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: number) {
     let f = t * c.fps; if (loop) f = ((f % c.n) + c.n) % c.n; else f = Math.max(0, Math.min(c.n - 1, f));
@@ -664,24 +664,11 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (!(state.scene.fog instanceof THREE.Fog)) state.scene.fog = new THREE.Fog(UWF.value.getHex(), 1e4, 2e4);   // kept for the whole session (pushed out of reach above water) so entering water causes no shader recompiles
             { const fg = state.scene.fog as THREE.Fog; if (under) { const deep = Math.min(1, Math.max(0, -dy / 30)), ti = THREE.MathUtils.smoothstep(-dy, 0.6, 4.0);   /* Shifat Nov 1: one world, not a camera switch -> the water closes in gradually over the first metres of the dive */ fg.color.copy(UWF.value).multiplyScalar(1 - 0.3 * deep); fg.near = 8 - 4 * deep; fg.far = 150 - 40 * deep;   /* Shifat Nov 1 11:27 'underwater land looks bad, smooth it out': water haze now starts a few metres out (was 55 m), so submerged slopes melt into the blue instead of standing crisp and white */ void ti; (state.scene.background as THREE.Color).copy(fg.color); } else { fg.near = 1e4; fg.far = 2e4; } }
             {   // Shifat Oct 31 12:27 'air water split view': the lens straddles the surface. The post pass gives everything below the wave line the
-                // underwater look (same fog colour as diving). Line = where rays at 1 m from the lens dip under the local wave plane (tilts with the swell).
+                // underwater look (same fog colour as diving). Line = the silhouette of the drawn waves from the lens plane out (src/water/waterline.ts).
                 WATERLINE.v.w = 0;
-                if (split) {   // wave-shaped line: for 9 screen columns, the height where rays 1.2 m out of the lens cross the live swell (two refinement steps)
-                    const cp2 = camera as THREE.PerspectiveCamera, d = 1.2, sf = (x: number, z: number) => inLake ? waterSurfaceAt(x, z, sim.t) : waterRenderY(x, z, sim.t);
-                    camera.getWorldDirection(_wd); _wr.set(1, 0, 0).applyQuaternion(camera.quaternion); _wu.set(0, 1, 0).applyQuaternion(camera.quaternion);
-                    const ty = Math.tan(cp2.fov * Math.PI / 360), tx = ty * cp2.aspect, c0 = camera.position;
-                    for (let k = 0; k < 9; k++) {
-                        const nx = -1 + k * 0.25; let ny = 0;
-                        for (let it = 0; it < 3; it++) {
-                            const dxw = _wd.x + nx * tx * _wr.x + ny * ty * _wu.x, dzw = _wd.z + nx * tx * _wr.z + ny * ty * _wu.z;
-                            const h = sf(c0.x + d * dxw, c0.z + d * dzw);
-                            // solve c0.y + d * (fwd.y + nx*tx*right.y + ny*ty*up.y) = h for ny
-                            ny = (h - c0.y - d * (_wd.y + nx * tx * _wr.y)) / (d * ty * _wu.y || 1e-4);
-                        }
-                        WATERLINE.y[k] = Math.max(-3, Math.min(3, ny));
-                    }
-                    WATERLINE.v.set(sim.t, 0, 0, 1); WATERLINE.col.copy(UWF.value);
-                    if (DBG) (window as any).__wl = [WATERLINE.y.map((v) => +v.toFixed(3)), dy];
+                if (split) {   // the top edge of the water as the lens sees it, cut on the exact drawn waves out to the far crests (src/water/waterline.ts)
+                    updateWaterline(camera as THREE.PerspectiveCamera, sim.t, inLake ? (x: number, z: number) => waterSurfaceAt(x, z, sim.t) : null, dy); WATERLINE.col.copy(UWF.value);
+                    if (DBG) (window as any).__wl = [WATERLINE.q.flatMap((v) => [v.x, v.y, v.z, v.w]).slice(0, 25).map((v) => +v.toFixed(3)), dy];
                 }
             }
             if (uw) {   // full underwater wash only; the split is drawn by the post pass now

@@ -7,6 +7,7 @@ import { CAUSTIC_GLSL } from '../caustics';
 import { WAVES_GLSL, GERSTNER_GLSL, WAVES_V_GLSL, WAVES_VD_GLSL, WGHJ_GLSL } from './waves';
 import { OCEAN_N, OCEAN_WARP, OCEAN_HALF } from './seabed';
 import { WATER_COMMON_GLSL } from './common';
+import { WL_GLSL, WL_D } from './waterline';
 
 /** Shared GLSL wave field, generated from the single wave table in ./waves.ts (also drives the CPU waveH). */
 export const WAVES = WAVES_GLSL;
@@ -63,15 +64,19 @@ ${GRID_TRACE_GLSL}
     float oceanZ(vec2 uv){ return perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar); }
     vec3 sceneCol(vec2 uv){   /* Shifat 3:30 PM 'same on all devices': one 2-tap soft read everywhere (phone was 1 tap, desktop 4) */
       vec2 o = uSceneTx * vec2(0.7, 0.45); vec3 c = texture2D(tScene, uv + o).rgb + texture2D(tScene, uv - o).rgb; return linearToOutputTexel(vec4(c * 0.5, 1.0)).rgb; }   /* rotated-grid 4-tap: the low-res scene copy no longer shows fish/whales/boats under the water as pixel blocks */
-    uniform vec4 uWL; uniform float uWLy[9];
-    float wlY(float x){ float f = clamp(x * 4.0 + 4.0, 0.0, 7.999); int i = int(f); float t = f - float(i); t = t * t * (3.0 - 2.0 * t); return mix(uWLy[i], uWLy[i + 1], t); }
+    ${WL_GLSL}
+    bool gSplit = false, gAir = true;
     /* Shifat's Adreno 506 phone drew the sea as solid blue from above (the underwater look): gl_FrontFacing is unreliable on that GPU, so the
        side of the surface is decided by the camera height against the live wave at the camera, and the hardware flag only within 0.4 m of it */
-    bool seaFF(){ float dc = cameraPosition.y - vHw.z; return dc > 0.4 ? true : (dc < -0.4 ? false : gl_FrontFacing); }
-    void main(){ if (uBench.y > 0.5 && uBench.y < 1.5) { gl_FragColor = vec4(uDeep, 0.95); return; }   /* ?debug&bench step: sea shading off */
+    bool seaFF(){ if (gSplit) return gAir; float dc = cameraPosition.y - vHw.z; return dc > 0.4 ? true : (dc < -0.4 ? false : gl_FrontFacing); }   /* split lens: the side is the pixel's side of the line (a kept fragment is always seen from that side) */
+    void main(){
+      if (uBench.y > 0.5 && uBench.y < 1.5) { gl_FragColor = vec4(uDeep, 0.95); return; }   /* ?debug&bench step: sea shading off */
 
-      if (uWL.w > 0.5) { vec2 sn = vScreen.xy / vScreen.w; bool airHalf = sn.y > wlY(sn.x);   /* split lens: the upper half of the lens is in air (sees only the top of the sea), the lower half is under water (sees only the wavy underside) */
-        if (airHalf != gl_FrontFacing) discard; }
+      if (uWL.w > 0.5) { vec3 fD = cross(dFdx(vW), dFdy(vW)); vec2 sn = vScreen.xy / vScreen.w; gSplit = true; gAir = sn.y > wlY(sn.x);   /* split lens (src/water/waterline.ts): a pixel above the line starts in air and sees only the top of the sea, below it starts under water and sees only the wavy underside */
+        /* fD: this fragment's real triangle (read first in the branch, before any discard: derivatives need the whole 2x2 quad) */
+        float vz = -vView.z; if (vz < ${WL_D.toFixed(2)}) discard;   /* sea between the camera and the lens plane is inside the lens: it never draws */
+        bool top = (dot(fD, cameraPosition - vW) < 0.0 ? -fD.y : fD.y) > 0.0;   /* seen from above = the camera is on the up side of its triangle; from the triangle itself, not gl_FrontFacing (wrong in render targets on some phone GPUs) */
+        if (gAir ? (!top || vz < uWL.y) : top) discard; }   /* above the line: only sea top beyond the line's reach (the far sea when the lens rides high); below it: only the underside, so no wave ever pokes into the air half */
       gChop = length(cameraPosition - vW) < 120.0;   /* every device: past 120 m the 3-12 m chop is sub-pixel shimmer, so its 5 trains are skipped (phone was 90 m, desktop 160 m) */
       float wD0 = length(cameraPosition - vW); bool farS = wD0 > 260.0;   /* Shifat 4:30 PM: far sea flat & smooth for speed - past 260 m no wave/ripple maths, faded from 200 m */
       float hW0 = vGj.w; vec3 gj = farS ? vec3(0.0) : vGj.xyz * (1.0 - smoothstep(200.0, 260.0, wD0));   /* gradient, Jacobian and height in one pass */ vec2 gW = gj.xy; gChop = true;   /* Gerstner: gradient + crest Jacobian at the undisplaced point */ vec2 g = gW + vec2(sin(vW.x * 0.9 + uTime * 3.0), cos(vW.z * 0.8 + uTime * 2.4)) * 0.02;

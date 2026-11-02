@@ -2,10 +2,11 @@ import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
 import { PARK_POND_Y, WATER_Y, WATER_Z, isLakeWater, seabedAt, waterSurfaceAt, type Sim } from '../sim';
 import * as THREE from 'three';
 import { QUALITY } from '../quality';
-import { TOD } from './env';
+import { TOD, WATERLINE } from './env';
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { waterRenderY } from '../water/waveHeight';
+import { WL_GLSL } from '../water/waterline';
 
 // Underwater life (user must-haves 10:29): kelp forest, jellyfish, tiny bubbles, god rays, current drift. Reference cues (viewed underwater shots): cyan light band near the surface, light shafts, sandy floor, haze to teal. All procedural approximations, small instance counts.
 const UW_FOG = 'vec3(0.09, 0.43, 0.55)';
@@ -46,11 +47,13 @@ const kelpMat = new THREE.ShaderMaterial({   /* Shifat Nov 1 10:53 AM 'kelps sho
 const _rayAx = new THREE.Vector3();
 const RAY_N = QUALITY.coarse || QUALITY.weakGpu ? 14 : 26, RAY_LEN = 42;
 const rayMat = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uSurf: { value: -1 }, uDay: TOD.day }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    vertexShader: 'varying vec2 vU; varying float vY; void main(){ vU = uv; vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0); vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: `varying vec2 vU; varying float vY; uniform float uTime, uSurf, uDay;
+    uniforms: { uTime: { value: 0 }, uSurf: { value: -1 }, uDay: TOD.day, uWL: { value: WATERLINE.v }, uWLq: { value: WATERLINE.q } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    vertexShader: 'varying vec2 vU; varying float vY; varying vec4 vS; void main(){ vU = uv; vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0); vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; vS = gl_Position; }',
+    fragmentShader: `varying vec2 vU; varying float vY; varying vec4 vS; uniform float uTime, uSurf, uDay;
+      ${WL_GLSL}
       float h(float x){ return fract(sin(x * 127.1) * 43758.5453); }
       void main(){
+        if (uWL.w > 0.5 && vS.y / vS.w > wlY(vS.x / vS.w)) discard;   /* half-underwater lens: shafts start at the flat sea level, so in a trough their tops stood in the air half - never above the line */
         float x = vU.x, t = uTime;
         float s = 0.0; for (int k = 0; k < 4; k++) { float fk = float(k), c = 0.15 + 0.7 * h(fk + floor(t * 0.05 + fk) * 3.1); float w = 0.12 + 0.14 * h(fk * 7.0 + 1.0), dx = (x - c - 0.04 * sin(t * 0.35 + fk * 2.1)) / w;
           s += exp(-dx * dx * 1.0) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }   /* Shifat 8:43 PM 'more blurry god rays': gaussian shaft profile (was a hard-edged band), wider, and the sheets feed the bloom pass */

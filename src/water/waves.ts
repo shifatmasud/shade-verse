@@ -115,3 +115,23 @@ export const WGHJ_GLSL = [
     '', 'vec3 wghj(vec2 p, float t, out float hOut){', '  vec2 g = vec2(0.0); float j = 0.0, h = 0.0;', ...LONG_WAVES.map(whjLong), '  { float m;',
     ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(whjGold), '    if (WG_CHOP) {', ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(whjGold), '    } else {',
     ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(whGold), '    }', '  }', '  float s = swellK(p); hOut = h * s; return vec3(g * s, j * GQ * s);', '}'].join('\n');
+
+
+/* Waterline (Shifat Nov 2 10:44 AM 'water line must not bleed underwater or wave to air'): the exact surface the sea MESH draws, on the CPU, so the
+   half-underwater lens line is cut on the same waves the sea shows (waveSumJS above has no chop and no sideways Gerstner push: it sat up to
+   ~0.4 m off the drawn surface, which let waves poke into the air half). Same tables, same per-train grid fades and skips as whdV(). */
+const NGA = GOLDEN_WAVES.map(w => w.map((v, i) => i === 11 ? v.split('*').reduce((a, b) => a * Number(b), 1) : Number(v)));
+const NLD = LONG_WAVES.map(w => { const [dx, dz, k] = kn(w, 0, 1); return [...w.map(Number), dx, dz, 0.9 * Math.PI / k, 0.45 * Math.PI / k]; });
+const NGD = NGA.map((w, i) => { const [dx, dz, k] = kn(GOLDEN_WAVES[i], 6, 7); return [...w, dx, dz, 0.9 * Math.PI / k, 0.45 * Math.PI / k]; });
+const sst = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/** swellK() of the shader. */
+export function swellKJS(x: number, z: number) { return (1 + 1.3 * sst(-300, -750, z)) * (0.22 + 0.78 * sst(105, 215, Math.hypot(x + 160, z + 820))); }
+/** whdV() of the sea's vertex shader: out = [height, sideways x, sideways z] at the undisplaced point (x, z) for local grid spacing sp (m). */
+export function waveMeshJS(x: number, z: number, t: number, sp: number, out: number[]) {
+    let h = 0, dx = 0, dz = 0;
+    for (const w of NLD) { if (sp >= w[6]) continue; const a = x * w[0] + z * w[1] + t * w[2], f = w[3] * sst(w[6], w[7], sp), c = Math.cos(a); h += Math.sin(a) * f; dx -= c * f * w[4]; dz -= c * f * w[5]; }
+    for (let i = 0; i < NGD.length; i++) { const w = NGD[i]; if (sp >= w[16]) continue;
+        const m = w[0] + w[1] * Math.sin(x * w[2] + z * w[3] + w[4] + t * w[5]), a = x * w[6] + z * w[7] + w[8] * Math.sin(x * w[9] + z * w[10] + w[11]) + t * w[12], f = w[13] * m * sst(w[16], w[17], sp);
+        h += Math.sin(a) * f; if (i < PHYSICS_TRAINS) { const c = Math.cos(a); dx -= c * f * w[14]; dz -= c * f * w[15]; } }
+    const s = swellKJS(x, z); out[0] = h * s; out[1] = dx * GERSTNER_Q * s; out[2] = dz * GERSTNER_Q * s; return out;
+}

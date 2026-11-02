@@ -10,7 +10,7 @@ export const UW = { on: false };
 
 /* Half-in/half-out lens (Shifat Oct 31): Scene sets the screen line (ndc: x*a + y*b + c < 0 is under water) and w=1 while the lens straddles the surface.
    The sea surface discards below it (true underworld seen directly) and the post pass fogs that half like diving. */
-export const WATERLINE = { v: new THREE.Vector4(0, 0, 1, 0), col: new THREE.Color(), y: new Array<number>(9).fill(-2) };   // y[k] = ndc height of the waterline at ndc x = -1 + k/4 (wave shaped)
+export const WATERLINE = { v: new THREE.Vector4(0, 0, 1, 0), col: new THREE.Color(), q: Array.from({ length: 7 }, () => new THREE.Vector4(-2, -2, -2, -2)) };   // q: 25 packed ndc heights of the line at ndc x = -1 + k/12 (src/water/waterline.ts)
 
 /* Weather (Shifat Oct 31 5:42 PM: sunny & rainy weather; rain must not get the outline pass; raindrop impacts on water).
    rain: 0..1 shared uniform (every water body reads it for impact rings; DayNight greys the sky/fog by it). The Weather component drives it:

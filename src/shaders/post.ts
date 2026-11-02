@@ -1,4 +1,5 @@
 // Post-processing: FXAA (plus sharpened variant) and the ink outline pass. Moved verbatim from Scene.tsx.
+import { WL_GLSL } from '../water/waterline';
 export const FXAA_FS = `uniform sampler2D tDiffuse; uniform vec2 uRes; varying vec2 vUv;
 float lum(vec3 c){ return dot(sqrt(max(c, 0.0)), vec3(0.299, 0.587, 0.114)); }
 void main(){
@@ -28,8 +29,8 @@ export const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2
   }
   gl_FragColor = vec4(col, 1.0);
 }`);
-export const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; uniform vec4 uWL; uniform float uWLy[9]; uniform vec3 uUwC; varying vec2 vUv;
-float wlY(float x){ float f = clamp(x * 4.0 + 4.0, 0.0, 7.999); int i = int(f); float t = f - float(i); t = t * t * (3.0 - 2.0 * t); return mix(uWLy[i], uWLy[i + 1], t) + 0.035 * sin(x * 5.3 + uWL.x * 1.7) + 0.018 * sin(x * 13.7 - uWL.x * 2.9) + 0.008 * sin(x * 31.0 + uWL.x * 4.1); }   /* chop + ripples the CPU swell does not carry, same in sea + post so the cut matches */
+export const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; uniform vec3 uUwC; varying vec2 vUv;
+${WL_GLSL}   /* the same line the sea is cut on (src/water/waterline.ts): solved on the drawn waves incl. chop, so no fake ripples here any more - the tint can't drift off the cut */
 float vz(vec2 uv){ float d = texture2D(tDepth, uv).x; float zn = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - zn * (uFar - uNear)); }
 void main(){
   vec4 c4 = texture2D(tColor, vUv); vec3 c = c4.rgb;
