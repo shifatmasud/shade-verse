@@ -6,8 +6,8 @@ import { buildings, parkH } from './sim';
    SWING (reference 11.2-12.6 s, 20.0-20.9 s, 21.6-22.7 s): the body hangs from the line hand and pendulums with the rope, lagging it (spring), so right after
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
-type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number };
-const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0 });
+type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number };
+const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const sstep = (x: number) => { x = cl(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -113,6 +113,30 @@ export function traversalBones(sim: any, rig: any, dt: number) {
     if (T.bw < 0.003) { T.bw = 0; T.lg = 0; T.lgv = 0; } else swingBones(sim, rig, T, h, sw);
     fallBones(sim, rig, T, h);
     flipBones(sim, rig, T, h);
+    landBones(sim, rig, T, h);
+}
+/* LANDING (ref 4.1-4.9 s, 7.8 s, 13.8-14.0 s): touchdown drops into a crouch for a few frames: knees bend, hips sink, chest folds over, head up.
+   A hard landing (sim.landHard) is the low superhero landing: front knee up, back knee down, one hand planted, the other arm out behind;
+   held ~0.2 s, then it pushes back up (0.55 s total). A normal one is a quick symmetric crouch (~0.3 s) scaled by the impact. */
+function landBones(sim: any, rig: any, T: TV, h: number) {
+    const B = rig.b;
+    if (sim.ground && !T.wg && sim.land > 0.08 && !sim.swim && !sim.wall) { T.lOn = 1; T.lt = 0; T.li = sim.land; T.lh = (sim.landHard || 0) > 0 ? 1 : 0; }
+    T.wg = !!sim.ground;
+    if (!T.lOn) return;
+    if (!sim.ground || sim.swim || sim.web || sim.mv || sim.flip || sim.slam || (sim.snareT || 0) > 0) { T.lOn = 0; return; }
+    T.lt += h;
+    const hd = T.lh, dur = hd ? 0.55 : 0.3, hold = hd ? 0.22 : 0.06;
+    if (T.lt >= dur) { T.lOn = 0; return; }
+    const e = sstep(T.lt / 0.045) * (1 - sstep((T.lt - hold) / (dur - hold)));
+    const k = e * (hd ? 1 : 0.4 + 0.6 * T.li);
+    if (k < 0.01) return;
+    const m = (a: number, b: number) => a + (b - a) * hd;   // soft -> hard pose
+    setB(B.thighR, m(-1.15, -1.55), 0, m(0.12, 0.1), k); setB(B.shinR, m(1.95, 2.05), 0, 0, k);
+    setB(B.thighL, m(-1.05, -0.25), 0, m(-0.12, -0.15), k); setB(B.shinL, m(1.9, 2.35), 0, 0, k);
+    setB(B.spine, m(0.4, 0.55), 0, 0, k); setB(B.chest, m(0.18, 0.25), 0, 0, k); setB(B.head, m(-0.35, -0.5), 0, 0, k);
+    setB(B.uarmR, m(-0.6, -0.55), 0, m(0.3, 0.12), k); setB(B.farmR, m(-0.5, -0.15), 0, 0, k);
+    setB(B.uarmL, m(-0.6, 0.75), 0, m(-0.3, -0.75), k); setB(B.farmL, m(-0.5, -0.4), 0, 0, k);
+    B.hips.position.y -= m(0.3, 0.42) * k;
 }
 function fallBones(sim: any, rig: any, T: TV, h: number) {
     const B = rig.b, k = T.fw * (1 - T.tk) * (1 - T.bw) * sstep(T.w * 1.5);   // limbs open as the body tips over, together
