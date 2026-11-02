@@ -243,7 +243,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         anim: createHeroClipState(), pose: createCombatPoseState(), slamHold: 0, slamAt: 0, slamSeen: 0 });
 
     useFrame((_, rawDt) => {
-        const dt = Math.min(0.05, rawDt) * ((sim as any).tsNow || 1), st = state.current, root = model.root;   // follows the world's finisher/Slam slow-motion
+        const dt = Math.min(0.05, rawDt) * ((sim as any).tsNow || 1) * (DBG && (window as any).__ts != null ? Math.max(1e-6, (window as any).__ts) : 1), st = state.current, root = model.root;   // follows the world's finisher/Slam slow-motion
         if (sim.mode !== 'play') {
             root.visible = false; st.ready = false; actorRef.current = null; setCompanionSim(null);
             st.morph.active = false; setRigOpacity(root, 1); root.scale.setScalar(HERO_SCALE);
@@ -486,7 +486,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             <lineBasicMaterial ref={shockMatRef} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} />
         </lineSegments>
         <points ref={plasmaRef} geometry={plasmaGeo} frustumCulled={false} dispose={null}>
-            <pointsMaterial map={SOFT_DOT} alphaTest={0.01} color="#c9f5ff" size={0.62} sizeAttenuation transparent opacity={0.95} depthWrite={false} />
+            <pointsMaterial map={SOFT_DOT} alphaTest={0.01} color="#ff9fd0" size={0.62} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />{/* web-shot bolt core: Ghost pink lifted toward white (Shifat 11:34 AM "Web shot too?"; was pale cyan); pink halo + trail in CombatFX */}
         </points>
         <points ref={morphRef} geometry={morphGeo} visible={false} frustumCulled={false} dispose={null}>
             <pointsMaterial ref={morphMatRef} map={SOFT_DOT} alphaTest={0.01} color="#ffffff" vertexColors size={0.3} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />

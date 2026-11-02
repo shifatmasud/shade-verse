@@ -147,6 +147,16 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 const hl = h.rig.b.handL as THREE.Bone; _w.setFromMatrixPosition(hl.matrixWorld); put(_w.x, _w.y, _w.z, 0.7, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.8, 0, 0, 0);
             }
         }
+        // web shot in flight (Shifat 11:34 AM "Web shot too?"): a soft glowing trail behind every hero's bolt in the caster's colour (Shadow purple,
+        // Ghost pink); Ghost's bolt (a single soft point in Ghost.tsx) also gets the caster-colour halo Shadow's bolt sprite has. No new draw calls.
+        for (const h of heroes) {
+            const s = h.getSim(); if (!s || !s.plasma || !s.plasma.length) continue; _c.setHex((s as any).fxCol ?? 0xa855f7);
+            for (const b of s.plasma) {
+                const sp = Math.hypot(b.vx, b.vy, b.vz) || 1, L = Math.min(1.4, 0.5 + b.t * 10), ux = b.vx / sp * L, uy = b.vy / sp * L, uz = b.vz / sp * L, pu = 1 + Math.sin(s.t * 31) * 0.12;
+                put(b.x - ux / 2, b.y - uy / 2, b.z - uz / 2, 0.42, ux, uy, uz, SH_SEG, _c.r, _c.g, _c.b, 0.45, 0, 0, 0);
+                if (s !== sim) put(b.x, b.y, b.z, 1.5 * pu, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.7, 0, 0, 0);
+            }
+        }
         // web-pull / yank strand (gap #3): the old 1 px GL line was invisible. Now a soft white strand (alpha: soft core, no rim, 2 instances
         // per hand with a slight sag) plus a hero-colour glow line (additive, bloom). It shoots out from the hand over the first 60 ms.
         const strands: number[] = [];

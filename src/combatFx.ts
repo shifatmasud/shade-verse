@@ -107,13 +107,14 @@ export function fxMelee(x: number, y: number, z: number, col: number, lvl: numbe
     if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x + rnd(-0.15, 0.15), y + rnd(-0.1, 0.1), z + rnd(-0.15, 0.15), bx * 1.2 + rnd(-0.6, 0.6), rnd(0.1, 0.6), bz * 1.2 + rnd(-0.6, 0.6), 0.5, 0.25 * sc, 0.8 * sc, 0xb5aec2, 0.35, 0, 3);   // small dust puff
     if (lvl >= 3 && grounded && !LOW) for (let k = 0; k < 6; k++) { const th = rnd(0, Math.PI * 2), sp = rnd(1.5, 3); emit(SH_DUST, x + Math.cos(th) * 0.3, y - 0.9, z + Math.sin(th) * 0.3, Math.cos(th) * sp, rnd(0.4, 1.2), Math.sin(th) * sp, 0.45, 0.35, 0.9, 0xb9b2c6, 0.55, 0, 3); }
 }
-/** web-shot hit: soft white web burst + glow + sparks (no ink splat) */
+/** web-shot hit: soft web burst + glow + sparks in the caster's colour (Shifat 11:34 AM "Web shot too?": Shadow purple, Ghost pink;
+    was white core/glow/mist for both). The hot core is the hue lifted toward white so it still reads. No ink splat. */
 export function fxShot(x: number, y: number, z: number, col: number) {
-    emit(SH_CORE, x, y, z, 0, 0, 0, 0.04, 0.35, 0.55, 0xffffff, 1);
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.3, 0.55, 0.8, 0xeef2ff, 0.55, 0, 0, 0.12, 2);
+    emit(SH_CORE, x, y, z, 0, 0, 0, 0.04, 0.35, 0.55, tint(col, 0.75), 1);
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.3, 0.55, 0.8, tint(col, 0.45), 0.55, 0, 0, 0.12, 2);
     emit(SH_GLOW, x, y, z, 0, 0, 0, 0.16, 0.5, 0.9, col, 0.8, 0, 0, 0.12, 2);
-    sparks(6, x, y, z, col, 5, 10, 0.12, 0.2);
-    if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x, y, z, rnd(-0.8, 0.8), rnd(-0.3, 0.6), rnd(-0.8, 0.8), 0.5, 0.2, 0.6, 0xf2f2ff, 0.4, 0, 3);   // soft web mist
+    sparks(6, x, y, z, col, 5, 10, 0.12, 0.2, 0.05, 0.25, -1e9, tint(col, 0.75));
+    if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x, y, z, rnd(-0.8, 0.8), rnd(-0.3, 0.6), rnd(-0.8, 0.8), 0.5, 0.2, 0.6, tint(col, 0.7), 0.4, 0, 3);   // soft web mist, pale caster tint
 }
 /* Shifat Nov 2 10:40 AM: "Ghosts shock color must be pink, & purple for shadow" - every part of the Web Shock (tethers, hand glow, lightning,
    ground arcs, discharge burst, sparks, glow) takes the caster's own colour: Shadow purple 0xa855f7, Ghost pink 0xff1a96 (sim fxCol). Was one cyan for both. */

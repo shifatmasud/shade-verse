@@ -216,7 +216,7 @@ export interface Sim {
 }
 // plasma web shot: a visible bolt (plasma core wrapped in web strands) with gentle homing; blasts drive the shockwave VFX
 export interface Plasma { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; tgt: Enemy | null }
-export interface Blast { x: number; y: number; z: number; t: number; r: number }
+export interface Blast { x: number; y: number; z: number; t: number; r: number; col?: number }   // col: web-shot blast in the caster colour (KO death blasts have none)
 // env-iter3 F (Shifat Oct 29: "Let enemies & bosses fire shots like Iron Man"): repulsor bolts from an open palm (regular enemies:
 // 0.4 s palm-glow telegraph, then a fast bolt at the hero's predicted position, 2-3 s cooldown; bosses: 3-shot volleys) and the
 // boss chest unibeam (1 s visible charge, then a 1.5 s beam that sweeps after the hero slower than he can swing). Hits go through
@@ -539,7 +539,7 @@ function deathBlast(s: Sim, e: Enemy) {
 }
 function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
     { const dx = s.pos[0] - x, dy = s.pos[1] + 0.5 - y, dz = s.pos[2] - z, d = Math.hypot(dx, dy, dz) || 1, k = Math.min(0.7, d * 0.5) / d; fxShot(x + dx * k, y + dy * k, z + dz * k, heroCol(s)); }   // web splat + 4 sparks + small ring, on the shooter's side of the body
-    s.blasts.push({ x, y, z, t: 0, r: BLAST_R });
+    s.blasts.push({ x, y, z, t: 0, r: BLAST_R, col: heroCol(s) });
     if (s.blasts.length > BLAST_CAP) s.blasts.shift();   // cap overlapping effects so repeated shots stay readable
     let any = false;
     for (const e of s.enemies) {

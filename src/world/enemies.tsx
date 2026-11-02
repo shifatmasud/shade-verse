@@ -7,6 +7,7 @@ import { GLOW_FS, GLOW_VS } from '../shaders/glow';
 import { shadowGeo, shadowMat } from '../shadowbot';
 import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
 import { BOSS_BODY_OFFSET } from '../bossConfig';
+import { SHOCK_SHADOW, tint } from '../combatFx';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
@@ -37,7 +38,11 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
     const blasts = useRef<{ g: THREE.Group; flash: THREE.Sprite; sparks: THREE.Points; dir: Float32Array }[]>([]);
     const ret = useRef<THREE.Group>(null!);
     const o = useMemo(() => new THREE.Object3D(), []);
+    const colNow = useRef(-1);
     useFrame(() => {
+        // Shifat 11:34 AM "Web shot too?": the bolt and its blast take the caster's colour (Shadow purple / Ghost pink, sim fxCol); was cyan/white
+        const col = ((sim as any).fxCol ?? SHOCK_SHADOW) as number;
+        if (col !== colNow.current) { colNow.current = col; for (const g of proj.current) if (g) { ((g.children[0] as THREE.Sprite).material as THREE.SpriteMaterial).color.setHex(tint(col, 0.72)); ((g.children[1] as THREE.Sprite).material as THREE.SpriteMaterial).color.setHex(col); } }
         for (let i = 0; i < 3; i++) {
             const g = proj.current[i]; if (!g) continue;
             const b = sim.plasma[i];
@@ -56,6 +61,8 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
             if (on && bl) {
                 const k = bl.t / 0.85;
                 grp.g.position.set(bl.x, bl.y, bl.z);
+                if (bl.t === 0 || (grp as any).bc !== (bl.col ?? -1)) { (grp as any).bc = bl.col ?? -1;   // web-shot blast: caster hue (hot, lifted toward white); KO death blasts keep pale cyan + warm embers
+                    (grp.flash.material as THREE.SpriteMaterial).color.setHex(bl.col != null ? tint(bl.col, 0.55) : 0xcfeeff); (grp.sparks.material as THREE.PointsMaterial).color.setHex(bl.col != null ? tint(bl.col, 0.3) : 0xffc890); }
                 const fk = Math.min(1, bl.t / 0.2);
                 grp.flash.scale.setScalar(1.0 + fk * bl.r * 0.9);
                 (grp.flash.material as THREE.SpriteMaterial).opacity = Math.max(0, 0.9 * (1 - bl.t / 0.32));
