@@ -29,10 +29,17 @@ export function bakeGrid() {
     L.forEach((b, i) => { bd.set([b.x0, b.y0, b.z0, b.h, b.x1, b.y1, b.z1, 0, b.c[0], b.c[1], b.c[2], 1], i * 12); });
     const cells: number[][] = Array.from({ length: nx * nz }, () => []);
     L.forEach((b, i) => { for (let j = Math.floor((b.z0 - z0) / GC); j <= Math.floor((b.z1 - z0) / GC); j++) for (let k = Math.floor((b.x0 - x0) / GC); k <= Math.floor((b.x1 - x0) / GC); k++) if (j >= 0 && j < nz && k >= 0 && k < nx) cells[j * nx + k].push(i); });
-    // per cell: 2 texels of indices (-1 = none) + 1 texel (max top, count); overflow keeps the tallest
-    const gd = new Float32Array(nx * nz * 3 * 4).fill(-1); let over = 0;
-    cells.forEach((c, ci) => { c.sort((a, b) => L[b].y1 - L[a].y1); if (c.length > GK) over++; let mt = 0; c.forEach(i => (mt = Math.max(mt, L[i].y1)));
-        const s = c.slice(0, GK); for (let q = 0; q < GK; q++) gd[ci * 12 + q] = q < s.length ? s[q] : -1; gd[ci * 12 + 8] = mt; gd[ci * 12 + 9] = s.length; gd[ci * 12 + 10] = 0; gd[ci * 12 + 11] = 0; });
+    /* LOW DETAIL (Shifat 3:59 PM 'heavy blurry low detail cheap'): each cell is ONE block - the union of its boxes' footprints, the tallest top,
+       the lowest bottom (the bridge deck keeps sky under it), the footprint-weighted average colour. texel 0 = x0 z0 x1 z1, texel 1 = r g b top,
+       texel 2 = top count bottom 0 */
+    const gd = new Float32Array(nx * nz * 3 * 4); let over = 0;
+    cells.forEach((c, ci) => { if (!c.length) { gd.set([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ci * 12); return; }
+        let ux0 = 1e9, uz0 = 1e9, ux1 = -1e9, uz1 = -1e9, mt = 0, mb = 1e9, w = 0, r = 0, g = 0, bl = 0;
+        const cx0 = x0 + (ci % nx) * GC, cz0 = z0 + Math.floor(ci / nx) * GC;
+        for (const i of c) { const b = L[i]; const bx0 = Math.max(b.x0, cx0), bx1 = Math.min(b.x1, cx0 + GC), bz0 = Math.max(b.z0, cz0), bz1 = Math.min(b.z1, cz0 + GC);
+            ux0 = Math.min(ux0, bx0); ux1 = Math.max(ux1, bx1); uz0 = Math.min(uz0, bz0); uz1 = Math.max(uz1, bz1); mt = Math.max(mt, b.y1); mb = Math.min(mb, b.y0);
+            const a = Math.max(1, (bx1 - bx0) * (bz1 - bz0)) * b.y1; w += a; r += b.c[0] * a; g += b.c[1] * a; bl += b.c[2] * a; }
+        gd.set([ux0, uz0, ux1, uz1, r / w, g / w, bl / w, mt, mt, c.length, mb, 0], ci * 12); });
     const mk = (d: Float32Array, w: number, h: number) => { const t = new THREE.DataTexture(d, w, h, THREE.RGBAFormat, THREE.FloatType); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; };
     GRID.box = mk(bd, bw, 1); GRID.tex = mk(gd, nx * 3, nz); GRID.b.set(x0, z0, GC, 0); GRID.n.set(nx, nz); GRID.nb = L.length; GRID.boxW = bw;
     if (typeof window !== 'undefined') (window as any).__grid = { nb: L.length, nx, nz, over, maxPer: Math.max(...cells.map(c => c.length)) };

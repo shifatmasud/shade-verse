@@ -167,31 +167,32 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
           float te = max(max(tlo.x, tlo.y), 0.0), tx = min(min(thi.x, thi.y), 170.0 / max(hd.y, 1e-3));
           vec2 g = (ro.xz + hd.xz * (te + 0.01) - uGB.xy) / uGB.z; ivec2 c = ivec2(floor(g)); vec2 sd = sign(hd.xz) + step(0.0, -abs(hd.xz)); ivec2 st = ivec2(sd);
           vec2 ia = 1.0 / max(abs(hd.xz), vec2(1e-5)); vec2 tD = uGB.z * ia; vec2 nx = te + (vec2(c) + step(0.0, sd) - g) * sd * tD; float tc = te; ivec2 N = ivec2(uGN);
-          for (int i = 0; i < 40; i++) { if (tc > tx) break;
+          float cov = 0.0; vec3 acc = vec3(0.0);   // soft front-to-back coverage: edges blur with distance
+          for (int i = 0; i < 40; i++) { if (tc > tx || cov > 0.97) break;
             if (c.x >= 0 && c.y >= 0 && c.x < N.x && c.y < N.y) {
               vec4 m = texelFetch(uGrid, ivec2(c.x * 3 + 2, c.y), 0);
-              if (m.y > 0.5 && hd.y * tc < m.x) {
-                vec4 i0 = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), i1 = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
-                for (int q = 0; q < 8; q++) { float id = q < 4 ? i0[q] : i1[q - 4]; if (id < 0.0) break; int bi = int(id) * 3;
-                  vec4 bm = texelFetch(uGBox, ivec2(bi, 0), 0), bx = texelFetch(uGBox, ivec2(bi + 1, 0), 0);
-                  vec3 t0 = (bm.xyz - ro) * ih, t1 = (bx.xyz - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
-                  float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
-                  if (a < b && a > 0.5 && a < tb) { tb = a; cb = texelFetch(uGBox, ivec2(bi + 2, 0), 0).rgb; bh = bm.w; nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
-                }
+              if (m.y > 0.5 && hd.y * tc < m.x + 8.0) {
+                vec4 fp = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), cc = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
+                vec3 bm = vec3(fp.x, m.z, fp.y), bx = vec3(fp.z, cc.w, fp.w);
+                float sf = 2.0 + tc * 0.035;   // softness grows with distance (heavy blur far out)
+                vec3 t0 = (bm - vec3(sf, 0.0, sf) - ro) * ih, t1 = (bx + vec3(sf, sf, sf) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
+                float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
+                if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf, bx.y - sf, hd.y * max(a, 0.5));
+                  if (tb > 9e4) { tb = max(a, 0.5); nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
+                  acc += (1.0 - cov) * k * cc.rgb; cov += (1.0 - cov) * k; }
               }
             }
-            float tn2 = min(nx.x, nx.y); if (tb < tn2 || hd.y * tn2 > 170.0) break;
+            float tn2 = min(nx.x, nx.y); if (hd.y * tn2 > 170.0) break;
             if (nx.x < nx.y) { c.x += st.x; nx.x += tD.x; } else { c.y += st.y; nx.y += tD.y; } tc = tn2;
           }
+          if (cov > 0.01) cb = acc / cov;
           for (int i = 0; i < 3; i++) {   // isle domes
             vec4 I = uArIsle[i]; vec3 sc = vec3(I.z, I.w, I.z); vec3 o = (ro - vec3(I.x, 0.0, I.y)) / sc, d = hd / sc; float A = dot(d, d), B = dot(o, d), C = dot(o, o) - 1.0, D = B * B - A * C;
-            if (D > 0.0) { float t = (-B - sqrt(D)) / A; if (t > 0.5 && t < tb && o.y + d.y * t >= 0.0) { tb = t; vec3 p = o + d * t; nb = normalize(p / sc); bh = -1.0; cb = i == 2 ? vec3(0.82, 0.9, 0.96) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(0.05, 0.25, p.y)); } }
+            if (D > 0.0) { float t = (-B - sqrt(D)) / A; if (t > 0.5 && t < tb && o.y + d.y * t >= 0.0) { tb = t; cov = 1.0; vec3 p = o + d * t; nb = normalize(p / sc); bh = -1.0; cb = i == 2 ? vec3(0.82, 0.9, 0.96) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(0.05, 0.25, p.y)); } }
           }
-          float ah = step(tb, 9e4); vec3 hp = ro + hd * tb; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
-          /* windows: a grid on the walls, faded out with distance (sub-pixel there) */
-          float wu = abs(nb.x) > 0.5 ? hp.z : hp.x; float win = step(0.0, bh) * (1.0 - abs(nb.y)) * step(0.45, fract(wu / 3.2 + bh * 7.0)) * step(0.4, fract(hp.y / 3.6)) * (1.0 - smoothstep(120.0, 600.0, tb));
-          vec3 acol = cb * lam * mix(0.3, 1.0, uDay); acol = mix(acol, mix(vec3(1.0, 0.78, 0.45) * 0.9, acol * 0.55, uDay), win * 0.6);
-          skR = mix(acol, reflTint(acol, refl), 0.35); skA = ah * 0.95; nGlow = cb * 0.3 * ah + vec3(1.0, 0.75, 0.4) * win * (1.0 - uDay) * 0.4;
+          float ah = cov; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
+          vec3 acol = cb * lam * mix(0.3, 1.0, uDay);
+          skR = mix(acol, reflTint(acol, refl), 0.35); skA = ah * 0.95; nGlow = cb * 0.3 * ah;
         } else
         if (uHF > 4.5) {   /* REFLECTION IMPOSTORS (src/water/impostorRefl.tsx): the reflected ray meets each baked elevation card's vertical plane; the card there
              is the landmark's real look (colours, windows) rendered once at load. Nearest opaque card wins; the ray's climb is halved (2x downward streak). */
