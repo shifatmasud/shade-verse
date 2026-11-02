@@ -18,16 +18,17 @@ export function registerFxHero(getSim: () => Sim | null, rig: any, base: number,
     return () => { const i = heroes.indexOf(h); if (i >= 0) heroes.splice(i, 1); for (let k = 0; k < 2; k++) trails[base + k].n = 0; };
 }
 
+const EXTRA_A = 10;   // alpha per-frame state: Slam radius previews (2) + web strands (2 heroes x 2 hands x 2 segments)
 const EXTRA = 120;   // per-frame state sprites: fist glow / previews, Shock tethers (2 heroes x 5 targets x 7 segments), lightning bolts   // per-frame state sprites: fist glow / preview ring (2 heroes) + lightning segments (5 bolts x 7)
 const VS = `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; attribute vec4 iD;
 varying vec2 vQ; varying vec4 vC; varying vec3 vD;
 void main(){
   vQ = position.xy; float sh = iB.w; vec3 P = iA.xyz; float S = iA.w; vec4 mv;
-  if (sh > 1.5 && sh < 2.5 || sh > 5.5 && sh < 6.5) {
+  if (sh > 1.5 && sh < 2.5 || sh > 5.5 && sh < 6.5 || sh > 15.5 && sh < 16.5) {
     vec3 ax = iB.xyz; float L = length(ax); ax = L > 1e-4 ? ax / L : vec3(0.0, 1.0, 0.0);
     vec3 vd = normalize(P - cameraPosition); vec3 sd = cross(ax, vd); float sl = length(sd); sd = sl > 1e-4 ? sd / sl : vec3(1.0, 0.0, 0.0);
     mv = viewMatrix * vec4(P + ax * (position.y * 0.5 * L) + sd * (position.x * S), 1.0);
-  } else if (sh > 3.5 && sh < 4.5 || sh > 6.5 && sh < 7.5 || sh > 13.5) {
+  } else if (sh > 3.5 && sh < 4.5 || sh > 6.5 && sh < 7.5 || sh > 13.5 && sh < 15.5) {
     mv = viewMatrix * vec4(P + vec3(position.x * S, 0.0, position.y * S), 1.0);
   } else if (sh > 4.5 && sh < 5.5) {
     vec3 ax = vec3(iB.x, 0.0, iB.z); float L = length(ax); ax = ax / max(L, 1e-4); vec3 sd = vec3(-ax.z, 0.0, ax.x);
@@ -71,6 +72,11 @@ void main(){
     float blob = 1.0 - smoothstep(0.12, 0.16, r);
     a = max(rim, blob) * (1.0 - smoothstep(0.9, 1.0, r)); col = mix(vec3(0.05, 0.05, 0.1), vec3(1.0), max(ln, blob));
   } else if (sh < 12.5) { a = pow(max(0.0, 1.0 - r), 1.6) * 0.7; }
+  else if (sh > 15.5) {   // web strand (pull / yank): comic ink line - white core, black ink rim, ends tapered
+    float ax = abs(vQ.x), w = fwidth(vQ.x) * 1.5, tip = smoothstep(1.0, 0.9, abs(vQ.y));
+    a = (1.0 - smoothstep(1.0 - w, 1.0, ax)) * tip;
+    col = mix(vec3(1.0), vec3(0.02, 0.02, 0.06), smoothstep(0.45 - w, 0.45, ax));
+  }
   else if (sh > 13.5) {   // comic shockwave band on the ground: ink rims, white leading edge, hero colour behind it (reads on bright roofs where additive washes out)
     float th = vD.z, d = r - (1.0 - th * 0.5), w = fwidth(r) * 1.5;
     a = 1.0 - smoothstep(th * 0.5 - w, th * 0.5, abs(d));
@@ -101,7 +107,7 @@ const LIMB: Record<number, string> = { 1: 'handL', 2: 'handR', 3: 'footR', 4: 'h
 export function CombatFX({ sim }: { sim: Sim }) {
     const { camera } = useThree();
     const st = useMemo(() => {
-        const add = makeSprites(ADD_MAX + EXTRA, FS_ADD, true), alpha = makeSprites(ALPHA_MAX, FS_ALPHA, false);
+        const add = makeSprites(ADD_MAX + EXTRA, FS_ADD, true), alpha = makeSprites(ALPHA_MAX + EXTRA_A, FS_ALPHA, false);
         const nv = TRAIL_SLOTS * TRAIL_PTS * 2, rg = new THREE.BufferGeometry();
         const pos = new THREE.BufferAttribute(new Float32Array(nv * 3), 3), col = new THREE.BufferAttribute(new Float32Array(nv * 4), 4), av = new THREE.BufferAttribute(new Float32Array(nv), 1);
         pos.setUsage(THREE.DynamicDrawUsage); col.setUsage(THREE.DynamicDrawUsage);
@@ -156,6 +162,23 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 const hl = h.rig.b.handL as THREE.Bone; _w.setFromMatrixPosition(hl.matrixWorld); put(_w.x, _w.y, _w.z, 0.7, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.8, 0, 0, 0);
             }
         }
+        // web-pull / yank strand (gap #3): the old 1 px GL line was invisible. Now a comic ink strand (alpha: white core + black rim, 2 instances
+        // per hand with a slight sag) plus a hero-colour glow line (additive, bloom). It shoots out from the hand over the first 60 ms.
+        const strands: number[] = [];
+        for (const h of heroes) {
+            const s = h.getSim(); if (!s || !h.visible()) continue; const cw = (s as any).cWeb; if (!cw || !cw.e || cw.e.down > 0) continue;
+            const e = cw.e, ex = e.x, ey = e.y + (e.ly || 0) + enemyBodyOffset(e), ez = e.z, grow = Math.min(1, cw.t / 0.06);
+            _c.setHex((s as any).fxCol ?? 0xa855f7);
+            for (let sd = cw.mode === 'yank' ? 0 : 1; sd < 2; sd++) {
+                _v.setFromMatrixPosition((h.rig.b[sd ? 'handR' : 'handL'] as THREE.Bone).matrixWorld);
+                const bx = _v.x + (ex - _v.x) * grow, by = _v.y + (ey - _v.y) * grow, bz = _v.z + (ez - _v.z) * grow;
+                const L = Math.hypot(bx - _v.x, by - _v.y, bz - _v.z), sag = Math.min(0.35, L * 0.03) * (1 - Math.min(1, cw.t / 0.2));   // taut after 0.2 s
+                const mx = (_v.x + bx) / 2, my = (_v.y + by) / 2 - sag, mz = (_v.z + bz) / 2;
+                strands.push((_v.x + mx) / 2, (_v.y + my) / 2, (_v.z + mz) / 2, mx - _v.x, my - _v.y, mz - _v.z, 0.065, (mx + bx) / 2, (my + by) / 2, (mz + bz) / 2, bx - mx, by - my, bz - mz, 0.065);
+                put((_v.x + bx) / 2, (_v.y + by) / 2 - sag * 0.5, (_v.z + bz) / 2, 0.16, bx - _v.x, by - _v.y, bz - _v.z, SH_SEG, _c.r, _c.g, _c.b, 0.55, 0, 0, 0);
+                if (grow >= 1 && cw.t < 0.12) put(ex, ey, ez, 0.6, 0, 0, 0, SH_GLOW, 1, 1, 1, 0.8 * (1 - cw.t / 0.12), 0, 0, 0);   // attach ping on the bot
+            }
+        }
         // lightning: 7-segment jagged lines, vertices re-randomised every 2 frames
         if (!(st.tick & 1)) st.boltSeed = Math.random() * 1000;
         let seed = st.boltSeed; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280 - 0.5; };
@@ -192,7 +215,8 @@ export function CombatFX({ sim }: { sim: Sim }) {
             d2[q] = u; d2[q + 1] = alphaP[o + 17]; d2[q + 2] = alphaP[o + 18];
         }
         let an = pool.alphaN;
-        for (let k = 0; k + 7 < previews.length && an < ALPHA_MAX + 4; k += 8, an++) { const q = an * 4; a2[q] = previews[k]; a2[q + 1] = previews[k + 1]; a2[q + 2] = previews[k + 2]; a2[q + 3] = previews[k + 3]; b2[q] = 0; b2[q + 1] = 0; b2[q + 2] = 0; b2[q + 3] = 15; c2[q] = previews[k + 4]; c2[q + 1] = previews[k + 5]; c2[q + 2] = previews[k + 6]; c2[q + 3] = 0.9; d2[q] = previews[k + 7]; d2[q + 1] = 0; d2[q + 2] = 0.05; }
+        for (let k = 0; k + 7 < previews.length && an < ALPHA_MAX + EXTRA_A; k += 8, an++) { const q = an * 4; a2[q] = previews[k]; a2[q + 1] = previews[k + 1]; a2[q + 2] = previews[k + 2]; a2[q + 3] = previews[k + 3]; b2[q] = 0; b2[q + 1] = 0; b2[q + 2] = 0; b2[q + 3] = 15; c2[q] = previews[k + 4]; c2[q + 1] = previews[k + 5]; c2[q + 2] = previews[k + 6]; c2[q + 3] = 0.9; d2[q] = previews[k + 7]; d2[q + 1] = 0; d2[q + 2] = 0.05; }
+        for (let k = 0; k + 6 < strands.length && an < ALPHA_MAX + EXTRA_A; k += 7, an++) { const q = an * 4; a2[q] = strands[k]; a2[q + 1] = strands[k + 1]; a2[q + 2] = strands[k + 2]; a2[q + 3] = strands[k + 6]; b2[q] = strands[k + 3]; b2[q + 1] = strands[k + 4]; b2[q + 2] = strands[k + 5]; b2[q + 3] = 16; c2[q] = 1; c2[q + 1] = 1; c2[q + 2] = 1; c2[q + 3] = 1; d2[q] = 0; d2[q + 1] = 0; d2[q + 2] = 0; }
         B.instanceCount = an; for (const k of ['iA', 'iB', 'iC', 'iD']) { const at = B.attributes[k] as THREE.InstancedBufferAttribute; at.clearUpdateRanges(); at.addUpdateRange(0, an * 4); at.needsUpdate = true; }
         // ribbons: camera-facing strips, width tapers with age
         const G = st.rib.geometry, P = G.attributes.position.array as Float32Array, C = (G.attributes.aC as THREE.BufferAttribute).array as Float32Array; let maxT = 0;
@@ -228,7 +252,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
             if (S && S.ph === 0) { _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); fxChargeTick(_v.x, _v.y, _v.z, S.c, col, dt, h.acc); }
         }
         // visibility decided here (onBeforeRender only runs for visible meshes): no FX on screen = no FX draw calls
-        let slamOn = false; for (const h of heroes) { const s = h.getSim(); if (s && ((s as any).slam || (s as any).snareT > 0) && h.visible()) slamOn = true; }
+        let slamOn = false; for (const h of heroes) { const s = h.getSim(); if (s && ((s as any).slam || (s as any).snareT > 0 || (s as any).cWeb) && h.visible()) slamOn = true; }
         st.add.visible = pool.addN > 0 || bolts.length > 0 || slamOn; st.alpha.visible = pool.alphaN > 0 || slamOn; st.rib.visible = trails.some((t) => t.n > 1);
         // Slam white flash: 2 frames at 35 %, then hidden (a full-screen layer costs the compositor even at opacity 0)
         if (screenFlash.frames > 0) { st.flash.style.visibility = 'visible'; st.flash.style.opacity = String(screenFlash.a); screenFlash.frames--; }
