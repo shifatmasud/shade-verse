@@ -440,7 +440,7 @@ ${GRID_TRACE_GLSL}
         vec4 cr = cloudSky(normalize(rc), uSun, uSkyT, 0.0, 0.0, uSky);
         float ck = cr.a * mix(0.55, 0.95, fr) * uDay * (1.0 - smoothstep(400.0, 1400.0, length(cameraPosition - vW)));
         col = mix(col, cr.rgb * vec3(0.78, 0.88, 0.98), ck); }
-      if (!below && rainK > 0.0) col = mix(col * mix(1.0, 0.82, uRain), vec3(0.75, 0.82, 0.9) * mix(0.25, 1.0, uDay), clamp(rainK * 0.9, 0.0, 0.45));   /* rain: darker glassy water, ring crests catch the grey sky */
+      if (!below && rainK > 0.0) col = mix(col * mix(1.0, 0.82, uRain), vec3(0.75, 0.82, 0.9) * mix(0.25, 1.0, uDay), clamp(rainK * 0.6, 0.0, 0.22));   /* rain: darker glassy water, ring crests catch the grey sky */
       if (!below && uRain > 0.02 && uDay > 0.05) { vec3 rm2 = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.45))); rm2.y = abs(rm2.y); col += rainbowSky(rm2, uSun, uRain, uDay) * mix(0.35, 0.8, fr); }   /* rainbow mirrored too */
       gl_FragColor = vec4(col, below ? aOut : aAbove);
     }`;
