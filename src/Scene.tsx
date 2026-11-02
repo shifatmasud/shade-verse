@@ -148,7 +148,7 @@ export function SnareLines({ sim }: { sim: Sim }) {
 }
 const Y = new THREE.Vector3(0, 1, 0);
 
-const _gq = new THREE.Quaternion(), _gz = new THREE.Vector3(0, 0, 1), _hp = new THREE.Vector3(), _fp = new THREE.Vector3(), _wd2 = new THREE.Vector3();
+const _hp = new THREE.Vector3(), _fp = new THREE.Vector3(), _wd2 = new THREE.Vector3();
 
 const _aq = new THREE.Quaternion(), _pq = new THREE.Quaternion(), _p1 = new THREE.Vector3(), _p2 = new THREE.Vector3(), _d1 = new THREE.Vector3();
 // two-hand aim: point a bone's segment (bone -> child) at a world target (rotation in world space, applied to the local quaternion)
@@ -333,7 +333,7 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
 // Mixamo-derived clips, retargeted offline (tools/fbx2clip.mjs) onto the generated rig
 export type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
 export const CLIPS: Record<string, Clip> = { idle: clipIdle as any, jump: clipJump as any, wall: clipWall as any, punch: clipPunch as any, swim: clipSwim as any, run: clipRun as any };
-const _wd = new THREE.Vector3(), _wp = new THREE.Vector3(), _wr = new THREE.Vector3(), _wu = new THREE.Vector3();
+const _wd = new THREE.Vector3(), _wr = new THREE.Vector3(), _wu = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
 export function sampleClip(c: Clip, t: number, loop: boolean, bones: THREE.Bone[], w: number) {
     let f = t * c.fps; if (loop) f = ((f % c.n) + c.n) % c.n; else f = Math.max(0, Math.min(c.n - 1, f));
@@ -363,7 +363,7 @@ if (DQ_ON && DQ.has('noout')) OUTLINE_STATE.on = false;
 /* Shifat 11:22 PM: on-device bisect in ONE link. ?debug&bench: holds the view, switches one thing off at a time for 6 s each
    (3 s settle + 3 s measure, frame-time average), then shows a table: ms per frame and fps for each step, and the saving vs base. */
 function Bench() {
-    const gl = useThree((s) => s.gl), scene = useThree((s) => s.scene);
+    const scene = useThree((s) => s.scene);
     const st = useRef({ i: -1, t: 0, n: 0, acc: 0, last: 0, res: [] as [string, number][], hid: [] as THREE.Object3D[], el: null as HTMLDivElement | null }).current;
     const hideBy = (pred: (o: any) => boolean) => (on: boolean) => {
         if (!on) { for (const o of st.hid) o.visible = true; st.hid.length = 0; return; }
@@ -485,17 +485,6 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
     const web = useRef<THREE.Mesh>(null!), webB = useRef<THREE.Mesh>(null!), arrow = useRef<THREE.Mesh>(null!), cores = useRef<THREE.InstancedMesh>(null!), glows = useRef<THREE.InstancedMesh>(null!);
     const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(perf.scale), hyst = useRef({ s: 0, n: 0, down: -99 });
-    const suit = useMemo(() => new THREE.MeshLambertMaterial({ color: '#2d56d0' }), []);
-    const ink = useMemo(() => new THREE.MeshBasicMaterial({ color: '#06070f', side: THREE.BackSide }), []);
-    const white = useMemo(() => new THREE.MeshLambertMaterial({ color: '#f1f4ff' }), []);
-    const hair = useMemo(() => new THREE.MeshLambertMaterial({ color: '#e8ecff' }), []);
-    const lens = useMemo(() => { const sh = new THREE.Shape(); sh.moveTo(-0.075, 0.015); sh.lineTo(0.085, 0.045); sh.lineTo(0.065, -0.015); sh.lineTo(-0.055, -0.04); sh.closePath(); return new THREE.ShapeGeometry(sh); }, []);
-    const tail1 = useMemo(() => new THREE.PlaneGeometry(0.16, 0.95).translate(0, -0.475, 0), []);
-    const tail2 = useMemo(() => new THREE.PlaneGeometry(0.12, 0.7).translate(0, -0.35, 0), []);
-    const stripe = useMemo(() => new THREE.MeshBasicMaterial({ color: '#5ff2ff', transparent: true, opacity: 0.5, blending: THREE.NoBlending }), []);
-    const gold = useMemo(() => new THREE.MeshLambertMaterial({ color: '#f2c038' }), []);
-    const dark = useMemo(() => new THREE.MeshLambertMaterial({ color: '#232a4a' }), []);
-    const red = useMemo(() => new THREE.MeshLambertMaterial({ color: '#d9344f', side: THREE.DoubleSide }), []);
     const bv = useMemo(() => new THREE.Vector3(), []);
     const bv2 = useMemo(() => new THREE.Vector3(), []);
     const waterRef = useRef<THREE.Mesh>(null!), ringRef = useRef<THREE.Mesh>(null!);
@@ -522,8 +511,6 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const enMeshes = useRef<THREE.InstancedMesh[]>([]);
     const ecol = useMemo(() => new THREE.Color(), []);
     const beaconRef = useRef<THREE.Mesh>(null!);
-    const eye = useMemo(() => new THREE.MeshBasicMaterial({ color: '#8ffcff', side: THREE.DoubleSide, transparent: true, opacity: 0.5, blending: THREE.NoBlending }), []);
-    const visor = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0b0c18' }), []);
 
     useFrame((state, rawDt) => {
         const dt = Math.min(0.1, rawDt) * (DBG && (window as any).__ts != null ? (window as any).__ts : 1);   /* Shifat 9:33 AM 'animation feels slow on ocean': the 50 ms cap made the whole game run in slow motion below 20 fps; now real time down to 10 fps */   // test hook: frame-exact stills

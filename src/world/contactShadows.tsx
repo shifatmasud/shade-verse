@@ -49,7 +49,6 @@ const SVS = `attribute vec3 aSz; varying vec2 vP; varying vec3 vSz; void main(){
 const SFS = `uniform vec3 uTint; varying vec2 vP; varying vec3 vSz; void main(){ vec2 q = abs(vP) - 0.5 * vSz.xy; float o = length(max(q, 0.0)) / vSz.z; float a = exp(-o * o * 2.4) - exp(-2.4); if (a <= 0.0) discard; gl_FragColor = vec4(mix(vec3(1.0), uTint, a / (1.0 - exp(-2.4))), 1.0); }`;
 export function StaticShadows() {
     const ref = useRef<THREE.InstancedMesh>(null!);
-    const data = useRef<{ list: number[]; n: number }>({ list: [], n: 0 });
     const { geo, mat } = useMemo(() => {
         const geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
         const mat = new THREE.ShaderMaterial({ uniforms: { uTint: { value: new THREE.Color(0.80, 0.85, 0.94) } }, vertexShader: SVS, fragmentShader: SFS, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,

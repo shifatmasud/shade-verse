@@ -354,7 +354,6 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             actor.ground = false; actor.web = false; actor.swim = false; actor.glideOn = false; actor.airT = 0;
         }
         const gx = fighting && enemy ? enemy.x : tx, gz = fighting && enemy ? enemy.z : tz;
-        const gy = fighting && enemy ? enemy.y + ((enemy as any).ly || 0) + enemyBodyOffset(enemy) : ty;
         const dx = gx - actor.pos[0], dz = gz - actor.pos[2], goalD = Math.hypot(dx, dz);
         const destYaw = Math.atan2(dx, dz);
         actor.yaw = leaderWall ? sim.ang : destYaw;

@@ -38,9 +38,9 @@ export class SoundDirector {
     private p: Prev = { web: false, spring: 0, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
     private stepAcc = 0; private stepI = 0;
     private intensity = 0; private idleT = 0; private combatT = 0; private swingVol = 0; private lastLand = -9;
-    private glideV: any = null; private chargeV: any = null;
+    private chargeV: any = null;
     // ---- character voices: one line at a time world-wide, per-kind cooldowns, so the world chatters without spamming ----
-    private voGap = 0; private voCd: Record<string, number> = { shadow: 0, ghost: 0, robot: 0, boss: 0, ped: 0 }; private bossAggro = false; private tauntI = 0;
+    private voGap = 0; private voCd: Record<string, number> = { shadow: 0, ghost: 0, robot: 0, boss: 0, ped: 0 }; private bossAggro = false;
     vo(kind: string, pick?: number[], o: { pos?: Vec3; gain?: number; cd?: number; force?: boolean } = {}) {
         if (!o.force && (this.voGap > 0 || this.voCd[kind] > 0)) return;
         const n = VO_N[kind], i = pick ? pick[Math.floor(Math.random() * pick.length)] : Math.floor(Math.random() * n);

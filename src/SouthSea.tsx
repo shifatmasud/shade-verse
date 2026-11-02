@@ -133,7 +133,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     const grassPool = useMemo(() => { setSeed(555); const N = PHONE ? 2600 : 6500, R0 = PHONE ? 34 : 44, a = new Float32Array(N * 5); for (let i = 0; i < N; i++) { const r = R0 * Math.sqrt(rnd()), t = rnd() * 6.283; a[i * 5] = Math.cos(t) * r; a[i * 5 + 1] = Math.sin(t) * r; a[i * 5 + 2] = rnd() * 6.283; a[i * 5 + 3] = 0.75 + rnd() * 0.7; a[i * 5 + 4] = rnd(); } return { N, a }; }, []);
     const grassAt = useRef([1e9, 1e9]);
     const placeGrass = (hx: number, hz: number) => {
-        const m = inst.current['grass']; if (!m) return; const { half, n, mask } = (veg as any).mask, o = new THREE.Object3D(), c = new THREE.Color(), cA = new THREE.Color('#ffffff'), cB = new THREE.Color('#cfe38f'); let k = 0;
+        const m = inst.current['grass']; if (!m) return; const { half, n, mask } = (veg as any).mask, o = new THREE.Object3D(), c = new THREE.Color(); let k = 0;
         for (let i = 0; i < grassPool.N; i++) {
             const q = grassPool.a, x = hx + q[i * 5], z = hz + q[i * 5 + 1], gi = Math.floor(x - ISLAND.cx + half), gj = Math.floor(z - ISLAND.cz + half);
             if (gi < 0 || gj < 0 || gi >= n || gj >= n) continue; const y = mask[gj * n + gi]; if (y !== y) continue;

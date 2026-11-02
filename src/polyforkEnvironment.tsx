@@ -597,7 +597,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         const scale = perf ? perf.scale : 1;
         projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(projView);
         const visible = frustum.intersectsSphere(lakeSphere) && cam.position.distanceTo(lakeSphere.center) < 70;
-        const struggling = scale <= 0.5, everyOther = scale <= 0.6;
+        const struggling = scale <= 0.5;
         copyFrame.current++;
         const wantCopy = !!copyTarget && visible && !struggling && copyFrame.current % 3 === 0;   // trees barely move: refresh the trees-only copy every 3rd frame
         if (LAKE_COPY && copyTarget && visible && !struggling) {   /* Shifat 9:33 AM: no second render, no reflections - LOCKED off */
