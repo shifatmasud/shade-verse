@@ -190,6 +190,8 @@ ${GRID_TRACE_GLSL}
             if (tt < 1e4) { vec3 bcol = (tH < tS ? vec3(0.78, 0.8, 0.82) : vec3(0.9, 0.9, 0.88)) * (0.75 + 0.3 * max(dot(normalize(uSun), vec3(0.0, 1.0, 0.0)), 0.0)) * mix(0.25, 1.0, uDay);
               float kb = 1.0 - smoothstep(150.0, 300.0, length(dB));
               skR = mix(skR, mix(bcol, reflTint(bcol, refl), 0.4), kb); skA = mix(skA, 0.95, kb); } }
+          /* Shifat 8:59 PM 'reflections should be darker blue tinted': water darkens what it mirrors and tints it toward its own deep blue */
+          skR = mix(skR * vec3(0.5, 0.62, 0.78), vec3(0.04, 0.12, 0.2), 0.25);
         } else
         if (uHF > 4.5) {   /* REFLECTION IMPOSTORS (src/water/impostorRefl.tsx): the reflected ray meets each baked elevation card's vertical plane; the card there
              is the landmark's real look (colours, windows) rendered once at load. Nearest opaque card wins; the ray's climb is halved (2x downward streak). */
