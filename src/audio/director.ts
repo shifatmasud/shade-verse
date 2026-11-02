@@ -34,6 +34,12 @@ export function surfaceAt(x: number, z: number, y: number, groundY: number): Sur
 
 interface Prev { web: boolean; spring: number; shotT: number; atkT: number; snareT: number; swim: boolean; dive: boolean; glide: boolean; mode: string; hit: number[]; down: number[]; speed: number }
 
+/* Per-move hit weight (combat feel pass, Shifat Nov 2): [snap gain, snap pitch, body gain, body pitch]. The snap is the 'punch' crack, the body the
+   'punch_heavy' thump layered under it. Jab = light and bright; cross = a fuller crack with some body; spin hook kick = the heaviest, low thump;
+   launcher = an upward thump; the web moves sit between. Summed peaks stay at or under the old single punch + the robot clank (no clipping). */
+const HIT_W: Record<number, [number, number, number, number]> = {
+    1: [0.55, 1.16, 0, 1], 2: [0.5, 0.98, 0.3, 1.14], 3: [0.36, 0.84, 0.5, 0.94], 4: [0.42, 1.02, 0.4, 1.2], 5: [0.36, 0.8, 0.55, 0.86], 6: [0.46, 1.04, 0.3, 1.08], 7: [0.45, 1.0, 0.25, 1.1],
+};
 export class SoundDirector {
     private p: Prev = { web: false, spring: 0, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
     private stepAcc = 0; private stepI = 0;
@@ -100,7 +106,12 @@ export class SoundDirector {
         audio.play(hard ? 'land' : 'land_soft', { gain: hard ? 0.85 : 0.45, rate: 0.95 + Math.random() * 0.1, prio: 3 });
         this.step(1.0);
     }
-    onHit() { audio.play('punch', { gain: 0.7, rate: 0.85 + Math.random() * 0.3, prio: 3 }); this.combatT = 6; }
+    onHit() {   // combat feel pass (Shifat Nov 2): each combo hit has its own weight instead of one punch sample for everything
+        const m = (this.sim as any).mv, W = m ? HIT_W[m.id] : undefined, j = (a: number) => 1 - a + Math.random() * 2 * a;   // +-a pitch jitter so repeats never sound identical
+        if (!W) audio.play('punch', { gain: 0.62, rate: 0.9 + Math.random() * 0.25, prio: 3 });   // web-shot hits, slam (its blast layer comes from onBlast)
+        else { audio.play('punch', { gain: W[0], rate: W[1] * j(0.05), prio: 3 }); if (W[2] > 0) audio.play('punch_heavy', { gain: W[2], rate: W[3] * j(0.04), prio: 3 }); }
+        this.combatT = 6;
+    }
     onBlast(x: number, y: number, z: number) { audio.play('punch_heavy', { gain: 0.9, rate: 0.9 + Math.random() * 0.15, pos: [x, y, z], prio: 3 }); this.combatT = 6; }
     onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.55 && this.banter('hurt')) return; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
     onOrb() { audio.play('orb', { gain: 0.45, rate: 1 + Math.min(this.sim.score, 20) * 0.012, prio: 2 }); }
