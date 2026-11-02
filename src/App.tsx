@@ -239,11 +239,12 @@ export function App() {
         </AnimatePresence>
         <AnimatePresence>
             {hud.mode !== 'play' && <motion.div className="overlay title" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.04 }} onClick={start}>
+                <div className="tcol">{/* Shifat Nov 2 10:36 'Title screen isn't auto responsive': the column is sized from the title box itself (container units), never from vh */}
                 <motion.div className="tmark" initial={{ scale: 0.6, opacity: 0, rotate: -8 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ delay: 0.05, duration: 0.9, ease: [0.2, 1.4, 0.4, 1] }}>
                     {/* Shifat's mark, taken as-is from shifatmasud/surface-tension-case-study (site/index.html .wordmark__mark) */}
                     <svg viewBox="0 0 200 200" fill="currentColor" aria-hidden="true"><path d="M100 0H200L100 100H0Z M100 100H200L100 200H0Z" /></svg>
                 </motion.div>
-                <motion.h1 className="otitle tname" initial={{ y: 16, opacity: 0, letterSpacing: '0.6em' }} animate={{ y: 0, opacity: 1, letterSpacing: '0.18em' }} transition={{ delay: 0.25, duration: 1.1, ease: 'easeOut' }}>Shade Verse</motion.h1>
+                <motion.h1 className="otitle tname" initial={{ y: 16, opacity: 0, letterSpacing: '0.34em' }} animate={{ y: 0, opacity: 1, letterSpacing: '0.18em' }} transition={{ delay: 0.25, duration: 1.1, ease: 'easeOut' }}>Shade Verse</motion.h1>
                 {hud.mode === 'over' && <div className="otext"><IOrb /><Pips n={Math.min(10, hud.score)} /></div>}
                 <motion.button className="go" aria-label="play" whileTap={{ scale: 0.95 }} onClick={(e) => { e.stopPropagation(); start(); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}><IPlay /></motion.button>
                 <div className="tprompt">{load.on ? (load.pct < 90 ? `Loading ${load.pct}%` : 'Preparing world…') : desk ? 'Click or press any key to start' : 'Tap to start'}</div>
@@ -251,6 +252,7 @@ export function App() {
                     <div><b>Mouse + keyboard</b><ul>{MAP_KB.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
                     <div><b>Gamepad</b><ul>{MAP_PAD.map(([k, v]) => <li key={k}><kbd>{k}</kbd><span>{v}</span></li>)}</ul></div>
                 </div>}
+                </div>
                 <div className="tby">by Shifat Masud</div>
             </motion.div>}
         </AnimatePresence>
