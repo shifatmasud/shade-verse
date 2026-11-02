@@ -22,14 +22,14 @@ void main(){
  c+=vec3(1.0,0.7,0.45)*0.28*uWarm*exp(-abs(vDir.y)*9.0)*(0.4+0.6*max(dot(normalize(vec3(vDir.x,0.0,vDir.z)),normalize(vec3(sun.x,0.0,sun.z))),0.0));
  {float ci=sin(vDir.x/(vDir.y+0.25)*3.0+uT*0.01)*0.5+0.5;c=mix(c,vec3(1.0,0.75,0.7),smoothstep(0.55,0.8,t)*smoothstep(0.7,1.0,ci)*0.18);}
  {vec2 st=floor(vDir.xz/(abs(vDir.y)+0.2)*90.0);float r=fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5);
- c+=vec3(1.0)*step(0.9965,r)*smoothstep(0.55,0.9,t)*0.5;}
+ c+=vec3(1.0)*step(0.9965,r)*smoothstep(0.55,0.9,t)*0.5*(1.0-uDay);}   /* no stars in a daylight sky */
  /* volumetric-look cumulus (Shifat 12:03 AM 'better volumetric clouds with subsurface scattering'; real refs Wikimedia 'White Cumulus Clouds against Blue Sky'):
     puffy domain-warped fbm on a curved layer; Beer-Lambert light toward the sun (2nd density tap offset sunward) + powder darkening for bright
     sunlit tops and soft grey-blue bases; subsurface/forward scattering (HG-like lobe) makes thin edges glow, silver lining when backlit;
     everything soft, fades into the horizon haze */
  if(vDir.y>0.0){
   vec3 dn=normalize(vDir);
-  vec2 cp=dn.xz/(dn.y+0.14)*0.55+vec2(uT*0.006,uT*0.002);
+  vec2 cp=dn.xz/(dn.y+0.22)*0.7+vec2(uT*0.006,uT*0.002);
   vec2 sd2=normalize(sun.xz+vec2(1e-4))*0.14;
   float cl=smoothstep(0.25,0.75,cloudN(cp*0.32+11.0)); float f=cloudFbm(cp)+0.3*cl-0.12, f2=cloudFbm(cp+sd2)+0.3*cl-0.12;   /* big-scale clustering -> separate puffs with blue gaps */
   float cov=mix(0.66,0.5,uRain);
