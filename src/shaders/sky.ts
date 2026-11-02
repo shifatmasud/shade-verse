@@ -35,7 +35,7 @@ void main(){
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
  if(uRain>0.001){vec3 dn2=normalize(vDir);vec2 rq=dn2.xz/(abs(dn2.y)+0.25)*2.2+vec2(uT*0.012,0.0);float rn=fract(sin(dot(floor(rq),vec2(127.1,311.7)))*43758.5);vec2 rf=fract(rq);rf=rf*rf*(3.0-2.0*rf);float rn2=mix(mix(rn,fract(sin(dot(floor(rq)+vec2(1,0),vec2(127.1,311.7)))*43758.5),rf.x),mix(fract(sin(dot(floor(rq)+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(floor(rq)+vec2(1,1),vec2(127.1,311.7)))*43758.5),rf.x),rf.y);
-  vec3 oc=mix(uHor*1.05,uHor*0.72,smoothstep(0.0,0.5,dn2.y))*(0.9+0.2*rn2);c=mix(c,oc,uRain*0.92);}
+  vec3 oc=mix(uHor*0.95,uHor*0.42,smoothstep(0.0,0.45,dn2.y))*(0.78+0.4*rn2);   /* storm deck (real lightning photos): dark slate overhead, lighter band at the horizon, heavier soft mottling */c=mix(c,oc,uRain*0.92);}
  c+=lightningSky(normalize(vDir),uFd,uFlash); c+=rainbowSky(normalize(vDir),uSunV,uRain,uDay);   /* rainbow - src/shaders/skyFx.ts */
  gl_FragColor=vec4(c,1.0);
 }`;
