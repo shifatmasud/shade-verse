@@ -7,6 +7,7 @@ import { shadowGeo, shadowMat } from '../shadowbot';
 import { withPedestrianHands } from '../pedestrianHands';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { attachInk, syncInk } from '../ink';
+import { cullInstances, viewFrustum } from '../render/instCull';
 import { useFrame } from '@react-three/fiber';
 import { BOT_SC } from './scale';
 
@@ -90,6 +91,9 @@ export function Civilians({sim}:{sim:Sim}){
         };
         for(let i=0;i<nP;i++)place(i,false);
         for(let i=0;i<nA;i++)place(i+1000,true);
-        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];syncInk(refs.current[i]);upl(refs.current[i]);refsF.current[i].count=cf[i];syncInk(refsF.current[i]);upl(refsF.current[i]);}if(DBG)(window as any).__ped=cnt.slice();});
+        for(let i=0;i<PED_TYPES.length;i++){refs.current[i].count=cnt[i];refsF.current[i].count=cf[i];}if(DBG)(window as any).__ped=cnt.slice();});
+    /* perf item 9: after the camera is placed (priority 0.5 runs after every 0-priority frame callback, before the render callbacks), crowd and
+       drone instances outside this frame's view are packed out of the draw and the upload; shadows / voice above still see the whole crowd */
+    useFrame(({camera})=>{const fr=viewFrustum(camera);for(let i=0;i<PED_TYPES.length;i++){for(const m of [refs.current[i],refsF.current[i]]){if(!m)continue;cullInstances(m,fr);syncInk(m);upl(m);}}},0.5);
     return <group>{set.map((p,i)=><instancedMesh key={i} ref={m=>{if(m&&refs.current[i]!==m){refs.current[i]=m;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}{far.map((p,i)=><instancedMesh key={'f'+i} ref={m=>{if(m&&refsF.current[i]!==m){refsF.current[i]=m;m.userData.far=true;attachInk(m)}}} args={[p.geo,p.mat,PED_CAP]} frustumCulled={false}/>)}</group>;
 }

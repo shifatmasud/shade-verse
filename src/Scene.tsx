@@ -47,6 +47,7 @@ import { treeGeo, palmFrondTex, palmTrunkTex, palmGeo, palmFrondShader, trunkWin
 import { FxaaPass, HeroHDPass, OutlinePass, OUTLINE_STATE } from './render/passes'
 import { WATERLINE } from './world/env';
 import { updateWaterline } from './water/waterline';
+import { cullInstances, viewFrustum } from './render/instCull';
 export { SHARPEN, FXAA_STATE, OUTLINE_STATE } from './render/passes';
 import { City, TenementBlock, Sky } from './world/cityScenery';
 import { HD, applyRatio, registerHero, HERO_WATER } from './heroHD';
@@ -807,7 +808,8 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
                 if (e.hit > 0) ecol.setRGB(2.6, 2.6, 2.6); else if (e.atk > 0) ecol.setRGB(1.8, 0.5 + Math.sin(sim.t * 30) * 0.2, 0.4); else ecol.setRGB(1, 1, 1);
                 m.setColorAt(cnt[k], ecol); cnt[k]++;
             }
-            for (let k = 0; k < 4; k++) { const m = enMeshes.current[k]; if (!m) continue; m.count = cnt[k]; syncInk(m); m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+            const efr = viewFrustum(camera);   // perf item 9: bots outside the view are packed out of the draw
+            for (let k = 0; k < 4; k++) { const m = enMeshes.current[k]; if (!m) continue; m.count = cnt[k]; cullInstances(m, efr); syncInk(m); m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
         }
         // orbs
         const t = sim.t;
