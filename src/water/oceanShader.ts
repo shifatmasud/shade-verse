@@ -370,8 +370,15 @@ ${GRID_TRACE_GLSL}
         if (!tir) win += vec3(1.0, 0.95, 0.82) * (pow(max(dot(normalize(tg), uSun), 0.0), 220.0) * 3.0 + pow(max(dot(normalize(tg), uSun), 0.0), 12.0) * 0.25) * uDay;
         // A narrow rough-surface critical-angle transition avoids a binary colour/alpha rim.
         float critical = smoothstep(0.84, 1.04, s2);
-        col = mix(mix(win, under, clamp(fr, 0.0, 1.0)), under, critical);
-        aOut = mix(0.45, 0.96, max(fr, critical));
+        /* Shifat 10:38 PM 'sea surface looked from below must show what's in the air, fully transparent': no total-internal-reflection wall any more -
+           the whole underside is a window: the air along the (gently wave-bent) view ray - sky gradient, skyline, sun - seen through a light water tint */
+        { vec3 td = normalize(-v + n * vec3(0.18, 0.0, 0.18)); td.y = max(td.y, 0.02); td = normalize(td);
+          vec3 aw2 = mix(uSky, zc, smoothstep(0.0, 0.45, td.y));
+          vec3 nbw2; vec4 at2 = airTrace(vec3(vW.x, 0.0, vW.z), td, nbw2, 1.0); aw2 = mix(aw2, at2.rgb * mix(0.3, 0.6, uDay), at2.a * 0.9);
+          aw2 += vec3(1.0, 0.95, 0.82) * (pow(max(dot(td, uSun), 0.0), 220.0) * 2.0 + pow(max(dot(td, uSun), 0.0), 12.0) * 0.2) * uDay;
+          vec3 winAll = tir ? aw2 : mix(win, aw2, critical);
+          col = mix(winAll, under, 0.18); }
+        aOut = 0.94;
       }
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the
       // horizon edge of big water bodies (and lets the far shading/mirror work stop early). Phones fog a little closer.
