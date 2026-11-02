@@ -429,7 +429,7 @@ ${GRID_TRACE_GLSL}
       if (!below && uDay > 0.05) {   /* Shifat 12:14 AM 'Must reflect': the cumulus mirrored in the sea - ripple-smeared, darker and blue-tinted like all reflections, stronger at grazing angles */
         vec3 rc = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.5))); rc.y = abs(rc.y);
         vec4 cr = cloudSky(normalize(rc), uSun, uSkyT, 0.0, 0.0, uSky);
-        float ck = cr.a * mix(0.35, 0.85, fr) * uDay * (1.0 - smoothstep(400.0, 1400.0, length(cameraPosition - vW)));
+        float ck = cr.a * mix(0.55, 0.95, fr) * uDay * (1.0 - smoothstep(400.0, 1400.0, length(cameraPosition - vW)));
         col = mix(col, cr.rgb * vec3(0.78, 0.88, 0.98), ck); }
       if (!below && uRain > 0.02 && uDay > 0.05) { vec3 rm2 = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.45))); rm2.y = abs(rm2.y); col += rainbowSky(rm2, uSun, uRain, uDay) * mix(0.35, 0.8, fr); }   /* rainbow mirrored too */
       gl_FragColor = vec4(col, below ? aOut : aAbove);

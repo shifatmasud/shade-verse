@@ -47,8 +47,9 @@ vec4 cloudSky(vec3 dn, vec3 sun, float t, float warm, float rain, vec3 hor){
   vec2 cp=dn.xz/(dn.y+0.22)*0.7+vec2(t*0.006,t*0.002);
   vec2 sd2=normalize(sun.xz+vec2(1e-4))*0.14;
   float cl=smoothstep(0.25,0.75,cloudN(cp*0.32+11.0)); float f=cloudFbm(cp)+0.3*cl-0.12, f2=cloudFbm(cp+sd2)+0.3*cl-0.12;
-  float cov=mix(0.66,0.5,rain);
-  float d=smoothstep(cov,cov+0.16,f), d2=smoothstep(cov,cov+0.16,f2);
+  float cov=mix(0.56,0.44,rain);
+  float er=(cloudN(cp*5.3+t*0.01)*0.6+cloudN(cp*11.0)*0.4)*0.16;   /* edge erosion -> cauliflower puff edges, soft */
+  float d=smoothstep(cov,cov+0.2,f-er), d2=smoothstep(cov,cov+0.2,f2-er);
   float hz=smoothstep(0.0,0.16,dn.y);
   if(d<=0.001) return vec4(0.0);
   float T=exp(-2.6*d2), pw=1.0-exp(-3.0*d);
