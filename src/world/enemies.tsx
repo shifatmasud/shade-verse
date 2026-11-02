@@ -32,6 +32,13 @@ const _pz = new THREE.Vector3(0, 0, 1), _pv = new THREE.Vector3();
 const SOFT_TEX = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
     g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.55)'); g.addColorStop(0.6, 'rgba(255,255,255,0.12)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+// Aim-lock marker (Shifat's VFX rule: soft, glowing, blurry, hero colour; was a sharp cyan square outline + dot): four soft glints on a
+// faint blurred diamond, white in the texture and tinted with sim fxCol each frame. Same size, same spin/pulse, still 2 draws.
+const LOCK_TEX = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d')!, m = 64, r = 46;
+    x.shadowColor = 'rgba(255,255,255,0.5)'; x.shadowBlur = 9; x.shadowOffsetX = 512; x.lineWidth = 4; x.strokeStyle = '#fff'; x.beginPath(); x.moveTo(m - 512, m - r); x.lineTo(m - 512 + r, m); x.lineTo(m - 512, m + r); x.lineTo(m - 512 - r, m); x.closePath(); x.stroke(); x.shadowColor = 'transparent';   // shadow-only stroke = a blurred line on every browser (ctx.filter is not on older iOS)
+    for (const [px, py] of [[m, m - r], [m + r, m], [m, m + r], [m - r, m]]) { const g = x.createRadialGradient(px, py, 0, px, py, 17);
+        g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.3, 'rgba(255,255,255,0.6)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(px - 17, py - 17, 34, 34); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 export function PlasmaFx({ sim }: { sim: Sim }) {
     const { camera } = useThree();
     const proj = useRef<THREE.Group[]>([]);
@@ -82,6 +89,7 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
             ret.current.quaternion.copy(camera.quaternion);
             const s2 = 1 + Math.sin(sim.t * 6) * 0.09; ret.current.scale.setScalar(s2);
             ret.current.children[0].rotation.z = sim.t * 2.4;
+            if (col !== (ret.current as any).lc) { (ret.current as any).lc = col; (((ret.current.children[0] as THREE.Mesh).material) as THREE.MeshBasicMaterial).color.setHex(tint(col, 0.35)); (((ret.current.children[1] as THREE.Mesh).material) as THREE.MeshBasicMaterial).color.setHex(tint(col, 0.75)); }
         }
     });
     return <>
@@ -101,8 +109,8 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
             <points frustumCulled={false}><bufferGeometry><bufferAttribute attach="attributes-position" args={[new Float32Array(36), 3]} /></bufferGeometry><pointsMaterial map={SOFT_TEX} color="#ffc890" size={0.55} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></points>
         </group>)}
         <group ref={ret} visible={false} frustumCulled={false}>
-            <mesh frustumCulled={false}><ringGeometry args={[0.5, 0.58, 4, 1]} /><meshBasicMaterial color="#8fe9ff" transparent opacity={0.85} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
-            <mesh frustumCulled={false}><circleGeometry args={[0.07, 8]} /><meshBasicMaterial color="#dffbff" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+            <mesh frustumCulled={false}><planeGeometry args={[1.5, 1.5]} /><meshBasicMaterial map={LOCK_TEX} color="#c99bff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+            <mesh frustumCulled={false}><planeGeometry args={[0.36, 0.36]} /><meshBasicMaterial map={SOFT_TEX} color="#eadcff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
         </group>
     </>;
 }
