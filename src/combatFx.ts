@@ -118,3 +118,11 @@ export function fxChargeTick(hx: number, hy: number, hz: number, c: number, col:
     }
 }
 export function resetFx() { pool.addN = 0; pool.alphaN = 0; for (const t of trails) t.n = 0; bolts.length = 0; screenFlash.frames = 0; }
+/** Shock discharge around the caster: ground shockwave to the hit range, core flash, glow */
+export function fxDischarge(x: number, gy: number, z: number, R: number, col: number) {
+    const y = gy + 0.06;
+    emit(SH_GRING, x, y, z, 0, 0, 0, 0.25, 0.4, R, CYAN, 1, 0, 0, 0.14);
+    emit(SH_GBAND, x, y + 0.01, z, 0, 0, 0, 0.25, 0.4, R, col, 1, 0, 0, 0.08);
+    emit(SH_CORE, x, gy + 1.2, z, 0, 0, 0, 0.06, 1.2, 2.0, 0xe8ffff, 1);
+    emit(SH_GLOW, x, gy + 1.2, z, 0, 0, 0, 0.3, 2.4, 3.0, CYAN, 0.9, 0, 0, 0.12, 2);
+}

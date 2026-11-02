@@ -6,7 +6,7 @@ import { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { addP, alphaP, pool, F, ADD_MAX, ALPHA_MAX, stepPools, stepTrails, trails, trailPoint, TRAIL_PTS, TRAIL_SLOTS, bolts, screenFlash, emit, fxChargeTick, SH_CORE, SH_GLOW, SH_SPARK, SH_SEG, SH_GPREVIEW, SH_GSTREAK } from './combatFx';
-import { MOVES, getCompanionSim, type Sim } from './sim';
+import { MOVES, SNARE, enemyBodyOffset, getCompanionSim, type Sim } from './sim';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 type FxHero = { getSim: () => Sim | null; rig: any; base: number; visible: () => boolean; acc: { v: number }; full: boolean };
@@ -18,7 +18,7 @@ export function registerFxHero(getSim: () => Sim | null, rig: any, base: number,
     return () => { const i = heroes.indexOf(h); if (i >= 0) heroes.splice(i, 1); for (let k = 0; k < 2; k++) trails[base + k].n = 0; };
 }
 
-const EXTRA = 48;   // per-frame state sprites: fist glow / preview ring (2 heroes) + lightning segments (5 bolts x 7)
+const EXTRA = 120;   // per-frame state sprites: fist glow / previews, Shock tethers (2 heroes x 5 targets x 7 segments), lightning bolts   // per-frame state sprites: fist glow / preview ring (2 heroes) + lightning segments (5 bolts x 7)
 const VS = `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; attribute vec4 iD;
 varying vec2 vQ; varying vec4 vC; varying vec3 vD;
 void main(){
@@ -159,6 +159,18 @@ export function CombatFX({ sim }: { sim: Sim }) {
         // lightning: 7-segment jagged lines, vertices re-randomised every 2 frames
         if (!(st.tick & 1)) st.boltSeed = Math.random() * 1000;
         let seed = st.boltSeed; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280 - 0.5; };
+        const zig = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, al: number, w: number, r: number, g: number, bl: number) => {
+            let px = ax, py = ay, pz = az; const L = Math.hypot(bx - ax, by - ay, bz - az), j = Math.min(0.7, L * 0.1);
+            for (let k = 1; k <= 7; k++) { const f = k / 7, nx = k === 7 ? bx : ax + (bx - ax) * f + rnd() * j, ny = k === 7 ? by : ay + (by - ay) * f + rnd() * j, nz = k === 7 ? bz : az + (bz - az) * f + rnd() * j; put((px + nx) / 2, (py + ny) / 2, (pz + nz) / 2, w, nx - px, ny - py, nz - pz, SH_SEG, r, g, bl, al, 0, 0, 0); px = nx; py = ny; pz = nz; }
+        };
+        // Shock (finding #6): visible energy tethers from the caster's hands to every bound bot, glow on the hands, until the discharge
+        for (const h of heroes) {
+            const s = h.getSim(); if (!s || !h.visible()) continue; const sa = s as any; if (!(sa.snareT > SNARE.IMPACT) || !sa.snareList) continue;
+            _c.setHex(sa.fxCol ?? 0xa855f7); _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); _w.setFromMatrixPosition((h.rig.b.handL as THREE.Bone).matrixWorld);
+            const hx = (_v.x + _w.x) / 2, hy = (_v.y + _w.y) / 2, hz = (_v.z + _w.z) / 2, grip = sa.snareT < SNARE.GATHER_END, fl = 0.75 + 0.25 * Math.sin(s.t * 60);
+            put(hx, hy, hz, grip ? 1.1 : 0.8, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.9, 0, 0, 0); put(hx, hy, hz, 0.35, 0, 0, 0, SH_CORE, 0.8, 1, 1, 0.9 * fl, 0, 0, 0);
+            for (const e of sa.snareList) { if (e.down > 0) continue; const ey = e.y + enemyBodyOffset(e); zig(hx, hy, hz, e.x, ey, e.z, fl, grip ? 0.09 : 0.06, 0.6, 0.97, 1); if (grip) zig(hx, hy, hz, e.x, ey, e.z, 0.6 * fl, 0.05, _c.r, _c.g, _c.b); put(e.x, ey, e.z, 1.0, 0, 0, 0, SH_GLOW, 0.5, 0.95, 1, 0.6 * fl, 0, 0, 0); }
+        }
         for (const bo of bolts) {
             const u = bo.t / bo.life, al = 1 - u; let px = bo.ax, py = bo.ay, pz = bo.az; const L = Math.hypot(bo.bx - bo.ax, bo.by - bo.ay, bo.bz - bo.az), j = Math.min(0.6, L * 0.12);
             for (let k = 1; k <= 7; k++) {
@@ -216,7 +228,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
             if (S && S.ph === 0) { _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); fxChargeTick(_v.x, _v.y, _v.z, S.c, col, dt, h.acc); }
         }
         // visibility decided here (onBeforeRender only runs for visible meshes): no FX on screen = no FX draw calls
-        let slamOn = false; for (const h of heroes) { const s = h.getSim(); if (s && (s as any).slam && h.visible()) slamOn = true; }
+        let slamOn = false; for (const h of heroes) { const s = h.getSim(); if (s && ((s as any).slam || (s as any).snareT > 0) && h.visible()) slamOn = true; }
         st.add.visible = pool.addN > 0 || bolts.length > 0 || slamOn; st.alpha.visible = pool.alphaN > 0 || slamOn; st.rib.visible = trails.some((t) => t.n > 1);
         // Slam white flash: 2 frames at 35 %, then hidden (a full-screen layer costs the compositor even at opacity 0)
         if (screenFlash.frames > 0) { st.flash.style.visibility = 'visible'; st.flash.style.opacity = String(screenFlash.a); screenFlash.frames--; }
