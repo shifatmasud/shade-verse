@@ -44,7 +44,7 @@ import { Boats, Gulls, Fish, MarineSnow, Whale } from './world/sealife';
 import { Jellies } from './world/jellies';
 import { buildEnemy, PlasmaFx, EnemyDeathFx, EnemyShotsFx } from './world/enemies';
 import { DayNight } from './world/dayNight';
-import { FarPropGate, CityGate } from './world/gates';
+import { FarPropGate, CityGate, HarborGate } from './world/gates';
 import { HERO_SC, BOT_SC } from './world/scale';
 import { WindLines, Civilians } from './world/civilians';
 import { FlyingCars } from './world/flyingCars';
@@ -840,7 +840,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <SelectiveBloomPass />
         {OUTLINE_STATE.on && HD.enabled ? <HeroHDPass /> : null}
         <Sky />
-        <RoofProps harborOnly />
+        <HarborGate><RoofProps harborOnly /></HarborGate>
         <CityGate><City /><TenementBlock />
         <ParkGround />
         <React.Suspense fallback={null}>
