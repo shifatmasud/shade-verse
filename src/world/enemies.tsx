@@ -73,7 +73,8 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
             }
         }
         const e = sim.aimE;
-        ret.current.visible = !!e && sim.mode === 'play';
+        const sa = sim as any, inMelee = !!(sa.mv || sa.slam || sa.chainT > 0 || sa.cWeb);   // gap #5: the web-shot lock square cluttered melee (sat over the punched bot) - hidden during a melee move/slam and the combo window
+        ret.current.visible = !!e && sim.mode === 'play' && !inMelee; if (DBG) (window as any).__retVis = ret.current.visible;
         if (e) {
             ret.current.position.set(e.x, e.y + (e.boss ? BOSS_BODY_OFFSET : [0.8, 0.3, 1.05, 0.95][e.kind ?? 0]) + 1.05, e.z);
             ret.current.quaternion.copy(camera.quaternion);
