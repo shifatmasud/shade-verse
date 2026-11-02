@@ -80,7 +80,8 @@ export const GRID_TRACE_GLSL = `
                 float sf = 3.0 + tc * 0.05;   // softness grows with distance (heavy blur far out)
                 vec3 t0 = (bm - vec3(sf, 0.0, sf) - ro) * ih, t1 = (bx + vec3(sf, sf, sf) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
                 float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
-                if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf, bx.y - sf, hd.y * max(a, 0.5));
+                if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float hsT = fract(sin(dot(vec2(c), vec2(39.3468, 11.135))) * 24634.6345); float topY = bx.y * (0.72 + 0.28 * hsT); float sfT = sf * 2.2 + topY * 0.18;   /* soft, uneven skyline: no flat slab tops (Nov 1 9:14 PM) */
+                  float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(topY + sfT, topY - sfT, hd.y * max(a, 0.5));
                   if (tb > 9e4) { tb = max(a, 0.5); nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
                   vec2 cw = uGB.xy + (vec2(c) + 0.5) * uGB.z; float hs = fract(sin(dot(vec2(c), vec2(12.9898, 78.233))) * 43758.5453);
                   /* Shifat Nov 1 7:50 PM 'nighttime glow reflections are missing': each block's light at night - warm windows across the city, magenta/cyan neon in Neon Harbor */
