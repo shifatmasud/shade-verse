@@ -1,3 +1,4 @@
+import { SKYFX_GLSL } from '../shaders/skyFx';
 import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from './gridRefl';
 import { HF_HMAX, HF_BRIDGE, HF_DECK } from './heightRefl';
 import { IMP_HMAX } from './impostorRefl';
@@ -18,7 +19,7 @@ export const WAVES = WAVES_GLSL;
 export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WAVES_V_GLSL + WAVES_VD_GLSL + WGHJ_GLSL + `varying vec4 vGj; uniform float uTime; uniform vec4 uHeroA, uHeroB; uniform vec3 uHw; uniform vec2 uBench; varying vec2 vP0; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw; void main(){ vHw = uHw;   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); ${'vec2 la = abs(position.xz) / ' + OCEAN_HALF.toFixed(1) + '; vec2 sa = ' + (OCEAN_WARP * OCEAN_HALF * 2 / OCEAN_N).toFixed(4) + ' * pow(max(la, vec2(1e-4)), vec2(' + ((OCEAN_WARP - 1) / OCEAN_WARP).toFixed(4) + ')); float sp = max(sa.x, sa.y);'}   /* local grid spacing (m) of the warped sheet: waves shorter than ~2 cells fade (see whV) */ w.z = min(w.z, -222.0); vec3 hd = uBench.x > 0.5 ? vec3(0.0) : whdV(w.xz, uTime, sp); float h = hd.x; w.y += h; vP0 = w.xz; { gChop = sp < 2.5; float hh = 0.0; vec3 gj = wghj(w.xz, uTime, hh); vGj = vec4(gj, hh); }   /* Nov 1 phone data: the sea's per-pixel shading is ~95% of its cost on the phone - the wave gradient / Jacobian / height (13 wave trains of trig) now run per vertex (~30k) and are interpolated, not per pixel (~200k+) */ w.xz += hd.yz * smoothstep(-222.0, -232.0, w.z);   /* one pass: height + sideways push share each train's trig */   /* Gerstner: sideways toward the crests (none right at the sea wall) */ vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);');
 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
-export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
+export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; uniform float uSkyT; ${SKYFX_GLSL} varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
     uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform float uUseRefl; ${GRID_UNIFORMS_GLSL} uniform sampler2D tMir; uniform mat4 uMirM; uniform float uMir; uniform vec2 uMirPx; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
@@ -370,15 +371,15 @@ ${GRID_TRACE_GLSL}
         if (!tir) win += vec3(1.0, 0.95, 0.82) * (pow(max(dot(normalize(tg), uSun), 0.0), 220.0) * 3.0 + pow(max(dot(normalize(tg), uSun), 0.0), 12.0) * 0.25) * uDay;
         // A narrow rough-surface critical-angle transition avoids a binary colour/alpha rim.
         float critical = smoothstep(0.84, 1.04, s2);
-        /* Shifat 10:38 PM 'sea surface looked from below must show what's in the air, fully transparent': no total-internal-reflection wall any more -
-           the whole underside is a window: the air along the (gently wave-bent) view ray - sky gradient, skyline, sun - seen through a light water tint */
-        { vec3 td = normalize(-v + n * vec3(0.18, 0.0, 0.18)); td.y = max(td.y, 0.02); td = normalize(td);
+        /* Shifat 10:38-10:48 PM: from below the surface shows what's in the air, semi-transparent, no visible edges (refs: Wikimedia Snell's window photos -
+           a bright soft sky disc overhead, the air seen wavy and blurred through it, outside it a darker teal mirror of the water, soft rim) */
+        { float crit2 = smoothstep(0.62, 1.12, s2);
+          vec3 td = normalize(-v + n * vec3(0.18, 0.0, 0.18)); td.y = max(td.y, 0.02); td = normalize(td);
           vec3 aw2 = mix(uSky, zc, smoothstep(0.0, 0.45, td.y));
-          vec3 nbw2; vec4 at2 = airTrace(vec3(vW.x, 0.0, vW.z), td, nbw2, 1.0); aw2 = mix(aw2, at2.rgb * mix(0.3, 0.6, uDay), at2.a * 0.9);
-          aw2 += vec3(1.0, 0.95, 0.82) * (pow(max(dot(td, uSun), 0.0), 220.0) * 2.0 + pow(max(dot(td, uSun), 0.0), 12.0) * 0.2) * uDay;
-          vec3 winAll = tir ? aw2 : mix(win, aw2, critical);
-          col = mix(winAll, under, 0.18); }
-        aOut = 0.94;
+          vec3 nbw2; vec4 at2 = airTrace(vec3(vW.x, 0.0, vW.z), td, nbw2, 1.0); aw2 = mix(aw2, mix(aw2, at2.rgb * mix(0.3, 0.6, uDay), 0.55), at2.a * 0.6);
+          aw2 += vec3(1.0, 0.95, 0.82) * (pow(max(dot(td, uSun), 0.0), 60.0) * 0.9 + pow(max(dot(td, uSun), 0.0), 8.0) * 0.2) * uDay;
+          col = mix(mix(aw2, under, 0.22 + 0.5 * clamp(fr, 0.0, 1.0)), under * 0.9, crit2);
+          aOut = mix(0.6, 0.86, crit2); }
       }
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the
       // horizon edge of big water bodies (and lets the far shading/mirror work stop early). Phones fog a little closer.

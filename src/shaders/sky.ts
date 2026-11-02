@@ -1,6 +1,7 @@
+import { SKYFX_GLSL } from './skyFx';
 // Sky dome shader (gradient, sun disc, clouds). Moved verbatim from Scene.tsx.
 export const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
-export const SKY_FS = `varying vec3 vDir;uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;
+export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
  vec3 top=mix(vec3(0.16,0.42,0.9),vec3(0.24,0.5,0.86),uWarm);vec3 mid=mix(vec3(0.6,0.8,0.96),vec3(0.96,0.72,0.68),uWarm);
@@ -32,26 +33,12 @@ void main(){
     float rr2=max(sr,px*0.7),dd=length(sf-so);float sv=smoothstep(rr2,rr2*0.25,dd)*min(1.0,sr/rr2*1.6);
     float sb=mix(0.3,1.25,pow(fract(sh*29.7),4.0))*(0.8+0.2*sin(uT*(1.3+sz*2.0)+sh*60.0));
     nc+=mix(vec3(0.75,0.85,1.0),vec3(1.0,0.92,0.8),fract(sh*7.3))*sv*sb*3.2*smoothstep(0.06,0.35,dn.y);}}
-  /* aurora v3 (Shifat 10:34-10:36 PM: realistic, 3D, progressively blurry, no visible sharpness; refs Wikimedia): the curtain is a real wavy ribbon
-     hanging between 100 and 300 'km' over the sea - the view ray is sampled at 7 heights, each hit point measured against the ribbon line, so curtains
-     foreshorten to the horizon in true perspective; width grows with height (soft hem, blurrier top), colour green -> faint violet with height */
-  if(dn.y>0.02){vec3 ac=vec3(0.0);
-   for(int k=0;k<7;k++){float fk=float(k)/6.0;float H=1.0+fk*2.2;vec2 p=dn.xz/dn.y*H;
-    float fx=-2.6+1.6*sin(p.x*0.35+uT*0.02)+0.7*sin(p.x*0.83-uT*0.03)+0.3*sin(p.x*1.9+uT*0.05);
-    float d=abs(p.y-fx);float w=0.35+fk*1.1;
-    float a=exp(-d*d/(w*w))*exp(-fk*2.6)*(0.55+0.45*sin(p.x*0.6+uT*0.04+fk))*(0.7+0.3*sin(p.x*2.3-uT*0.06));
-    a*=smoothstep(18.0,6.0,length(p))*smoothstep(-14.0,-4.0,p.x*0.0+p.y+8.0);
-    ac+=mix(vec3(0.12,1.0,0.45),vec3(0.55,0.22,0.75),smoothstep(0.35,1.0,fk))*a;}
-   nc+=ac*0.26*smoothstep(0.02,0.1,dn.y);}
+  nc+=auroraSky(dn,uT,7.0);   /* aurora v3 - src/shaders/skyFx.ts (shared with the sea reflection) */
   float mg=max(dot(dn,-sun),0.0);nc+=vec3(0.75,0.85,1.0)*(pow(mg,60.0)*0.25)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.2;
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
  if(uRain>0.001){vec3 dn2=normalize(vDir);vec2 rq=dn2.xz/(abs(dn2.y)+0.25)*2.2+vec2(uT*0.012,0.0);float rn=fract(sin(dot(floor(rq),vec2(127.1,311.7)))*43758.5);vec2 rf=fract(rq);rf=rf*rf*(3.0-2.0*rf);float rn2=mix(mix(rn,fract(sin(dot(floor(rq)+vec2(1,0),vec2(127.1,311.7)))*43758.5),rf.x),mix(fract(sin(dot(floor(rq)+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(floor(rq)+vec2(1,1),vec2(127.1,311.7)))*43758.5),rf.x),rf.y);
   vec3 oc=mix(uHor*1.05,uHor*0.72,smoothstep(0.0,0.5,dn2.y))*(0.9+0.2*rn2);c=mix(c,oc,uRain*0.92);}
- /* rainbow (Shifat 9:46 PM): 42 deg ring around the anti-sun point, spectral across its width, faint outer secondary at 51 deg (reversed); shows while rain is light / clearing in daylight with the sun up */
- {vec3 dn3=normalize(vDir);float ra=acos(clamp(dot(dn3,-uSunV),-1.0,1.0));float rw=smoothstep(0.03,0.25,uRain)*(1.0-smoothstep(0.55,0.85,uRain))*uDay*smoothstep(-0.02,0.08,uSunV.y)*smoothstep(0.0,0.05,dn3.y);
-  if(rw>0.001){float u=(ra-0.695)/0.065;vec3 rc=clamp(vec3(1.5-abs(u-0.85)*2.2,1.5-abs(u-0.5)*2.2,1.5-abs(u-0.15)*2.2),0.0,1.0)*smoothstep(-0.15,0.35,u)*(1.0-smoothstep(0.65,1.15,u));
-   float u2=(0.945-ra)/0.07;vec3 rc2=clamp(vec3(1.5-abs(u2-0.85)*2.2,1.5-abs(u2-0.5)*2.2,1.5-abs(u2-0.15)*2.2),0.0,1.0)*smoothstep(-0.2,0.4,u2)*(1.0-smoothstep(0.6,1.2,u2));
-   c+=(rc*0.32+rc2*0.1)*rw*(1.0-smoothstep(0.75,1.0,dn3.y));}}
+ c+=rainbowSky(normalize(vDir),uSunV,uRain,uDay);   /* rainbow - src/shaders/skyFx.ts */
  gl_FragColor=vec4(c,1.0);
 }`;

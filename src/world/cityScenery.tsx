@@ -1,3 +1,4 @@
+import { SKY_T } from '../shaders/skyFx';
 import { WEATHER } from './env';
 import * as THREE from 'three';
 import { useEffect, useMemo, useRef } from 'react';
@@ -36,8 +37,8 @@ export function TenementBlock(){
 
 export function Sky() {
     const ref = useRef<THREE.Mesh>(null!);
-    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: { value: 0 }, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm, uRain: WEATHER.rain } }), []);
-    useFrame((st) => { mat.uniforms.uT.value = st.clock.elapsedTime; });
+    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: SKY_T, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm, uRain: WEATHER.rain } }), []);
+    useFrame((st) => { SKY_T.value = st.clock.elapsedTime; });
     useFrame(({ camera }) => { ref.current.position.copy(camera.position); ref.current.visible = !UW.on; });
     return <mesh ref={ref} material={mat} renderOrder={-10} frustumCulled={false}><sphereGeometry args={[400, 24, 12]} /></mesh>;
 }
