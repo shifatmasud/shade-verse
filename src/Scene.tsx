@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { traversalBones, traversalRoot } from './heroTraversal';
+import { enemyReact } from './enemyReact';
 import gsap from 'gsap';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
@@ -805,10 +806,11 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
                 const e = sim.enemies[i]; if (e.boss) continue; const k = e.kind || 0, m = enMeshes.current[k]; if (!m) continue;
                 const fall = e.down > 0 ? Math.min(1, (3 - e.down) * 5) : 0, bob = k >= 2 ? Math.sin(sim.t * 2.5 + i) * 0.12 : 0;
                 const ea = e as any, ly = ea.ly || 0, lean = e.down > 0 ? 0 : Math.min(1, e.hit / 0.35) * (ea.hitDir >= 3 ? 0.55 : 0.32), tum = ly > 0.05 ? Math.sin(Math.min(1, ly / 3) * 1.57) * (ea.slam ? -1.1 : 0.9) : 0;
-                tmp.position.set(e.x, e.y + 0.06 - fall * 0.6 + bob + ly, e.z); tmp.rotation.set(fall * -1.4 - lean - tum, e.ang, 0); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = (e.kind === 3 ? BOT_SC : 1.25) * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc, sc, sc); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
+                const rx = enemyReact(e, sim, dt, lean);   // hit reaction: flinch away from the blow on a spring, squash jolt, hit-stop shake, white-hot pop cooling to the hero's colour (src/enemyReact.ts)
+                tmp.position.set(e.x + rx.jx, e.y + 0.06 - fall * 0.6 + bob + ly, e.z + rx.jz); tmp.rotation.set(fall * -1.4 - tum, e.ang, 0); tmp.quaternion.premultiply(rx.q); { const bi = e.born === undefined ? 1 : Math.min(1, Math.max(0, (sim.t - e.born) / 0.6)), fo = e.down > 0 ? Math.min(1, e.down / 0.5) : 1, sc = (e.kind === 3 ? BOT_SC : 1.25) * Math.max(0.001, bi * bi * (3 - 2 * bi)) * Math.max(0.001, fo); tmp.scale.set(sc * rx.sxz, sc * rx.sy, sc * rx.sxz); }   // new or re-placed enemies grow in, KO'd ones shrink out, so nothing pops
                 tmp.updateMatrix();
                 m.setMatrixAt(cnt[k], tmp.matrix);
-                if (e.hit > 0) ecol.setRGB(2.6, 2.6, 2.6); else if (e.atk > 0) ecol.setRGB(1.8, 0.5 + Math.sin(sim.t * 30) * 0.2, 0.4); else ecol.setRGB(1, 1, 1);
+                if (rx.hot) ecol.setRGB(rx.r, rx.g, rx.b); else if (e.atk > 0) ecol.setRGB(1.8, 0.5 + Math.sin(sim.t * 30) * 0.2, 0.4); else ecol.setRGB(1, 1, 1);
                 m.setColorAt(cnt[k], ecol); cnt[k]++;
             }
             const efr = viewFrustum(camera);   // perf item 9: bots outside the view are packed out of the draw
