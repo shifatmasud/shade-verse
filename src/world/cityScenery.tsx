@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { world } from '../sim';
 import { TOD, UW } from './env';
 import { SKY_FS, SKY_VS } from '../shaders/sky';
+const MOON_TEX = new THREE.TextureLoader().load(`${(import.meta as any).env.BASE_URL}moon.png`); MOON_TEX.colorSpace = THREE.NoColorSpace;   // real full-moon photo (Wikimedia FullMoon2010), 128 px
 import { CITY_FS, CITY_VS } from '../shaders/city';
 import tenementData from '../polyfork-tenement.json';
 import { useFrame } from '@react-three/fiber';
@@ -37,7 +38,7 @@ export function TenementBlock(){
 
 export function Sky() {
     const ref = useRef<THREE.Mesh>(null!);
-    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: SKY_T, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm, uRain: WEATHER.rain } }), []);
+    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: SKY_T, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm, uRain: WEATHER.rain, uMoon: { value: MOON_TEX } } }), []);
     useFrame((st) => { SKY_T.value = st.clock.elapsedTime; });
     useFrame(({ camera }) => { ref.current.position.copy(camera.position); ref.current.visible = !UW.on; });
     return <mesh ref={ref} material={mat} renderOrder={-10} frustumCulled={false}><sphereGeometry args={[400, 24, 12]} /></mesh>;

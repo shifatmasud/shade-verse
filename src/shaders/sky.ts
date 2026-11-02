@@ -1,7 +1,7 @@
 import { SKYFX_GLSL } from './skyFx';
 // Sky dome shader (gradient, sun disc, clouds). Moved verbatim from Scene.tsx.
 export const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
-export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;
+export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform sampler2D uMoon;
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
  vec3 top=mix(vec3(0.16,0.42,0.9),vec3(0.24,0.5,0.86),uWarm);vec3 mid=mix(vec3(0.6,0.8,0.96),vec3(0.96,0.72,0.68),uWarm);
@@ -34,7 +34,12 @@ void main(){
     float sb=mix(0.3,1.25,pow(fract(sh*29.7),4.0))*(0.8+0.2*sin(uT*(1.3+sz*2.0)+sh*60.0));
     nc+=mix(vec3(0.75,0.85,1.0),vec3(1.0,0.92,0.8),fract(sh*7.3))*sv*sb*3.2*smoothstep(0.06,0.35,dn.y);}}
   nc+=auroraSky(dn,uT,7.0);   /* aurora v3 - src/shaders/skyFx.ts (shared with the sea reflection) */
-  float mg=max(dot(dn,-sun),0.0);nc+=vec3(0.75,0.85,1.0)*(pow(mg,60.0)*0.25)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.2;
+  float mg=max(dot(dn,-sun),0.0);   /* moon from a real photo (Wikimedia 'FullMoon2010', public/moon.png): the photographed disc in local tangent coords, soft anti-aliased limb,
+     warmer when low (atmosphere), a tight bright halo plus a wide faint glow like the Gullmarn fjord photo */
+   { vec3 md=-sun; vec3 mu=normalize(cross(md, abs(md.y)>0.98?vec3(1.0,0.0,0.0):vec3(0.0,1.0,0.0))); vec3 mv=cross(mu,md); vec2 q=vec2(dot(dn,mu),dot(dn,mv))/0.036; float mr=length(q);
+     float disc=(1.0-smoothstep(0.95,1.03,mr))*step(0.0,dot(dn,md)); vec3 tint=mix(vec3(1.0,0.82,0.62),vec3(1.0,0.98,0.94),smoothstep(0.0,0.35,md.y));
+     float tx=texture2D(uMoon,clamp(q*0.5+0.5,0.0,1.0)).r; nc=mix(nc,tint*(0.25+1.25*pow(tx,1.15)),disc);
+     nc+=vec3(0.75,0.85,1.0)*(pow(mg,90.0)*0.32+pow(mg,10.0)*0.06)*(1.0-disc); }
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
  if(uRain>0.001){vec3 dn2=normalize(vDir);vec2 rq=dn2.xz/(abs(dn2.y)+0.25)*2.2+vec2(uT*0.012,0.0);float rn=fract(sin(dot(floor(rq),vec2(127.1,311.7)))*43758.5);vec2 rf=fract(rq);rf=rf*rf*(3.0-2.0*rf);float rn2=mix(mix(rn,fract(sin(dot(floor(rq)+vec2(1,0),vec2(127.1,311.7)))*43758.5),rf.x),mix(fract(sin(dot(floor(rq)+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(floor(rq)+vec2(1,1),vec2(127.1,311.7)))*43758.5),rf.x),rf.y);
