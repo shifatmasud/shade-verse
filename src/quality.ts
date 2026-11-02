@@ -43,6 +43,7 @@ export const QK = {
     foliage: HQ ? 1.9 : LOWQ ? 1.25 : (QUALITY.coarse || QUALITY.weakGpu) ? 1.45 : 1.65,
     lakeCopyScale: HQ ? 0.5 : 0.25,
     lakeSteps: HQ ? 16 : 7,
+    fxLow: LOWQ || QUALITY.coarse,   /* combat hit FX cheap path (combatFx.ts LOW): ?q=low and every touch/phone device (Adreno 506) */
 };
 // Anti-aliasing: MSAA only where it is cheap (not touch, not integrated/mobile GPUs — Shifat's UHD 600 flags MSAA slow); FXAA elsewhere.
 export const AA_MSAA = !QUALITY.coarse && !QUALITY.weakGpu && !LOWQ;

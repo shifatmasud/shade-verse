@@ -4,6 +4,8 @@
 // 3 draw calls (additive sprites, alpha sprites, ribbons) + the additive set in the bloom pass. Nothing allocates per hit.
 // Recipe numbers: /home/user/tab/files/combat_reference.md section D.
 
+import { QK } from './quality';
+
 // additive shapes
 export const SH_GLOW = 0, SH_RING = 1, SH_SPARK = 2, SH_CORE = 3, SH_GRING = 4, SH_GSTREAK = 5, SH_SEG = 6, SH_GPREVIEW = 7;
 // alpha shapes
@@ -16,13 +18,16 @@ export const addP = new Float32Array(ADD_MAX * F), alphaP = new Float32Array(ALP
 export const pool = { addN: 0, alphaN: 0 };
 
 function slot(alpha: boolean): number {
-    const buf = alpha ? alphaP : addP, max = alpha ? ALPHA_MAX : ADD_MAX;
+    const buf = alpha ? alphaP : addP, max = alpha ? (LOW ? ALPHA_LOW : ALPHA_MAX) : (LOW ? ADD_LOW : ADD_MAX);   // low tier: smaller live caps (fewer instances drawn)
     if (alpha ? pool.alphaN < max : pool.addN < max) { const i = alpha ? pool.alphaN++ : pool.addN++; return i; }
     let oi = 0, oa = -1;   // full: recycle the particle closest to its end (oldest first, never allocate)
     for (let i = 0; i < max; i++) { const f = buf[i * F + 6] / Math.max(1e-3, buf[i * F + 7]); if (f > oa) { oa = f; oi = i; } }
     return oi;
 }
-export let LOW = false;   // low quality tier: halve sparks, drop dust
+// Low FX tier = the game's quality setting (quality.ts QK.fxLow: ?q=low, or any touch/phone device): halve sparks, drop dust,
+// live caps 80 additive + 20 alpha instead of 128 + 32. Desktop auto/high keeps the full path.
+export const ADD_LOW = 80, ALPHA_LOW = 20;
+export let LOW = QK.fxLow;
 export function setFxLow(v: boolean) { LOW = v; }
 export function emit(shape: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, s0: number, s1: number, col: number, a = 1, grav = 0, drag = 0, thick = 0.12, fade = 1) {
     const alpha = shape >= 10, i = slot(alpha), b = alpha ? alphaP : addP, o = i * F;

@@ -5,7 +5,7 @@
 import { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { addP, alphaP, pool, F, ADD_MAX, ALPHA_MAX, stepPools, stepTrails, trails, trailPoint, TRAIL_PTS, TRAIL_SLOTS, bolts, screenFlash, emit, fxChargeTick, SH_CORE, SH_GLOW, SH_SPARK, SH_SEG, SH_GPREVIEW, SH_GSTREAK } from './combatFx';
+import { addP, alphaP, pool, F, ADD_MAX, ALPHA_MAX, stepPools, stepTrails, trails, trailPoint, TRAIL_PTS, TRAIL_SLOTS, bolts, screenFlash, emit, fxChargeTick, SH_CORE, SH_GLOW, SH_SPARK, SH_SEG, SH_GPREVIEW, SH_GSTREAK, LOW } from './combatFx';
 import { MOVES, SNARE, enemyBodyOffset, getCompanionSim, type Sim } from './sim';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
@@ -119,7 +119,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
         document.body.appendChild(st.flash);
         const write = () => { if (st.tick === st.frame) return; st.frame = st.tick; writeBuffers(); };   // once per game frame, at the first render that draws an FX mesh
         st.add.onBeforeRender = write; st.alpha.onBeforeRender = write; st.rib.onBeforeRender = write;
-        if ((import.meta as any).env.VITE_DBG) (window as any).__combatFx = { pool, trails, st };
+        if ((import.meta as any).env.VITE_DBG) (window as any).__combatFx = { pool, trails, st, get low() { return LOW; } };
         return () => { st.flash.remove(); };
     }, []);
     // write the instance buffers at render time, so trails and fist glow read this frame's posed bones
