@@ -110,6 +110,17 @@ export const WAVES_VD_GLSL = [
     '  float s = swellK(p); return vec3(h * s, d * (GQ * s));', '}'].join('\n');
 function whjLong(w: string[]) { const [, , k] = kn(w, 0, 1); return `  { float a = dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}; float sa = sin(a); g += cos(a) * ${w[3]} * vec2(${w[0]}, ${w[1]}); j += sa * ${(Number(w[3]) * k).toFixed(5)}; h += sa * ${w[3]}; }`; }
 function whjGold(w: string[]) { const [, , k] = kn(w, 6, 7); return `    ${env(w)} { float a = ${arg(w)}; float sa = sin(a); g += cos(a) * ${w[13]} * m * vec2(${w[6]}, ${w[7]}); j += sa * ${(Number(w[13]) * k).toFixed(5)} * m; h += sa * ${w[13]} * m; }`; }
+/* Perf item 10 (sea vertex cost): the sea's vertex shader ran every train twice per vertex - whdV() (faded height + Gerstner push) and then
+   wghj() (gradient, Jacobian, unfaded height for the pixel normals) - each recomputing the same envelope, phase, sin and cos at the same point.
+   whdgjV() gives both results from one envelope + phase + sin/cos per train: same terms, same accumulation order, same values. */
+function vdjLong(w: string[]) { const [dx, dz, k] = kn(w, 0, 1); return `  { float a = dot(p, vec2(${w[0]}, ${w[1]})) + t * ${w[2]}; float sa = sin(a), ca = cos(a); g += ca * ${w[3]} * vec2(${w[0]}, ${w[1]}); j += sa * ${(Number(w[3]) * k).toFixed(5)}; hj += sa * ${w[3]}; if (sp < ${(0.9 * Math.PI / k).toFixed(3)}) { float f = ${w[3]} * ${aa(k)}; h += sa * f; d -= ca * f * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)}); } }`; }
+function vdjGold(w: string[]) { const [dx, dz, k] = kn(w, 6, 7); return `    ${env(w)} { float a = ${arg(w)}; float sa = sin(a), ca = cos(a); g += ca * ${w[13]} * m * vec2(${w[6]}, ${w[7]}); j += sa * ${(Number(w[13]) * k).toFixed(5)} * m; hj += sa * ${w[13]} * m; if (sp < ${(0.9 * Math.PI / k).toFixed(3)}) { float f = ${w[13]} * m * ${aa(k)}; h += sa * f; d -= ca * f * vec2(${dx.toFixed(5)}, ${dz.toFixed(5)}); } }`; }
+function vdjChop(w: string[]) { const [, , k] = kn(w, 6, 7); return `    ${env(w)} { float a = ${arg(w)}; float sa = sin(a); if (WG_CHOP) { g += cos(a) * ${w[13]} * m * vec2(${w[6]}, ${w[7]}); j += sa * ${(Number(w[13]) * k).toFixed(5)} * m; } hj += sa * ${w[13]} * m; if (sp < ${(0.9 * Math.PI / k).toFixed(3)}) h += sa * ${w[13]} * m * ${aa(k)}; }`; }
+/** GLSL (vertex only): whdgjV = whdV() (returned) + wghj() (out gj, hOut) in one pass. Needs WAVES_GLSL + GERSTNER_GLSL (GQ) first; WG_CHOP as in wghj. */
+export const WAVES_VDJ_GLSL = [
+    '', 'vec3 whdgjV(vec2 p, float t, float sp, out vec3 gjOut, out float hOut){', '  float h = 0.0, hj = 0.0, j = 0.0; vec2 d = vec2(0.0), g = vec2(0.0);', ...LONG_WAVES.map(vdjLong), '  { float m;',
+    ...GOLDEN_WAVES.slice(0, PHYSICS_TRAINS).map(vdjGold), ...GOLDEN_WAVES.slice(PHYSICS_TRAINS).map(vdjChop), '  }',
+    '  float s = swellK(p); hOut = hj * s; gjOut = vec3(g * s, j * GQ * s); return vec3(h * s, d * (GQ * s));', '}'].join('\n');
 /** GLSL (fragment): wghj = wgj() plus the wave height wh() in the same pass (out h). Chop trains skipped by WG_CHOP still add their height. */
 export const WGHJ_GLSL = [
     '', 'vec3 wghj(vec2 p, float t, out float hOut){', '  vec2 g = vec2(0.0); float j = 0.0, h = 0.0;', ...LONG_WAVES.map(whjLong), '  { float m;',
