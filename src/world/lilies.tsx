@@ -91,7 +91,7 @@ function LiliesInner({ sim }: { sim: Sim }) {
         });
         d.pads.instanceMatrix.needsUpdate = true; d.halo.instanceMatrix.needsUpdate = true;
         const night = 1 - THREE.MathUtils.smoothstep(TOD.day.value, 0.35, 0.85);
-        d.glow.value = 0.1 + 1.1 * night; (d.halo.material as THREE.ShaderMaterial).uniforms.uG.value = 0.06 + 0.8 * night;
+        d.glow.value = 0.05 + 0.45 * night; (d.halo.material as THREE.ShaderMaterial).uniforms.uG.value = 0.03 + 0.3 * night;   /* Shifat Nov 1 8:03 PM 'Reduce bloom for lilies': ~40% of the old glow */
     });
     return <><primitive object={d.pads} /><primitive object={d.halo} /></>;
 }
