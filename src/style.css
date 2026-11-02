@@ -126,3 +126,9 @@ kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;c
 .ico.jump{right:calc(124px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));width:70px;height:70px}
 .ico.special{right:calc(112px + env(safe-area-inset-right));bottom:calc(108px + env(safe-area-inset-bottom));width:74px;height:74px}
 .ico.melee{right:calc(26px + env(safe-area-inset-right));bottom:calc(126px + env(safe-area-inset-bottom));width:70px;height:70px}
+
+/* Nov 2 5:01 AM (Shifat): comic black outline for accessibility instead of the soft shadow; Shock cooldown ring centred on the bolt */
+.ico{filter:drop-shadow(1.6px 0 0 #000) drop-shadow(-1.6px 0 0 #000) drop-shadow(0 1.6px 0 #000) drop-shadow(0 -1.6px 0 #000)}
+.ico:active,.ico.on{color:#fff;filter:drop-shadow(1.6px 0 0 #000) drop-shadow(-1.6px 0 0 #000) drop-shadow(0 1.6px 0 #000) drop-shadow(0 -1.6px 0 #000) drop-shadow(0 0 8px rgba(255,255,255,.7))}
+.ico.swing.linked{color:#8fe9ff;filter:drop-shadow(1.6px 0 0 #000) drop-shadow(-1.6px 0 0 #000) drop-shadow(0 1.6px 0 #000) drop-shadow(0 -1.6px 0 #000) drop-shadow(0 0 10px #8fe9ff)}
+.ico.special .ring{inset:auto;left:50%;top:50%;width:66px;height:66px;margin:-33px 0 0 -33px}
