@@ -2,6 +2,7 @@ import { SKYFX_GLSL, CLOUD_GLSL } from './skyFx';
 // Sky dome shader (gradient, sun disc, clouds). Moved verbatim from Scene.tsx.
 export const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
 export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform float uFlash;uniform vec3 uFd;uniform sampler2D uMoon;
+float svh2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} float svn2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(svh2(i),svh2(i+vec2(1,0)),f.x),mix(svh2(i+vec2(0,1)),svh2(i+vec2(1,1)),f.x),f.y);}
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
  vec3 top=mix(vec3(0.16,0.42,0.9),vec3(0.24,0.5,0.86),uWarm);vec3 mid=mix(vec3(0.6,0.8,0.96),vec3(0.96,0.72,0.68),uWarm);
@@ -35,7 +36,11 @@ void main(){
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
  if(uRain>0.001){vec3 dn2=normalize(vDir);vec2 rq=dn2.xz/(abs(dn2.y)+0.25)*2.2+vec2(uT*0.012,0.0);float rn=fract(sin(dot(floor(rq),vec2(127.1,311.7)))*43758.5);vec2 rf=fract(rq);rf=rf*rf*(3.0-2.0*rf);float rn2=mix(mix(rn,fract(sin(dot(floor(rq)+vec2(1,0),vec2(127.1,311.7)))*43758.5),rf.x),mix(fract(sin(dot(floor(rq)+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(floor(rq)+vec2(1,1),vec2(127.1,311.7)))*43758.5),rf.x),rf.y);
-  vec3 oc=mix(uHor*0.95,uHor*0.42,smoothstep(0.0,0.45,dn2.y))*(0.78+0.4*rn2);   /* storm deck (real lightning photos): dark slate overhead, lighter band at the horizon, heavier soft mottling */c=mix(c,oc,uRain*0.92);}
+  vec3 oc=mix(uHor*0.95,uHor*0.42,smoothstep(0.0,0.45,dn2.y))*(0.78+0.4*rn2);   /* storm deck (real lightning photos): dark slate overhead, lighter band at the horizon, heavier soft mottling */c=mix(c,oc,uRain*0.92);
+  /* rain curtains (Shifat Nov 2 2:14 AM 'Next'; real photo 'Cumulonimbus praecipitatio, Kuhlungsborn'): soft dark veils hanging from the storm deck down to the sea horizon, in drifting patches, with faint slanted streaks */
+  {vec2 hz=normalize(dn2.xz+1e-5);float pm=smoothstep(0.5,0.78,svn2(hz*0.42+vec2(uT*0.001,0.0))*0.7+svn2(hz*1.0+vec2(3.1,-uT*0.0007))*0.3);   /* noise on the horizon circle: no seam */
+   float hh=smoothstep(0.26,0.04,dn2.y)*smoothstep(-0.06,0.0,dn2.y);float stk=0.75+0.25*svn2(hz*27.0+vec2(dn2.y*9.0-uT*0.06,0.0));
+   c=mix(c,uHor*0.3,pm*hh*stk*0.7*smoothstep(0.3,0.8,uRain));}}
  c+=lightningSky(normalize(vDir),uFd,uFlash); c+=rainbowSky(normalize(vDir),uSunV,uRain,uDay);   /* rainbow - src/shaders/skyFx.ts */
  gl_FragColor=vec4(c,1.0);
 }`;
