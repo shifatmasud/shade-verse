@@ -17,7 +17,7 @@ const raf = (n) => p.evaluate((n) => new Promise(res => { let k = 0; const f = (
 // park the hero on the street with one bot in front of him
 const S = await p.evaluate((scen) => {
   const g = window.__game, s = g.sim, I = g.input;
-  window.__ts = 0;
+  window.__ts = 0; if (scen !== 'melee' && scen !== 'react') window.__ghostDisableCombat = true;   // keep Ghost's own fight out of the hurt/shot frames
   s.enemies.forEach((e, i) => { if (i > 0) { e.down = 1e5; e.atk = 0; e.x = -900; e.z = -900; } });
   I.keys.w = I.keys.a = I.keys.s = I.keys.d = false; I.swing = false; I.swingQ = false; I.jumpQ = false;
   const q = window.__spawn || (window.__spawn = [...s.pos]); s.pos = [q[0], q[1], q[2]]; s.vel = [0, 0, 0]; s.web = false; s.wall = null; s.swim = false; s.glideOn = false; s.ground = true; s.ang = 0; s.yaw = 0; s.mv = null; s.flip = null; s.hp = 100; s.dodgeT = 0; s.atkT = 0;
