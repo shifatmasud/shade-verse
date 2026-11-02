@@ -534,7 +534,7 @@ function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
         any = true; s.combo++; s.comboT = 1.2;
         if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); }
     }
-    if (any) ev.hit();
+    if (any) { ev.hit(); (s as any).shake = Math.min(1, ((s as any).shake || 0) + 0.08); }   // web-shot hit: small trauma, no shooter freeze
     if (ev.blast) ev.blast(x, y, z);
 }
 // read-only HUD context: which actions would actually do something right now (same ranges the actions use)
@@ -801,14 +801,15 @@ const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1
 // Refs: Muybridge "Two men boxing" 1887 plate (jab/cross weight shift), Taekwondo 540 hook (spin kick chamber + lean),
 // Capoeira armada (spin with torso counter-lean), Marvel's Spider-Man 2 combat (launch -> air follow-up, web pull/yank).
 // Each move: dur (s), hit time, cancel time (buffered next move may start), stop distance for the gap-closing lunge.
+// Hit feel (Nov 2, recipe D1/D2): shake = camera trauma ADDED per hit (shake^2 drives a rotational shake), stopT = hit-stop (whole-game freeze, the recipe's attacker/victim values blended)
 export const MOVES: Record<number, { dur: number; hit: number; cancel: number; stop: number; dmg: number; kb: number; lift: number; shake: number; stopT: number; reach: number }> = {
-    1: { dur: 0.30, hit: 0.10, cancel: 0.17, stop: 1.75, dmg: 1, kb: 6, lift: 0, shake: 0.10, stopT: 0.045, reach: 3.2 },
-    2: { dur: 0.32, hit: 0.11, cancel: 0.19, stop: 1.75, dmg: 1, kb: 9, lift: 0, shake: 0.14, stopT: 0.05, reach: 3.0 },
-    3: { dur: 0.48, hit: 0.24, cancel: 0.33, stop: 2.05, dmg: 1, kb: 16, lift: 2.5, shake: 0.24, stopT: 0.075, reach: 3.4 },
-    4: { dur: 0.52, hit: 0.20, cancel: 0.30, stop: 1.65, dmg: 1, kb: 2, lift: 13.5, shake: 0.26, stopT: 0.08, reach: 3.2 },
-    5: { dur: 0.50, hit: 0.26, cancel: 0.40, stop: 1.80, dmg: 2, kb: 7, lift: -24, shake: 0.30, stopT: 0.09, reach: 3.6 },
-    6: { dur: 0.58, hit: 0.32, cancel: 0.42, stop: 1.90, dmg: 1, kb: 17, lift: 3, shake: 0.24, stopT: 0.07, reach: 3.6 },
-    7: { dur: 0.52, hit: 0.20, cancel: 0.40, stop: 0, dmg: 0, kb: 0, lift: -28, shake: 0.18, stopT: 0.06, reach: 24 },
+    1: { dur: 0.30, hit: 0.10, cancel: 0.17, stop: 1.75, dmg: 1, kb: 6, lift: 0, shake: 0.15, stopT: 0.055, reach: 3.2 },
+    2: { dur: 0.32, hit: 0.11, cancel: 0.19, stop: 1.75, dmg: 1, kb: 9, lift: 0, shake: 0.20, stopT: 0.065, reach: 3.0 },
+    3: { dur: 0.48, hit: 0.24, cancel: 0.33, stop: 2.05, dmg: 1, kb: 16, lift: 2.5, shake: 0.35, stopT: 0.09, reach: 3.4 },
+    4: { dur: 0.52, hit: 0.20, cancel: 0.30, stop: 1.65, dmg: 1, kb: 2, lift: 13.5, shake: 0.30, stopT: 0.09, reach: 3.2 },
+    5: { dur: 0.50, hit: 0.26, cancel: 0.40, stop: 1.80, dmg: 2, kb: 7, lift: -24, shake: 0.35, stopT: 0.1, reach: 3.6 },
+    6: { dur: 0.58, hit: 0.32, cancel: 0.42, stop: 1.90, dmg: 1, kb: 17, lift: 3, shake: 0.30, stopT: 0.08, reach: 3.6 },
+    7: { dur: 0.52, hit: 0.20, cancel: 0.40, stop: 0, dmg: 0, kb: 0, lift: -28, shake: 0.25, stopT: 0.07, reach: 24 },
 };
 const bodyY = (e: Enemy) => e.y + ((e as any).ly || 0) + enemyBodyOffset(e);
 function nearLifted(s: Sim, r: number, minLy = 1.2): Enemy | null {
@@ -872,7 +873,7 @@ function stepMove(s: Sim, dt: number, ev: Events) {
     else if (m.id === 5 && m.t < M.hit + 0.1) v[1] = Math.max(v[1], -2);    // brief hang at the top of the aerial kick
     if (!m.hit && m.t >= M.hit) {
         m.hit = true;
-        if (m.id === 7) { if (e) { const ea = e as any; fxMelee(e.x, bodyY(e), e.z, heroCol(s), 2, false); ea.vy = M.lift; ea.slam = 1; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1; e.kb = [dx / d * 9, dz / d * 9]; sa.shake = Math.max(sa.shake, M.shake); sa.hitStop = M.stopT; } }
+        if (m.id === 7) { if (e) { const ea = e as any; fxMelee(e.x, bodyY(e), e.z, heroCol(s), 2, false); ea.vy = M.lift; ea.slam = 1; const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz) || 1; e.kb = [dx / d * 9, dz / d * 9]; sa.shake = Math.min(1, sa.shake + M.shake); sa.hitStop = M.stopT; } }
         else {
             const fx = Math.sin(s.ang), fz = Math.cos(s.ang); let any = false;
             sa.fxN = 0;
@@ -888,7 +889,9 @@ function stepMove(s: Sim, dt: number, ev: Events) {
                   if (!any || nh < 3) fxMelee(o.x + tx / td * 0.45, bodyY(o) + 0.1, o.z + tz / td * 0.45, heroCol(s), m.id === 1 ? 1 : m.id === 2 ? 2 : 3, !((oa.ly || 0) > 0.5)); }
                 if (o.hp <= 0) { o.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, o); }
             }
-            if (any) { ev.hit(); sa.hitStop = M.stopT; sa.shake = Math.max(sa.shake, M.shake); }
+            if (any) { ev.hit(); sa.hitStop = M.stopT; sa.shake = Math.min(1, sa.shake + M.shake);
+                if (m.id === 3) { sa.fovK = -3; sa.fovKT = 0; sa.slowK = 0.35; sa.slowHold = M.stopT + 0.12; sa.slowEase = 0.15; sa.slowT = sa.slowHold + sa.slowEase; }   // finisher: punch-in + brief slow-motion
+            }
         }
     }
     if (sa.mvQ && m.t >= M.cancel) { sa.mv = null; sa.chainT = 0.9; if (!comboStart(s, ev, true)) sa.mv = null; return; }
@@ -1099,7 +1102,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         if (sa.snareT > SNARE.IMPACT) { for (const e of L) { if (e.down > 0) continue; e.hit = Math.max(e.hit, 0.3); e.atk = 0; e.kb[0] = 0; e.kb[1] = 0;
           if (sa.snareT > SNARE.GATHER_END) { const dx = p[0] - e.x, dz = p[2] - e.z, d = Math.hypot(dx, dz); if (d > SNARE.GROUP_RADIUS) { const st = Math.min(d - SNARE.GROUP_RADIUS, SNARE.PULL_SPEED * dt), nx = e.x + dx / d * st, nz = e.z + dz / d * st; if ((e.roof ? inRoof(e, nx, nz) : !insideB(nx, nz) && !inPk(nx, nz)) && losClear(e.x, e.y + 0.5, e.z, nx, e.y + 0.5, nz)) { e.x = nx; e.z = nz; } } }
         } }
-        if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) { fxShock(e.x, e.y + enemyBodyOffset(e), e.z, p[0], p[1] + 0.9, p[2]); e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.max(sa.shake || 0, SNARE.SHAKE); } }
+        if (before > SNARE.IMPACT && sa.snareT <= SNARE.IMPACT) { let any = false; for (const e of L) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d < 5.5 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)) { fxShock(e.x, e.y + enemyBodyOffset(e), e.z, p[0], p[1] + 0.9, p[2]); e.hp -= 3; e.hit = 0.75; e.atk = 0; const nx = d > 0.01 ? dx / d : Math.sin(s.ang), nz = d > 0.01 ? dz / d : Math.cos(s.ang); e.kb = [nx * SNARE.KNOCKBACK, nz * SNARE.KNOCKBACK]; any = true; s.combo++; s.comboT = 1.2; if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, e); } } } if (any) { ev.hit(); sa.hitStop = SNARE.HIT_STOP; sa.shake = Math.min(1, (sa.shake || 0) + 0.30); /* electric: trauma +0.30 */ } }
         if (sa.snareT <= 0) { sa.snareT = 0; sa.snareList = []; } }
     }
     if (options.updateEnemies !== false) {

@@ -607,12 +607,19 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             for(let i=1;i<=32;i++){const f=safe*i/32,x=ax+dx*f,y=ay+dy*f,z=az+dz*f;const ihc=z<WATER_Z?islandH(x,z):null;const floor=z<WATER_Z?(ihc!==null?ihc:seabedAt(x,z)):Math.min(0,parkH(x,z));   /* 1:21 AM Shifat 'island lake camera bug': seabedAt ignores the carved lake/river/pool, so the arm hit 'ground' above the water and collapsed into the swimmer */if(y<floor+.35){safe=safe*(i-1)/32;break;}}
             if(safe<1)q.set(ax+dx*safe,ay+dy*safe,az+dz*safe);
         }
-        camera.position.copy(cam.current); { const shk = (sim as any).shake || 0; if (shk > 0.001) { const a = shk * shk * 2.2, tt = sim.t * 61; camera.position.x += Math.sin(tt * 1.3) * a; camera.position.y += Math.sin(tt * 1.9 + 1.7) * a * 0.8; camera.position.z += Math.sin(tt * 1.1 + 4.1) * a; } } if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
+        camera.position.copy(cam.current); if (DBG) (window as any).__cam = [cam.current.x, cam.current.y, cam.current.z, dist];
         look.current.set(p[0], sim.swim ? p[1] + 0.7 : p[1] + 1.5, p[2]);
         OCC.uOccHero.value.set(p[0], p[1] + 1.0, p[2]);   // robots/peds between lens and hero dissolve (occlude.ts)
         const ov = DBG ? (window as any).__camOv : null; if (ov) { camera.position.set(ov[0], ov[1], ov[2]); look.current.set(ov[3], ov[4], ov[5]); }
         camera.lookAt(look.current);
+        { const tr = Math.min(1, (sim as any).shake || 0); if (tr > 0.001 && !ov) {   // trauma^2 ROTATIONAL shake (recipe D2): yaw/pitch <= 1.2 deg, roll <= 2 deg, <= 3 cm of position; smooth summed sines (~9/13/21 Hz)
+            const k = tr * tr, t = sim.t, D2R = Math.PI / 180;
+            const n1 = Math.sin(t * 57.0) * 0.6 + Math.sin(t * 82.0 + 1.3) * 0.4, n2 = Math.sin(t * 61.0 + 2.1) * 0.6 + Math.sin(t * 131.0 + 0.4) * 0.4, n3 = Math.sin(t * 53.0 + 4.2) * 0.6 + Math.sin(t * 89.0 + 2.9) * 0.4;
+            camera.rotateY(n1 * 1.2 * D2R * k); camera.rotateX(n2 * 1.2 * D2R * k); camera.rotateZ(n3 * 2.0 * D2R * k);
+            camera.translateX(n2 * 0.03 * k); camera.translateY(n1 * 0.03 * k);
+        } }
         const cp = camera as THREE.PerspectiveCamera;
+        if (DBG) (window as any).__camObj = camera;   // test hook: hit-feel checks (shake rotation, fov punch)
         // Near-clip-aware waterline: retain the nearby underside instead of cutting a hole through it.
         // Restore the ordinary land frustum away from the bay surface to preserve depth precision.
         const nearWater = (camera.position.z < WATER_Z + 2 && Math.abs(camera.position.y - WATER_Y) < 1.5) || (isLakeWater(camera.position.x, camera.position.z) && Math.abs(camera.position.y - waterSurfaceAt(camera.position.x, camera.position.z, sim.t)) < 1.5);

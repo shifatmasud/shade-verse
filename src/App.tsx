@@ -34,7 +34,7 @@ const impact = (tint: string, size: number, shk: number, showRing = true) => {
     const o = showRing ? document.querySelector('.impact') as HTMLElement | null : null, f = document.querySelector('.flash') as HTMLElement | null, c = document.querySelector('.stage canvas') as HTMLElement | null;
     if (o) { o.style.color = tint; gsap.fromTo(o, { scale: 0.2, opacity: 1 }, { scale: size, opacity: 0, duration: 0.45, ease: 'power3.out' }); }
     if (f) { f.style.setProperty('--fx', tint); gsap.fromTo(f, { opacity: shk ? 0.9 : 0.5 }, { opacity: 0, duration: 0.35 }); }
-    if (c && shk) gsap.fromTo(c, { x: shk, y: -shk * 0.6 }, { x: 0, y: 0, duration: 0.3, ease: 'elastic.out(1.2,0.3)' });
+    void c;   /* Nov 2 hit feel: the canvas no longer jolts sideways; camera shake is rotational and trauma-scaled in Scene (sim.shake) */
 };
 const burst = (e: React.PointerEvent, tint: string, spin = 0, showRing = true) => {
     const el = e.currentTarget as HTMLElement;
@@ -77,11 +77,11 @@ export function App() {
         fall: () => { buzz(120); gsap.fromTo(fx, { fov: -8 }, { fov: 0, duration: 0.6, ease: 'elastic.out(1,0.4)' }); showToast('Knocked out. Back to your last rooftop.', 2000); snd.onFall(); },
         attach: () => { impact('#8fe9ff', 1.8, 0, false); buzz(12); gsap.fromTo(fx, { fov: 6 }, { fov: 0, duration: 0.35, ease: 'power2.out' }); },
         release: () => { /* release whoosh comes from the sound director */ },
-        hit: () => { impact('#ffffff', 2.6, 8); buzz(30); snd.onHit(); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
-        blast: (x: number, y: number, z: number) => { impact('#aee6ff', 4.2, 14); buzz(60); snd.onBlast(x, y, z); gsap.fromTo(fx, { fov: 9 }, { fov: 0, duration: 0.45, ease: 'power3.out' }); gsap.fromTo(fx, { shake: 0.9 }, { shake: 0, duration: 0.3 }); },
-        hurt: () => { impact('#ff3a3a', 3.4, 14); buzz(70); snd.onHurt(); showToast('Ouch', 600); },
+        hit: () => { buzz(30);   /* Nov 2: the screen-centre ring + vignette per hit is replaced by the world-space hit FX on the target (CombatFX) */ snd.onHit(); gsap.fromTo(fx, { shake: 0.5 }, { shake: 0, duration: 0.2 }); },
+        blast: (x: number, y: number, z: number) => { impact('#aee6ff', 4.2, 14, false); buzz(60); snd.onBlast(x, y, z); gsap.timeline().fromTo(fx, { fov: 0 }, { fov: -4, duration: 0.05, ease: 'power2.out' }).to(fx, { fov: 2, duration: 0.15, ease: 'power2.inOut' }).to(fx, { fov: 0, duration: 0.3, ease: 'power3.out' }); (sim as any).shake = Math.min(1, ((sim as any).shake || 0) + 0.25); },   // punch-in then rebound (was a +9 deg widen)
+        hurt: () => { (sim as any).shake = Math.min(1, ((sim as any).shake || 0) + 0.3); impact('#ff3a3a', 3.4, 14); buzz(70); snd.onHurt(); showToast('Ouch', 600); },
         shot: (k, x, y, z) => { const p: [number, number, number] = [x, y, z]; if (k === 'charge') snd.repulsorCharge(p); else if (k === 'bolt') snd.repulsorBolt(p); else if (k === 'impact') snd.repulsorImpact(p); else if (k === 'uniCharge') snd.unibeamCharge(p); else if (k === 'uniStart') snd.unibeamStart(p); else if (k === 'uniMove') snd.unibeamMove(p); else snd.unibeamStop(); },   // env-iter3 F: enemy repulsors + boss unibeam
-        ko: () => { impact('#ffd24a', 5, 20); buzz(50); showToast('KO +2', 700); },
+        ko: () => { impact('#ffd24a', 5, 20, false); buzz(50); showToast('KO +2', 700); },
         land: (hard: boolean) => { buzz(hard ? 80 : 15); snd.onLand(hard); if (hard) showToast('Hard landing', 700); },
         jump: () => { snd.onJump(); },
     }), []); // eslint-disable-line
