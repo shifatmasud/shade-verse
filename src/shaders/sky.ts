@@ -32,6 +32,12 @@ void main(){
     float rr2=max(sr,px*0.7),dd=length(sf-so);float sv=smoothstep(rr2,rr2*0.25,dd)*min(1.0,sr/rr2*1.6);
     float sb=mix(0.3,1.25,pow(fract(sh*29.7),4.0))*(0.8+0.2*sin(uT*(1.3+sz*2.0)+sh*60.0));
     nc+=mix(vec3(0.75,0.85,1.0),vec3(1.0,0.92,0.8),fract(sh*7.3))*sv*sb*3.2*smoothstep(0.06,0.35,dn.y);}}
+  /* aurora (Shifat 9:46 PM): soft drifting curtains in one band of the northern sky, green at the base fading to violet at the top, night only, faint */
+  if(dn.y>0.06){vec2 ap=dn.xz/(dn.y+0.3);float ax=ap.x*0.9+sin(ap.y*1.3+uT*0.04)*0.8;
+   float cu=0.5+0.5*sin(ax*5.0+sin(ax*1.7+uT*0.06)*2.5);cu*=0.55+0.45*sin(ax*19.0+uT*0.25+sin(ax*3.1)*2.0);
+   float bd=smoothstep(-2.6,-1.5,ap.y)*(1.0-smoothstep(-0.9,0.2,ap.y));
+   float hv=smoothstep(0.06,0.16,dn.y)*(1.0-smoothstep(0.3,0.62,dn.y));
+   nc+=mix(vec3(0.12,0.95,0.55),vec3(0.55,0.25,0.85),smoothstep(0.16,0.5,dn.y))*cu*cu*bd*hv*0.16;}
   float mg=max(dot(dn,-sun),0.0);nc+=vec3(0.75,0.85,1.0)*(pow(mg,60.0)*0.25)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.2;
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
