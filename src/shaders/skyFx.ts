@@ -16,3 +16,10 @@ vec3 rainbowSky(vec3 dn3, vec3 sunV, float rain, float day){
   float u2=(0.945-ra)/0.07;vec3 rc2=clamp(vec3(1.5-abs(u2-0.85)*2.2,1.5-abs(u2-0.5)*2.2,1.5-abs(u2-0.15)*2.2),0.0,1.0)*smoothstep(-0.2,0.4,u2)*(1.0-smoothstep(0.6,1.2,u2));
   return (rc*0.32+rc2*0.1)*rw*(1.0-smoothstep(0.75,1.0,dn3.y)); }
 `;
+
+// moon + a sparse star field as functions of a direction, so the sea can mirror them too (Shifat 10:59 PM 'everything must be reflected')
+export const SKYFX2_GLSL = `
+vec3 moonSky(vec3 dn, vec3 sunV){ float mg=max(dot(dn,-sunV),0.0); return vec3(0.75,0.85,1.0)*(pow(mg,60.0)*0.25)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.2; }
+vec3 starsLite(vec3 dn){ if(dn.y<0.06) return vec3(0.0); vec2 sp=dn.xz/(abs(dn.y)+0.2)*46.0; vec2 si=floor(sp),sf=fract(sp); float sh=fract(sin(dot(si,vec2(12.9898,78.233)))*43758.5);
+  if(sh<=0.95) return vec3(0.0); vec2 so=vec2(fract(sh*91.7),fract(sh*57.3))*0.6+0.2; float dd=length(sf-so); return vec3(0.85,0.9,1.0)*smoothstep(0.18,0.0,dd)*mix(0.15,0.6,pow(fract(sh*29.7),4.0))*smoothstep(0.06,0.35,dn.y); }
+`;
