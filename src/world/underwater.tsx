@@ -52,10 +52,10 @@ const rayMat = new THREE.ShaderMaterial({
       float h(float x){ return fract(sin(x * 127.1) * 43758.5453); }
       void main(){
         float x = vU.x, t = uTime;
-        float s = 0.0; for (int k = 0; k < 4; k++) { float fk = float(k), c = 0.15 + 0.7 * h(fk + floor(t * 0.05 + fk) * 3.1); float w = 0.06 + 0.09 * h(fk * 7.0 + 1.0), dx = (x - c - 0.04 * sin(t * 0.35 + fk * 2.1)) / w;
-          s += exp(-dx * dx * 1.6) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }   /* Shifat 8:43 PM 'more blurry god rays': gaussian shaft profile (was a hard-edged band), wider, and the sheets feed the bloom pass */
-        float edge = smoothstep(0.0, 0.12, x) * (1.0 - smoothstep(0.88, 1.0, x));
-        float depth = uSurf - vY; float fade = exp(-max(depth, 0.0) * 0.055) * smoothstep(0.0, 1.2, depth);
+        float s = 0.0; for (int k = 0; k < 4; k++) { float fk = float(k), c = 0.15 + 0.7 * h(fk + floor(t * 0.05 + fk) * 3.1); float w = 0.12 + 0.14 * h(fk * 7.0 + 1.0), dx = (x - c - 0.04 * sin(t * 0.35 + fk * 2.1)) / w;
+          s += exp(-dx * dx * 1.0) * (0.55 + 0.45 * sin(t * (0.9 + fk * 0.37) + fk * 4.0)); }   /* Shifat 8:43 PM 'more blurry god rays': gaussian shaft profile (was a hard-edged band), wider, and the sheets feed the bloom pass */
+        float edge = smoothstep(0.0, 0.3, x) * (1.0 - smoothstep(0.7, 1.0, x));   /* Shifat 11:07 PM 'godrays (soft blurred)': wider gaussians + soft sheet edges */
+        float depth = uSurf - vY; float fade = exp(-max(depth, 0.0) * 0.055) * smoothstep(0.0, 5.0, depth);
         float a = s * edge * fade * mix(0.6, 1.0, uDay * uDay) * 0.36;   /* Shifat Nov 1 11:16 AM 'underwater must always have god rays, even at night, because of the moon': night keeps clear moonbeams (~60%) */
         gl_FragColor = vec4(mix(vec3(0.55, 0.7, 1.0), vec3(0.62, 0.93, 1.0), uDay) * a, a);   /* moonlight: cooler, silver-blue */
       }`,
