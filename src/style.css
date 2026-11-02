@@ -103,15 +103,17 @@ body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;col
 kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;color:#e9dcff;opacity:.95}
 /* title screen (refs: Hollow Knight, Journey, Ori title screens — big mark, minimal type, world alive behind) */
 .overlay.title{justify-content:center!important;gap:6px;cursor:pointer;background:radial-gradient(ellipse farthest-corner at 50% 45%,rgba(8,6,22,.05),rgba(8,6,22,.42) 60%,rgba(4,3,12,.7))!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-.tmark{width:clamp(54px,12vh,96px);height:clamp(54px,12vh,96px);color:#fff;filter:drop-shadow(0 0 18px rgba(170,140,255,.55)) drop-shadow(0 4px 14px rgba(0,0,0,.6));animation:tglow 4s ease-in-out infinite}
+.tmark{width:clamp(48px,min(12vh,22vw),110px);height:clamp(48px,min(12vh,22vw),110px);color:#fff;filter:drop-shadow(0 0 18px rgba(170,140,255,.55)) drop-shadow(0 4px 14px rgba(0,0,0,.6));animation:tglow 4s ease-in-out infinite}
 .tmark svg{width:100%;height:100%;display:block}
 @keyframes tglow{0%,100%{filter:drop-shadow(0 0 14px rgba(170,140,255,.4)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}50%{filter:drop-shadow(0 0 26px rgba(190,160,255,.8)) drop-shadow(0 4px 14px rgba(0,0,0,.6))}}
-.otitle.tname{margin:4px 0 0;font-size:clamp(26px,9vh,58px);font-weight:800;text-transform:uppercase;letter-spacing:.18em;text-shadow:0 2px 24px rgba(0,0,0,.65),0 0 2px rgba(0,0,0,.6);max-width:none}
+.otitle.tname{margin:4px 0 0;font-size:clamp(20px,min(9vh,8.4vw),64px);white-space:nowrap;font-weight:800;text-transform:uppercase;letter-spacing:.18em;text-shadow:0 2px 24px rgba(0,0,0,.65),0 0 2px rgba(0,0,0,.6);max-width:none}
 .tprompt{font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;animation:tpulse 2.2s ease-in-out infinite}
 @keyframes tpulse{0%,100%{opacity:.45}50%{opacity:1}}
 .tmaps{display:flex;gap:28px;margin-top:8px;font-size:11.5px;text-align:left;opacity:.9;background:rgba(10,8,26,.45);padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12)}
 .tmaps b{display:block;font-size:12px;margin-bottom:5px;opacity:.95}
 .tby{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom));font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.55}
+/* Shifat Nov 2 1:48 AM: the title screen adapts to portrait & landscape on any device (auto) - name on one line sized by the smaller of width/height */
+@media (orientation:portrait){.overlay.title{gap:12px}.tmaps{flex-direction:column;gap:12px}.tprompt{font-size:12px}}
 @media (max-height:500px){.tmaps{display:none}.overlay.title .go{margin-top:4px;height:52px;width:72px}}
 .stage.desk .overlay.title .go{display:none}
 
