@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { traversalBones, traversalRoot } from './heroTraversal';
 import { enemyReact } from './enemyReact';
 import { heroHurtBones } from './heroHurt';
+import { shotRecoilBones } from './heroRecoil';
 import gsap from 'gsap';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
@@ -273,6 +274,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     traversalBones(sim, rig, dt);
     const activePoseState = poseState ?? _cp;
     combatPose(sim, rig, h, poseDt, activePoseState);
+    shotRecoilBones(sim, rig, dt);   // web-shot recoil on top of the aim (src/heroRecoil.ts)
     if (!sourceClipState) heroHurtBones(sim, rig, dt);   // hurt flinch on top of every pose (src/heroHurt.ts); not on Ghost's mirrored frames
     if (publishState && !sourceClipState) {
         sa.__heroClipState = { key: cs.key, t: cs.t, w: cs.w };
