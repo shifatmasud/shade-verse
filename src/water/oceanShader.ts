@@ -181,6 +181,15 @@ ${GRID_TRACE_GLSL}
           float ah = cov; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
           vec3 acol = cb * lam * mix(0.3, 1.0, uDay);
           skR = mix(acol, reflTint(acol, refl), 0.5); skA = ah * 0.95; nGlow = cb * 0.3 * ah;
+          /* the sailboats in the mirror (Shifat 7:50 PM 'many reflections missing'): exact ray/capsule hits on each boat's hull, mast and sail, true mirror height */
+          for (int i = 0; i < 5; i++) { vec4 B = uBoat[i]; vec2 dB = vW.xz - B.xy; if (dot(dB, dB) > 90000.0 || below) continue;
+            vec3 fw = vec3(sin(B.z), 0.0, cos(B.z)), c0 = vec3(B.x, 0.3, B.y), rr = normalize(vec3(rd.x, max(rd.y, 0.02), rd.z));
+            float th = capHitP(ro, rr, c0 - fw * 4.6, c0 + fw * 4.2, 1.7);
+            float ts = capHitP(ro, rr, c0 + vec3(0.0, 2.4, 0.0) - fw * 1.3, c0 + vec3(0.0, 10.3, 0.0) + fw * 0.95, 0.9);
+            float tH = th > 0.0 ? th : 1e5, tS = ts > 0.0 ? ts : 1e5, tt = min(tH, tS);
+            if (tt < 1e4) { vec3 bcol = (tH < tS ? vec3(0.78, 0.8, 0.82) : vec3(0.9, 0.9, 0.88)) * (0.75 + 0.3 * max(dot(normalize(uSun), vec3(0.0, 1.0, 0.0)), 0.0)) * mix(0.25, 1.0, uDay);
+              float kb = 1.0 - smoothstep(150.0, 300.0, length(dB));
+              skR = mix(skR, mix(bcol, reflTint(bcol, refl), 0.4), kb); skA = mix(skA, 0.95, kb); } }
         } else
         if (uHF > 4.5) {   /* REFLECTION IMPOSTORS (src/water/impostorRefl.tsx): the reflected ray meets each baked elevation card's vertical plane; the card there
              is the landmark's real look (colours, windows) rendered once at load. Nearest opaque card wins; the ray's climb is halved (2x downward streak). */
