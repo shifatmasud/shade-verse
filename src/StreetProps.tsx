@@ -42,7 +42,6 @@ function bake(parts: { list: P[]; geo: THREE.BufferGeometry; color: string }[]) 
     });
     const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); out.setAttribute('color', new THREE.BufferAttribute(col, 3)); out.computeBoundingSphere(); return out;
 }
-export const STREET_GLOW = { value: 0 };
 export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /* 12:14 AM: lamp heads glow + warm light pools at night */
     const d = useMemo(() => {
         const pole: P[] = [], head: P[] = [], pool: P[] = [], bench: P[] = [], bin: P[] = [], hyd: P[] = [], boll: P[] = [];

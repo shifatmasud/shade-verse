@@ -350,7 +350,6 @@ const CAR_HX = 1.0 * CAR_SCALE, CAR_HZ = 2.2 * CAR_SCALE, CAR_BOT = -0.5 * CAR_S
 /** The car the player is flying (Shifat Oct 29: "let us ride flying cars", "Enter when close to vehicle to ride"). i = -1: none.
  *  parked: the hero hopped out; the car hovers where it was left until another car is taken. */
 export const PILOT = { i: -1, x: 0, y: 0, z: 0, yaw: 0, vx: 0, vy: 0, vz: 0, parked: false, turn: 0 };   // i >= 100: boat (i - 100)
-export const RIDE_RANGE = 9;
 export function carAt(i: number, t: number) {
     if (PILOT.i === i) { const hx = Math.abs(Math.sin(PILOT.yaw)) > 0.7 ? CAR_HZ : CAR_HX, hz = hx === CAR_HZ ? CAR_HX : CAR_HZ; return { x: PILOT.x, y: PILOT.y, z: PILOT.z, vx: PILOT.vx, vy: PILOT.vy, vz: PILOT.vz, hx, hz, wrap: false, yaw: PILOT.yaw }; }
     const c = CARS[i];
@@ -429,14 +428,6 @@ export function movingAnchor(id: number, t: number): V3 | null {
     const c = carAt(id, t); return c.wrap ? null : [c.x, c.y + CAR_BOT, c.z];
 }
 
-/** Nearest car within reach of the hero (or -1); the parked car counts too. */
-export function rideTarget(s: Sim): number {
-    if (PILOT.i >= 0 && !PILOT.parked) return PILOT.i;
-    let best = -1, bd = RIDE_RANGE;
-    for (let i = 0; i < CAR_N; i++) { const c = carAt(i, s.t); if (c.wrap) continue; const d = Math.hypot(c.x - s.pos[0], (c.y + 0.6) - s.pos[1], c.z - s.pos[2]); if (d < bd) { bd = d; best = i; } }
-    for (let i = 0; i < BOATS.length; i++) { const b = boatAt(i, s.t), d = Math.hypot(b.x - s.pos[0], b.z - s.pos[2]) - 3; if (Math.abs(b.y + 1 - s.pos[1]) < 5 && d < bd) { bd = d; best = 100 + i; } }   // boats too (Shifat: "boat can be entered too?")
-    return best;
-}
 /** Web anchor under the nearest suitable car ahead (or null). Same distance/aim rules as building anchors. */
 function findCarAnchor(s: Sim, bestScore: number, hd?: [number, number]): { a: V3; sc: number; i: number } | null {
     const p = s.pos, fx = hd ? hd[0] : Math.sin(s.yaw), fz = hd ? hd[1] : Math.cos(s.yaw); let out: { a: V3; sc: number; i: number } | null = null;
@@ -600,7 +591,6 @@ function collide(s: Sim, prevY: number) {
     if (p[2] > lim) { p[2] = lim; v[2] = Math.min(v[2], 0); } if (p[2] < SEA.zMin) { p[2] = SEA.zMin; v[2] = Math.max(v[2], 0); }
 }
 
-export const FLY = { swingCap: 46, swingBoost: 18, glideCap: 32, glideAcc: 22 };   // traversal tuning knobs
 const FLY_SWING_CAP = 46, FLY_SWING_BOOST = 18, FLY_GLIDE_CAP = 32, FLY_GLIDE_ACC = 22, FLY_FLIGHT_CAP = 44, FLY_FLIGHT_ACC = 30;   /* Oct 29 9:15 PM 'speed up the glide, flight too': glide 22/14 -> 32/22, flight own cap 44/30 */   // traversal tuning (was 34 / 14 / 14 / 10): user asked for faster flight
 export interface StepOptions { updateEnemies?: boolean; }
 export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {

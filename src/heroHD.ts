@@ -52,14 +52,6 @@ export function worldTarget(gl: THREE.WebGLRenderer): THREE.WebGLRenderTarget | 
 
 export function registerHero(root: THREE.Object3D) { HD.roots.add(root); return () => { HD.roots.delete(root); }; }
 
-/** Max anisotropy + trilinear mipmaps for a hero texture (heroes only; the environment keeps its own settings). */
-export function crispHeroTexture(tex: THREE.Texture | null | undefined, gl?: THREE.WebGLRenderer) {
-    if (!tex) return;
-    const max = gl ? gl.capabilities.getMaxAnisotropy() : 8;
-    tex.anisotropy = Math.max(tex.anisotropy, Math.min(16, max || 8));
-    tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
-}
 
 /* #3 submerged hero parts (Shifat 2:32 PM + 2:53 PM 'heroes' submerged body parts aren't visible / weird blue thingy in ponds'): the water surface writes
    depth, so a diving hero vanished behind it. Below the water line each hero fragment now (a) takes the water's colour by the length of its underwater

@@ -32,7 +32,6 @@ function slot(alpha: boolean): number {
 // live caps 80 additive + 20 alpha instead of 128 + 32. Desktop auto/high keeps the full path.
 export const ADD_LOW = 80, ALPHA_LOW = 20;
 export let LOW = QK.fxLow;
-export function setFxLow(v: boolean) { LOW = v; }
 export function emit(shape: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, s0: number, s1: number, col: number, a = 1, grav = 0, drag = 0, thick = 0.12, fade = 1, floor = -1e9) {
     const alpha = shape >= 10, i = slot(alpha), b = alpha ? alphaP : addP, o = i * F;
     b[o] = x; b[o + 1] = y; b[o + 2] = z; b[o + 3] = vx; b[o + 4] = vy; b[o + 5] = vz; b[o + 6] = 0; b[o + 7] = life; b[o + 8] = s0; b[o + 9] = s1;
@@ -165,7 +164,6 @@ export function fxChargeTick(hx: number, hy: number, hz: number, c: number, col:
         emit(SH_SPARK, hx + ox, hy + oy, hz + oz, -ox / 0.25, -oy / 0.25, -oz / 0.25, 0.25, 0.04, 0.02, Math.random() < 0.5 ? 0xffffff : col, 0.9);
     }
 }
-export function resetFx() { pool.addN = 0; pool.alphaN = 0; for (const t of trails) t.n = 0; bolts.length = 0; screenFlash.frames = 0; }
 /** Shock discharge around the caster: lightning arcs racing out along the ground to the hit range, ground-hugging light burst,
  *  caster-coloured spark burst, core flash, glow (no ring) */
 export function fxDischarge(x: number, gy: number, z: number, R: number, col: number) {

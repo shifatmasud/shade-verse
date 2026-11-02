@@ -6,7 +6,7 @@ import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
 import { registerFxHero } from './CombatFX';
-import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, writeSnareRing, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
+import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { HERO_REFL } from './caustics';
 

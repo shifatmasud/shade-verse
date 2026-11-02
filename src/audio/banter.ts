@@ -96,4 +96,3 @@ export const BANTER: Exchange[] = [
     { t: 'farm', l: [['g', 116, "Those houses look so cozy."], ['s', 109, "Retire here someday?"], ['g', 117, "Only if you learn to milk a cow."]] },
     { t: 'arrive_island', l: [['s', 110, "Back on the jungle island."], ['g', 118, "Stay close, the jungle gets thick."], ['s', 111, "Lead the way. I've got your back."]] },
 ];
-export const BANTER_N = { cg: 104, cs: 98 };

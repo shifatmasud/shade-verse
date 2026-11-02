@@ -44,7 +44,6 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
     const proj = useRef<THREE.Group[]>([]);
     const blasts = useRef<{ g: THREE.Group; flash: THREE.Sprite; sparks: THREE.Points; dir: Float32Array }[]>([]);
     const ret = useRef<THREE.Group>(null!);
-    const o = useMemo(() => new THREE.Object3D(), []);
     const colNow = useRef(-1);
     useFrame(() => {
         // Shifat 11:34 AM "Web shot too?": the bolt and its blast take the caster's colour (Shadow purple / Ghost pink, sim fxCol); was cyan/white

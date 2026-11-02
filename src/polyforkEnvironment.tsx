@@ -10,7 +10,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { QUALITY, QK } from './quality';
 import { CAUSTIC_TEX, WATER_NRM, HERO_REFL } from './caustics';
 import {
-    buildings, world, PARK, parkH, PARK_POND, PARK_POND_Y, PARK_BRIDGE,
+    buildings, PARK, parkH, PARK_POND, PARK_POND_Y, PARK_BRIDGE,
     bridgeSurfaceAt, isLegacyCityCore, LAKE_SHORE, BEACH_DIR, type Sim,
 } from './sim';
 import { bakeGrid } from './water/gridRefl';
@@ -42,19 +42,6 @@ const CITY_ASSETS: Asset[] = [
     { id: 'monolith-office-tower-422420', title: 'Monolith Office Tower', url: urlFor('monolith-office-tower-422420') },
     { id: 'vertical-farm-tower-77d887', title: 'Vertical Farm Tower', url: urlFor('vertical-farm-tower-77d887') },
     { id: 'capsule-residential-tower-80300b', title: 'Capsule Residential Tower', url: urlFor('capsule-residential-tower-80300b') },
-];
-
-const TREE_ASSETS: Asset[] = [
-    { id: 'street-tree-0d33f3', title: 'Street Tree', url: urlFor('street-tree-0d33f3') },
-    { id: 'palm-tree-a307da', title: 'Palm Tree', url: urlFor('palm-tree-a307da') },
-    { id: 'tall-pine-tree-ab4108', title: 'Tall Pine', url: urlFor('tall-pine-tree-ab4108') },
-    { id: 'young-pine-0d7695', title: 'Young Pine', url: urlFor('young-pine-0d7695') },
-    { id: 'broadleaf-oak-997c22', title: 'Broadleaf Oak', url: urlFor('broadleaf-oak-997c22') },
-    { id: 'birch-tree-181b33', title: 'Birch', url: urlFor('birch-tree-181b33') },
-    { id: 'maple-tree-65fa12', title: 'Maple', url: urlFor('maple-tree-65fa12') },
-    { id: 'cherry-blossom-tree-3f7ab7', title: 'Cherry Blossom', url: urlFor('cherry-blossom-tree-3f7ab7') },
-    { id: 'cherry-tree-a710a9', title: 'Cherry Tree', url: urlFor('cherry-tree-a710a9') },
-    { id: 'round-bush-cd2ac0', title: 'Round Bush', url: urlFor('round-bush-cd2ac0') },
 ];
 
 const BRIDGE_ASSET: Asset = {
@@ -381,118 +368,7 @@ export function ParkGround() {
 }
 
 const PARK_SEG = 96;
-export function createVegetationPlacements() {
-    const trees: Record<string, Placement[]> = Object.fromEntries(TREE_ASSETS.slice(0, -1).map((a) => [a.id, []]));
-    const bushes: Placement[] = [];
-    const cx = (PARK.x0 + PARK.x1) * 0.5, cz = (PARK.z0 + PARK.z1) * 0.5;
-    const parkCycle = [
-        'broadleaf-oak-997c22', 'birch-tree-181b33', 'tall-pine-tree-ab4108',
-        'maple-tree-65fa12', 'cherry-tree-a710a9', 'palm-tree-a307da',
-        'young-pine-0d7695', 'street-tree-0d33f3', 'cherry-blossom-tree-3f7ab7',
-    ];
-    const parkPoints: { x: number; z: number; scale: number; yaw: number }[] = [];
-    let seed = 7;
-    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < 900 && parkPoints.length < 130; i++) {
-        const x = PARK.x0 + 6 + rnd() * (PARK.x1 - PARK.x0 - 12);
-        const z = PARK.z0 + 6 + rnd() * (PARK.z1 - PARK.z0 - 12);
-        if (Math.hypot(x - cx, z - cz) < 54 || Math.abs((x - cx) - (z - cz) * 0.6) < 6) continue;
-        if (isPondClearance(x, z, 5) || bridgeSurfaceAt(x, z) !== null || rnd() < 0.2) continue;
-        parkPoints.push({ x, z, scale: 1.05 + rnd() * 0.38, yaw: rnd() * Math.PI * 2 });
-    }
-    parkPoints.forEach((p, i) => {
-        const id = parkCycle[i % parkCycle.length];
-        const height = id === 'palm-tree-a307da' || id.includes('pine') ? 1.18 : 1.08;
-        trees[id].push({ x: p.x, y: parkH(p.x, p.z) + 0.03, z: p.z, sx: p.scale, sy: p.scale * height * (0.95 + (i % 5) * 0.025), sz: p.scale, yaw: p.yaw });
-    });
 
-    // Balanced Polyfork tree rows on both sides of selected streets; the old street trees are not rendered.
-    const street = world.streetBlds
-        .map((b, i) => ({ b, i, k: hash01(b.x0 * 13.37, b.z0 * 7.17) }))
-        .sort((a, b) => a.k - b.k);
-    const sideCycle = ['street-tree-0d33f3', 'palm-tree-a307da', 'tall-pine-tree-ab4108', 'maple-tree-65fa12', 'broadleaf-oak-997c22', 'birch-tree-181b33', 'young-pine-0d7695'];
-    let streetCount = 0;
-    for (let i = 0; i < street.length && streetCount < 112; i++) {
-        const b = street[i].b;
-        for (const side of [1, -1]) {
-            if (streetCount >= 112) break;
-            const x = side > 0 ? b.x1 + 2.5 : b.x0 - 2.5;
-            const z = (b.z0 + b.z1) * 0.5 + (Math.floor(i / 3) % 2 ? 4 : -4);
-            if (z < -214 || x < -390 || x > 390 || bridgeSurfaceAt(x, z) !== null || isPondClearance(x, z, 4)) continue;
-            if (buildings.some((q) => x > q.x0 - 1.4 && x < q.x1 + 1.4 && z > q.z0 - 1.4 && z < q.z1 + 1.4)) continue;
-            const id = sideCycle[streetCount % sideCycle.length], s = 0.95 + hash01(x, z) * 0.3;
-            const height = id === 'palm-tree-a307da' || id.includes('pine') ? 1.18 : 1.06;
-            trees[id].push({ x, y: parkH(x, z) + 0.02, z, sx: s, sy: s * height, sz: s, yaw: hash01(z, x) * Math.PI * 2 });
-            streetCount++;
-        }
-    }
-
-    // A mixed Polyfork grove around the pond, with blossoms and the bridge approach kept prominent and clear.
-    const axisX = PARK_BRIDGE.axisX, axisZ = PARK_BRIDGE.axisZ;
-    const pondCycle = ['cherry-blossom-tree-3f7ab7', 'broadleaf-oak-997c22', 'cherry-tree-a710a9', 'tall-pine-tree-ab4108', 'cherry-blossom-tree-3f7ab7', 'palm-tree-a307da', 'cherry-blossom-tree-3f7ab7', 'maple-tree-65fa12'];
-    for (let i = 0; i < 28; i++) {
-        const a = (i / 28) * Math.PI * 2 + 0.08;
-        const x = PARK_POND.cx + Math.cos(a) * (PARK_POND.rx + 5 + (i % 3) * 0.6);
-        const z = PARK_POND.cz + Math.sin(a) * (PARK_POND.rz + 4 + (i % 4) * 0.5);
-        const dx = x - PARK_BRIDGE.x, dz = z - PARK_BRIDGE.z;
-        const along = dx * axisX + dz * axisZ, across = -dx * axisZ + dz * axisX;
-        if (Math.abs(across) < 4.2 && Math.abs(along) < PARK_BRIDGE.halfLength + PARK_BRIDGE.rampLength + 2) continue;
-        const id = pondCycle[i % pondCycle.length];
-        const s = 1.05 + hash01(x, z) * 0.35;
-        const height = id === 'palm-tree-a307da' || id.includes('pine') ? 1.2 : id === 'cherry-blossom-tree-3f7ab7' ? 1.13 : 1.08;
-        trees[id].push({ x, y: parkH(x, z) + 0.03, z, sx: s, sy: s * height, sz: s, yaw: hash01(z, x) * Math.PI * 2 });
-    }
-
-    // Rebuilt low Polyfork shrubs replace the scanned atlas bushes across the park and side streets.
-    const bushCandidates = parkPoints.filter((p) => !isPondClearance(p.x, p.z, 5) && bridgeSurfaceAt(p.x, p.z) === null);
-    for (let i = 0; i < Math.min(54, bushCandidates.length); i++) {
-        const p = bushCandidates[(i * 7) % bushCandidates.length];
-        const x = p.x + (hash01(i, p.z) - 0.5) * 4.4, z = p.z + (hash01(p.x, i) - 0.5) * 4.4;
-        if (Math.abs((x - cx) - (z - cz) * 0.6) < 4 || isPondClearance(x, z, 4) || bridgeSurfaceAt(x, z) !== null) continue;
-        const s = 0.55 + hash01(x, z) * 0.55;
-        bushes.push({ x, y: parkH(x, z) + 0.03, z, sx: s, sy: s, sz: s, yaw: hash01(z, x) * Math.PI * 2 });
-    }
-    const streetShrubs = street.slice(0, 42);
-    streetShrubs.forEach(({ b }, i) => {
-        const x = (b.x0 + b.x1) * 0.5 + (i % 2 ? 1 : -1) * (b.x1 - b.x0) * 0.52;
-        const z = (b.z0 + b.z1) * 0.5 + (i % 3 - 1) * 2.2;
-        if (buildings.some((q) => x > q.x0 - 1 && x < q.x1 + 1 && z > q.z0 - 1 && z < q.z1 + 1)) return;
-        const s = 0.55 + hash01(x, z) * 0.38;
-        bushes.push({ x, y: parkH(x, z) + 0.03, z, sx: s, sy: s, sz: s, yaw: hash01(z, x) * Math.PI * 2 });
-    });
-    return { trees, bushes };
-}
-
-export function PolyforkForest() {
-    const gltfs = useLoader(GLTFLoader, TREE_ASSETS.map((asset) => asset.url), withMeshopt) as GLTF[];
-    const models = useMemo(() => TREE_ASSETS.map((asset, i) => prepareModel(asset.id, gltfs[i])), [gltfs]);
-    const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
-    const placements = useMemo(createVegetationPlacements, []);
-    const treeCount = useMemo(() => Object.values(placements.trees).reduce((n, list) => n + list.length, 0), [placements]);
-
-    useEffect(() => {
-        if (DBG) (window as any).__polyforkVegetation = {
-            trees: treeCount,
-            bushes: placements.bushes.length,
-            species: TREE_ASSETS.map((a) => a.id),
-            instancesBySpecies: Object.fromEntries(Object.entries(placements.trees).map(([id, ps]) => [id, ps.length])),
-        };
-    }, [placements, treeCount]);
-
-    return <group name="polyfork-vegetation">
-        {TREE_ASSETS.slice(0, -1).map((asset) => <InstancedAsset
-            key={asset.id}
-            prefix="polyfork-tree"
-            model={byId.get(asset.id)!}
-            placements={placements.trees[asset.id]}
-        />)}
-        <InstancedAsset
-            prefix="polyfork-bush"
-            model={byId.get('round-bush-cd2ac0')!}
-            placements={placements.bushes}
-        />
-    </group>;
-}
 
 function buildContactMatrices() {
     const matrices: THREE.Matrix4[] = [];

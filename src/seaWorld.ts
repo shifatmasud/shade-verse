@@ -2,7 +2,7 @@
 // Pure data + height functions shared by the sim (walk / land / swim / anchors) and the renderer. No imports from sim.ts
 // (sim.ts imports this file), so the few world constants it needs are repeated here.
 export interface SeaBld { x0: number; x1: number; z0: number; z1: number; h: number; y0?: number; sea: true; kind: 'light' | 'shack' | 'tower' | 'harbor' | 'solid'; host?: number; ob?: [number, number, number, number, number] }   // ob = oriented box [cx, cz, yaw, halfX, halfZ]; x0..z1 then encloses it
-const W_Z = -222, W_Y = -1.0;
+const W_Y = -1.0;
 const sm = (a: number, b: number, v: number) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // ---------------------------------------------------------------- STEP 2: the island
@@ -342,4 +342,3 @@ export function seaSurface(x: number, z: number, footY: number): number | null {
 export function seaLift(x: number, z: number, y: number) { const ih = islandRaw(x, z, false) ?? farmRaw(x, z) ?? iceRaw(x, z); return ih === null ? y : Math.max(y, ih - 0.3); }
 /** enemies never spawn or roam here */
 export function inCalmZone(x: number, z: number) { return isIsland(x, z, 1.45) || isFarm(x, z, 1.45) || isIce(x, z, 1.45) || isPirate(x, z, 1.6); }
-export const SEA_W = { W_Z, W_Y };

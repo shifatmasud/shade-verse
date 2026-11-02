@@ -88,4 +88,3 @@ export function iglooModel(kind: number): { body: THREE.BufferGeometry; glass: T
     const gl = merge(glass); gl.deleteAttribute('color'); gl.deleteAttribute('normal'); return { body: merge(out), glass: gl };
 }
 /* footprint half-size (x, z) and height per kind, for collision */
-export const IGLOO_DIM: [number, number, number][] = [[2.5, 4.3, 2.8], [5.2, 5.0, 3.4], [3.4, 3.4, 2.1]];
