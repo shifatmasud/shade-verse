@@ -97,8 +97,12 @@ export function StreetProps({ tod }: { tod: { day: { value: number } } }) {   /*
     }, []);
     const furnMat = useMemo(() => new THREE.MeshLambertMaterial({ vertexColors: true }), []);
     useFrame(() => { const n = Math.max(0, Math.min(1, (0.6 - tod.day.value) / 0.45)); (m.head as THREE.MeshBasicMaterial).color.setRGB(1, 0.86, 0.62).multiplyScalar(0.45 + 1.6 * n); (m.pool as THREE.ShaderMaterial).uniforms.uN.value = n; m.pool.visible = n > 0.01; });   /* perf: the additive pools cost fill-rate even when black; skip them by day */
+    /* distance cull (Shifat 9:19 PM 'distance based vertex reduction'): a furniture cell past ~250 m is sub-pixel - skip it entirely */
+    const fr = useRef<(THREE.Mesh | null)[]>([]);
+    const fc = useMemo(() => furn.map((f) => { f.computeBoundingSphere(); return f.boundingSphere!.center.clone(); }), [furn]);
+    useFrame(({ camera }) => { for (let i = 0; i < fc.length; i++) { const me = fr.current[i]; if (me) { const dx = fc[i].x - camera.position.x, dz = fc[i].z - camera.position.z; me.visible = dx * dx + dz * dz < 62500; } } });
     return <group name="street-props">
-        {furn.map((f, i) => <mesh key={i} geometry={f} material={furnMat} />)}
+        {furn.map((f, i) => <mesh key={i} ref={(r) => { fr.current[i] = r; }} geometry={f} material={furnMat} />)}
         <Inst list={d.head} geo={g.head} mat={m.head} bloom /><Inst list={d.pool} geo={g.pool} mat={m.pool} />
     </group>;
 }
