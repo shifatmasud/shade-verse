@@ -186,10 +186,23 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
             if (nx.x < nx.y) { c.x += st.x; nx.x += tD.x; } else { c.y += st.y; nx.y += tD.y; } tc = tn2;
           }
           if (cov > 0.01) cb = acc / cov;
-          for (int i = 0; i < 3; i++) {   // isle domes
+          for (int i = 0; i < 3; i++) {   /* isles: the dome only bounds the ray; inside it the real island height (the sea-bed map, which carries the
+             coastline and low slopes; it clips at +10 m, so the dome takes over above that) is marched in 8 soft steps */
+            if (cov > 0.97) break;
             vec4 I = uArIsle[i]; vec3 sc = vec3(I.z, I.w, I.z); vec3 o = (ro - vec3(I.x, 0.0, I.y)) / sc, d = hd / sc; float A = dot(d, d), B = dot(o, d), C = dot(o, o) - 1.0, D = B * B - A * C;
-            if (D > 0.0) { float t = (-B - sqrt(D)) / A; if (t > 0.5 && t < tb && o.y + d.y * t >= 0.0) { tb = t; cov = 1.0; vec3 p = o + d * t; nb = normalize(p / sc); bh = -1.0; cb = i == 2 ? vec3(0.82, 0.9, 0.96) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(0.05, 0.25, p.y)); } }
+            if (D > 0.0) { float sq = sqrt(D); float t0 = max((-B - sq) / A, 0.5), t1 = min((-B + sq) / A, tb);
+              if (t1 > t0) { float dt = (t1 - t0) / 8.0; float t = t0 + dt * 0.5;
+                for (int s = 0; s < 8; s++) { vec3 p = ro + hd * t; vec2 q = (p.xz - I.xy) / I.z; float dh = I.w * sqrt(max(0.0, 1.0 - dot(q, q)));
+                  float by = i == 2 ? dh : bedY(p.xz); float h = by > 9.0 ? dh : min(dh, by); float sf = 1.5 + t * 0.03;
+                  float k = smoothstep(-sf, sf, h - p.y) * (1.0 - cov);
+                  if (k > 0.01) { vec3 col = i == 2 ? vec3(0.82, 0.9, 0.96) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(1.5, 5.0, h));
+                    if (tb > 9e4) { tb = t; nb = normalize(vec3(q.x, 0.6, q.y)); bh = -1.0; }
+                    acc += k * col; cov += k; if (cov > 0.97) break; }
+                  t += dt; }
+              } }
           }
+          if (cov > 0.01) cb = acc / cov;
+
           float ah = cov; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
           vec3 acol = cb * lam * mix(0.3, 1.0, uDay);
           skR = mix(acol, reflTint(acol, refl), 0.5); skA = ah * 0.95; nGlow = cb * 0.3 * ah;
