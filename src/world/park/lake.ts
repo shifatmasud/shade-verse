@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PARK_BRIDGE, bridgeSurfaceAt, parkH } from '../../sim';
 import { CAUSTIC_GLSL } from '../../caustics';
 import { WATER_COMMON_GLSL } from '../../water/common';
+import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from '../../water/gridRefl';
 
 // Park lake: shoreline foam + bridge ramp geometry, and the lake / caustics / foam / contact shaders.
 function subdividePositions(source: THREE.BufferGeometry, levels = 2) {
@@ -96,8 +97,10 @@ vec2 g=vec2(0.0099*cos(a1)+0.00735*cos(a2),0.0072*cos(a1)-0.0056*cos(a2));w.y+=h
 vec4 mv=viewMatrix*w;vView=mv.xyz;vScreen=projectionMatrix*mv;gl_Position=vScreen;}`;
 export const LAKE_FS = `#include <packing>
 uniform float uTime; uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene; uniform float uSteps; uniform float uNear; uniform float uFar;
-uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay; uniform sampler2D uNrm; uniform vec4 uHeroA; uniform vec4 uHeroB; uniform sampler2D uSkyl;
+uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay; uniform sampler2D uNrm; uniform vec4 uHeroA; uniform vec4 uHeroB; 
 ${WATER_COMMON_GLSL}
+${GRID_UNIFORMS_GLSL}
+${GRID_TRACE_GLSL}
 varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;
 float sceneZ(vec2 uv){return perspectiveDepthToViewZ(texture2D(tDepth,uv).x,uNear,uFar);}
 float sph(vec3 ro,vec3 rd,vec4 s){vec3 oc=ro-s.xyz;float b=dot(oc,rd);float h=b*b-dot(oc,oc)+s.w*s.w;if(h<0.0)return 1e5;float t=-b-sqrt(h);return t>0.0?t:1e5;}
@@ -127,7 +130,7 @@ void main(){
    tp=t;}}
  if(!below&&reflDist>9e4){/* #5 pond reflection illusion v2 (Shifat 3:20 PM 'looks a bit wrong'): the bank trees are an analytic ring (cylinder) around the
    pond, hit by the per-pixel reflected ray, so the mirrored tree line hugs the shore with true parallax like a real pond; above the trees the far
-   towers come from the projected ring (POND_SKYL_TEX). No renders, one fetch. */
+   towers come from the analytic grid trace (gridRefl.ts). No renders, one fetch. */
   vec3 rr=normalize(mix(reflect(-V,vec3(0.0,1.0,0.0)),R,0.35));vec2 d2=rr.xz;float dl=max(length(d2),1e-3);d2/=dl;
   vec2 o2=vWorld.xz-uPondCenter;float Rb=uPondR*uShore+4.5;float b2=dot(o2,d2),c2=dot(o2,o2)-Rb*Rb;float th=-b2+sqrt(max(b2*b2-c2,0.0));
   vec2 hp=o2+d2*th;float az=atan(hp.x,hp.y);float hy=th*rr.y/dl;
@@ -135,9 +138,10 @@ void main(){
   float pink=smoothstep(0.35,0.75,0.5+0.5*sin(az*5.0+0.7)+0.2*sin(az*23.0));
   vec3 treeC=mix(vec3(0.03,0.06,0.035),vec3(0.06,0.07,0.05),pink*0.4)*mix(0.25,1.0,uDay);vec3 bankC=vec3(0.06,0.08,0.035)*mix(0.25,1.0,uDay);
   float tc=1.0-smoothstep(tH-3.0,tH+1.5,hy+(N.x+N.z)*2.0);
-  vec4 sk=texture2D(uSkyl,vec2(atan(rr.x,rr.z)*0.15915494+0.5,0.5));sk.rgb=pow(sk.rgb,vec3(2.2));
-  float top=sk.a*0.35;float tw=step(0.004,sk.a)*(1.0-smoothstep(top*0.9,top*1.1+0.02,asin(clamp(rr.y,0.0,1.0))));
-  vec3 rc=mix(refl,reflTint(sk.rgb*mix(0.3,0.9,uDay),refl),tw*0.7);rc=mix(rc,mix(bankC,treeC,smoothstep(0.4,1.4,hy)),tc*0.6);
+  /* Nov 1 4:39 PM ring deleted: the city above the trees comes from the same analytic grid trace as the sea (ray from the pond, relative height) */
+  float gtb=1e5;vec3 gnb=vec3(0.0,1.0,0.0),gac=vec3(0.0);float gcv=0.0;gridTrace(vec3(vWorld.x,0.0,vWorld.z),normalize(vec3(rr.x,rr.y*0.38,rr.z)),gtb,gnb,gac,gcv);
+  float tw=gcv;vec3 gcol=gcv>0.01?gac/gcv:vec3(0.0);
+  vec3 rc=mix(refl,reflTint(gcol*mix(0.3,0.9,uDay),refl),tw*0.7);rc=mix(rc,mix(bankC,treeC,smoothstep(0.4,1.4,hy)),tc*0.6);
   refl=rc;F=max(F,tc*0.35);}
  if(!below&&cameraPosition.y>vWorld.y){/* Shifat 6:06 PM: both heroes reflect in the pond (flying one too), same soft capsule style as the sea/pools/river; only the part above the surface */
   float wy=vWorld.y;bool nA=uHeroA.w>0.5&&length(uHeroA.xz-vWorld.xz)<40.0&&uHeroA.y+1.55>wy,nB=uHeroB.w>0.5&&length(uHeroB.xz-vWorld.xz)<40.0&&uHeroB.y+1.5>wy;

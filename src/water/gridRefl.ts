@@ -45,3 +45,35 @@ export function bakeGrid() {
     if (typeof window !== 'undefined') (window as any).__grid = { nb: L.length, nx, nz, over, maxPer: Math.max(...cells.map(c => c.length)) };
     return GRID;
 }
+
+/* GLSL: the low-detail analytic air trace through the map grid (one soft block per 40 m cell, blur growing with distance).
+   Accumulates soft coverage front-to-back into acc/cov; tb/nb = distance and face normal of the first hit.
+   Needs GRID_UNIFORMS_GLSL. Used by the sea (reflection + underwater Snell window) and the park pond. */
+export const GRID_UNIFORMS_GLSL = 'uniform highp sampler2D uGrid; uniform highp sampler2D uGBox; uniform vec4 uGB; uniform vec2 uGN;';
+export const GRID_TRACE_GLSL = `
+    void gridTrace(vec3 ro, vec3 hd, inout float tb, inout vec3 nb, inout vec3 acc, inout float cov) {
+          vec3 ih = 1.0 / hd;
+          /* clip the ray to the grid's rectangle first: open-sea rays start outside it and would burn steps on empty cells */
+          vec2 gmn = uGB.xy, gmx = uGB.xy + uGN * uGB.z; vec2 ta = (gmn - ro.xz) / hd.xz, tbb = (gmx - ro.xz) / hd.xz; vec2 tlo = min(ta, tbb), thi = max(ta, tbb);
+          float te = max(max(tlo.x, tlo.y), 0.0), tx = min(min(min(thi.x, thi.y), 170.0 / max(hd.y, 1e-3)), 800.0);   /* past ~800 m the sea fog owns the water anyway */
+          vec2 g = (ro.xz + hd.xz * (te + 0.01) - uGB.xy) / uGB.z; ivec2 c = ivec2(floor(g)); vec2 sd = sign(hd.xz) + step(0.0, -abs(hd.xz)); ivec2 st = ivec2(sd);
+          vec2 ia = 1.0 / max(abs(hd.xz), vec2(1e-5)); vec2 tD = uGB.z * ia; vec2 nx = te + (vec2(c) + step(0.0, sd) - g) * sd * tD; float tc = te; ivec2 N = ivec2(uGN);
+          for (int i = 0; i < 20; i++) { if (tc > tx || cov > 0.97) break;
+            if (c.x >= 0 && c.y >= 0 && c.x < N.x && c.y < N.y) {
+              vec4 m = texelFetch(uGrid, ivec2(c.x * 3 + 2, c.y), 0);
+              if (m.y > 0.5 && hd.y * tc < m.x + 8.0) {
+                vec4 fp = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), cc = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
+                vec3 bm = vec3(fp.x, m.z, fp.y), bx = vec3(fp.z, cc.w, fp.w);
+                float sf = 3.0 + tc * 0.05;   // softness grows with distance (heavy blur far out)
+                vec3 t0 = (bm - vec3(sf, 0.0, sf) - ro) * ih, t1 = (bx + vec3(sf, sf, sf) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
+                float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
+                if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf, bx.y - sf, hd.y * max(a, 0.5));
+                  if (tb > 9e4) { tb = max(a, 0.5); nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
+                  acc += (1.0 - cov) * k * cc.rgb; cov += (1.0 - cov) * k; }
+              }
+            }
+            float tn2 = min(nx.x, nx.y); if (hd.y * tn2 > 170.0) break;
+            if (nx.x < nx.y) { c.x += st.x; nx.x += tD.x; } else { c.y += st.y; nx.y += tD.y; } tc = tn2;
+          }
+    }
+`;

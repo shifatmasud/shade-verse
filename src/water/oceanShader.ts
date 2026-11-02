@@ -1,3 +1,4 @@
+import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from './gridRefl';
 import { HF_HMAX, HF_BRIDGE, HF_DECK } from './heightRefl';
 import { IMP_HMAX } from './impostorRefl';
 import { HARBOR } from '../seaWorld';
@@ -19,7 +20,7 @@ export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform highp sampler2D uGrid; uniform highp sampler2D uGBox; uniform vec4 uGB; uniform vec2 uGN; uniform sampler2D tMir; uniform mat4 uMirM; uniform float uMir; uniform vec2 uMirPx; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform float uUseRefl; ${GRID_UNIFORMS_GLSL} uniform sampler2D tMir; uniform mat4 uMirM; uniform float uMir; uniform vec2 uMirPx; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
@@ -38,31 +39,10 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
     float bedY(vec2 xz){ float e = bedEdge(xz); return mix(seaBed(xz), texture2D(uBed, bedUV(xz)).r * 40.0 - 30.0, e); }
     /* the analytic air trace (map grid of buildings + bridge deck spans, then the isles), shared by the sea reflection and the
        underwater Snell window. Returns colour + soft coverage; nb = the face normal of the first hit. */
+${GRID_TRACE_GLSL}
     vec4 airTrace(vec3 ro, vec3 hd, out vec3 nb) {
           vec3 ih = 1.0 / hd; float tb = 1e5; vec3 cb = vec3(0.0); nb = vec3(0.0, 1.0, 0.0); float bh = 0.0;
-          /* clip the ray to the grid's rectangle first: open-sea rays start outside it and would burn steps on empty cells */
-          vec2 gmn = uGB.xy, gmx = uGB.xy + uGN * uGB.z; vec2 ta = (gmn - ro.xz) / hd.xz, tbb = (gmx - ro.xz) / hd.xz; vec2 tlo = min(ta, tbb), thi = max(ta, tbb);
-          float te = max(max(tlo.x, tlo.y), 0.0), tx = min(min(min(thi.x, thi.y), 170.0 / max(hd.y, 1e-3)), 800.0);   /* past ~800 m the sea fog owns the water anyway */
-          vec2 g = (ro.xz + hd.xz * (te + 0.01) - uGB.xy) / uGB.z; ivec2 c = ivec2(floor(g)); vec2 sd = sign(hd.xz) + step(0.0, -abs(hd.xz)); ivec2 st = ivec2(sd);
-          vec2 ia = 1.0 / max(abs(hd.xz), vec2(1e-5)); vec2 tD = uGB.z * ia; vec2 nx = te + (vec2(c) + step(0.0, sd) - g) * sd * tD; float tc = te; ivec2 N = ivec2(uGN);
-          float cov = 0.0; vec3 acc = vec3(0.0);   // soft front-to-back coverage: edges blur with distance
-          for (int i = 0; i < 20; i++) { if (tc > tx || cov > 0.97) break;
-            if (c.x >= 0 && c.y >= 0 && c.x < N.x && c.y < N.y) {
-              vec4 m = texelFetch(uGrid, ivec2(c.x * 3 + 2, c.y), 0);
-              if (m.y > 0.5 && hd.y * tc < m.x + 8.0) {
-                vec4 fp = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), cc = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
-                vec3 bm = vec3(fp.x, m.z, fp.y), bx = vec3(fp.z, cc.w, fp.w);
-                float sf = 3.0 + tc * 0.05;   // softness grows with distance (heavy blur far out)
-                vec3 t0 = (bm - vec3(sf, 0.0, sf) - ro) * ih, t1 = (bx + vec3(sf, sf, sf) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
-                float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
-                if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf, bx.y - sf, hd.y * max(a, 0.5));
-                  if (tb > 9e4) { tb = max(a, 0.5); nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
-                  acc += (1.0 - cov) * k * cc.rgb; cov += (1.0 - cov) * k; }
-              }
-            }
-            float tn2 = min(nx.x, nx.y); if (hd.y * tn2 > 170.0) break;
-            if (nx.x < nx.y) { c.x += st.x; nx.x += tD.x; } else { c.y += st.y; nx.y += tD.y; } tc = tn2;
-          }
+          float cov = 0.0; vec3 acc = vec3(0.0); gridTrace(ro, hd, tb, nb, acc, cov);
           if (cov > 0.01) cb = acc / cov;
           for (int i = 0; i < 3; i++) {   /* isles: the dome only bounds the ray; inside it the real island height (the sea-bed map, which carries the
              coastline and low slopes; it clips at +10 m, so the dome takes over above that) is marched in 8 soft steps */
