@@ -37,6 +37,18 @@ void main(){
    col*=1.0-0.38*uRain;
    vec3 skyC=mix(uFog*0.55,uFog*1.05+vec3(0.04,0.05,0.07),uDay);
    col=mix(col,skyC,uRain*clamp(0.18+0.6*fr+0.45*pud*(0.4+0.6*fr),0.0,0.85));
+    { /* Nov 2 (real photo 'City streets; reflections on the street surface after rain'): the wet street mirrors the facades on both sides as soft
+         vertical streaks - lit windows at night, building colour by day. Reflected ray vs the facade planes of this street (blocks on the 40 m grid,
+         facades ~8 m off the street centre line); window columns only, no rows = the long rippled streaks of a real wet street. */
+      vec3 R=reflect(-V,vec3(0.0,1.0,0.0)); vec2 lc=mod(vPos.xz,40.0)-20.0; float W=8.0; float tH=1e5; float hu=0.0;
+      if(abs(lc.x)<W&&abs(R.x)>1e-3){float t=(sign(R.x)*W-lc.x)/R.x; if(t>0.0&&t<tH){tH=t;hu=vPos.z+R.z*t;}}
+      if(abs(lc.y)<W&&abs(R.z)>1e-3){float t=(sign(R.z)*W-lc.y)/R.z; if(t>0.0&&t<tH){tH=t;hu=vPos.x+R.x*t;}}
+      if(tH<1e4){ hu+=sin(vPos.x*1.7+vPos.z*2.3)*0.5+pn*0.8; float hy=R.y*tH; float cid=floor(hu/2.4); float hs=fract(sin(cid*12.9898+floor(hu/40.0)*78.233)*43758.5);
+        float colw=0.55+0.45*smoothstep(0.5,0.0,abs(fract(hu/2.4)-0.5));   /* soft, rippled, not bars */
+        vec3 nightW=vec3(1.0,0.72,0.42)*smoothstep(0.35,0.75,hs)*colw*1.1; vec3 dayB=vec3(0.62,0.64,0.7)*(0.75+0.25*colw);
+        vec3 rc=mix(nightW,dayB*mix(0.35,1.0,uDay),uDay);
+        float k=uRain*clamp(0.22+0.5*pud+0.35*fr,0.0,0.8)*smoothstep(42.0,6.0,hy)*smoothstep(60.0,15.0,length(cameraPosition-vPos));
+        col=mix(col,rc,k*mix(0.55,0.35,uDay)); col+=nightW*k*0.25*(1.0-uDay); } }
   }
  }
  else if(uRain>0.01&&n.y>0.5){col*=1.0-0.18*uRain;}   // wet roofs read a little darker
