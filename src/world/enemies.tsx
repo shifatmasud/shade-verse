@@ -24,14 +24,17 @@ export function buildEnemy(kind: number, time: { value: number }) {
 
 
 
-// Plasma web shot: bright core wrapped in spinning web-strand rings, a huge impact shockwave
-// (flash bubble + expanding ring + radial debris), and a small lock reticle over the auto-target.
+// Plasma web shot: soft glowing core + halo (Nov 2, Shifat: no solid shapes / rings / hard edges - was solid spheres + torus rings),
+// a soft impact bloom with glowing embers (was flash sphere + expanding ring + cone debris), and a small lock reticle over the auto-target.
 // Everything is pooled (3 bolts, 4 blasts, 12 sparks each): zero per-frame allocation, additive only, no lights.
 const _pz = new THREE.Vector3(0, 0, 1), _pv = new THREE.Vector3();
+const SOFT_TEX = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.55)'); g.addColorStop(0.6, 'rgba(255,255,255,0.12)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 export function PlasmaFx({ sim }: { sim: Sim }) {
     const { camera } = useThree();
     const proj = useRef<THREE.Group[]>([]);
-    const blasts = useRef<{ g: THREE.Group; flash: THREE.Mesh; ring: THREE.Mesh; sparks: THREE.InstancedMesh; dir: Float32Array }[]>([]);
+    const blasts = useRef<{ g: THREE.Group; flash: THREE.Sprite; sparks: THREE.Points; dir: Float32Array }[]>([]);
     const ret = useRef<THREE.Group>(null!);
     const o = useMemo(() => new THREE.Object3D(), []);
     useFrame(() => {
@@ -43,10 +46,7 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
                 g.position.set(b.x, b.y, b.z);
                 _pv.set(b.vx, b.vy, b.vz).normalize();
                 g.quaternion.setFromUnitVectors(_pz, _pv);
-                (g.children[2] as THREE.Mesh).rotation.z = sim.t * 22;    // strand rings spin around the flight axis
-                (g.children[3] as THREE.Mesh).rotation.z = -sim.t * 17;
-                (g.children[4] as THREE.Mesh).rotation.z = sim.t * 27;
-                const pu = 1 + Math.sin(sim.t * 31) * 0.12; g.children[0].scale.setScalar(pu);
+                const pu = 1 + Math.sin(sim.t * 31) * 0.12; g.children[0].scale.setScalar(0.9 * pu); g.children[1].scale.setScalar(2.2 * pu);
             }
         }
         for (let i = 0; i < 6; i++) {
@@ -57,19 +57,14 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
                 const k = bl.t / 0.85;
                 grp.g.position.set(bl.x, bl.y, bl.z);
                 const fk = Math.min(1, bl.t / 0.2);
-                grp.flash.scale.setScalar(0.5 + fk * bl.r * 0.55);
-                (grp.flash.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.95 * (1 - bl.t / 0.28));
-                grp.ring.quaternion.copy(camera.quaternion);
-                grp.ring.scale.setScalar(0.6 + k * bl.r * 1.5);
-                (grp.ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - k) * (1 - k);
+                grp.flash.scale.setScalar(1.0 + fk * bl.r * 0.9);
+                (grp.flash.material as THREE.SpriteMaterial).opacity = Math.max(0, 0.9 * (1 - bl.t / 0.32));
+                const pa = grp.sparks.geometry.attributes.position as THREE.BufferAttribute;
                 for (let j = 0; j < 12; j++) {
                     const d = grp.dir, sp = (0.25 + k * bl.r * (0.75 + d[j * 4 + 3] * 0.5));
-                    o.position.set(d[j * 4] * sp, d[j * 4 + 1] * sp + k * k * -3.5, d[j * 4 + 2] * sp);
-                    o.scale.setScalar(Math.max(0.04, (1 - k) * 0.5));
-                    o.rotation.set(sim.t * 9 + j, j * 1.7, 0); o.updateMatrix();
-                    grp.sparks.setMatrixAt(j, o.matrix);
+                    pa.setXYZ(j, d[j * 4] * sp, d[j * 4 + 1] * sp + k * k * -3.5, d[j * 4 + 2] * sp);
                 }
-                grp.sparks.instanceMatrix.needsUpdate = true;
+                pa.needsUpdate = true; (grp.sparks.material as THREE.PointsMaterial).opacity = 0.95 * (1 - k);
             }
         }
         const e = sim.aimE;
@@ -84,21 +79,19 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
     });
     return <>
         {[0, 1, 2].map((i) => <group key={'p' + i} ref={(g) => { if (g) proj.current[i] = g; }} visible={false} frustumCulled={false}>
-            <mesh frustumCulled={false}><sphereGeometry args={[0.3, 10, 8]} /><meshBasicMaterial color="#e8fdff" toneMapped={false} transparent opacity={0.5} blending={THREE.NoBlending} /></mesh>
-            <mesh frustumCulled={false}><sphereGeometry args={[0.78, 10, 8]} /><meshBasicMaterial color="#5fd8ff" transparent opacity={0.38} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
-            {[0.42, 0.58, 0.5].map((r, j) => <mesh key={j} frustumCulled={false} position={[0, 0, (j - 1) * 0.55]}><torusGeometry args={[r, 0.035, 5, 14]} /><meshBasicMaterial color="#f4f8ff" transparent opacity={0.9} depthWrite={false} /></mesh>)}
+            <sprite frustumCulled={false}><spriteMaterial map={SOFT_TEX} color="#f2feff" transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></sprite>
+            <sprite frustumCulled={false}><spriteMaterial map={SOFT_TEX} color="#5fd8ff" transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></sprite>
         </group>)}
         {[0, 1, 2, 3, 4, 5].map((i) => <group key={'b' + i} ref={(g) => {
             if (g && !blasts.current[i]) {
-                const flash = g.children[0] as THREE.Mesh, ring = g.children[1] as THREE.Mesh, sparks = g.children[2] as THREE.InstancedMesh;
+                const flash = g.children[0] as THREE.Sprite, sparks = g.children[1] as THREE.Points;
                 const dir = new Float32Array(12 * 4);
                 for (let j = 0; j < 12; j++) { const a = (j / 12) * Math.PI * 2 + (j % 3) * 0.4, y = 0.15 + ((j * 7) % 5) * 0.16, l = Math.hypot(Math.cos(a), y, Math.sin(a)); dir[j * 4] = Math.cos(a) / l; dir[j * 4 + 1] = y / l; dir[j * 4 + 2] = Math.sin(a) / l; dir[j * 4 + 3] = ((j * 13) % 10) / 10; }
-                blasts.current[i] = { g, flash, ring, sparks, dir };
+                blasts.current[i] = { g, flash, sparks, dir };
             }
         }} visible={false}>
-            <mesh frustumCulled={false}><sphereGeometry args={[1, 14, 10]} /><meshBasicMaterial color="#cfeeff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
-            <mesh frustumCulled={false}><ringGeometry args={[0.82, 1, 40]} /><meshBasicMaterial color="#bfe9ff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
-            <instancedMesh args={[undefined, undefined, 12]} frustumCulled={false}><coneGeometry args={[0.16, 0.6, 4]} /><meshBasicMaterial color="#ffd9a8" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></instancedMesh>
+            <sprite frustumCulled={false}><spriteMaterial map={SOFT_TEX} color="#cfeeff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></sprite>
+            <points frustumCulled={false}><bufferGeometry><bufferAttribute attach="attributes-position" args={[new Float32Array(36), 3]} /></bufferGeometry><pointsMaterial map={SOFT_TEX} color="#ffc890" size={0.55} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></points>
         </group>)}
         <group ref={ret} visible={false} frustumCulled={false}>
             <mesh frustumCulled={false}><ringGeometry args={[0.5, 0.58, 4, 1]} /><meshBasicMaterial color="#8fe9ff" transparent opacity={0.85} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>

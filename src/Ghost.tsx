@@ -459,7 +459,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         lineGeo.setDrawRange(0, n * 2); la.needsUpdate = true;
         if (lineRef.current) lineRef.current.visible = n > 0;
         shockGeo.setDrawRange(0, (pulseSegments + ringSegments) * 2); xa.needsUpdate = true;
-        if (shockRef.current) shockRef.current.visible = pulseSegments + ringSegments > 0;
+        if (shockRef.current) shockRef.current.visible = false;   // Nov 2: crisp 1 px pulse lines off (no hard edges); CombatFX draws soft tethers
         const ownSnare = (actor as any).snareT > 0;
         if (lineMatRef.current) lineMatRef.current.color.set(ownSnare ? GHOST_SNARE_COLOR : '#d8f5ff');
         if (shockMatRef.current) shockMatRef.current.color.set(ownSnare ? GHOST_SNARE_COLOR : '#ffffff');

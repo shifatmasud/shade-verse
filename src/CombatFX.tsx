@@ -1,6 +1,7 @@
 // Combat FX renderer (Nov 2 2026): draws the pools in src/combatFx.ts.
 // 3 draw calls: additive sprites (glow/spark/core/ground light smear/ground streak/lightning segment, also drawn in the
-// selective-bloom pass), alpha sprites (comic hit-star with black ink rim, web splat, dust, debris), additive ribbon trails. No ring shapes (Nov 2).
+// selective-bloom pass), alpha sprites (soft dust, soft web strand), additive ribbon trails (motion-blur style).
+// Nov 2 (Shifat): no rings, no comic shapes, no hard edges - every shape is a soft falloff, lit by the always-on bloom.
 // Procedural shapes in the fragment shader: no textures, no new passes, pooled fixed-size buffers.
 import { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -27,7 +28,8 @@ void main(){
   if (sh > 1.5 && sh < 2.5 || sh > 5.5 && sh < 6.5 || sh > 15.5 && sh < 16.5) {
     vec3 ax = iB.xyz; float L = length(ax); ax = L > 1e-4 ? ax / L : vec3(0.0, 1.0, 0.0);
     vec3 vd = normalize(P - cameraPosition); vec3 sd = cross(ax, vd); float sl = length(sd); sd = sl > 1e-4 ? sd / sl : vec3(1.0, 0.0, 0.0);
-    mv = viewMatrix * vec4(P + ax * (position.y * 0.5 * L) + sd * (position.x * S), 1.0);
+    float W = sh > 5.5 && sh < 6.5 ? S * 2.6 : S;   // segments: room for the soft halo
+    mv = viewMatrix * vec4(P + ax * (position.y * 0.5 * L * (sh > 5.5 && sh < 6.5 ? 1.12 : 1.0)) + sd * (position.x * W), 1.0);
   } else if (sh > 3.5 && sh < 4.5) {   // ground light smear: flat on the ground, stretched along its velocity
     vec3 ax = vec3(iB.x, 0.0, iB.z); float L = length(ax); ax = L > 1e-4 ? ax / L : vec3(1.0, 0.0, 0.0); vec3 sd = vec3(-ax.z, 0.0, ax.x);
     mv = viewMatrix * vec4(P + ax * (position.y * (S + 0.5 * L)) + sd * (position.x * S), 1.0);
@@ -44,10 +46,14 @@ void main(){
 const FS_ADD = `varying vec2 vQ; varying vec4 vC; varying vec3 vD;
 void main(){
   float sh = vD.x, r = length(vQ), a = 0.0; vec3 col = vC.rgb;
-  if (sh < 0.5) { a = max(0.0, 1.0 - r); a *= a; col = mix(col, vec3(1.0), a * a * 0.6); }
+  if (sh < 0.5) { a = max(0.0, 1.0 - r); a *= a; col = mix(col, vec3(1.0), a * a * 0.6); }   // soft glow
   else if (sh > 3.5 && sh < 4.5) { a = max(0.0, 1.0 - r); a = a * a * a; col = mix(col, vec3(1.0), a * 0.5); }   // soft ground smear, no edge
-  else if (sh < 2.5 || (sh > 5.5 && sh < 6.5)) { float ac = max(0.0, 1.0 - abs(vQ.x)); a = ac * ac * (1.0 - vQ.y * vQ.y); col = mix(col, vec3(1.0), ac * ac * ac); r = 0.0; }
-  else if (sh < 3.5) { a = smoothstep(1.0, 0.5, r); col = vec3(1.0); }
+  else if (sh < 2.5) {   // spark streak: soft across, bright head, fading tail; cools white-hot -> its colour over its life
+    float ac = max(0.0, 1.0 - abs(vQ.x)); a = ac * ac * (1.0 - vQ.y * vQ.y) * (0.3 + 0.7 * smoothstep(-1.0, 0.8, vQ.y));
+    col = mix(vec3(1.0, 0.96, 0.88), col, smoothstep(0.05, 0.7, vD.y)); col = mix(col, vec3(1.0), ac * ac * ac * 0.6); r = 0.0; }
+  else if (sh > 5.5 && sh < 6.5) {   // lightning / tether / strand glow: thin hot core inside a wide blurred halo, soft ends
+    float ac = max(0.0, 1.0 - abs(vQ.x)), c6 = pow(ac, 7.0); a = (c6 + 0.3 * ac * ac) * (1.0 - vQ.y * vQ.y * 0.85); col = mix(col, vec3(1.0), c6); r = 0.0; }
+  else if (sh < 3.5) { a = exp(-r * r * 5.0) * (1.0 - r); col = mix(col, vec3(1.0), a); }   // hot core: gaussian, no disc edge
   else { float ac = max(0.0, 1.0 - abs(vQ.x)); a = ac * smoothstep(1.0, 0.5, abs(vQ.y)); col = mix(col, vec3(1.0), ac * ac); r = 0.0; }
   if (r > 1.0) a = 0.0;
   a *= vC.a; if (a < 0.004) discard;
@@ -56,30 +62,15 @@ void main(){
 const FS_ALPHA = `varying vec2 vQ; varying vec4 vC; varying vec3 vD;
 void main(){
   float sh = vD.x, r = length(vQ), a = 0.0; vec3 col = vC.rgb;
-  if (sh < 10.5) {   // comic hit-star: 5 spikes, coloured fill with white core, black ink rim
-    float th = atan(vQ.y, vQ.x), f = fract(th * 5.0 / 6.2831853 + 0.5) * 2.0 - 1.0, spike = 1.0 - abs(f);
-    float rs = 0.38 + 0.62 * pow(spike, 2.2), w = fwidth(r) * 1.5;
-    a = 1.0 - smoothstep(rs - w, rs, r);
-    float ink = smoothstep(rs * 0.74 - w, rs * 0.74, r);
-    col = mix(mix(vec3(1.0), col, smoothstep(0.08, 0.5, r / rs)), vec3(0.02, 0.02, 0.05), ink);
-  } else if (sh < 11.5) {   // web splat: 8 spokes + 2 rings, white with a dark rim
-    float th = atan(vQ.y, vQ.x), sp = abs(sin(th * 4.0)) * r, w = fwidth(r);
-    float ln = max(max(1.0 - smoothstep(0.035, 0.06 + w, sp), 1.0 - smoothstep(0.03, 0.055 + w, abs(r - 0.45 - 0.04 * sin(th * 8.0)))), 1.0 - smoothstep(0.03, 0.05 + w, abs(r - 0.82 - 0.05 * sin(th * 8.0))));
-    float rim = max(max(1.0 - smoothstep(0.06, 0.09 + w, sp), 1.0 - smoothstep(0.055, 0.085 + w, abs(r - 0.45 - 0.04 * sin(th * 8.0)))), 1.0 - smoothstep(0.05, 0.08 + w, abs(r - 0.82 - 0.05 * sin(th * 8.0))));
-    float blob = 1.0 - smoothstep(0.12, 0.16, r);
-    a = max(rim, blob) * (1.0 - smoothstep(0.9, 1.0, r)); col = mix(vec3(0.05, 0.05, 0.1), vec3(1.0), max(ln, blob));
-  } else if (sh < 12.5) { a = pow(max(0.0, 1.0 - r), 1.6) * 0.7; }
-  else if (sh > 15.5) {   // web strand (pull / yank): comic ink line - white core, black ink rim, ends tapered
-    float ax = abs(vQ.x), w = fwidth(vQ.x) * 1.5, tip = smoothstep(1.0, 0.9, abs(vQ.y));
-    a = (1.0 - smoothstep(1.0 - w, 1.0, ax)) * tip;
-    col = mix(vec3(1.0), vec3(0.02, 0.02, 0.06), smoothstep(0.45 - w, 0.45, ax));
-  }
-  else { float m = max(abs(vQ.x), abs(vQ.y)); a = 1.0 - step(0.85, m); col = mix(col, vec3(0.0), step(0.6, m)); }
+  if (sh > 15.5) {   // web strand (pull / yank): soft white core with a soft falloff, ends tapered (no ink rim)
+    float ax = abs(vQ.x), tip = smoothstep(1.0, 0.75, abs(vQ.y));
+    a = exp(-ax * ax * 6.0) * tip; col = mix(col, vec3(0.72, 0.74, 0.86), smoothstep(0.1, 0.8, ax));
+  } else { a = pow(max(0.0, 1.0 - r), 1.6) * 0.7; }   // soft dust
   a *= vC.a; if (a < 0.01) discard;
   gl_FragColor = vec4(col, a);
 }`;
 const VS_RIB = `attribute vec4 aC; attribute float aV; varying vec4 vC; varying float vV; void main(){ vC = aC; vV = aV; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`;
-const FS_RIB = `varying vec4 vC; varying float vV; void main(){ float ac = 1.0 - abs(vV); float a = vC.a * ac; vec3 col = mix(vC.rgb, vec3(1.0), ac * ac * ac); if (a < 0.004) discard; gl_FragColor = vec4(col * a, a); }`;
+const FS_RIB = `varying vec4 vC; varying float vV; void main(){ float ac = 1.0 - abs(vV); float a = vC.a * ac * ac; vec3 col = mix(vC.rgb, vec3(1.0), ac * ac * ac * ac * 0.7); if (a < 0.004) discard; gl_FragColor = vec4(col * a, a); }`;   // soft motion-blur smear (no hard edge)
 
 function makeSprites(n: number, fs: string, additive: boolean) {
     const plane = new THREE.PlaneGeometry(2, 2), g = new THREE.InstancedBufferGeometry();
@@ -150,7 +141,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 const hl = h.rig.b.handL as THREE.Bone; _w.setFromMatrixPosition(hl.matrixWorld); put(_w.x, _w.y, _w.z, 0.7, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.8, 0, 0, 0);
             }
         }
-        // web-pull / yank strand (gap #3): the old 1 px GL line was invisible. Now a comic ink strand (alpha: white core + black rim, 2 instances
+        // web-pull / yank strand (gap #3): the old 1 px GL line was invisible. Now a soft white strand (alpha: soft core, no rim, 2 instances
         // per hand with a slight sag) plus a hero-colour glow line (additive, bloom). It shoots out from the hand over the first 60 ms.
         const strands: number[] = [];
         for (const h of heroes) {
@@ -162,7 +153,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 const bx = _v.x + (ex - _v.x) * grow, by = _v.y + (ey - _v.y) * grow, bz = _v.z + (ez - _v.z) * grow;
                 const L = Math.hypot(bx - _v.x, by - _v.y, bz - _v.z), sag = Math.min(0.35, L * 0.03) * (1 - Math.min(1, cw.t / 0.2));   // taut after 0.2 s
                 const mx = (_v.x + bx) / 2, my = (_v.y + by) / 2 - sag, mz = (_v.z + bz) / 2;
-                strands.push((_v.x + mx) / 2, (_v.y + my) / 2, (_v.z + mz) / 2, mx - _v.x, my - _v.y, mz - _v.z, 0.065, (mx + bx) / 2, (my + by) / 2, (mz + bz) / 2, bx - mx, by - my, bz - mz, 0.065);
+                strands.push((_v.x + mx) / 2, (_v.y + my) / 2, (_v.z + mz) / 2, mx - _v.x, my - _v.y, mz - _v.z, 0.08, (mx + bx) / 2, (my + by) / 2, (mz + bz) / 2, bx - mx, by - my, bz - mz, 0.08);
                 put((_v.x + bx) / 2, (_v.y + by) / 2 - sag * 0.5, (_v.z + bz) / 2, 0.16, bx - _v.x, by - _v.y, bz - _v.z, SH_SEG, _c.r, _c.g, _c.b, 0.55, 0, 0, 0);
                 if (grow >= 1 && cw.t < 0.12) put(ex, ey, ez, 0.6, 0, 0, 0, SH_GLOW, 1, 1, 1, 0.8 * (1 - cw.t / 0.12), 0, 0, 0);   // attach ping on the bot
             }
@@ -196,10 +187,10 @@ export function CombatFX({ sim }: { sim: Sim }) {
         const a2 = (B.attributes.iA as any).array as Float32Array, b2 = (B.attributes.iB as any).array as Float32Array, c2 = (B.attributes.iC as any).array as Float32Array, d2 = (B.attributes.iD as any).array as Float32Array;
         for (let i = 0; i < pool.alphaN; i++) {
             const o = i * F, q = i * 4, u = alphaP[o + 6] / alphaP[o + 7], sh = alphaP[o + 14];
-            const pop = sh === 14 ? alphaP[o + 8] + (alphaP[o + 9] - alphaP[o + 8]) * (1 - Math.pow(1 - u, 3)) : sh === 10 ? alphaP[o + 9] + (alphaP[o + 8] - alphaP[o + 9]) * Math.pow(1 - Math.min(1, u * 2.5), 2) : alphaP[o + 8] + (alphaP[o + 9] - alphaP[o + 8]) * u;
+            const pop = alphaP[o + 8] + (alphaP[o + 9] - alphaP[o + 8]) * (1 - (1 - u) * (1 - u));
             a2[q] = alphaP[o]; a2[q + 1] = alphaP[o + 1]; a2[q + 2] = alphaP[o + 2]; a2[q + 3] = pop; b2[q] = 0; b2[q + 1] = 0; b2[q + 2] = 0; b2[q + 3] = sh;
             c2[q] = alphaP[o + 10]; c2[q + 1] = alphaP[o + 11]; c2[q + 2] = alphaP[o + 12];
-            c2[q + 3] = alphaP[o + 13] * (sh === 14 ? (u < 0.6 ? 1 : (1 - u) / 0.4) : sh === 11 ? Math.min(1, (1 - u) * 3) : sh === 10 ? (u < 0.7 ? 1 : (1 - u) / 0.3) : 1 - u);
+            c2[q + 3] = alphaP[o + 13] * Math.min(1, u * 8) * (1 - u);   // soft fade in and out
             d2[q] = u; d2[q + 1] = alphaP[o + 17]; d2[q + 2] = alphaP[o + 18];
         }
         let an = pool.alphaN;
@@ -219,7 +210,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 let sx = ty * vz - tz * vy, sy = tz * vx - tx * vz, sz = tx * vy - ty * vx; const sl = Math.hypot(sx, sy, sz) || 1;
                 const age = tr.pts[q + 3] / tr.life, w = tr.width * 0.5 * Math.max(0, 1 - age) * (1 - j / TRAIL_PTS * 0.5); sx = sx / sl * w; sy = sy / sl * w; sz = sz / sl * w;
                 P[v0 * 3] = tr.pts[q] - sx; P[v0 * 3 + 1] = tr.pts[q + 1] - sy; P[v0 * 3 + 2] = tr.pts[q + 2] - sz; P[v0 * 3 + 3] = tr.pts[q] + sx; P[v0 * 3 + 4] = tr.pts[q + 1] + sy; P[v0 * 3 + 5] = tr.pts[q + 2] + sz;
-                const al = Math.max(0, 1 - age) * 0.95; for (let k = 0; k < 2; k++) { const c0 = (v0 + k) * 4; C[c0] = _c.r; C[c0 + 1] = _c.g; C[c0 + 2] = _c.b; C[c0 + 3] = al; }
+                const al = Math.max(0, 1 - age) * 0.75; for (let k = 0; k < 2; k++) { const c0 = (v0 + k) * 4; C[c0] = _c.r; C[c0 + 1] = _c.g; C[c0 + 2] = _c.b; C[c0 + 3] = al; }
             }
             if (tr.n > 1) maxT = t + 1;
         }

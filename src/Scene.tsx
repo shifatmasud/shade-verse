@@ -166,7 +166,7 @@ export function SnareLines({ sim }: { sim: Sim }) {
         }
         // web-pull / yank strand: drawn by CombatFX as a thick comic ink line (the 1 px GL line here was invisible)
         geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0;
-        shockGeo.setDrawRange(0, (pn + rn) * 2); sh.needsUpdate = true; shockRef.current.visible = pn + rn > 0;
+        shockGeo.setDrawRange(0, (pn + rn) * 2); sh.needsUpdate = true; shockRef.current.visible = false;   // Nov 2: crisp 1 px GL pulse lines off (no hard edges); CombatFX draws soft glowing tethers
         if (lineMat.current) { lineMat.current.color.set(sn > 0 ? SHADOW_SNARE_COLOR : '#ffffff'); lineMat.current.opacity = sn > 0 ? 0.98 : 0.86; }
         if (shockMat.current) shockMat.current.color.set(sn > 0 ? SHADOW_SNARE_COLOR : '#ffffff');
         if (DBG) (window as any).__shadowSnareFx = { webLines: n, pulseSegments: pn, ringSegments: rn, pulseProgress: shockProgress, snareColor: sn > 0 ? SHADOW_SNARE_COLOR : null, strandColor: lineMat.current?.color.getHexString(), shockColor: shockMat.current?.color.getHexString() };

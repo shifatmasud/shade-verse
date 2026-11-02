@@ -11,7 +11,9 @@ import { QK } from './quality';
 // preview / ink-band shapes removed. SH_GPUFF = soft ground-hugging light smear, stretched along its velocity (particle shockwave).
 export const SH_GLOW = 0, SH_SPARK = 2, SH_CORE = 3, SH_GPUFF = 4, SH_GSTREAK = 5, SH_SEG = 6;
 // alpha shapes
-export const SH_STAR = 10, SH_SPLAT = 11, SH_DUST = 12, SH_CHUNK = 13;
+// Nov 2 (Shifat: "Punch hit effect mustn't be comic like", "only glowing blurry vfx", "no sharp edges"): comic hit-star, ink web splat
+// and square debris removed; only soft dust remains on the alpha side.
+export const SH_DUST = 12;
 
 export const ADD_MAX = 128, ALPHA_MAX = 32;
 export const F = 21;   // floats per particle
@@ -74,27 +76,41 @@ export function stepTrails(dt: number) {
 // ---- one-shot screen flash (Slam: 35% white for 2 frames) ----
 export const screenFlash = { frames: 0, a: 0 };
 // ---- hit recipes (D4, D5, D6, D7) ----
-/** melee hit at (x,y,z); lvl 1/2/3 = combo hit 1, 2, finisher */
-export function fxMelee(x: number, y: number, z: number, col: number, lvl: number, grounded = true) {
-    const sc = lvl >= 3 ? 1.6 : lvl === 2 ? 1.15 : 1;
-    emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.6 * sc, 1.2 * sc, 0xffffff, 1);                       // white core flash, 50 ms
-    emit(SH_STAR, x, y, z, 0, 0, 0, 0.10, 1.17 * sc, 0.9 * sc, col, 1);                            // comic hit-star, black ink rim, pop 1.3 -> 1.0
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.18, 1.4 * sc, 1.6 * sc, col, 0.9, 0, 0, 0.12, 2);           // hero-colour glow, quadratic fade
-    sparks(lvl >= 3 ? 14 : lvl === 2 ? 8 : 6, x, y, z, col, 6, 12, 0.15, 0.3);                   // spark streaks
+/** melee hit at (x,y,z); lvl 1/2/3 = combo hit 1, 2, finisher; (dx,dz) = direction of the blow (attacker -> target), sparks spray through.
+ *  Cinematic, not comic (refs: Marvel's Spider-Man 2 / God of War / Ghost of Tsushima impacts): a 2-3 frame white-hot core, a white-orange
+ *  flash bloom, hero-colour bloom, faint heat falloff, a high-velocity spark burst (velocity-stretched streaks that cool white -> orange,
+ *  gravity, drag, bounce off the ground) and a small dust puff. Everything is soft-edged additive light except the dust. */
+export function fxMelee(x: number, y: number, z: number, col: number, lvl: number, grounded = true, dx = 0, dz = 0) {
+    const sc = lvl >= 3 ? 1.5 : lvl === 2 ? 1.15 : 1, floor = grounded ? y - 1.0 : -1e9;
+    emit(SH_CORE, x, y, z, 0, 0, 0, 0.045, 0.45 * sc, 0.85 * sc, 0xfff4e6, 1);                     // white-hot core, ~3 frames
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.09, 0.75 * sc, 1.15 * sc, 0xffa65a, 0.95, 0, 0, 0.12, 2);    // white-orange flash bloom
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.24, 1.0 * sc, 1.6 * sc, col, 0.7, 0, 0, 0.12, 2);            // hero-colour bloom
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.42, 1.5 * sc, 2.3 * sc, 0xff9050, 0.14, 0, 0, 0.12, 1);      // faint heat falloff
+    let n = lvl >= 3 ? 20 : lvl === 2 ? 13 : 9; if (LOW) n = Math.ceil(n / 2);
+    const dl = Math.hypot(dx, dz), bx = dl > 1e-3 ? dx / dl : 0, bz = dl > 1e-3 ? dz / dl : 0;
+    for (let k = 0; k < n; k++) {   // spark burst: biased along the blow, a few go back toward the camera side
+        const u = rnd(-0.6, 1), th = rnd(0, Math.PI * 2), r = Math.sqrt(1 - u * u * 0.5), sp = rnd(9, 20) * (k < n * 0.3 ? 1.2 : 1);
+        let vx = Math.cos(th) * r, vy = u * 0.7 + 0.25, vz = Math.sin(th) * r; const fw = Math.random() < 0.75 ? 1.6 : -0.4; vx += bx * fw; vz += bz * fw;
+        const L = Math.hypot(vx, vy, vz) || 1, hot = Math.random() < 0.7;
+        emit(SH_SPARK, x, y, z, vx / L * sp, vy / L * sp, vz / L * sp, rnd(0.16, 0.38), rnd(0.035, 0.05) * sc, 0.02, hot ? 0xff8a3a : col, 1, 9.8, 3.2, 0.12, 1, floor);
+    }
+    if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x + rnd(-0.15, 0.15), y + rnd(-0.1, 0.1), z + rnd(-0.15, 0.15), bx * 1.2 + rnd(-0.6, 0.6), rnd(0.1, 0.6), bz * 1.2 + rnd(-0.6, 0.6), 0.45, 0.25 * sc, 0.75 * sc, 0xb5aec2, 0.35, 0, 3);   // small dust puff
     if (lvl >= 3 && grounded && !LOW) for (let k = 0; k < 6; k++) { const th = rnd(0, Math.PI * 2), sp = rnd(1.5, 3); emit(SH_DUST, x + Math.cos(th) * 0.3, y - 0.9, z + Math.sin(th) * 0.3, Math.cos(th) * sp, rnd(0.4, 1.2), Math.sin(th) * sp, 0.45, 0.35, 0.9, 0xb9b2c6, 0.55, 0, 3); }
 }
+/** web-shot hit: soft white web burst + glow + sparks (no ink splat) */
 export function fxShot(x: number, y: number, z: number, col: number) {
-    emit(SH_SPLAT, x, y, z, 0, 0, 0, 0.6, 0.75, 0.95, 0xffffff, 1, 0, 0, 0.12, 0);                  // web splat (fades over its last third)
-    emit(SH_CORE, x, y, z, 0, 0, 0, 0.035, 0.35, 0.5, 0xffffff, 1);
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.14, 0.5, 0.8, col, 0.8, 0, 0, 0.12, 2);
+    emit(SH_CORE, x, y, z, 0, 0, 0, 0.04, 0.35, 0.55, 0xffffff, 1);
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.3, 0.55, 0.8, 0xeef2ff, 0.55, 0, 0, 0.12, 2);
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.16, 0.5, 0.9, col, 0.8, 0, 0, 0.12, 2);
     sparks(6, x, y, z, col, 5, 10, 0.12, 0.2);
+    if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x, y, z, rnd(-0.8, 0.8), rnd(-0.3, 0.6), rnd(-0.8, 0.8), 0.5, 0.2, 0.6, 0xf2f2ff, 0.4, 0, 3);   // soft web mist
 }
 const CYAN = 0x7ff6ff;
 /** Shock hit: cyan-white flash, jagged lightning from (hx,hy,hz) to the target + crackle arcs on the bot, spark burst, glow */
 export function fxShock(x: number, y: number, z: number, hx: number, hy: number, hz: number) {
     emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.8, 1.1, 0xe8ffff, 1);
     emit(SH_GLOW, x, y, z, 0, 0, 0, 0.2, 1.6, 1.8, CYAN, 0.9, 0, 0, 0.12, 2);
-    sparks(12, x, y, z, CYAN, 5, 12, 0.15, 0.32, 0.045, 0.25, y - 0.95);
+    sparks(12, x, y, z, CYAN, 5, 12, 0.15, 0.32, 0.04, 0.25, y - 0.95);
     bolt(hx, hy, hz, x, y, z, 0.25);
     bolt(x, y + 0.6, z, x + rnd(-1, 1), y - 0.8, z + rnd(-1, 1), 0.2);
     bolt(x, y, z, x + rnd(-0.9, 0.9), y + rnd(0.3, 0.9), z + rnd(-0.9, 0.9), 0.14);   // crackle arc on the bot
