@@ -49,7 +49,7 @@ const IC = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinec
 const Svg = ({ children, s = 26 }: { children: React.ReactNode; s?: number }) => <svg width={s} height={s} viewBox="0 0 24 24" {...IC} aria-hidden>{children}</svg>;
 // custom icon set (own drawings): web, jump chevrons, fist, dash, orb, shield, beacon, speaker, play
 const IJump = () => <Svg s={44}><path d="M6 17l6-6 6 6M6 11l6-6 6 6" /></Svg>;
-const IFist = () => <Svg s={48}><g strokeWidth="2.3"><path d="M8.5 7h8.3a3.6 3.6 0 0 1 3.6 3.6v3.8a3.6 3.6 0 0 1-3.6 3.6h-5a3.3 3.3 0 0 1-3.3-3.3z" /><path d="M8.5 12.4h4.8M13.3 7v2.6M16.9 7v2.6" /></g><path d="M2.6 9.6h3.2M2 12.4h3.8M2.6 15.2h3.2" strokeWidth="2" /></Svg>;   /* Nov 2: comic fist (chunky stroke + speed lines) */
+const IFist = () => <Svg s={48}><g strokeWidth="2.3"><path d="M6.5 7h8.8a3.8 3.8 0 0 1 3.8 3.8v3.6a3.8 3.8 0 0 1-3.8 3.8H9.8a3.3 3.3 0 0 1-3.3-3.3z" /><path d="M6.5 12.4h5M11.5 7v2.6M15.3 7v2.6" /></g></Svg>;   /* Nov 2: comic fist, no speed lines (Shifat 5:05) */
 const ISwing = () => <Svg s={50}><g strokeWidth="2.3"><circle cx="19" cy="5" r="1.9" /><path d="M17.9 6.8C16.2 13.6 12.2 17.4 7.9 18.4" /><circle cx="5.4" cy="18.8" r="2.5" fill="currentColor" /></g></Svg>;   /* comic: anchor -> web line -> hero (tap spring, hold swing) */
 const IShock = () => <Svg s={48}><path d="M13.8 1.7 5.6 13.1h5.7l-1 9.2 8.1-12.3h-5.5l.9-8.3Z" fill="currentColor" stroke="none" /></Svg>;
 const IOrb = () => <Svg s={20}><circle cx="12" cy="12" r="6" /><path d="M9.5 10a3 3 0 012-1.6" /></Svg>;
@@ -224,7 +224,7 @@ export function App() {
             <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn || hud.sh ? '' : ' off')} aria-label="web shot (tap) / Web Shock (hold)"
                 onPointerDown={(e) => { try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } const h = holdR.current; h.sk = false; clearTimeout(h.skT); const el = e.currentTarget; h.skT = window.setTimeout(() => { h.sk = true; burst({ currentTarget: el } as any, '#c9a7ff', 180); input.specialQ = true; }, HOLD_MS); }}
                 onPointerUp={(e) => { const h = holdR.current; clearTimeout(h.skT); if (!h.sk) { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; } h.sk = false; }}
-                onPointerCancel={() => { const h = holdR.current; clearTimeout(h.skT); h.sk = false; }}><IShock /><svg className="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={125.7} strokeDashoffset={125.7 * hud.sc} transform="rotate(-90 22 22)" /></svg></button>
+                onPointerCancel={() => { const h = holdR.current; clearTimeout(h.skT); h.sk = false; }}><IShock /></button>
             <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); input.meleeQ = true; input.attackQ = true; }}><IFist /></button>
             <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
         </>}
