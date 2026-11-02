@@ -28,7 +28,7 @@ const S = await p.evaluate((scen) => {
 
 if (scen === 'combo' || scen === 'slam' || scen === 'kick') {
   // frames keyed to the move clock (mv.id, mv.t) or the slam phase, so hit-stop freezes do not shift them
-  const K = scen === 'kick' ? [[3, 0.27], [3, 0.27]] : scen === 'combo'
+  const K = scen === 'kick' ? [[3, 0.14], [3, 0.27], [3, 0.27], [3, 0.27], [3, 0.27], [3, 0.35], [3, 0.42]] : scen === 'combo'
     ? [[1, 0.035], [1, 0.1], [1, 0.15], [2, 0.06], [2, 0.11], [2, 0.19], [3, 0.12], [3, 0.27]]
     : [['hold', 0.5], ['ph', 1], ['ph', 2], ['ph', 3], ['ph', 4], ['ph', 5, 0.03], ['ph', 5, 0.12], ['ph', 5, 0.3]];
   const info = [];
@@ -58,10 +58,13 @@ if (scen === 'combo' || scen === 'slam' || scen === 'kick') {
     }
     await p.evaluate(() => { window.__ts = 0; const s = window.__game.sim, q = s.pos; const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
       window.__camOv = [q[0] + fz * 5.2 + fx * 2.2, q[1] + 1.0, q[2] - fx * 5.2 + fz * 2.2, q[0] + fx * 0.6, q[1] + 0.4, q[2] + fz * 0.6]; });
-    if (scen === 'kick' && i === 1) await p.evaluate(() => { const s = window.__game.sim, q = s.pos, h = (window.__kickAng ?? s.ang); const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
-      window.__camOv = [q[0] - fz * 4.2, q[1] + 0.7, q[2] + fx * 4.2, q[0], q[1] + 0.3, q[2]]; });   // the other side, level: the pure side view
+    if (scen === 'kick' && i >= 2 && i <= 4) await p.evaluate((i) => { const s = window.__game.sim, q = s.pos; const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
+      const v = i === 2 ? [-fz, fx] : i === 3 ? [fx * 0.8 + fz * 0.6, fz * 0.8 - fx * 0.6] : [-fx, -fz];   // 2 = pure side (level), 3 = front (from the target's side, off its shoulder so the bot does not block), 4 = behind
+      window.__camOv = [q[0] + v[0] * 4.6, q[1] + (i === 3 ? 1.6 : 0.8), q[2] + v[1] * 4.6, q[0], q[1] + 0.6, q[2]]; }, i);
     await raf(3);
     const st = await p.evaluate(() => { const s = window.__game.sim; return { t: +s.t.toFixed(3), mv: s.mv ? [s.mv.id, +s.mv.t.toFixed(3)] : null, slam: s.slam ? [s.slam.ph, +(s.slam.t ?? 0).toFixed(3)] : null, anim: window.__shadowAnimation?.action, ehp: s.enemies[0].hp }; });
+    if (scen === 'kick') st.fk = await p.evaluate(() => { const R = window.__rig, o = {}; if (!R || !R.b) return null; const V = (b) => { if (!b) return null; const v = b.getWorldPosition(new b.position.constructor()); return [+v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2)]; };
+      for (const n of ['head', 'chest', 'hips', 'thighR', 'shinR', 'shinL', 'thighL']) o[n] = V(R.b[n]); o.footR = R.b.shinR && R.b.shinR.children[0] ? V(R.b.shinR.children[0]) : null; o.footL = R.b.shinL && R.b.shinL.children[0] ? V(R.b.shinL.children[0]) : null; o.names = Object.keys(R.b).join(','); return o; });
     info.push(st);
     await p.screenshot({ path: `${outdir}/${scen}_${i}.png`, clip: { x: 170, y: 20, width: 300, height: 300 } });
   }
