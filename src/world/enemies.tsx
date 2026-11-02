@@ -68,7 +68,7 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
             if (on && bl) {
                 const k = bl.t / 0.85;
                 grp.g.position.set(bl.x, bl.y, bl.z);
-                if (bl.t === 0 || (grp as any).bc !== (bl.col ?? -1)) { (grp as any).bc = bl.col ?? -1;   // web-shot blast: caster hue (hot, lifted toward white); KO death blasts keep pale cyan + warm embers
+                if (bl.t === 0 || (grp as any).bc !== (bl.col ?? -1)) { (grp as any).bc = bl.col ?? -1;   // web-shot and KO blasts: caster / KO hero hue (hot, lifted toward white); pale cyan only if no colour
                     (grp.flash.material as THREE.SpriteMaterial).color.setHex(bl.col != null ? tint(bl.col, 0.55) : 0xcfeeff); (grp.sparks.material as THREE.PointsMaterial).color.setHex(bl.col != null ? tint(bl.col, 0.3) : 0xffc890); }
                 const fk = Math.min(1, bl.t / 0.2);
                 grp.flash.scale.setScalar(1.0 + fk * bl.r * 0.9);
@@ -115,71 +115,109 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
     </>;
 }
 
-// Enemy KO fire: a small, pooled world-space burst (hot core, tapered flame tongues,
-// an expanding ground ring, and embers). It observes the existing down transition only.
-const DEATH_FX_SLOTS = 6, DEATH_FX_FLAMES = 9, DEATH_FX_EMBERS = 12, DEATH_FX_LIFE = 1.05;
-type DeathFxSlot = { x: number; y: number; z: number; born: number; active: boolean };
+// Enemy KO burst = the first burst of a real fire explosion (Shifat 1:12-1:13 PM: "softer, realistic particles glow based burst",
+// "Study real first burst explosion images", "Fire"). From reference photos (files/fixes/ko_refs): a blinding white-yellow flash for a
+// few frames; a lumpy cauliflower fireball that grows fast then slows, hot yellow-white lobes with darker creases, cooling to orange and
+// deep red at the edge; dark smoke rolling up out of it as it cools; fast sparks with short glowing streaks, slowed by drag, falling.
+// Was an orange solid-mesh fire (icosahedron, cones, a torus ground ring) plus a pale cyan flash disc. Now two pooled soft point
+// batches (additive fire + alpha smoke, 2 draws, was 4 + the flash), procedural noise for the lobes, no hard edges anywhere.
+// A few sparks carry a faint tint of the hero who landed the KO (enemy.koCol). It observes the existing down transition only.
+const DEATH_FX_SLOTS = 6, KO_PUFFS = 14, KO_SPARKS = 26, KO_SMOKE = 10, DEATH_FX_LIFE = 2.0;
+const KO_FIRE_PTS = 1 + KO_PUFFS + KO_SPARKS * 3;
+type DeathFxSlot = { x: number; y: number; z: number; born: number; active: boolean; col: number; seed: number };
+const KO_VS = /* glsl */`attribute float aSize; attribute vec4 aCol; attribute float aSeed; uniform float uScale; varying vec4 vCol; varying float vSeed;
+void main() { vCol = aCol; vSeed = aSeed; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; gl_PointSize = aSize > 0.0 ? min(aSize * projectionMatrix[1][1] * 0.5 * uScale / max(0.1, -mv.z), 640.0) : 0.0; }`;   // uScale = the target viewport height in px
+const KO_FS = /* glsl */`uniform float uT; varying vec4 vCol; varying float vSeed;
+float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + 1.0), f.x), f.y); }
+void main() { vec2 q = gl_PointCoord * 2.0 - 1.0; float r = length(q); if (r >= 1.0) discard;
+  float a, k = 1.0;
+  if (vSeed < 0.0) { a = exp(-r * r * 3.6) * (1.0 - r * r); }                       // spark / flash: plain soft glow
+  else { vec2 o = vec2(vSeed * 3.1, vSeed * 1.7) + uT * 0.35; float n = vn(q * 2.3 + o) * 0.62 + vn(q * 5.1 - o * 1.3) * 0.38;
+    a = 1.0 - smoothstep(0.2 + 0.5 * n, 0.98, r); a *= a; k = mix(0.3, 1.4, n * n * (3.0 - 2.0 * n)); }   // lumpy billow: noisy soft edge, bright lobes, darker creases
+#ifdef SMOKE
+  gl_FragColor = vec4(vCol.rgb * mix(0.75, 1.2, k - 0.25), vCol.a * a * k);
+#else
+  gl_FragColor = vec4(vCol.rgb * vCol.a * a * k, 1.0);
+#endif
+}`;
+const hash1 = (n: number) => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+// fire colour by temperature (0 cold .. 1+ white hot), linear HDR
+const fireRamp = (c: THREE.Color, T: number) => {
+    if (T > 0.8) return c.setRGB(1, 0.8 + 0.12 * Math.min(1, (T - 0.8) * 3), 0.4 + 0.3 * Math.min(1, (T - 0.8) * 3)).multiplyScalar(1.3 + 0.6 * (T - 0.8));
+    if (T > 0.5) { const u = (T - 0.5) / 0.3; return c.setRGB(1, 0.4 + 0.4 * u, 0.06 + 0.34 * u).multiplyScalar(0.9 + 0.4 * u); }
+    if (T > 0.22) { const u = (T - 0.22) / 0.28; return c.setRGB(0.55 + 0.45 * u, 0.1 + 0.32 * u, 0.02 + 0.06 * u).multiplyScalar(0.5 + 0.3 * u); }
+    const u = Math.max(0, T) / 0.22; return c.setRGB(0.55 * u, 0.1 * u, 0.02 * u).multiplyScalar(0.5 * u);
+};
+function koGeo(n: number) { const g = new THREE.BufferGeometry();
+    for (const [k, w] of [['position', 3], ['aCol', 4], ['aSize', 1], ['aSeed', 1]] as const) g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n * w), w).setUsage(THREE.DynamicDrawUsage));
+    return g; }
 export function EnemyDeathFx({ sim }: { sim: Sim }) {
-    const slots = useRef<DeathFxSlot[]>(Array.from({ length: DEATH_FX_SLOTS }, () => ({ x: 0, y: 0, z: 0, born: -10, active: false })));
+    const slots = useRef<DeathFxSlot[]>(Array.from({ length: DEATH_FX_SLOTS }, () => ({ x: 0, y: 0, z: 0, born: -10, active: false, col: SHOCK_SHADOW, seed: 0 })));
     const seenDown = useRef(new WeakMap<object, boolean>()), cursor = useRef(0), triggered = useRef(0);
-    const core = useRef<THREE.InstancedMesh>(null!), flames = useRef<THREE.InstancedMesh>(null!), embers = useRef<THREE.InstancedMesh>(null!), rings = useRef<THREE.InstancedMesh>(null!);
-    const assets = useMemo(() => ({
-        coreGeo: new THREE.IcosahedronGeometry(0.62, 1), flameGeo: new THREE.ConeGeometry(0.24, 1.15, 5, 1), emberGeo: new THREE.ConeGeometry(0.055, 0.34, 4, 1), ringGeo: new THREE.TorusGeometry(0.62, 0.055, 5, 24),
-        coreMat: new THREE.MeshStandardMaterial({ color: '#ff8a16', emissive: '#ff3c00', emissiveIntensity: 2.4, roughness: 0.85, metalness: 0, toneMapped: false }),
-        flameMat: new THREE.MeshStandardMaterial({ color: '#ff7412', emissive: '#ff3b00', emissiveIntensity: 2.2, roughness: 0.8, metalness: 0, toneMapped: false }),
-        emberMat: new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
-        ringMat: new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
-    }), []);
-    const obj = useMemo(() => new THREE.Object3D(), []), up = useMemo(() => new THREE.Vector3(0, 1, 0), []), dir = useMemo(() => new THREE.Vector3(), []), col = useMemo(() => new THREE.Color(), []);
+    const fire = useRef<THREE.Points>(null!), smoke = useRef<THREE.Points>(null!);
+    const assets = useMemo(() => {
+        const u = { uScale: { value: 400 }, uT: { value: 0 } };
+        const fireMat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: KO_VS, fragmentShader: KO_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+        const smokeMat = new THREE.ShaderMaterial({ uniforms: u, defines: { SMOKE: 1 }, vertexShader: KO_VS, fragmentShader: KO_FS, transparent: true, depthWrite: false, toneMapped: false });
+        return { u, fireGeo: koGeo(DEATH_FX_SLOTS * KO_FIRE_PTS), smokeGeo: koGeo(DEATH_FX_SLOTS * KO_SMOKE), fireMat, smokeMat };
+    }, []);
+    const vp = useMemo(() => new THREE.Vector4(), []), hero = useMemo(() => new THREE.Color(), []), c = useMemo(() => new THREE.Color(), []);
     useFrame(() => {
         for (const e of sim.enemies) {
             const down = e.down > 0, wasDown = seenDown.current.get(e) || false;
             if (down && !wasDown) {
                 const slot = slots.current[cursor.current++ % DEATH_FX_SLOTS], lift = (e as any).ly || 0;
-                slot.x = e.x; slot.y = e.y + lift + enemyBodyOffset(e); slot.z = e.z; slot.born = sim.t; slot.active = true; triggered.current++;
+                slot.x = e.x; slot.y = e.y + lift + enemyBodyOffset(e); slot.z = e.z; slot.born = sim.t; slot.active = true; slot.col = ((e as any).koCol ?? (sim as any).fxCol ?? SHOCK_SHADOW) as number; slot.seed = (triggered.current++ % 97) * 131.7;
             }
             seenDown.current.set(e, down);
         }
-        /* Shifat 9:43 AM 'freeze what's not visible': with no explosion playing, the 4 effect batches were still drawn (scaled to 0) and re-filled every frame */
+        /* Shifat 9:43 AM 'freeze what's not visible': with no burst playing, both batches are hidden and not re-filled */
+        const F = fire.current, S = smoke.current; if (!F || !S) return;
         const anyOn = slots.current.some((s) => s.active && sim.t - s.born >= 0 && sim.t - s.born < DEATH_FX_LIFE + 0.1);
-        for (const m of [core.current, flames.current, embers.current, rings.current]) if (m) m.visible = anyOn;
-        if (!anyOn) { for (const s of slots.current) s.active = false; if (DBG && core.current) core.current.userData.activeEffects = 0; return; }
+        F.visible = S.visible = anyOn;
+        if (!anyOn) { for (const s of slots.current) s.active = false; if (DBG) F.userData.activeEffects = 0; return; }
+        assets.u.uT.value = sim.t;
+        const fg = assets.fireGeo.attributes, sg = assets.smokeGeo.attributes;
+        const put = (A: typeof fg, k: number, x: number, y: number, z: number, size: number, col: THREE.Color, b: number, seed: number) => {
+            (A.position as THREE.BufferAttribute).setXYZ(k, x, y, z); (A.aCol as THREE.BufferAttribute).setXYZW(k, col.r, col.g, col.b, b); (A.aSize as THREE.BufferAttribute).setX(k, b > 0.003 && size > 0.002 ? size : 0); (A.aSeed as THREE.BufferAttribute).setX(k, seed); };
+        const off = (A: typeof fg, k: number) => (A.aSize as THREE.BufferAttribute).setX(k, 0);
         let active = 0;
         for (let i = 0; i < DEATH_FX_SLOTS; i++) {
-            const s = slots.current[i], age = sim.t - s.born, on = s.active && age >= 0 && age < DEATH_FX_LIFE;
-            if (s.active && !on) s.active = false; if (on) active++;
-            const t = on ? age / DEATH_FX_LIFE : 1, fade = Math.max(0, 1 - t), swell = Math.sin(Math.min(1, t * 1.7) * Math.PI * 0.5);
-            obj.position.set(s.x, s.y, s.z); obj.rotation.set(t * 1.4, sim.t * 2.2 + i, t * 0.8);
-            const coreScale = on ? (0.28 + 1.05 * swell) * Math.pow(fade, 0.72) : 0;
-            obj.scale.setScalar(coreScale); obj.updateMatrix(); core.current.setMatrixAt(i, obj.matrix); core.current.setColorAt(i, col.setHSL(0.075 + t * 0.035, 1, 0.54 + fade * 0.12));
-            obj.position.set(s.x, s.y - 0.72, s.z); obj.rotation.set(-Math.PI / 2, 0, 0); obj.scale.setScalar(on ? 0.18 + t * 1.6 : 0); obj.updateMatrix(); rings.current.setMatrixAt(i, obj.matrix); rings.current.setColorAt(i, col.setRGB(fade, fade * 0.34, fade * 0.035));
-            for (let j = 0; j < DEATH_FX_FLAMES; j++) {
-                const idx = i * DEATH_FX_FLAMES + j, a = j * 2.39996 + i * 0.53, lift = 0.42 + ((j * 7) % 5) * 0.12;
-                dir.set(Math.cos(a) * 0.72, lift, Math.sin(a) * 0.72).normalize();
-                const wobble = on ? Math.sin(sim.t * 17 + j * 2.1 + i) * 0.07 : 0, spread = on ? 0.28 + 1.1 * t : 0;
-                obj.position.set(s.x + dir.x * spread, s.y + dir.y * (0.18 + 0.62 * t) + wobble, s.z + dir.z * spread);
-                obj.quaternion.setFromUnitVectors(up, dir); obj.rotation.y += sim.t * 0.35 + j;
-                const flicker = 0.78 + 0.22 * Math.sin(sim.t * 24 + j * 3.7 + i), flameFade = on ? fade * flicker : 0;
-                obj.scale.set(0.62 * flameFade, (1.25 + 0.25 * swell) * flameFade, 0.62 * flameFade); obj.updateMatrix(); flames.current.setMatrixAt(idx, obj.matrix);
-                flames.current.setColorAt(idx, col.setHSL((j % 3 === 0 ? 0.13 : 0.075) + 0.025 * t, 1, 0.48 + 0.12 * fade));
-            }
-            for (let j = 0; j < DEATH_FX_EMBERS; j++) {
-                const idx = i * DEATH_FX_EMBERS + j, a = j * 2.39996 + i * 0.31, elev = 0.25 + ((j * 7) % 9) * 0.075, speed = 1.5 + ((j * 5) % 7) * 0.27;
-                const vx = Math.cos(a) * Math.cos(elev) * speed, vz = Math.sin(a) * Math.cos(elev) * speed, vy = (0.65 + Math.sin(elev)) * speed;
-                obj.position.set(s.x + vx * age, s.y + vy * age - 1.2 * age * age, s.z + vz * age); dir.set(vx, vy - 2.4 * age, vz).normalize();
-                obj.quaternion.setFromUnitVectors(up, dir); const emberFade = on ? fade * (0.82 + 0.18 * Math.sin(sim.t * 31 + j)) : 0;
-                obj.scale.set(emberFade, emberFade, emberFade); obj.updateMatrix(); embers.current.setMatrixAt(idx, obj.matrix); embers.current.setColorAt(idx, col.setRGB(emberFade, emberFade * 0.58, emberFade * 0.16));
-            }
+            const s = slots.current[i], age = sim.t - s.born, on = s.active && age >= 0 && age < DEATH_FX_LIFE, f0 = i * KO_FIRE_PTS, s0 = i * KO_SMOKE;
+            if (s.active && !on) s.active = false;
+            if (!on) { for (let j = 0; j < KO_FIRE_PTS; j++) off(fg, f0 + j); for (let j = 0; j < KO_SMOKE; j++) off(sg, s0 + j); continue; }
+            active++;
+            // 1. the first-frames flash: white-yellow, big, gone in ~0.1 s
+            put(fg, f0, s.x, s.y, s.z, 3.0, c.setRGB(1, 0.85, 0.55), 0.9 * Math.exp(-age * 30), -1);
+            // 2. fireball: lumpy puffs on a fast-then-slow growing shell, rising, cooling white -> yellow -> orange -> deep red
+            const grow = 1 - Math.exp(-age * 6.5), rise = 0.35 * age + 0.55 * age * age;
+            for (let j = 0; j < KO_PUFFS; j++) { const r = s.seed + j * 7.31, az = hash1(r) * 6.283, cz = hash1(r + 1.1) * 1.6 - 0.6, sz = Math.sqrt(Math.max(0, 1 - cz * cz)), rad = (0.25 + 0.75 * hash1(r + 2.3)) * grow * 1.3;
+                const T = 0.98 - age * (0.85 + 0.6 * hash1(r + 3.7)) - rad * 0.35, b = T > 0 ? 0.8 * Math.min(1, age * 30) : 0;
+                put(fg, f0 + 1 + j, s.x + Math.cos(az) * sz * rad, s.y + cz * rad * 0.8 + rise, s.z + Math.sin(az) * sz * rad, (0.8 + 0.6 * hash1(r + 4.9)) * (0.45 + 1.0 * grow), fireRamp(c, T), b, hash1(r + 6.1) * 10); }
+            // 3. sparks with short glowing streaks (head + 2 trail samples), air drag + gravity, a few in the KO hero's tint
+            hero.setHex(tint(s.col, 0.45)).multiplyScalar(2.2);
+            const K = 3.2, G = 9;
+            for (let j = 0; j < KO_SPARKS; j++) { const r = s.seed + 101 + j * 3.71, az = hash1(r) * 6.283, cz = hash1(r + 1.3) * 1.25 - 0.3, sz = Math.sqrt(Math.max(0, 1 - cz * cz)), sp = 5 + hash1(r + 2.7) * 9, life = 0.4 + hash1(r + 4.1) * 0.55, tinted = j % 7 === 3;
+                for (let m = 0; m < 3; m++) { const k = f0 + 1 + KO_PUFFS + j * 3 + m, ta = age - m * 0.02, u = ta / life;
+                    if (ta <= 0 || u >= 1) { off(fg, k); continue; }
+                    const eK = Math.exp(-K * ta), dd = (1 - eK) / K, gy = G * (ta / K - dd / K), fd = 1 - u;
+                    if (tinted) c.copy(hero); else fireRamp(c, 1.1 - u * 0.75);
+                    put(fg, k, s.x + Math.cos(az) * sz * sp * dd, s.y + (cz * sp + 1.5) * dd - gy, s.z + Math.sin(az) * sz * sp * dd, (0.13 + 0.06 * hash1(r + 5.9)) * (1 - m * 0.18) * (0.5 + 0.5 * fd), c, fd * fd * (1 - m * 0.33), -1); } }
+            // 4. smoke: dark, alpha-blended, rolls up out of the fireball as it cools, lit warm from below while young
+            for (let j = 0; j < KO_SMOKE; j++) { const r = s.seed + 401 + j * 5.31, ta = age - 0.14 - 0.035 * j, az = hash1(r) * 6.283, rr = 0.25 + 0.6 * hash1(r + 1.7);
+                if (ta <= 0) { off(sg, s0 + j); continue; }
+                const lit = Math.max(0, 1 - ta * 2.2), al = 0.34 * Math.min(1, ta * 6) * Math.max(0, 1 - ta / (DEATH_FX_LIFE - 0.3));
+                c.setRGB(0.1 + 0.3 * lit, 0.095 + 0.1 * lit, 0.09 + 0.03 * lit);
+                put(sg, s0 + j, s.x + Math.cos(az) * rr * (1 + ta * 0.6), s.y + 0.35 + 1.1 * ta + 0.35 * ta * ta + hash1(r + 2.2) * 0.4, s.z + Math.sin(az) * rr * (1 + ta * 0.6), 0.9 + 1.4 * ta + 0.4 * hash1(r + 3.1), c, al, hash1(r + 4.4) * 10); }
         }
-        for (const m of [core.current, flames.current, embers.current, rings.current]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
-        if (DBG && core.current) { core.current.userData.activeEffects = active; core.current.userData.triggeredTotal = triggered.current; }
+        for (const A of [fg, sg]) for (const k of ['position', 'aCol', 'aSize', 'aSeed'] as const) (A[k] as THREE.BufferAttribute).needsUpdate = true;
+        if (DBG) { F.userData.activeEffects = active; F.userData.triggeredTotal = triggered.current; }
     });
-    const bloom = (o: THREE.Object3D) => o.layers.enable(SELECTIVE_BLOOM_LAYER);
+    const setVp = (r: THREE.WebGLRenderer) => { r.getCurrentViewport(vp); assets.u.uScale.value = vp.w; };   // point sizes in world metres, whatever target (world DPR / bloom pass) is drawing
     return <>
-        <instancedMesh ref={core} name="enemy-death-core" onUpdate={bloom} args={[assets.coreGeo, assets.coreMat, DEATH_FX_SLOTS]} frustumCulled={false} />
-        <instancedMesh ref={flames} name="enemy-death-flames" onUpdate={bloom} args={[assets.flameGeo, assets.flameMat, DEATH_FX_SLOTS * DEATH_FX_FLAMES]} frustumCulled={false} />
-        <instancedMesh ref={embers} name="enemy-death-embers" onUpdate={bloom} args={[assets.emberGeo, assets.emberMat, DEATH_FX_SLOTS * DEATH_FX_EMBERS]} frustumCulled={false} />
-        <instancedMesh ref={rings} name="enemy-death-ring" onUpdate={bloom} args={[assets.ringGeo, assets.ringMat, DEATH_FX_SLOTS]} frustumCulled={false} />
+        <points ref={smoke} name="enemy-death-smoke" args={[assets.smokeGeo, assets.smokeMat]} visible={false} frustumCulled={false} renderOrder={1} onBeforeRender={setVp} />
+        <points ref={fire} name="enemy-death-core" args={[assets.fireGeo, assets.fireMat]} visible={false} frustumCulled={false} renderOrder={2} onBeforeRender={setVp} onUpdate={(o: THREE.Object3D) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
     </>;
 }
 

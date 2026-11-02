@@ -216,7 +216,7 @@ export interface Sim {
 }
 // plasma web shot: a visible bolt (plasma core wrapped in web strands) with gentle homing; blasts drive the shockwave VFX
 export interface Plasma { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; tgt: Enemy | null }
-export interface Blast { x: number; y: number; z: number; t: number; r: number; col?: number }   // col: web-shot blast in the caster colour (KO death blasts have none)
+export interface Blast { x: number; y: number; z: number; t: number; r: number; col?: number }   // col: the caster's / KO hero's colour
 // env-iter3 F (Shifat Oct 29: "Let enemies & bosses fire shots like Iron Man"): repulsor bolts from an open palm (regular enemies:
 // 0.4 s palm-glow telegraph, then a fast bolt at the hero's predicted position, 2-3 s cooldown; bosses: 3-shot volleys) and the
 // boss chest unibeam (1 s visible charge, then a 1.5 s beam that sweeps after the hero slower than he can swing). Hits go through
@@ -534,8 +534,7 @@ function spawnPlasma(s: Sim, tgt: Enemy) {
 }
 // visual-only death explosion: pooled blast at the bot's body, no damage, no chain reaction
 function deathBlast(s: Sim, e: Enemy) {
-    s.blasts.push({ x: e.x, y: e.y + enemyBodyOffset(e), z: e.z, t: 0, r: 5.5 });
-    if (s.blasts.length > BLAST_CAP) s.blasts.shift();
+    (e as any).koCol = heroCol(s);   // the KO burst (EnemyDeathFx) takes the colour of the hero who landed the KO; the old pale cyan 5.5 m flash disc is gone (Shifat 1:12 PM: softer, particle glow burst)
 }
 function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
     { const dx = s.pos[0] - x, dy = s.pos[1] + 0.5 - y, dz = s.pos[2] - z, d = Math.hypot(dx, dy, dz) || 1, k = Math.min(0.7, d * 0.5) / d; fxShot(x + dx * k, y + dy * k, z + dz * k, heroCol(s)); }   // web splat + 4 sparks + small ring, on the shooter's side of the body
@@ -553,7 +552,7 @@ function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
         const kk = 10 + 26 * k;   // radial knockback, strongest at the centre
         e.kb = [dx / (dh || 1) * kk, dz / (dh || 1) * kk];
         any = true; s.combo++; s.comboT = 1.2;
-        if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); }
+        if (e.hp <= 0) { e.down = 3; s.kos++; s.score += 2; ev.ko(); (e as any).koCol = heroCol(s); }
     }
     if (any) { ev.hit(); (s as any).shake = Math.min(1, ((s as any).shake || 0) + 0.08); }   // web-shot hit: small trauma, no shooter freeze
     if (ev.blast) ev.blast(x, y, z);

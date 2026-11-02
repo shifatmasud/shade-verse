@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core';
 
 const baseUrl = process.argv[2] || process.env.BASE_URL || 'http://localhost:4173/';
 const output = process.argv[3] || 'art/death-vfx/shot-after-fire-ko-mobile-landscape.png';
-const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome-stable', headless: 'new', args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage();
 await page.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
 const errors = [];
@@ -12,9 +12,8 @@ page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 
 try {
     await page.goto(baseUrl, { waitUntil: 'load' });
-    await page.waitForFunction(() => !!window.__game && !!window.__scene, { timeout: 20000 });
-    await page.evaluate(() => window.__game.start());
-    await page.waitForFunction(() => window.__game.sim.mode === 'play', { timeout: 5000 });
+    await page.waitForFunction(() => !!window.__game, { timeout: 120000 });
+    await page.waitForFunction(() => { if (window.__game.sim.mode !== 'play') window.__game.start(); return window.__game.sim.mode === 'play' && !!window.__scene; }, { timeout: 120000, polling: 1000 });
     await new Promise(resolve => setTimeout(resolve, 900));
 
     const setup = await page.evaluate(() => {
@@ -40,28 +39,26 @@ try {
         const { sim } = window.__game, enemy = sim.enemies[0];
         enemy.hp = 0;
         enemy.down = 3; // Drive the existing down-state transition; leave combat logic under its own tests.
-        sim.blasts.push({ x: enemy.x, y: enemy.y + 1, z: enemy.z, t: 0, r: 5.5 }); // Preserve the existing KO flash in the visual comparison.
     });
     await page.waitForFunction(name => window.__scene.getObjectByName(name)?.userData.activeEffects === 1, { timeout: 5000 }, coreName);
     await new Promise(resolve => setTimeout(resolve, 100));
 
     const during = await page.evaluate(name => {
         const { sim, input } = window.__game, core = window.__scene.getObjectByName(name);
-        const flames = window.__scene.getObjectByName('enemy-death-flames');
-        const embers = window.__scene.getObjectByName('enemy-death-embers');
-        const matrix = Array.from(core.instanceMatrix.array.slice(0, 16));
+        const smoke = window.__scene.getObjectByName('enemy-death-smoke');
+        const pos = core.geometry.attributes.position.array;
         return {
             active: core.userData.activeEffects, total: core.userData.triggeredTotal,
-            flameInstances: flames?.count, emberInstances: embers?.count,
-            center: [matrix[12], matrix[13], matrix[14]],
+            firePoints: core.geometry.attributes.position.count, smokePoints: smoke?.geometry.attributes.position.count,
+            center: [pos[0], pos[1], pos[2]],
             score: sim.score, kos: sim.kos, hp: sim.hp, pos: sim.pos.slice(), attackQ: input.attackQ,
             down: sim.enemies[0]?.down,
         };
     }, coreName);
     assert.equal(during.active, 1, 'a single down transition should activate one pooled burst');
     assert.equal(during.total, 1, 'the same down state must not re-trigger every frame');
-    assert.equal(during.flameInstances, 54, 'flames use the six-slot instanced pool');
-    assert.equal(during.emberInstances, 72, 'embers use the six-slot instanced pool');
+    assert.equal(during.firePoints, 6 * (1 + 14 + 26 * 3), 'fire (flash, fireball puffs, spark streaks) uses the six-slot pooled batch');
+    assert.equal(during.smokePoints, 6 * 10, 'smoke uses the six-slot pooled batch');
     assert.ok(Math.abs(during.center[0] - setup.enemyX) < 0.01 && Math.abs(during.center[2] - setup.enemyZ) < 0.01, 'fire core is anchored at the enemy in world space');
     assert.ok(during.center[1] > setup.enemyY, 'fire core is raised to the enemy body rather than drawn as a screen overlay');
     assert.equal(during.score, setup.score, 'VFX does not alter score');
