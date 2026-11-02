@@ -1,3 +1,4 @@
+import { WEATHER } from '../env';
 import { AVENUE, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, LIGHTHOUSE } from '../../seaWorld';
 import { buildings } from '../../sim';
 import * as THREE from 'three';
@@ -133,9 +134,10 @@ function harborStiltsGeo() {
     return merged(parts);
 }
 function harborLampsGeo() {
-    const posts: THREE.BufferGeometry[] = [], heads: THREE.BufferGeometry[] = [];
-    for (let z = HARBOR.z1 - 6; z > HARBOR.z0; z -= 18) for (const sx of [-1, 1]) { const x = AVENUE.x + sx * (AVENUE.hw - 0.6); const p = new THREE.CylinderGeometry(0.08, 0.11, 5, 5); p.translate(x, HARBOR.y + 2.5, z); posts.push(colorize(p, '#3b3846')); const h = new THREE.SphereGeometry(0.32, 6, 4); h.translate(x, HARBOR.y + 5.1, z); heads.push(h); }
-    return { posts: merged(posts), heads: merged(heads) };
+    const posts: THREE.BufferGeometry[] = [], heads: THREE.BufferGeometry[] = [], hp: number[] = [];
+    for (let z = HARBOR.z1 - 6; z > HARBOR.z0; z -= 18) for (const sx of [-1, 1]) { const x = AVENUE.x + sx * (AVENUE.hw - 0.6); const p = new THREE.CylinderGeometry(0.08, 0.11, 5, 5); p.translate(x, HARBOR.y + 2.5, z); posts.push(colorize(p, '#3b3846')); const h = new THREE.SphereGeometry(0.32, 6, 4); h.translate(x, HARBOR.y + 5.1, z); heads.push(h); hp.push(x, HARBOR.y + 5.1, z); }
+    const halo = new THREE.BufferGeometry(); halo.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3));
+    return { posts: merged(posts), heads: merged(heads), halo };
 }
 function cityImpostorGeo() {   // the main city as plain hazy boxes, for when the hero is out at Neon Harbor (the full city is hidden then)
     const parts: THREE.BufferGeometry[] = [];
@@ -151,6 +153,9 @@ export function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
     const platMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod, paveShader); m.customProgramCacheKey = () => 'harbor-pave'; return m; }, []);   /* own cache key: the shared hazeShader closure would reuse pmat's program */
     const trimMat = useMemo(() => new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), []);
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffd1f0' }), []);
+    /* fog halos (Shifat Nov 2 1:54 AM 'Lets try'; real photo: street lights in night fog): a soft additive glow around every lamp, only on rainy/misty nights - adds light, never changes the locked base look */
+    const haloMat = useMemo(() => new THREE.SpriteMaterial({ map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: '#ffb0d8', opacity: 0, fog: false, toneMapped: false }), []);
+    const haloPos = useMemo(() => { const a = lamps.halo.attributes.position as THREE.BufferAttribute; return Array.from({ length: a.count }, (_, i) => [a.getX(i), a.getY(i), a.getZ(i)] as [number, number, number]); }, [lamps]);
     const impMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
     const near = useRef<THREE.Group>(null!), impRef = useRef<THREE.Mesh>(null!);
     useFrame(({ camera, clock }) => {
@@ -159,6 +164,7 @@ export function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
         CITY_LOD.far = camera.position.z < -760; if (impRef.current) impRef.current.visible = CITY_LOD.far;
         SIGN_MAT.uniforms.uT.value = clock.elapsedTime; SIGN_MAT.uniforms.uDay.value = kit.tod.day.value; PAVE_DAY.value = Math.max(0, Math.min(1, (kit.tod.day.value - 0.35) / 0.4));
         trimMat.color.setScalar(0.22 + 1.23 * night); lampMat.color.setRGB(1, 0.82, 0.94).multiplyScalar(0.4 + 0.9 * night);
+        const hk = night * Math.min(1, WEATHER.rain.value * 1.6); haloMat.opacity = 1.0 * hk; haloMat.visible = hk > 0.01;
     });
     return <group name="neon-harbor">
         <mesh geometry={towers} material={tmat} frustumCulled={false} />
@@ -168,6 +174,7 @@ export function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
         <group ref={near}>
             <mesh geometry={signs} material={SIGN_MAT} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
             <mesh geometry={stiltPosts} material={pmat} frustumCulled={false} />   {/* 25 fps pass: stilts + lamp posts share pmat -> one draw call */}
+            {haloPos.map((p, i) => <sprite key={i} material={haloMat} position={p} scale={[10, 10, 1]} renderOrder={31} />)}
             <mesh geometry={lamps.heads} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
         </group>
     </group>;
