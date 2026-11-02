@@ -338,8 +338,8 @@ ${GRID_TRACE_GLSL}
           if (crr < irr) { irr = crr; iq = cq; ia = ca; } }
         if (irr < 1.6 && !below) {
           float sh = 1.0 - smoothstep(0.93, 1.5, irr);
-          vec3 tq = mix(vec3(0.07, 0.55, 0.62), vec3(0.42, 0.9, 0.84), 1.0 - smoothstep(0.92, 1.18, irr)) * mix(0.25, 1.0, uDay);
-          col = mix(col, mix(tq, col, fr * 0.55), sh * 0.85 * (1.0 - bedA * 0.9));
+          vec3 tq = mix(vec3(0.11, 0.64, 0.68), vec3(0.52, 0.94, 0.86), 1.0 - smoothstep(0.92, 1.18, irr)) * mix(0.25, 1.0, uDay);
+          col = mix(col, mix(tq, col, fr * 0.45), sh * 0.92 * (1.0 - bedA * 0.8));
           /* Shifat 8:35 PM: the FBM caustic-cell layers drawn ON the surface read as a fake caustic texture -> removed (seabed caustics stay, seen through the water) */
           // shore foam (AAA swash zone, e.g. Sea of Thieves / Uncharted 4): driven by REAL water depth over the traced bed, not rings.
           // Each wave set runs up the beach as a front that travels with depth (surge), leaves a lacy sheet (caustic-cell lace) that thins as it
@@ -400,7 +400,7 @@ ${GRID_TRACE_GLSL}
       if (!below) {
         col *= mix(0.3, 1.0, uDay);
         { float dR = length(cameraPosition - vW), hzW = min(0.93, 1.0 - exp(-dR * 0.0021));   // same haze the reflected buildings themselves get (HAZE_K)
-          col = mix(col, mix(skR * mix(0.75, 1.0, uDay), uSky * mix(0.3, 1.0, uDay), hzW), skA * clamp(fr * 2.0 + 0.22, 0.0, 0.88)); }   // physical Fresnel weight (strong at grazing, faint looking down)
+          col = mix(col, mix(skR * mix(0.75, 1.0, uDay), uSky * mix(0.3, 1.0, uDay), hzW), skA * clamp(fr * 1.0 + 0.05, 0.0, 0.45)); }   /* Nov 2 real-photo A/B: island/city mirror was too dark vs real shallows -> fainter */   // physical Fresnel weight (strong at grazing, faint looking down)
         col += sunSpec * (1.0 - haze * 0.5);
         // Stylised cool night-sky lobe, not scene reflections or a physical moon model.
         col += vec3(0.18, 0.26, 0.38) * (1.0-uDay) * pow(max(dot(r, normalize(vec3(-0.3, 0.6, -0.5))), 0.0), 12.0);
