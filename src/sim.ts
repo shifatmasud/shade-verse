@@ -665,7 +665,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         input.jumpQ = false; s.grappleFlight = false;
         if (s.swim) { s.dive = !s.dive; }   // jump on the surface dives (user message 10:18, WhatsApp); underwater it surfaces. Shore exit: swim into the shore (below).
         else
-        if (s.wall) { const n = s.wall; v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 21.5; s.wall = null; s.wallT = 0.25; s.ground = false; ev.jump(); }
+        if (s.wall) { const n = s.wall; leaveWall(s, leaveHeading(s)); v[0] = n[0] * 11; v[2] = n[1] * 11; v[1] = 21.5; s.wallT = 0.25; s.ground = false; const g0 = s as any; g0.pressT = 0; g0.pressGl = false; g0.pressGround = true; g0.dblUsed = false; g0.glideMode = false; ev.jump(); }   // wall jump; keep holding = take off into flight (Shifat 10:39 AM), like a ground jump
         else if (s.ground) { v[1] = JUMP_V; s.ground = false; const g0 = s as any; g0.pressT = 0; g0.pressGl = false; g0.pressGround = true; g0.dblUsed = false; g0.glideMode = false; ev.jump(); }
         else if (s.web) { s.web = false; v[1] += 8; ev.jump(); }
         else { const g0 = s as any; g0.pressT = 0; g0.pressGl = !!g0.glideMode; g0.pressGround = false; }   // air press: tap/hold decided on release (see Space scheme below)
