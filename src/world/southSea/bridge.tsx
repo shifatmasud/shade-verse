@@ -57,8 +57,8 @@ export function Bridge({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffe7a8' }), []);
     useFrame(() => { const night = 1 - kit.tod.day.value; lampMat.color.setRGB(1, 0.91, 0.66).multiplyScalar(0.35 + 0.9 * night); });
     return <group name="south-sea-bridge">
-        <mesh geometry={body} material={mat} frustumCulled={false} />
-        <mesh geometry={heads} material={lampMat} onUpdate={(o2) => o2.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
+        <mesh geometry={body} material={mat} />
+        <mesh geometry={heads} material={lampMat} onUpdate={(o2) => o2.layers.enable(SELECTIVE_BLOOM_LAYER)} />
     </group>;
 }
 

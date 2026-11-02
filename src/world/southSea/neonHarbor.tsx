@@ -167,15 +167,15 @@ export function NeonHarbor({ kit }: { kit: SouthSeaKit }) {
         const hk = night * Math.min(1, WEATHER.rain.value * 1.6); haloMat.opacity = 1.0 * hk; haloMat.visible = hk > 0.01;
     });
     return <group name="neon-harbor">
-        <mesh geometry={towers} material={tmat} frustumCulled={false} />
-        <mesh geometry={plat} material={platMat} frustumCulled={false} />
-        <mesh geometry={trim} material={trimMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
+        <mesh geometry={towers} material={tmat} />
+        <mesh geometry={plat} material={platMat} />
+        <mesh geometry={trim} material={trimMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
         <mesh ref={impRef} geometry={imp} material={impMat} visible={false} frustumCulled={false} />
         <group ref={near}>
-            <mesh geometry={signs} material={SIGN_MAT} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
-            <mesh geometry={stiltPosts} material={pmat} frustumCulled={false} />   {/* 25 fps pass: stilts + lamp posts share pmat -> one draw call */}
+            <mesh geometry={signs} material={SIGN_MAT} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
+            <mesh geometry={stiltPosts} material={pmat} />   {/* 25 fps pass: stilts + lamp posts share pmat -> one draw call */}
             {haloPos.map((p, i) => <sprite key={i} material={haloMat} position={p} scale={[10, 10, 1]} renderOrder={31} />)}
-            <mesh geometry={lamps.heads} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} frustumCulled={false} />
+            <mesh geometry={lamps.heads} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
         </group>
     </group>;
 }

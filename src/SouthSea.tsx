@@ -158,7 +158,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     });
     const I = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, n: number) => <instancedMesh ref={(m) => { inst.current[key] = m; }} args={[geo, mat, Math.max(1, n)]} />;   /* Shifat 10:22 PM 25 fps: island trees/bushes/rocks cull when off screen (bounds computed in fill) */
     return <group name="south-sea-island">
-        <mesh ref={terrRef} geometry={terrain} material={terrainMat} frustumCulled={false} />
+        <mesh ref={terrRef} geometry={terrain} material={terrainMat} />
         <mesh geometry={lh.body} material={propMat} />
         <mesh geometry={lh.lamp} material={lampMat} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
         <LightShafts kit={kit} lampY={lh.lampY} />
@@ -171,10 +171,10 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
             {I('rock', geos.rock, mats.rock, veg.rock.length)}
         </group>
         <group ref={grassRef}><instancedMesh ref={(m) => { inst.current['grass'] = m; }} userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geos.grass, mats.grass, grassPool.N]} frustumCulled={false} /></group>
-        <mesh geometry={river} material={RIVER_MAT} renderOrder={1} frustumCulled={false} />
+        <mesh geometry={river} material={RIVER_MAT} renderOrder={1} />
         <group ref={nearRef}>
             {waters.map((w, i) => <primitive key={i} object={w} />)}
-            {sheets.map((g, i) => <mesh key={i} geometry={g} material={FALLS_MATS[i]} renderOrder={3 + i} frustumCulled={false} />)}
+            {sheets.map((g, i) => <mesh key={i} geometry={g} material={FALLS_MATS[i]} renderOrder={3 + i} />)}
             <mesh position={foamPos} rotation={[-Math.PI / 2, 0, 0]} material={FOAM_MAT} renderOrder={3} frustumCulled={false}><planeGeometry args={[FALLS.w * 1.9, FALLS.w * 1.9]} /></mesh>
             <points geometry={spray} material={SPRAY_MAT} renderOrder={6} frustumCulled={false} />
             <points geometry={mist} material={MIST_MAT} renderOrder={7} frustumCulled={false} />
