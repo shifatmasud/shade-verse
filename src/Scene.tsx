@@ -3,6 +3,7 @@ import { ContactShadows, StaticShadows } from './world/contactShadows';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { traversalBones, traversalRoot } from './heroTraversal';
 import gsap from 'gsap';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
@@ -218,6 +219,7 @@ export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, po
     } else { state.bYaw = sourcePose!.yaw; state.bR = bank; }
     poseRoot.rotation.z = bank;
     if (state.gB > 0.01) { const lc = 0.9 * state.gB; root.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; root.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; root.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
+    traversalRoot(sim, rig, dt, scale);   // swing pendulum body (heroTraversal.ts)
     root.position.y -= sim.land * 0.5;
     poseRoot.rotation.x += sim.land * 0.5 + (sim.dodgeT > 0 && !sa.flip ? 0.6 : 0);
     const rootPose = { lean, glideBlend: state.gB, bank, yaw: sim.yaw, swimWave: state.swW || 0 };
@@ -266,6 +268,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
     if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
     if (sim.shotT > 0 || sim.spring > 0) { const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12); rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]); for (const side of ['L', 'R']) { aimBone(rig.b['uarm' + side], rig.b['farm' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + side], rig.b['hand' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); } }
+    traversalBones(sim, rig, dt);
     const activePoseState = poseState ?? _cp;
     combatPose(sim, rig, h, poseDt, activePoseState);
     if (publishState && !sourceClipState) {
