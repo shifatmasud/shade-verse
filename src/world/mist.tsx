@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { TOD, WEATHER } from './env';
 import { WATER_Y } from '../sim';

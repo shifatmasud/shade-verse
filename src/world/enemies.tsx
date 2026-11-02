@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { ESHOT, Unibeam, enemyBodyOffset, enemyPalm, world, type Sim } from '../sim';
+import { ESHOT, Unibeam, enemyBodyOffset, enemyPalm, type Sim } from '../sim';
 import { EYE_RED, armorCompanion, armorDrone, armorRobot, robotGeo, robotMat } from '../robotgeo';
 import { useEffect, useMemo, useRef } from 'react';
 import { GLOW_FS, GLOW_VS } from '../shaders/glow';

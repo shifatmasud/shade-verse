@@ -1,9 +1,9 @@
 import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
-import { HALF, PARK_POND_Y, WATER_Y, WATER_Z, isLakeWater, seabedAt, waterSurfaceAt, type Sim } from '../sim';
+import { PARK_POND_Y, WATER_Y, WATER_Z, isLakeWater, seabedAt, waterSurfaceAt, type Sim } from '../sim';
 import * as THREE from 'three';
 import { QUALITY } from '../quality';
 import { TOD } from './env';
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { waterRenderY } from '../water/waveHeight';
 

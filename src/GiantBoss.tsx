@@ -1,11 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { BOSS_BODY_OFFSET, BOSS_ROOT_SCALE, BOSS_SCALE_FACTOR, SHADOW_ROOT_SCALE } from './bossConfig';
 import type { Sim } from './sim';
-import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const SOURCE_HERO = JSON.parse(JSON.stringify(heroData)) as any;

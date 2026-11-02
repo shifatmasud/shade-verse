@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 import * as THREE from 'three';

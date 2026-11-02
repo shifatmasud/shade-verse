@@ -2,7 +2,6 @@ import { WATERLINE, UW } from '../world/env';
 import { HD, createHeroComposite, worldBufferSize, worldTarget } from '../heroHD';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { world } from '../sim';
 import { FXAA_FS, FXAA_SHARP_FS, OUT_FS } from '../shaders/post';
 import { useEffect, useMemo } from 'react';
 import { waterMat } from '../water/oceanMaterial';

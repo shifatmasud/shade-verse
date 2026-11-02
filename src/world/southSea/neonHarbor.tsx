@@ -2,7 +2,7 @@ import { WEATHER } from '../env';
 import { AVENUE, HARBOR, HBLOCKS, HBRIDGES, HTOWERS, LIGHTHOUSE } from '../../seaWorld';
 import { buildings } from '../../sim';
 import * as THREE from 'three';
-import React, { useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { SELECTIVE_BLOOM_LAYER } from '../../renderLayers';
 import { useFrame } from '@react-three/fiber';
 import { type SouthSeaKit, PHONE, HAZE_K, hazeShader, colorize, merged, rnd, setSeed } from './common';

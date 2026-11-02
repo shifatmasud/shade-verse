@@ -1,12 +1,10 @@
 import { waveH } from './waveHeight';
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { WATER_Y, WATER_Z, SEABED, HALF, SEA, type Sim } from '../sim';
-import { QUALITY, QK, LOWQ } from '../quality';
-import { ISLAND } from '../seaWorld';
+import { QUALITY, LOWQ } from '../quality';
 import { HERO_REFL } from '../caustics';
-import { worldBufferSize } from '../heroHD';
 import { UW } from '../world/env';
 import { OCEAN_SNAP, OCEAN_BINS } from './seabed';
 import { waterMat } from './oceanMaterial';

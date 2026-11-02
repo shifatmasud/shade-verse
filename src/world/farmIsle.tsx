@@ -3,7 +3,7 @@ import { addTrunkSolids } from '../sim';
 // roads with puddles, tall grass; only drones and flying cars, no animals or pedestrians'; 6:25 PM: 'Village should be a separate island on sea,
 // from another side of city'). Ground = seaWorld farmRaw (the sim walks the same function). Budget (Adreno 506): ~9 draw calls, all static
 // merged / instanced geometry; the only per-frame work is one rotation for the windmill sails.
-import React, { useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { seabedAt } from '../sim';

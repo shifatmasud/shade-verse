@@ -1,14 +1,14 @@
 import { WEATHER } from './world/env';
 import { worldBufferSize } from './heroHD';
 import { TREE_SSR_LAYER } from './renderLayers';
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { withMeshopt } from './meshopt';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { QUALITY, QK, LOWQ } from './quality';
-import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM, HERO_REFL } from './caustics';
+import { QUALITY, QK } from './quality';
+import { CAUSTIC_TEX, WATER_NRM, HERO_REFL } from './caustics';
 import {
     buildings, world, PARK, parkH, PARK_POND, PARK_POND_Y, PARK_BRIDGE,
     bridgeSurfaceAt, isLegacyCityCore, LAKE_SHORE, BEACH_DIR, type Sim,

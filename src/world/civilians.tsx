@@ -1,4 +1,4 @@
-import { CELL, PARK, PED_VOICE, WATER_Z, buildings, world, type Sim } from '../sim';
+import { CELL, PARK, PED_VOICE, WATER_Z, buildings, type Sim } from '../sim';
 import * as THREE from 'three';
 import { EYE_BLUE, coatRobot, robotGeo, robotMat } from '../robotgeo';
 import { TOD } from './env';

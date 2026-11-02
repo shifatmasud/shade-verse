@@ -1,13 +1,10 @@
 import { Lilies } from './world/lilies';
 import { ContactShadows, StaticShadows } from './world/contactShadows';
-import tenementData from './polyfork-tenement.json';
-import { PINE_URL, LEAVES_URL } from './texdata'
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import gsap from 'gsap';
 import heroData from './hero.json';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import baseTexUrl from './basetex';
 import clipIdle from './clips/idle.json';
 import clipJump from './clips/jump.json';
@@ -15,28 +12,23 @@ import clipWall from './clips/climbing_wall.json';
 import clipPunch from './clips/punch.json';
 import clipSwim from './clips/swimming.json';
 import clipRun from './clips/run.json';
-import { shadowGeo, shadowMat } from './shadowbot';
-import { withPedestrianHands } from './pedestrianHands';
 import { GiantBoss } from './GiantBoss';
 import { Weather } from './world/weather';
 import { Mist } from './world/mist';
 import { BossArenaMarker } from './BossArenaMarker';
 import { poolAt, HBOSS } from './seaWorld';
-import { BOSS_BODY_OFFSET } from './bossConfig';
 import { attachInk, syncInk } from './ink';
-import { robotGeo, robotMat, armorRobot, armorCompanion, armorDrone, coatRobot, EYE_BLUE, EYE_RED } from './robotgeo';
-import { world, buildings, WATER_Z, CELL, PARK, PARK_POND, PARK_POND_Y, bridgeSurfaceAt, parkH, sandWeight, BEACH_DIR, LAKE_SHORE, WATER_Y, SEABED, SEA, seabedAt, BOATS, boatAt, BOAT_HX, BOAT_HZ, BOAT_DECK, BOAT_MAST, HALF, FOG, isLakeWater, lakeWaveH, waterSurfaceAt, stepSim, stepBeacon, resetSim, input, MOVES, SNARE, enemyBodyOffset, enemyPalm, ESHOT, CARS, CAR_N, CAR_SCALE, carAt, PED_VOICE, PILOT, type Unibeam, type Sim, type Events } from './sim';
+import { buildings, WATER_Z, parkH, WATER_Y, SEABED, seabedAt, HALF, FOG, isLakeWater, waterSurfaceAt, stepSim, stepBeacon, resetSim, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { RoofProps } from './RoofProps';
 import { StreetProps } from './StreetProps';
 import { OCC } from './occlude';
-import { QUALITY, QK, HQ, AA_FXAA, LOWQ } from './quality';
+import { QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
-import { SouthSea, CITY_LOD } from './SouthSea';
-import { ISLAND, islandH } from './seaWorld'
-import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM, HERO_REFL } from './caustics';
+import { SouthSea } from './SouthSea';
+import { islandH } from './seaWorld'
 import { TOD, UWF, UW } from './world/env';
-import { seabedMat, wallMat, OCEAN_HALF, OCEAN_SNAP, oceanGeo, seabedGeo } from './water/seabed';
+import { seabedMat, wallMat, oceanGeo, seabedGeo } from './water/seabed';
 import { waterMat } from './water/oceanMaterial';
 import { OceanFollow, ReflectionIllusion, OceanSlices } from './water/OceanPasses';
 import { Boats, Gulls, Fish, MarineSnow, Whale } from './world/sealife';
@@ -50,17 +42,12 @@ import { FlyingCars } from './world/flyingCars';
 import { Underwater } from './world/underwater';
 import { waveAtWater, waterRenderY } from './water/waveHeight';
 import { Forest, Meadow, parkBushGeo, parkGrassOnCompile, tuftGeo } from './world/forest';
-import { treeGeo, coniferGeo, palmFrondTex, palmTrunkTex, palmGeo, cherryLeafShader, palmFrondShader, TREE_TYPES, TREE_PATTERN, treeWindTime, trunkWindShader, leafWindShader } from './world/trees';
+import { treeGeo, palmFrondTex, palmTrunkTex, palmGeo, palmFrondShader, trunkWindShader, leafWindShader } from './world/trees';
 import { FxaaPass, HeroHDPass, OutlinePass, OUTLINE_STATE } from './render/passes'
 import { WATERLINE } from './world/env';
 export { SHARPEN, FXAA_STATE, OUTLINE_STATE } from './render/passes';
 import { City, TenementBlock, Sky } from './world/cityScenery';
-import { waveSumJS } from './water/waves';
-import { SKY_VS, SKY_FS } from './shaders/sky';
-import { CITY_VS, CITY_FS } from './shaders/city';
-import { FXAA_FS, FXAA_SHARP_FS, OUT_FS } from './shaders/post';
-import { GLOW_VS, GLOW_FS } from './shaders/glow';
-import { HD, applyRatio, worldBufferSize, worldTarget, registerHero, createHeroComposite, HERO_WATER } from './heroHD';
+import { HD, applyRatio, registerHero, HERO_WATER } from './heroHD';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 

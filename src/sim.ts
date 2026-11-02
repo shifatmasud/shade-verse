@@ -1,6 +1,6 @@
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
-import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, HBLOCKS, HBRIDGES, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone, FARM, ICE } from './seaWorld';
+import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone, FARM, ICE } from './seaWorld';
 export type V3 = [number, number, number];
 export interface Bld { x0: number; x1: number; z0: number; z1: number; h: number; host?: number; y0?: number; sea?: true; kind?: string }
 

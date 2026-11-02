@@ -3,14 +3,14 @@ import { seabedAt } from '../sim';
 // from another side of the city'). Ground = seaWorld iceRaw (the sim walks it). Refs: Antarctic tabular bergs / Greenland glacier fronts:
 // sheer cliffs glow cyan where light passes through thin ice, deep blue in the cracks, white snow on every flat top.
 // Budget: 5 draw calls (terrain, igloo shells, igloo glow, floating chunks, fog cards), all static.
-import React, { useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { ICE, iceRaw, iceRR , ICE_IGLOOS, ICE_HUT_K, ICE_HUT_SINK } from '../seaWorld';
 import { hutGeo } from './iceHuts';
 import { iglooModel } from './igloos';
 import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
-import { type SouthSeaKit, PHONE, hazeShader, colorize, merged, rnd, setSeed } from './southSea/common';
+import { type SouthSeaKit, PHONE, hazeShader, merged, rnd, setSeed } from './southSea/common';
 
 const IGLOOS = ICE_IGLOOS;   // layout lives in seaWorld (shared with the collision boxes)
 

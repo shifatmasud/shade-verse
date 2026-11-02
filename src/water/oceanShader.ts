@@ -1,12 +1,10 @@
 import { SKYFX_GLSL, SKYFX2_GLSL, CLOUD_GLSL } from '../shaders/skyFx';
 import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from './gridRefl';
-import { HF_HMAX, HF_BRIDGE, HF_DECK } from './heightRefl';
+import { HF_HMAX } from './heightRefl';
 import { IMP_HMAX } from './impostorRefl';
-import { HARBOR } from '../seaWorld';
 // Sea surface shader for the ocean + lakes (waterMat in Scene.tsx).
 // WAVES is the shared GLSL wave field (height wh / gradient wg), generated in ./waves.ts from the same table as the
 // CPU waveH() in Scene.tsx (swimming + boats), so the two cannot drift apart.
-import { QUALITY, LOWQ } from '../quality';
 import { CAUSTIC_GLSL } from '../caustics';
 import { WAVES_GLSL, GERSTNER_GLSL, WAVES_V_GLSL, WAVES_VD_GLSL, WGHJ_GLSL } from './waves';
 import { OCEAN_N, OCEAN_WARP, OCEAN_HALF } from './seabed';

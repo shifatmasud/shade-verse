@@ -1,9 +1,6 @@
 import * as THREE from 'three';
-import { useEffect, useMemo } from 'react';
-import { useThree, useFrame } from '@react-three/fiber';
-import { buildings, WATER_Y, WATER_Z } from '../sim';
+import { buildings, WATER_Z } from '../sim';
 import { BRIDGE, BRIDGE_L, HARBOR } from '../seaWorld';
-import { waterMat } from './oceanMaterial';
 
 /* REFLECTION IMPOSTORS (Shifat Nov 1 3:11 PM 'new batch of reflection methods', batch B): each big landmark is rendered ONCE at load from its real
    meshes into an elevation card (orthographic side view: real colours, windows, roofs). The sea intersects its reflected ray with the card's

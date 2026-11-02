@@ -6,7 +6,6 @@ import { IMP_P } from './impostorRefl';
 import * as THREE from 'three';
 import { seabedAt } from '../sim';
 import { islandH } from '../seaWorld';
-import { QUALITY, LOWQ } from '../quality';
 import { CAUSTIC_TEX, WATER_NRM } from '../caustics';
 import { TOD, UWF, WATERLINE } from '../world/env';
 import { OCEAN_VERT, OCEAN_FRAG } from './oceanShader';
