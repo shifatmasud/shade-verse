@@ -3,6 +3,7 @@ export const PRELOAD_IMAGES: string[] = [
  "/bark.jpg",
  "/caustics.png",
  "/leaves.png",
+ "/moon.png",
  "/pine.png",
  "/pinebark.jpg",
  "/shrub134.png",
