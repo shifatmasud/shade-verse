@@ -78,7 +78,8 @@ export const GRID_TRACE_GLSL = `
                 vec4 fp = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), cc = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
                 vec3 bm = vec3(fp.x, m.z, fp.y), bx = vec3(fp.z, cc.w, fp.w);
                 float sf = 6.0 + tc * 0.09;   /* Shifat 9:17 PM 'reflection blurry, softer' */   // softness grows with distance (heavy blur far out)
-                vec3 t0 = (bm - vec3(sf, 0.0, sf) - ro) * ih, t1 = (bx + vec3(sf, sf, sf) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
+                float sfH = sf * 1.6;   /* wider side fade: neighbouring blocks melt into one skyline instead of columns */
+                vec3 t0 = (bm - vec3(sfH, 0.0, sfH) - ro) * ih, t1 = (bx + vec3(sfH, sf, sfH) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
                 float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
                 if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float hsT = fract(sin(dot(vec2(c), vec2(39.3468, 11.135))) * 24634.6345); float topY = bx.y * (0.72 + 0.28 * hsT); float sfT = sf * 2.2 + topY * 0.18;   /* soft, uneven skyline: no flat slab tops (Nov 1 9:14 PM) */
                   float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(topY + sfT, topY - sfT, hd.y * max(a, 0.5));
