@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { withMeshopt } from './meshopt';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { QUALITY, QK, LOWQ } from './quality';
 import { CAUSTIC_TEX, CAUSTIC_GLSL, WATER_NRM, HERO_REFL } from './caustics';
@@ -245,7 +246,7 @@ function chooseBuildingAsset(b: (typeof buildings)[number], index: number): Asse
 
 const LAKE_COPY = true;   // Shifat 3:44 PM: small-scale, trees-only SSR copy for the pond
 export function PolyforkBuildings() {
-    const gltfs = useLoader(GLTFLoader, CITY_ASSETS.map((asset) => asset.url)) as GLTF[];
+    const gltfs = useLoader(GLTFLoader, CITY_ASSETS.map((asset) => asset.url), withMeshopt) as GLTF[];
     const models = useMemo(() => CITY_ASSETS.map((asset, i) => prepareModel(asset.id, gltfs[i])), [gltfs]);
     const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
     const buckets = useMemo(() => {
@@ -462,7 +463,7 @@ export function createVegetationPlacements() {
 }
 
 export function PolyforkForest() {
-    const gltfs = useLoader(GLTFLoader, TREE_ASSETS.map((asset) => asset.url)) as GLTF[];
+    const gltfs = useLoader(GLTFLoader, TREE_ASSETS.map((asset) => asset.url), withMeshopt) as GLTF[];
     const models = useMemo(() => TREE_ASSETS.map((asset, i) => prepareModel(asset.id, gltfs[i])), [gltfs]);
     const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
     const placements = useMemo(createVegetationPlacements, []);
@@ -512,7 +513,7 @@ function buildContactMatrices() {
 const _skyBlue = new THREE.Color(0.42, 0.6, 0.78);
 export type LakeTod = { fog: THREE.Color; sky: THREE.Color; sun: THREE.Vector3; day: { value: number } };
 export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scale: number }; tod?: LakeTod }) {
-    const [bridgeGLTF] = useLoader(GLTFLoader, [BRIDGE_ASSET.url]) as GLTF[];
+    const [bridgeGLTF] = useLoader(GLTFLoader, [BRIDGE_ASSET.url], withMeshopt) as GLTF[];
     const bridgeModel = useMemo(() => prepareModel(BRIDGE_ASSET.id, bridgeGLTF), [bridgeGLTF]);
     // circular lake sheet (polar grid so vertex waves have interior detail), unit diameter in XZ; its rim sits under the sandy bank.
     const waterGeometry = useMemo(() => { const g = new THREE.RingGeometry(0.0001, 0.5, 96, 14); g.rotateX(-Math.PI / 2); return g; }, []);

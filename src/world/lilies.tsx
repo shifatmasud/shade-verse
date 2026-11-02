@@ -2,6 +2,7 @@ import { Suspense, useMemo } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { withMeshopt } from '../meshopt';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 const LILY_LOD = 140;
 import { ISLAND, FARM, islandH } from '../seaWorld';
@@ -59,7 +60,7 @@ function bake(g: GLTF) {   // all meshes -> one geometry (world transforms appli
     return { geo, blooms: cen.filter((c) => c.n > 6).map((c) => [c.x / c.n, c.z / c.n] as [number, number]) };
 }
 function LiliesInner({ sim }: { sim: Sim }) {
-    const [gl] = useLoader(GLTFLoader, ['/polyfork/lily-pads-b0c5d0.glb']) as GLTF[];
+    const [gl] = useLoader(GLTFLoader, ['/polyfork/lily-pads-b0c5d0.glb'], withMeshopt) as GLTF[];
     const d = useMemo(() => {
         const { geo, blooms } = bake(gl), ps = patches();
         const glow = { value: 0 };
