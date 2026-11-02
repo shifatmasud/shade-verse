@@ -30,3 +30,12 @@ float capHitP(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, 
 #define WATER_REFL_W 0.5
 #define WATER_FFT_K 0.125
 `;
+
+import * as THREE from 'three';
+/* Shifat 11:26 PM 'Remove outline pass from waters': a water material keeps its normal colour blend but stamps the world target's ALPHA to 0.6
+   (alpha = dst * 0.6; opaque dst is 1), which the outline pass reads as the 'never inked' class. Works for any drawn water fragment. */
+export function noInk<T extends THREE.Material>(m: T, premult = false): T {
+  m.blending = THREE.CustomBlending; m.blendEquation = THREE.AddEquation; m.blendEquationAlpha = THREE.AddEquation;
+  m.blendSrc = premult ? THREE.OneFactor : THREE.SrcAlphaFactor; m.blendDst = THREE.OneMinusSrcAlphaFactor;
+  m.blendSrcAlpha = THREE.ZeroFactor; m.blendDstAlpha = THREE.ConstantAlphaFactor; (m as any).blendAlpha = 0.6; return m;
+}

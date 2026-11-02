@@ -2,11 +2,11 @@ import { WEATHER } from '../world/env';
 // Island water materials (river strip, waterfall sheets + foam, lagoon/plunge pools). Moved verbatim from SouthSea.tsx.
 import * as THREE from 'three';
 import { CAUSTIC_TEX, CAUSTIC_GLSL, HERO_REFL, WATER_NRM } from '../caustics';
-import { WATER_COMMON_GLSL } from './common';
+import { WATER_COMMON_GLSL, noInk } from './common';
 import { RIVERS, islandH, riverHW } from '../seaWorld';
 
 export function fallsMat(speed: number, alpha: number, bright: number, dw = false) {
-    return new THREE.ShaderMaterial({
+    return noInk(new THREE.ShaderMaterial({
         transparent: true, depthWrite: dw /* back sheet writes depth so the outline pass stops inking the cliff's contours through the falling water */, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay;
@@ -19,7 +19,7 @@ export function fallsMat(speed: number, alpha: number, bright: number, dw = fals
           float lip = 1.0 - smoothstep(0.0, 0.07, vUv.y), foam = smoothstep(0.78, 1.0, vUv.y);
           vec3 c = mix(vec3(0.42, 0.72, 0.82), vec3(0.97, 1.0, 1.0), clamp(streak * 0.75 * ${bright.toFixed(2)} + foam * 0.7 + lip * 0.5 + fine * 0.08, 0.0, 1.0)) * mix(0.32, 1.0, uDay);
           gl_FragColor = vec4(c, clamp((${alpha.toFixed(2)} + 0.45 * streak + 0.4 * foam + 0.3 * lip) * edge, 0.0, 1.0)); }`,
-    });
+    }));
 }
 
 export const FALLS_MATS = [fallsMat(0.55, 0.38, 0.6, true), fallsMat(0.85, 0.22, 0.9), fallsMat(1.25, 0.1, 1.2)];
@@ -45,7 +45,7 @@ export const FOAM_MAT = new THREE.ShaderMaterial({
 // water blend: the river and pools now write depth (fragments under 3% alpha are discarded), so the outline pass sees one flat water
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
-export const RIVER_MAT = new THREE.ShaderMaterial({
+export const RIVER_MAT = noInk(new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost } },
     vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `${CAUSTIC_GLSL}
@@ -103,7 +103,7 @@ export const RIVER_MAT = new THREE.ShaderMaterial({
       float soft = smoothstep(0.0, 0.24, min(vUv.x, 1.0 - vUv.x));   // soft banks, no hard edge on the sand
       float sea2 = max(vCalm, 1.0 - smoothstep(-0.6, 1.2, vW.y)); float a = (mix(0.93, 0.0, smoothstep(0.0, 0.85, sea2)) + 0.5 * white) * soft * vFade;   /* Shifat 2:34 AM seam: the mouth fades to clear so only the flowing foam remains over the sea */ if (a < 0.03) discard;   /* traced bed drawn here, so the strip is near-opaque */
       gl_FragColor = vec4(c, a); }`,
-});
+}));
 
 // Lagoon + plunge pool water (Shifat's screenshot: the lake material read as a flat grey slab). Own shallow-water look: white-sand
 // turquoise at the edge deepening to teal in the middle, soft transparent rim (no hard edge on the sand), ripples, sky fresnel, night-dim.
@@ -117,7 +117,7 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
     const BN = 64, bh = p.r * 1.08, bd = new Uint8Array(BN * BN * 4);
     for (let j = 0; j < BN; j++) for (let i = 0; i < BN; i++) { const x = p.cx - bh + (i + 0.5) / BN * 2 * bh, z = p.cz - bh + (j + 0.5) / BN * 2 * bh, y = islandH(x, z) ?? (p.y - 6), dd = Math.max(0, Math.min(1, (p.y + 1 - y) / 12)), o = (j * BN + i) * 4; bd[o] = Math.round(dd * 255); bd[o + 1] = Math.round((0.5 + 0.5 * Math.sin(x * 0.9 + z * 0.6) * Math.sin(x * 0.37 - z * 0.71)) * 255); bd[o + 2] = 0; bd[o + 3] = 255; }
     const bedTex = new THREE.DataTexture(bd, BN, BN, THREE.RGBAFormat); bedTex.magFilter = bedTex.minFilter = THREE.LinearFilter; bedTex.wrapS = bedTex.wrapT = THREE.ClampToEdgeWrapping; bedTex.needsUpdate = true;
-    return new THREE.ShaderMaterial({
+    return noInk(new THREE.ShaderMaterial({
         transparent: true, depthWrite: false /* the outline pass inked a dark arc where the pool surface met other water in depth */, side: THREE.DoubleSide,
         uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost }, uHeroDA: { value: HERO_REFL.shadowDir }, uNrm: { value: WATER_NRM } },
         vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
@@ -178,5 +178,5 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
           a = min(a, mix(1.0, 0.6, see));   /* the submerged body shows through, mild */
           a = clamp(below ? 0.7 : a, 0.0, 1.0); if (a < 0.03) discard;
           gl_FragColor = vec4(col, a); }`,
-    });
+    }));
 }

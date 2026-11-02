@@ -6,6 +6,7 @@ import { world } from '../sim';
 import { FXAA_FS, FXAA_SHARP_FS, OUT_FS } from '../shaders/post';
 import { useEffect, useMemo } from 'react';
 import { waterMat } from '../water/oceanMaterial';
+import { noInk } from '../water/common';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
@@ -69,7 +70,8 @@ function makeSeaPass() {
     const comp = new THREE.ShaderMaterial({ uniforms: { tC: { value: rt.texture }, tD: { value: rt.depthTexture } }, vertexShader: FSQ_VS,
         fragmentShader: 'uniform sampler2D tC; uniform sampler2D tD; varying vec2 vUv; void main(){ vec4 c = texture2D(tC, vUv); if (c.a < 0.002) discard; gl_FragDepth = texture2D(tD, vUv).r; gl_FragColor = c; }',
         depthTest: true, depthFunc: THREE.LessEqualDepth, depthWrite: true, transparent: true, toneMapped: false,
-        blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor });
+        });
+    noInk(comp, true);   // sea pixels are never inked (Shifat 11:26 PM)
     return { rt, pre, comp, preS: fsq(pre), compS: fsq(comp), css: new THREE.Vector2(), cc: new THREE.Color(), n: 0, moved: new Set<THREE.Object3D>() };
 }
 // every 30 frames: the sea goes on its own layer, transparent things (except heroes) move to the late layer, lights see all layers

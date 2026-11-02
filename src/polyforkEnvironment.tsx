@@ -13,6 +13,7 @@ import {
     bridgeSurfaceAt, isLegacyCityCore, LAKE_SHORE, BEACH_DIR, type Sim,
 } from './sim';
 import { bakeGrid } from './water/gridRefl';
+import { noInk } from './water/common';
 import { CONTACT_FS, CONTACT_VS, FOAM_FS, FOAM_VS, LAKE_CAUSTICS_FS, LAKE_CAUSTICS_VS, LAKE_FS, LAKE_VS, rampGeometry, shorelineFoamGeometry } from './world/park/lake';
 export { LAKE_VS, LAKE_FS } from './world/park/lake';
 
@@ -525,7 +526,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
         return t;
     }, []);
     const water = useMemo(() => {
-        const material = new THREE.ShaderMaterial({
+        const material = noInk(new THREE.ShaderMaterial({
             vertexShader: LAKE_VS, fragmentShader: LAKE_FS,
             uniforms: {
                 uTime: { value: 0 }, tScene: { value: copyTarget ? copyTarget.texture : null }, tDepth: { value: copyTarget ? copyTarget.depthTexture : null },
@@ -535,7 +536,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
                 uSun: { value: new THREE.Vector3(-0.36, 0.82, 0.44).normalize() }, uDay: { value: 1 },
             },
             side: THREE.DoubleSide, transparent: true, depthWrite: true, toneMapped: false,
-        });
+        }));
         const mesh = new THREE.Mesh(waterGeometry, material);
         mesh.name = 'polyfork-water-blob-lake'; mesh.renderOrder = 2; mesh.frustumCulled = false;
         mesh.position.set(PARK_POND.cx, PARK_POND_Y, PARK_POND.cz); mesh.scale.set(PARK_POND.rx * 2, 1, PARK_POND.rz * 2);
