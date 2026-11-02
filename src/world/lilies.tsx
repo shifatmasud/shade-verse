@@ -68,27 +68,34 @@ function LiliesInner({ sim }: { sim: Sim }) {
             s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uGlow; varying float vBloom;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vColor.rgb * step(0.5, vBloom) * uGlow;');
         };
         mat.customProgramCacheKey = () => 'lilyBloom1';
-        const pads = new THREE.InstancedMesh(geo, mat, ps.length); pads.name = 'lily-pads'; pads.frustumCulled = false; pads.userData.noRefl = true;
+        const pads = new THREE.InstancedMesh(geo, mat, ps.length); pads.name = 'lily-pads'; pads.userData.noRefl = true;
         const nH = ps.length * blooms.length;
         const haloMat = new THREE.ShaderMaterial({ uniforms: { uG: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
             vertexShader: 'varying vec2 vU; varying vec3 vC; void main(){ vU = uv * 2.0 - 1.0; vC = instanceColor; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }',
             fragmentShader: 'uniform float uG; varying vec2 vU; varying vec3 vC; void main(){ float d = length(vU); float a = exp(-d * d * 4.0) * (1.0 - smoothstep(0.85, 1.0, d)) * uG; if (a < 0.003) discard; gl_FragColor = vec4(vC * a, 1.0); }' });
         const hg = new THREE.PlaneGeometry(1, 1); hg.rotateX(-Math.PI / 2);
-        const halo = new THREE.InstancedMesh(hg, haloMat, Math.max(nH, 1)); halo.name = 'lily-glow'; halo.frustumCulled = false; halo.userData.noRefl = true; halo.renderOrder = 4;
+        const halo = new THREE.InstancedMesh(hg, haloMat, Math.max(nH, 1)); halo.name = 'lily-glow'; halo.userData.noRefl = true; halo.renderOrder = 4;
         const c = new THREE.Color(); let ih = 0;
         ps.forEach((p, i) => { c.set(BLOOM_COLS[p.c]); pads.setColorAt(i, c); for (let k = 0; k < blooms.length; k++) halo.setColorAt(ih++, c); });
-        return { ps, blooms, pads, halo, glow, m: new THREE.Matrix4(), q: new THREE.Quaternion(), s: new THREE.Vector3(), v: new THREE.Vector3(), e: new THREE.Euler(), n: 0 };
+        return { slot: new Int32Array(ps.length).fill(-1), cc: new THREE.Color(), colDirty: false, ps, blooms, pads, halo, glow, m: new THREE.Matrix4(), q: new THREE.Quaternion(), s: new THREE.Vector3(), v: new THREE.Vector3(), e: new THREE.Euler(), n: 0 };
     }, [gl]);
     useFrame(({ camera }) => {
         if ((d.n++ & 1) === 1) return;   // every other frame is plenty for a slow bob
-        const t = sim.t, { m, q, s, v, e } = d; let ih = 0;
+        const t = sim.t, { m, q, s, v, e } = d; let ih = 0, n = 0;
+        /* perf (Shifat Nov 2 2:17 AM): far patches are no longer drawn at all (were parked under the seabed but still 145k tris/frame everywhere in the world) -
+           near patches are packed into the first slots and the instance count is cut to them; colours follow their patch */
         d.ps.forEach((p, i) => {
-            const far = Math.hypot(p.x - camera.position.x, p.z - camera.position.z) > 420;
-            const y = far ? -50 : waterRenderY(p.x, p.z, t) + 0.03, yaw = p.yaw + Math.sin(t * 0.25 + p.yaw * 3.0) * 0.06;
-            e.set(0, yaw, 0); q.setFromEuler(e); s.setScalar(p.s); v.set(p.x, y, p.z); m.compose(v, q, s); d.pads.setMatrixAt(i, m);
+            if (Math.hypot(p.x - camera.position.x, p.z - camera.position.z) > 420) return;
+            const y = waterRenderY(p.x, p.z, t) + 0.03, yaw = p.yaw + Math.sin(t * 0.25 + p.yaw * 3.0) * 0.06;
+            e.set(0, yaw, 0); q.setFromEuler(e); s.setScalar(p.s); v.set(p.x, y, p.z); m.compose(v, q, s); d.pads.setMatrixAt(n, m);
+            if (d.slot[n] !== i) { d.slot[n] = i; d.cc.set(BLOOM_COLS[p.c]); d.pads.setColorAt(n, d.cc); for (let k = 0; k < d.blooms.length; k++) d.halo.setColorAt(n * d.blooms.length + k, d.cc); d.colDirty = true; }
             const cy = Math.cos(yaw), sy = Math.sin(yaw);
             for (const [bx, bz] of d.blooms) { const wx = p.x + (bx * cy + bz * sy) * p.s, wz = p.z + (-bx * sy + bz * cy) * p.s; s.setScalar(p.s * 1.6); v.set(wx, y + 0.05, wz); m.compose(v, q, s); d.halo.setMatrixAt(ih++, m); }
+            n++;
         });
+        d.pads.count = n; d.halo.count = ih; d.pads.visible = d.halo.visible = n > 0;
+        if (n > 0) { d.pads.computeBoundingSphere(); d.halo.computeBoundingSphere(); }   /* frustum culling over the near patches only */
+        if (d.colDirty) { d.colDirty = false; if (d.pads.instanceColor) d.pads.instanceColor.needsUpdate = true; if (d.halo.instanceColor) d.halo.instanceColor.needsUpdate = true; }
         d.pads.instanceMatrix.needsUpdate = true; d.halo.instanceMatrix.needsUpdate = true;
         const night = 1 - THREE.MathUtils.smoothstep(TOD.day.value, 0.35, 0.85);
         d.glow.value = 0.05 + 0.45 * night; (d.halo.material as THREE.ShaderMaterial).uniforms.uG.value = 0.03 + 0.3 * night;   /* Shifat Nov 1 8:03 PM 'Reduce bloom for lilies': ~40% of the old glow */
