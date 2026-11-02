@@ -14,6 +14,9 @@ void main(){
   gl_FragColor=vec4(b*0.32,0.0);   /* added onto the frame by the blend unit (ONE, ONE): same result as base+b, without copying the whole frame first */
 }`;
 
+/* perf (Nov 2): the 13-tap blur runs once per quarter-res texel into blurT, then the full-size frame adds it with ONE bilinear tap (was 13 taps per full-size pixel) */
+const ADD_FS = `uniform sampler2D tBlur; varying vec2 vUv; void main(){ gl_FragColor=vec4(texture2D(tBlur,vUv).rgb,0.0); }`;
+
 export function SelectiveBloomPass() {
     const { gl, scene, camera } = useThree();
     const state = useMemo(() => {
@@ -31,11 +34,22 @@ export function SelectiveBloomPass() {
             fragmentShader: BLOOM_FS, depthTest: false, depthWrite: false, toneMapped: false,
             transparent: true, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
         });
+        material.blending = THREE.NoBlending; material.transparent = false;   // blur pass writes blurT directly
+        const blurT = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: false, stencilBuffer: false, samples: 0, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.UnsignedByteType });
+        blurT.texture.generateMipmaps = false;
+        const addMat = new THREE.ShaderMaterial({
+            uniforms: { tBlur: { value: blurT.texture } },
+            vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}',
+            fragmentShader: ADD_FS, depthTest: false, depthWrite: false, toneMapped: false,
+            transparent: true, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+        });
+        const blurScene = new THREE.Scene();
+        const bq = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material); bq.frustumCulled = false; blurScene.add(bq);
         const overlay = new THREE.Scene();
-        const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+        const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), addMat);
         quad.frustumCulled = false; overlay.add(quad);
         return {
-            base, target, material, overlay,
+            base, target, material, overlay, blurT, addMat, blurScene,
             camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
             size: new THREE.Vector2(),
             origin: new THREE.Vector2(0, 0),
@@ -43,7 +57,7 @@ export function SelectiveBloomPass() {
     }, []);
 
     useEffect(() => () => {
-        state.base.dispose(); state.target.dispose(); state.material.dispose();
+        state.base.dispose(); state.target.dispose(); state.material.dispose(); state.blurT.dispose(); state.addMat.dispose();
         (state.overlay.children[0] as THREE.Mesh).geometry.dispose();
     }, [state]);
 
@@ -63,7 +77,7 @@ export function SelectiveBloomPass() {
                 state.base.image = { width: state.size.x, height: state.size.y } as any;
             }
             if (state.target.width !== width || state.target.height !== height) {
-                state.target.setSize(width, height);
+                state.target.setSize(width, height); state.blurT.setSize(width, height);
                 state.material.uniforms.uBloomRes.value.set(width, height);
             }
 
@@ -75,6 +89,7 @@ export function SelectiveBloomPass() {
             gl.setRenderTarget(state.target);
             gl.clear(true, true, true);
             gl.render(scene, camera);
+            gl.setRenderTarget(state.blurT); gl.render(state.blurScene, state.camera);
             gl.setRenderTarget(out);
             camera.layers.mask = oldMask;
             scene.background = oldBackground;
