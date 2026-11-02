@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
+import { registerFxHero } from './CombatFX';
 import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, writeSnareRing, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { HERO_REFL } from './caustics';
@@ -133,8 +134,8 @@ function makeActor(leader: Sim, at: [number, number, number]): Sim {
         land: 0, landHard: 0, lastHit: -9, swings: 0, maxSpeed: 0, runPhase: 0, lastDrag: -10,
         aimE: null, atkPend: 0, webT: 0, rope: 20, airT: 0, grappleFlight: false, webDepartB: undefined,
         yaw: leader.ang, pitch: leader.pitch, ang: leader.ang, t: leader.t, time: leader.time } as Sim;
-    for (const key of ['mv', 'mvQ', 'flip', 'chain', 'chainT', 'snareT', 'snareCd', 'snareList', 'cWeb', 'windT', 'hitStop']) delete (actor as any)[key];
-    (actor as any).snareCd = 0;
+    for (const key of ['mv', 'mvQ', 'flip', 'chain', 'chainT', 'snareT', 'snareCd', 'snareList', 'cWeb', 'windT', 'hitStop', 'slam', 'slamLatch', 'slamN', 'slowT', 'tsNow', 'fovK', 'shake']) delete (actor as any)[key];
+    (actor as any).snareCd = 0; (actor as any).fxCol = 0xff1a96;   // Ghost's hit FX colour (her Shock pink)
     return actor;
 }
 
@@ -224,6 +225,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     const model = useMemo(makeGhostRig, []);
     useEffect(() => registerHero(model.root), [model]);   // Ghost joins the hero HD pass
     const actorRef = useRef<Sim | null>(null);
+    useEffect(() => registerFxHero(() => actorRef.current, model, 2, () => model.root.visible), [model]);   // Ghost's limb trails + Slam fist glow (CombatFX)
     const controls = useMemo(makeControls, []);
     const lineGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(72 * 3), 3)); return g; }, []);
     const shockGeo = useMemo(() => { const cap = SNARE.MAX_TARGETS * (2 * SNARE_PULSE_SEGMENTS + SNARE_RING_SEGMENTS), g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap * 2 * 3), 3)); return g; }, []);
@@ -238,15 +240,15 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     const morphMatRef = useRef<THREE.PointsMaterial>(null!);
     const state = useRef({ ready: false, wallSyncB: -1, leaderSurfaceSeen: false, leaderGround: false, leaderWallB: -1, leaderWall: null as [number, number] | null, lastVaulted: 0, vaultUntil: -1, gB: 0, bYaw: undefined as number | undefined, bR: 0, floorY: 0, floorX: 1e9, floorZ: 1e9, floorT: -1, attackAt: 0, shotAt: 0, jumpAt: 0, swingAt: 0, specialAt: 0, dodgeAt: 0,
         morph: { active: false, phase: 'out' as 'out' | 'in', t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0, 0] as [number, number, number], seed: 0, reason: '' },
-        anim: createHeroClipState(), pose: createCombatPoseState() });
+        anim: createHeroClipState(), pose: createCombatPoseState(), slamHold: 0, slamAt: 0, slamSeen: 0 });
 
     useFrame((_, rawDt) => {
-        const dt = Math.min(0.05, rawDt), st = state.current, root = model.root;
+        const dt = Math.min(0.05, rawDt) * ((sim as any).tsNow || 1), st = state.current, root = model.root;   // follows the world's finisher/Slam slow-motion
         if (sim.mode !== 'play') {
             root.visible = false; st.ready = false; actorRef.current = null; setCompanionSim(null);
             st.morph.active = false; setRigOpacity(root, 1); root.scale.setScalar(HERO_SCALE);
             st.leaderSurfaceSeen = false; st.leaderWall = null; st.leaderWallB = -1; st.lastVaulted = 0; st.vaultUntil = -1;
-            st.attackAt = st.shotAt = st.jumpAt = st.swingAt = st.specialAt = st.dodgeAt = 0;
+            st.attackAt = st.shotAt = st.jumpAt = st.swingAt = st.specialAt = st.dodgeAt = 0; st.slamHold = 0; st.slamAt = 0;
             st.anim.key = ''; st.anim.t = 0; st.anim.w = 0; st.pose.w = 0; st.pose.c.fill(0); st.pose.t.fill(0);
             if (lineRef.current) lineRef.current.visible = false;
             if (shockRef.current) shockRef.current.visible = false;
@@ -386,7 +388,13 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         }
         if (actor.swim && sim.swim && actor.dive !== sim.dive && sim.t >= st.jumpAt) { controls.jumpQ = true; st.jumpAt = sim.t + 1.0; }
 
-        if (fighting && enemy && !((actor as any).snareT > 0) && !(DBG && (window as any).__ghostDisableCombat)) {
+        {   // Charged Slam (Shifat Nov 2): Ghost slams when 2+ bots crowd her; holds a full 0.75 s charge, then releases
+            const near = fighting && !(DBG && (window as any).__ghostDisableCombat) ? sim.enemies.reduce((n, e) => n + (e.down <= 0 && !e.boss && Math.hypot(e.x - actor.pos[0], e.z - actor.pos[2]) < 6.5 && Math.abs(e.y - actor.pos[1]) < 3 ? 1 : 0), 0) : 0;
+            if (!(st.slamHold > 0) && near >= 2 && actor.ground && !actor.swim && !actor.wall && !(actor as any).slam && !((actor as any).snareT > 0) && sim.t >= (st.slamAt || 0)) { st.slamHold = 0.75; st.slamAt = sim.t + 3.5; }
+            if (st.slamHold > 0) st.slamHold -= dt;
+            controls.slamHeld = st.slamHold > 0;
+        }
+        if (fighting && enemy && !((actor as any).snareT > 0) && !((actor as any).slam) && !(st.slamHold > 0) && !(DBG && (window as any).__ghostDisableCombat)) {
             const lifted = ((enemy as any).ly || 0) > 1.1 || ((enemy as any).vy || 0) > 1.2;
             const useSpecial = choice.count >= 2 && (actor as any).snareCd <= 0 && sim.t >= st.specialAt;
             if (useSpecial) { controls.specialQ = true; st.specialAt = sim.t + 9.2; }
@@ -405,6 +413,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             (window as any).__ghostForceSpecial = false;
         }
         for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
+        { const an = (actor as any).slamN || 0; if (an !== st.slamSeen) { st.slamSeen = an; const d = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[2] - sim.pos[2]); if (an && d < 25) (sim as any).shake = Math.min(1, ((sim as any).shake || 0) + 0.35 * (1 - d / 25)); } }   // her Slam shakes the camera too, by distance
         if (leaderAir) actor.vel[1] += Math.max(-8, Math.min(8, (ty - actor.pos[1]) * 0.32 - actor.vel[1] * 0.65)) * dt;
         const animation = animateHuman(actor, model, dt, st, animationSource);
         root.visible = true;

@@ -117,10 +117,10 @@ export function App() {
             if (sim.mode !== 'play') { if (!e.repeat && !['escape', 'tab', 'meta', 'alt', 'control', 'shift', 'capslock'].includes(k)) start(); input.keys[k] = true; return; }   // title screen: any key starts
             if (!coarse) { deskRef.current = true; setDesk(true); }
             if (k === ' ' && !input.keys[' '] && !input.keys['@i']) { input.jumpQ = true; input.jumpHeld = true; }   // identical flags/timing to the mobile jump button
-            if ((k === 'k' || k === 'control') && !input.keys[k]) { input.meleeQ = true; input.attackQ = true; }
+            if ((k === 'k' || k === 'control') && !input.keys[k]) { input.meleeQ = true; input.attackQ = true; if (!input.meleeHeld) { input.meleeHeld = true; input.meleeAt = performance.now(); } }   // tap = combo (unchanged), hold > HOLD_MS = Charged Slam
             input.keys[k] = true;
         };
-        const up = (e: KeyboardEvent) => { const k = normKey(e); input.keys[k] = false; if (k === ' ' && !input.keys['@i']) { input.jumpHeld = false; input.jumpReleased = true; } };
+        const up = (e: KeyboardEvent) => { const k = normKey(e); input.keys[k] = false; if ((k === 'k' || k === 'control') && !input.keys['k'] && !input.keys['control']) input.meleeHeld = false; if (k === ' ' && !input.keys['@i']) { input.jumpHeld = false; input.jumpReleased = true; } };
         const vis = () => { audio.setHidden(document.hidden); if (document.hidden) { input.jumpHeld = false; input.jumpCancelled = true; input.keys[' '] = false; input.swing = false; input.mx = 0; input.my = 0; } };
         document.addEventListener('visibilitychange', vis);
         const blur = () => { try { for (const k of Object.keys((input as any).keys || {})) (input as any).keys[k] = false; } catch (e) { /* ignore */ } input.swing = false; input.mx = 0; input.my = 0; try { for (const k of Object.keys(input as any)) if (typeof (input as any)[k] === 'boolean') (input as any)[k] = false; } catch (e) { /* ignore */ } };
@@ -225,7 +225,8 @@ export function App() {
                 onPointerDown={(e) => { try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } const h = holdR.current; h.sk = false; clearTimeout(h.skT); const el = e.currentTarget; h.skT = window.setTimeout(() => { h.sk = true; burst({ currentTarget: el } as any, '#c9a7ff', 180); input.specialQ = true; }, HOLD_MS); }}
                 onPointerUp={(e) => { const h = holdR.current; clearTimeout(h.skT); if (!h.sk) { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; } h.sk = false; }}
                 onPointerCancel={() => { const h = holdR.current; clearTimeout(h.skT); h.sk = false; }}><IShock /></button>
-            <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); input.meleeQ = true; input.attackQ = true; }}><IFist /></button>
+            <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } input.meleeQ = true; input.attackQ = true; input.meleeHeld = true; input.meleeAt = performance.now(); }}
+                onPointerUp={() => { input.meleeHeld = false; }} onPointerCancel={() => { input.meleeHeld = false; }} onLostPointerCapture={() => { input.meleeHeld = false; }}><IFist /></button>
             <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
         </>}
 

@@ -91,7 +91,7 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
         if (lx || ly) { input.mx = lx; input.my = -ly; gp.moving = true; } else if (gp.moving) { input.mx = 0; input.my = 0; gp.moving = false; }
         if (rx || ry) { sim.yaw -= rx * 2.6 * dt; sim.pitch = Math.max(-1.15, Math.min(1.35, sim.pitch + ry * 1.8 * dt)); sim.lastDrag = sim.t; }
         const a = b(0); if (a && !gp.a) { input.jumpQ = true; input.jumpHeld = true; } if (!a && gp.a) { input.jumpHeld = false; input.jumpReleased = true; } gp.a = a;
-        const x = b(2); if (x && !gp.x) { input.meleeQ = true; input.attackQ = true; } gp.x = x;
+        const x = b(2); if (x && !gp.x) { input.meleeQ = true; input.attackQ = true; input.meleeHeld = true; input.meleeAt = performance.now(); } if (!x && gp.x) input.meleeHeld = false; gp.x = x;   // X hold = Charged Slam
         const rb = b(5);
         if (rb && !gp.rb) { gp.rbT = now; gp.rbFired = false; }
         if (rb && !gp.rbFired && now - gp.rbT > HOLD_MS) { gp.rbFired = true; input.specialQ = true; }

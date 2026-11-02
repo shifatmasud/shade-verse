@@ -18,7 +18,8 @@ import { Mist } from './world/mist';
 import { BossArenaMarker } from './BossArenaMarker';
 import { poolAt, HBOSS } from './seaWorld';
 import { attachInk, syncInk } from './ink';
-import { buildings, WATER_Z, parkH, WATER_Y, SEABED, seabedAt, HALF, FOG, isLakeWater, waterSurfaceAt, stepSim, stepBeacon, resetSim, MOVES, SNARE, enemyBodyOffset, type Sim, type Events } from './sim';
+import { buildings, WATER_Z, parkH, WATER_Y, SEABED, seabedAt, HALF, FOG, isLakeWater, waterSurfaceAt, stepSim, stepBeacon, resetSim, MOVES, SNARE, enemyBodyOffset, simTimeScale, type Sim, type Events } from './sim';
+import { CombatFX, registerFxHero } from './CombatFX';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { RoofProps } from './RoofProps';
 import { StreetProps } from './StreetProps';
@@ -82,16 +83,29 @@ function samplePose(keys: [number, PoseK][], u: number, out: Float32Array) {
     const [u0, A] = keys[k], [u1, B] = keys[k + 1], f = cstep(Math.max(0, Math.min(1, (u - u0) / Math.max(1e-4, u1 - u0))));
     CP_BONES.forEach((n, i) => { const a = A[n], b = B[n]; for (let j = 0; j < 3; j++) out[i * 3 + j] = a[j] + (b[j] - a[j]) * f; });
 }
+// Charged Slam poses (Shifat Nov 2: hold melee = charge, release = leap + slam; ref Miles' Venom Smash, files/combat_refs)
+const SLAM_POSE: PoseK[] = [
+    P({ spine: [0.38, 0, 0], chest: [0, 0.45, 0], hips: [0, 0.25, 0], uarmR: [0.55, 0, -0.3], farmR: [-1.7, 0, 0], uarmL: [-1.25, 0, 0.45], farmL: [-1.5, 0, 0], thighL: [-0.95, 0, -0.08], shinL: [1.35, 0, 0], thighR: [-0.25, 0, 0.1], shinR: [1.2, 0, 0], head: [-0.25, -0.3, 0] }),   // 0 charge: crouched, fist drawn back
+    P({ spine: [0.55, 0, 0], chest: [0, 0.3, 0], uarmR: [0.7, 0, -0.25], farmR: [-1.8, 0, 0], uarmL: [0.5, 0, 0.25], farmL: [-1.6, 0, 0], thighL: [-1.25, 0, -0.1], shinL: [1.9, 0, 0], thighR: [-1.1, 0, 0.1], shinR: [1.8, 0, 0], head: [-0.35, 0, 0] }),   // 1 crouch: deep squash before the leap
+    P({ spine: [-0.3, 0, 0], chest: [0, 0, 0], uarmR: [-2.95, 0, -0.25], farmR: [-0.45, 0, 0], uarmL: [-2.95, 0, 0.25], farmL: [-0.45, 0, 0], thighL: [-1.45, 0, 0], shinL: [2.0, 0, 0], thighR: [-1.2, 0, 0], shinR: [1.9, 0, 0], head: [0.25, 0, 0] }),   // 2/3 rise + hang: both fists overhead, knees tucked
+    P({ spine: [0.55, 0, 0], chest: [0, 0, 0], uarmR: [-0.75, 0, -0.12], farmR: [-0.15, 0, 0], uarmL: [-0.75, 0, 0.12], farmL: [-0.15, 0, 0], thighL: [0.25, 0, 0], shinL: [0.5, 0, 0], thighR: [0.35, 0, 0], shinR: [0.6, 0, 0], head: [-0.45, 0, 0] }),   // 4 dive: double-fist hammer down, legs trail
+    P({ spine: [0.75, 0, 0], chest: [0, 0.2, 0], uarmR: [-0.55, 0, -0.05], farmR: [-0.1, 0, 0], uarmL: [-0.6, 0, 0.7], farmL: [-0.9, 0, 0], thighL: [-1.55, 0, 0], shinL: [1.65, 0, 0], thighR: [0.35, 0, 0], shinR: [1.95, 0, 0], head: [-0.5, 0, 0] }),   // 5 impact/recovery: kneel, fist planted
+];
+const SLAM_KEY = [0, 1, 2, 2, 3, 4];
 export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, state: CombatPoseState = _cp) {
-    const mv = sim.mv, fl = sim.flip, act = !!mv || !!fl;
+    const sl = sim.slam, mv = sl ? null : sim.mv, fl = sl ? null : sim.flip, act = !!mv || !!fl || !!sl;
     const bones = CP_BONES.map((n) => rig.b[n] as THREE.Bone);
     if (state.w < 0.02 && !act) { bones.forEach((b, i) => { state.c[i * 3] = b.rotation.x; state.c[i * 3 + 1] = b.rotation.y; state.c[i * 3 + 2] = b.rotation.z; }); state.w = 0; return; }
     state.w += ((act ? 1 : 0) - state.w) * Math.min(1, dt * (act ? 16 : 7));   // ease in fast, settle out slower: momentum, no snap
-    if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), state.t); }
+    if (sl) {
+        const K = SLAM_POSE[SLAM_KEY[sl.ph] ?? 0]; CP_BONES.forEach((n, i) => { const a = K[n]; state.t[i * 3] = a[0]; state.t[i * 3 + 1] = a[1]; state.t[i * 3 + 2] = a[2]; });
+        if (sl.ph === 0) { const tr = 0.04 * sl.c * Math.sin(sim.t * 70); state.t[6 * 3] += tr; state.t[1 * 3] += tr * 0.5; }   // charge tremble grows with the charge
+    }
+    else if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), state.t); }
     else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, state.t);
         if (fl.ax === 'z') { const s0 = state.t; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
     else { bones.forEach((b, i) => { state.t[i * 3] = b.rotation.x; state.t[i * 3 + 1] = b.rotation.y; state.t[i * 3 + 2] = b.rotation.z; }); }
-    const k = Math.min(1, dt * 24);   // per-bone follow: chained moves blend through each other instead of popping
+    const k = Math.min(1, dt * (sl && (sl.ph === 4 || sl.ph === 5) ? 40 : 24));   // per-bone follow (the slam's hammer-down snaps faster): chained moves blend through each other instead of popping
     for (let i = 0; i < state.t.length; i++) state.c[i] += (state.t[i] - state.c[i]) * k;
     const w = state.w;
     bones.forEach((b, i) => { b.rotation.x += (state.c[i * 3] - b.rotation.x) * w; b.rotation.y += (state.c[i * 3 + 1] - b.rotation.y) * w; b.rotation.z += (state.c[i * 3 + 2] - b.rotation.z) * w; });
@@ -99,6 +113,10 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
     if (mv && mv.id === 3) { const u = Math.min(1, mv.t / MOVES[3].dur), sp = cstep(Math.max(0, Math.min(1, (u - 0.08) / 0.72))); h.rotation.y += sp * Math.PI * 2; }
     if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
     if (fl) { const u = Math.min(1, fl.t / fl.dur), a = cstep(u) * Math.PI * 2 * fl.dir; if (fl.ax === 'x') rig.b.hips.rotation.x += a; else rig.b.hips.rotation.z += a; }
+    if (sl) {   // squash on the crouch / impact, stretch on the dive (volume kept: xz = 1/sqrt(y))
+        const sy = sl.ph === 1 ? 0.85 : sl.ph === 0 ? 1 - 0.06 * sl.c : sl.ph === 4 ? 1.25 : sl.ph === 5 ? 0.82 + 0.18 * cstep(Math.min(1, sl.t / 0.25)) : 1;
+        if (sy !== 1) { const s0 = h.scale.x, sxz = 1 / Math.sqrt(sy); h.scale.set(s0 * sxz, s0 * sy, s0 * sxz); }
+    }
 }
 export const SNARE_PULSE_SEGMENTS = 2;
 export const SNARE_RING_SEGMENTS = 16;
@@ -504,6 +522,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         if (DBG) (window as any).__rig = r; return r;
     }, []);
     useEffect(() => registerHero(rig.root), [rig]);   // Shadow joins the hero HD pass
+    useEffect(() => registerFxHero(() => sim, rig, 0), [rig]);   // Shadow's limb trails + Slam fist glow (CombatFX)
     const clipSt = useRef(createHeroClipState()), poseSt = useRef(createCombatPoseState());
     const lastWall = useRef<{ n: number[]; b: number } | null>(null), wallCorr = useRef(0), groundCorr = useRef(0), groundMin = useRef({ key: '', v: 1e9 }), tp0 = useMemo(() => new THREE.Vector3(), []);
     const enemyTime = useRef({ value: 0 });
@@ -511,6 +530,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const enMeshes = useRef<THREE.InstancedMesh[]>([]);
     const ecol = useMemo(() => new THREE.Color(), []);
     const beaconRef = useRef<THREE.Mesh>(null!);
+    const fovBase = useRef(62);
 
     useFrame((state, rawDt) => {
         const dt = Math.min(0.1, rawDt) * (DBG && (window as any).__ts != null ? (window as any).__ts : 1);   /* Shifat 9:33 AM 'animation feels slow on ocean': the 50 ms cap made the whole game run in slow motion below 20 fps; now real time down to 10 fps */   // test hook: frame-exact stills
@@ -533,9 +553,10 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, (DQ_RES || (DQ_BENCH && ns < 1)) ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * ns : QK.envDpr); }   /* Shifat Nov 1 2:14 PM: min res dpr 0.8 for faster fps (was 1) */   /* ?debug&res=x bypasses the dpr-1 floor (on-device fill-rate test only) */
         }
         if (sim.mode === 'play') {
-            { const n = Math.max(2, Math.ceil(dt / 0.025)); for (let i = 0; i < n; i++) stepSim(sim, dt / n, ev); }   // same <=25 ms physics steps as before
+            const gdt = dt * simTimeScale(sim, dt);   // finisher / Charged Slam slow-motion dip (1 outside it)
+            { const n = Math.max(2, Math.ceil(gdt / 0.025)); for (let i = 0; i < n; i++) stepSim(sim, gdt / n, ev); }   // same <=25 ms physics steps as before
             stepBeacon(sim, ev);
-            sim.time += dt;
+            sim.time += gdt;
         } else sim.yaw += dt * 0.15;
         const p = sim.pos, v = sim.vel;
         const speed = Math.hypot(v[0], v[1], v[2]); perf.speed = speed;
@@ -598,7 +619,10 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         const nearTarget = nearWater ? 0.05 : 0.5;
         if (cp.near !== nearTarget) { cp.near = nearTarget; cp.updateProjectionMatrix(); }
         const targetFov = 62 + Math.min(14, speed * 0.25) + fx.fov;
-        if (Math.abs(cp.fov - targetFov) > 0.05) { cp.fov += (targetFov - cp.fov) * Math.min(1, dt * 6); cp.updateProjectionMatrix(); }
+        fovBase.current += (targetFov - fovBase.current) * Math.min(1, dt * 6);
+        let punch = 0; { const sa = sim as any; if (sa.fovK) { sa.fovKT = (sa.fovKT || 0) + dt; const t = sa.fovKT, env = t < 0.05 ? t / 0.05 : Math.pow(Math.max(0, 1 - (t - 0.05) / 0.3), 3); punch = sa.fovK * env; if (t > 0.35) sa.fovK = 0; } if (sa.slam && sa.slam.ph === 0) punch += -2 * sa.slam.c; }   // punch-in (narrow): finisher -3, Slam -6, in 50 ms, out 300 ms; charging narrows -2
+        const fovNow = fovBase.current + punch;
+        if (Math.abs(cp.fov - fovNow) > 0.02) { cp.fov = fovNow; cp.updateProjectionMatrix(); }
         {   // water: animate, and split view (waterline across the screen when the camera is at the surface)
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
             {   // #3 submerged hero parts: water surface under the hero for the hero-pass water tint (src/heroHD.ts HERO_WATER)
@@ -826,7 +850,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <FlyingCars sim={sim} />
         {/* Rebuild park and city trees with authored forms and foliage; never overlay Polyfork tree canopies. */}
         <CityGate><Forest sim={sim} renderGround={false} />
-        <Meadow sim={sim} /></CityGate><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><EnemyDeathFx sim={sim} /><EnemyShotsFx sim={sim} />
+        <Meadow sim={sim} /></CityGate><WindLines sim={sim} /><Civilians sim={sim} /><SnareLines sim={sim} /><Underwater sim={sim} /><PlasmaFx sim={sim} /><CombatFX sim={sim} /><EnemyDeathFx sim={sim} /><EnemyShotsFx sim={sim} />
         <primitive object={rig.root} ref={hero} />
         <BossArenaMarker />
         <BossArenaMarker arena={HBOSS} />

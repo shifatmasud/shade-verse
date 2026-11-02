@@ -1,3 +1,4 @@
+import { fxMelee, fxShot, fxShock, fxSlam } from './combatFx';
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
 import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone, FARM, ICE } from './seaWorld';
@@ -224,7 +225,7 @@ export interface EShot { x: number; y: number; z: number; vx: number; vy: number
 export const ESHOT = { SPEED: 30, BOSS_SPEED: 36, CHARGE: 0.4, DMG: 8, BOSS_DMG: 10, HIT_R: 0.95, LIFE: 2.2, MAX: 24, MIN_GAP: 0.35, RANGE_MIN: 6, RANGE: 30,
     UNI_CHARGE: 1.0, UNI_FIRE: 1.5, UNI_LEN: 48, UNI_R: 1.1, UNI_DMG: 9, UNI_TURN: 0.75, UNI_CD: 9 };
 export interface Unibeam { phase: 'charge' | 'fire'; t: number; yaw: number; pitch: number; ox: number; oy: number; oz: number; tick: number }
-export interface Input { jumpHeld?: boolean; jumpReleased?: boolean; jumpCancelled?: boolean; attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean; rideQ?: boolean }
+export interface Input { meleeHeld?: boolean; meleeAt?: number; slamHeld?: boolean; jumpHeld?: boolean; jumpReleased?: boolean; jumpCancelled?: boolean; attackQ: boolean; dodgeQ: boolean; mx: number; my: number; swing: boolean; keys: Record<string, boolean>; jumpQ: boolean; swingQ: boolean; glide?: boolean; grabQ?: boolean; shotQ?: boolean; meleeQ?: boolean; specialQ?: boolean; rideQ?: boolean }
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void; blast?: (x: number, y: number, z: number) => void; shot?: (kind: 'charge' | 'bolt' | 'impact' | 'uniCharge' | 'uniStart' | 'uniMove' | 'uniStop', x: number, y: number, z: number) => void }
 
 export const input: Input = { rideQ: false, attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
@@ -332,7 +333,7 @@ export function resetSim(s: Sim) {
     s.glideOn = false; s.airT = 0; (s as any).pressT = undefined; (s as any).flightBoost = false; (s as any).glideMode = false; (s as any).dblUsed = false;
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
     s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
-    s.plasma = []; s.blasts = []; s.eshots = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = [];
+    s.plasma = []; s.blasts = []; s.eshots = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = []; sa.slam = null; sa.slamLatch = false; sa.slowT = 0; sa.fovK = 0;
     s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s)); s.enemies.push(spawnBoss(s)); s.enemies.push(spawnMiniBoss(s));
 }
 
@@ -589,6 +590,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     const input = controls;
     if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
+    { const S = (s as any).slam; if (S && S.ph >= 1) { if (S.ph === 5 && S.t >= SLAM.REC_CANCEL) { if (input.jumpQ || input.swingQ || input.grabQ) (s as any).slam = null; } else { input.jumpQ = false; input.swingQ = false; input.grabQ = false; } } }   // Charged Slam: leap/dive/early recovery own the body; jump/web cancel after 200 ms of recovery
     { const ac = (s as any).anchorCar; if (ac >= 0 && (s.web || s.grappleFlight)) { const m = movingAnchor(ac, s.t); if (!m) { (s as any).anchorCar = -1; if (s.web) { s.web = false; ev.release(); } } else { s.anchor[0] = m[0]; s.anchor[1] = m[1]; s.anchor[2] = m[2]; } } else if (!s.web && !s.grappleFlight) (s as any).anchorCar = -1; }   // a web on a flying car rides with the car
     // vehicle entering removed (Shifat Oct 29, 4:32 PM: "Remove car & boat entering"); standing on / riding roofs and decks stays
     let mx = input.mx + ((k['d'] ? 1 : 0) - (k['a'] ? 1 : 0)), my = input.my + ((k['w'] ? 1 : 0) - (k['s'] ? 1 : 0));
@@ -599,7 +601,8 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     const swingHeld = input.swing;   // desktop pass: swing is held through input.swing only (right mouse hold / LT / touch button)
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx;
     const stunned = s.landHard > 0;
-    const wx = stunned ? 0 : fx * my + rx * mx, wz = stunned ? 0 : fz * my + rz * mx;
+    const slamK = (s as any).slam ? ((s as any).slam.ph === 0 ? SLAM.MOVE_K : 0) : 1;   // charging: 40% move speed; leap/dive: no steering
+    const wx = stunned ? 0 : (fx * my + rx * mx) * slamK, wz = stunned ? 0 : (fz * my + rz * mx) * slamK;
 
     if (input.swingQ && !s.web) {
         s.grappleFlight = false; s.webDepartB = s.wall ? s.wallB : undefined;
@@ -781,6 +784,12 @@ const BOSS_BODY_OFF = BOSS_BODY_OFFSET;
 export const enemyBodyOffset = (e: Enemy) => e.boss ? BOSS_BODY_OFF : BODY_OFF[e.kind ?? 0];
 const targetY = (e: Enemy) => e.y + enemyBodyOffset(e);
 // Multi-Target Shock Web Attack only; regular melee move timing and tuning stay separate.
+const heroCol = (s: Sim) => ((s as any).fxCol ?? 0xa855f7) as number;
+// ===== CHARGED SLAM (Shifat Nov 2 2026 5:28 AM: hold melee = charge, release = leap + ground slam; recipe D5 in files/combat_reference.md) =====
+export const SLAM = { HOLD: 0.22, FULL: 0.7, AUTO: 1.5, MOVE_K: 0.4, CROUCH: 0.08, H1: 3.0, H2: 4.5, HANG: 0.15, DIVE_V: 28, R1: 5, R2: 7, R_FALL_MAX: 3, REC: 0.35, REC_CANCEL: 0.2, STOP: 0.13, VY0: 14.5, VY1: 8, KB0: 12, KB1: 6, DMG1: 2, DMG2: 3, TRAUMA: 0.7, FOV: -6 } as const;
+/** launch heights: enemy air gravity is 26 m/s^2 (enemyAir), so 14.5 -> 8 m/s up = the recipe's ~4.1 m -> 1.3 m */
+export const slamLevel = (c: number) => Math.max(0, Math.min(1, (c - 0.5) / 0.5));   // level 1 at 350 ms, level 2 at 700 ms
+export const slamRadius = (c: number) => SLAM.R1 + (SLAM.R2 - SLAM.R1) * slamLevel(c);
 export const SNARE = { MAX_TARGETS: 5, RANGE: 24, VERTICAL_RANGE: 14, TOTAL: 1.65, GATHER_END: 0.9, SHOCK_START: 0.6, IMPACT: 0.15, HIT_RANGE: 5.5, GROUP_RADIUS: 2.4, PULL_SPEED: 30, DAMAGE: 3, KNOCKBACK: 18, HIT_STOP: 0.10, SHAKE: 0.34 } as const;
 const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
 const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
@@ -880,6 +889,83 @@ function stepMove(s: Sim, dt: number, ev: Events) {
     }
     if (sa.mvQ && m.t >= M.cancel) { sa.mv = null; sa.chainT = 0.9; if (!comboStart(s, ev, true)) sa.mv = null; return; }
     if (m.t >= M.dur) { sa.mv = null; sa.chainT = 0.75; }
+}
+function slamHeldNow(c: Input): boolean {
+    if (c.slamHeld) return true;   // AI partner holds the charge directly
+    if (!c.meleeHeld || c.meleeAt == null) return false;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return now - c.meleeAt > SLAM.HOLD * 1000;   // same 220 ms tap/hold split as the other merged buttons (desktopInput HOLD_MS)
+}
+function slamTarget(s: Sim, R: number): [number, number] | null {
+    const p = s.pos, fx = Math.sin(s.ang), fz = Math.cos(s.ang); let sx = 0, sz = 0, n = 0;
+    for (const e of s.enemies) { if (e.down > 0) continue; const dx = e.x - p[0], dz = e.z - p[2], d = Math.hypot(dx, dz); if (d > R + 2 || Math.abs(bodyY(e) - p[1]) > 4 || (d > 2 && (dx * fx + dz * fz) / d < -0.2)) continue; sx += e.x; sz += e.z; n++; if (n >= 4) break; }
+    return n ? [sx / n, sz / n] : null;
+}
+function stepSlam(s: Sim, dt: number, ev: Events, c: Input) {
+    const sa = s as any, p = s.pos, v = s.vel, held = slamHeldNow(c);
+    if (!held) sa.slamLatch = false;
+    let S = sa.slam;
+    if (!S) {
+        if (!held || sa.slamLatch || s.swim || s.web || s.wall || sa.snareT > 0 || s.landHard > 0) return;
+        const m = sa.mv; if (m && !m.hit) return;   // the tap's strike lands first, then the charge takes over
+        sa.mv = null; sa.mvQ = false; sa.flip = null; s.atkT = 0; s.shotT = 0; sa.slamLatch = true;
+        sa.slam = S = { ph: 0, t: 0, c: 0, lvl: 1, y0: p[1], air: false, full: false, R: SLAM.R1 };
+        if (ev.shot) ev.shot('charge', p[0], p[1] + 1, p[2]);
+        return;
+    }
+    S.t += dt; s.glideOn = false; sa.glideMode = false;
+    if (S.ph === 0) {   // charging: fist glow, inward particles, radius preview (CombatFX reads S.c)
+        if (s.swim || s.web || s.wall) { sa.slam = null; return; }
+        S.c = Math.min(1, S.t / SLAM.FULL); S.R = slamRadius(S.c); if (S.c >= 1) S.full = true;
+        if (held && S.t < SLAM.AUTO) return;
+        S.lvl = S.c >= 1 ? 2 : 1; S.t = 0;
+        if (s.ground) { S.ph = 1; } else { S.ph = 4; S.air = true; S.y0 = p[1]; v[0] *= 0.2; v[2] *= 0.2; }   // released in the air: dive straight down
+        return;
+    }
+    if (S.ph === 1) {   // crouch (squash), then leap
+        v[0] = 0; v[2] = 0;
+        if (S.t < SLAM.CROUCH) return;
+        const H = SLAM.H1 + (SLAM.H2 - SLAM.H1) * slamLevel(S.c), vy = Math.sqrt(2 * G * H);
+        const T = vy / G + SLAM.HANG + H / SLAM.DIVE_V, tg = slamTarget(s, S.R);
+        let tx = tg ? tg[0] : p[0] + Math.sin(s.ang) * 1.5, tz = tg ? tg[1] : p[2] + Math.cos(s.ang) * 1.5;
+        let hx = (tx - p[0]) / T, hz = (tz - p[2]) / T; const hv = Math.hypot(hx, hz); if (hv > 8) { hx *= 8 / hv; hz *= 8 / hv; }
+        v[0] = hx; v[1] = vy; v[2] = hz; s.ground = false; S.ph = 2; S.t = 0; if (hv > 0.5) s.ang = Math.atan2(hx, hz); ev.jump();
+        return;
+    }
+    if (S.ph === 2) { if (v[1] <= 0 || S.t > 0.6) { S.ph = 3; S.t = 0; } return; }   // rise
+    if (S.ph === 3) { v[1] = 0; if (S.t >= SLAM.HANG) { S.ph = 4; S.t = 0; S.y0 = p[1]; } return; }   // hang at the apex
+    if (S.ph === 4) {   // dive
+        if (s.swim || s.web || S.t > 3) { sa.slam = null; return; }
+        if (!s.ground) { v[1] = -SLAM.DIVE_V; if (S.air) { v[0] = 0; v[2] = 0; } return; }
+        // ---- impact ----
+        const fallen = Math.max(0, S.y0 - p[1]), R = (S.lvl === 2 ? SLAM.R2 : SLAM.R1) + Math.min(SLAM.R_FALL_MAX, fallen / 4), dmg = S.lvl === 2 ? SLAM.DMG2 : SLAM.DMG1;
+        let any = false;
+        for (const o of s.enemies) {
+            if (o.down > 0) continue; const dx = o.x - p[0], dz = o.z - p[2], d = Math.hypot(dx, dz);
+            if (d > R || Math.abs(bodyY(o) - p[1]) > 4) continue;
+            const k = d / R, oa = o as any, nx = d > 0.05 ? dx / d : Math.sin(s.ang), nz = d > 0.05 ? dz / d : Math.cos(s.ang);
+            o.hp -= dmg; o.hit = Math.max(o.hit, 0.6); o.atk = 0; oa.hitDir = 4;
+            if (!o.boss) { oa.vy = Math.max(oa.vy || 0, SLAM.VY0 + (SLAM.VY1 - SLAM.VY0) * k); oa.ly = Math.max(oa.ly || 0, 0.05); oa.slam = 0; const kb = SLAM.KB0 + (SLAM.KB1 - SLAM.KB0) * k; o.kb = [nx * kb, nz * kb]; }
+            any = true; s.combo++; s.comboT = 1.4;
+            if (o.hp <= 0) { o.down = 3; s.kos++; s.score += 2; ev.ko(); deathBlast(s, o); }
+        }
+        s.landHard = 0; s.land = 1; v[0] = v[1] = v[2] = 0;
+        sa.hitStop = SLAM.STOP; sa.shake = Math.min(1, (sa.shake || 0) + SLAM.TRAUMA); sa.fovK = SLAM.FOV; sa.fovKT = 0;
+        sa.slowK = 0.3; sa.slowHold = SLAM.STOP + 0.2; sa.slowEase = 0.25; sa.slowT = sa.slowHold + sa.slowEase;
+        sa.slamN = (sa.slamN || 0) + 1; sa.slamAt = [p[0], p[1], p[2], R];
+        fxSlam(p[0], p[1] - 1, p[2], R, heroCol(s));
+        if (any) ev.hit(); if (ev.blast) ev.blast(p[0], p[1] - 0.7, p[2]);
+        S.ph = 5; S.t = 0; S.R = R;
+        return;
+    }
+    if (S.ph === 5) { v[0] = 0; v[2] = 0; if (S.t >= SLAM.REC) sa.slam = null; }   // recovery (jump/web cancel after 200 ms: stepSimInner)
+}
+/** world time scale after a finisher / Slam (real-time clock, so it also runs through the hit-stop) */
+export function simTimeScale(s: Sim, realDt: number): number {
+    const sa = s as any; if (!(sa.slowT > 0)) { sa.tsNow = 1; return 1; }
+    sa.slowT -= realDt; const tot = sa.slowHold + sa.slowEase, el = tot - Math.max(0, sa.slowT);
+    const u = el < sa.slowHold ? 0 : Math.min(1, (el - sa.slowHold) / Math.max(1e-3, sa.slowEase));
+    const k = sa.slowK + (1 - sa.slowK) * u * u * (3 - 2 * u); sa.tsNow = k; return k;
 }
 // launched / slammed bots: vertical arc with juggle hang time, ground bounce + shake on slam
 function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
@@ -983,6 +1069,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         if (s.dodgeT <= 0 && !s.web) { s.dodgeT = 0.38; const mx = input.mx + ((input.keys['d'] ? 1 : 0) - (input.keys['a'] ? 1 : 0)), my = input.my + ((input.keys['w'] ? 1 : 0) - (input.keys['s'] ? 1 : 0)); const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw); let dx = yx * my - yz * mx, dz = yz * my + yx * mx; const dl = Math.hypot(dx, dz); if (dl < 0.1) { dx = -fx; dz = -fz; } else { dx /= dl; dz /= dl; } v[0] = dx * 18; v[2] = dz * 18;
             { const sa = s as any, fw = dx * fx + dz * fz, sd = dx * fz - dz * fx; sa.mv = null; sa.mvQ = false; sa.flip = { t: 0, dur: 0.5, ax: Math.abs(fw) > 0.55 ? 'x' : 'z', dir: Math.abs(fw) > 0.55 ? (fw < 0 ? -1 : 1) : (sd > 0 ? 1 : -1) }; if (s.ground) { v[1] = 7.5; s.ground = false; } } }
     }
+      if ((s as any).slam) { input.attackQ = false; input.shotQ = false; input.meleeQ = false; input.specialQ = false; }   // one action at a time while the Slam runs
       if (input.attackQ) {
           input.attackQ = false; const fShot = !!input.shotQ, fMelee = !!input.meleeQ; input.shotQ = false; input.meleeQ = false;
           const sa = s as any;
@@ -1000,6 +1087,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
           }
       }
       stepMove(s, dt, ev);
+      stepSlam(s, dt, ev, input);
     // Each actor's simulator runs its own Multi-Target Shock Web Attack: gather, grip its bound web, discharge, then recover.
     { const sa = s as any; sa.snareCd = Math.max(0, (sa.snareCd || 0) - dt);
       if (controls.specialQ) { controls.specialQ = false; if (!(sa.snareCd > 0) && !(sa.snareT > 0) && !(s.landHard > 0) && !s.swim) { const L = s.enemies.filter((e) => e.down <= 0 && Math.hypot(e.x - p[0], e.z - p[2]) < 24 && Math.abs((e.boss ? targetY(e) : e.y) - p[1]) < 14 && losClear(p[0], p[1] + 1.5, p[2], e.x, e.y + enemyBodyOffset(e), e.z)).sort((a, b) => Math.hypot(a.x - p[0], a.z - p[2]) - Math.hypot(b.x - p[0], b.z - p[2])).slice(0, SNARE.MAX_TARGETS); if (L.length) { sa.snareList = L; sa.snareT = SNARE.TOTAL; sa.snareCd = 0;   /* Shifat Nov 2 5:03 AM: 0 cooldown, works on walls too */ s.atkT = 0; s.shotT = 0; ev.attach(); } } }

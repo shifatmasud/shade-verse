@@ -4,6 +4,8 @@
 
 Melee combat is locked. Only the Shadow Snare is allowed to change.
 
+Unlocked Nov 2 2026 (Shifat, 5:25-5:49 AM): hero melee (new hold-melee Charged Slam), hero attack animations and hero attack effects (particles, glow, trails) for BOTH heroes. Everything else in this file still holds.
+
 ## Locked character and interface
 
 The Shadow hero model, HUD, and controls are locked.
