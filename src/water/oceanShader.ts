@@ -20,7 +20,7 @@ export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
-    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform sampler2D tMir; uniform mat4 uMirM; uniform float uMir; uniform vec2 uMirPx; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
+    uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform sampler2D uSkyl; uniform vec2 uSkC; uniform float uUseRefl; uniform highp sampler2D uGrid; uniform highp sampler2D uGBox; uniform vec4 uGB; uniform vec2 uGN; uniform sampler2D tMir; uniform mat4 uMirM; uniform float uMir; uniform vec2 uMirPx; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
@@ -158,6 +158,41 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         vec4 rs = vec4(sk.rgb * mix(0.3, 1.0, uDay), cov);
         vec3 rsb = mix(rs.rgb, reflTint(rs.rgb, refl), 0.45);   /* Shifat 1:21 'I don't see reflection': readable silhouettes - keeps their own colour, only half tinted to the water */
         skR = rsb; skA = rs.a * 0.95; nGlow = sk.rgb * 0.35 * cov;   /* Shifat 8:35 PM 'reflections not showing': the skyline is laid in AFTER the sea haze (below) with the world's own haze rate - the sea fog is ~2x the city's, so mixing it in here faded the mirrored city to nothing right under the city */   /* night: the lit skyline as a soft glow band */
+        if (uHF > 5.5) {   /* ANALYTIC RAYTRACE, EVERY BUILDING (src/water/gridRefl.ts, Shifat 3:57 PM): the rippled reflected ray walks the map grid (2D DDA)
+             and is tested exactly against the boxes of each cell it crosses (nearest hit), plus the 3 isle domes. Lit by the face it hit, windows
+             on the walls (lit warm at night), softer with distance. The ray's climb is halved: mirrored shapes stretch ~2x downward. */
+          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.5, rd.z)), ih = 1.0 / hd; float tb = 1e5; vec3 cb = vec3(0.0), nb = vec3(0.0, 1.0, 0.0); float bh = 0.0;
+          /* clip the ray to the grid's rectangle first: open-sea rays start outside it and would burn steps on empty cells */
+          vec2 gmn = uGB.xy, gmx = uGB.xy + uGN * uGB.z; vec2 ta = (gmn - ro.xz) / hd.xz, tbb = (gmx - ro.xz) / hd.xz; vec2 tlo = min(ta, tbb), thi = max(ta, tbb);
+          float te = max(max(tlo.x, tlo.y), 0.0), tx = min(min(thi.x, thi.y), 170.0 / max(hd.y, 1e-3));
+          vec2 g = (ro.xz + hd.xz * (te + 0.01) - uGB.xy) / uGB.z; ivec2 c = ivec2(floor(g)); vec2 sd = sign(hd.xz) + step(0.0, -abs(hd.xz)); ivec2 st = ivec2(sd);
+          vec2 ia = 1.0 / max(abs(hd.xz), vec2(1e-5)); vec2 tD = uGB.z * ia; vec2 nx = te + (vec2(c) + step(0.0, sd) - g) * sd * tD; float tc = te; ivec2 N = ivec2(uGN);
+          for (int i = 0; i < 40; i++) { if (tc > tx) break;
+            if (c.x >= 0 && c.y >= 0 && c.x < N.x && c.y < N.y) {
+              vec4 m = texelFetch(uGrid, ivec2(c.x * 3 + 2, c.y), 0);
+              if (m.y > 0.5 && hd.y * tc < m.x) {
+                vec4 i0 = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), i1 = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
+                for (int q = 0; q < 8; q++) { float id = q < 4 ? i0[q] : i1[q - 4]; if (id < 0.0) break; int bi = int(id) * 3;
+                  vec4 bm = texelFetch(uGBox, ivec2(bi, 0), 0), bx = texelFetch(uGBox, ivec2(bi + 1, 0), 0);
+                  vec3 t0 = (bm.xyz - ro) * ih, t1 = (bx.xyz - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
+                  float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
+                  if (a < b && a > 0.5 && a < tb) { tb = a; cb = texelFetch(uGBox, ivec2(bi + 2, 0), 0).rgb; bh = bm.w; nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
+                }
+              }
+            }
+            float tn2 = min(nx.x, nx.y); if (tb < tn2 || hd.y * tn2 > 170.0) break;
+            if (nx.x < nx.y) { c.x += st.x; nx.x += tD.x; } else { c.y += st.y; nx.y += tD.y; } tc = tn2;
+          }
+          for (int i = 0; i < 3; i++) {   // isle domes
+            vec4 I = uArIsle[i]; vec3 sc = vec3(I.z, I.w, I.z); vec3 o = (ro - vec3(I.x, 0.0, I.y)) / sc, d = hd / sc; float A = dot(d, d), B = dot(o, d), C = dot(o, o) - 1.0, D = B * B - A * C;
+            if (D > 0.0) { float t = (-B - sqrt(D)) / A; if (t > 0.5 && t < tb && o.y + d.y * t >= 0.0) { tb = t; vec3 p = o + d * t; nb = normalize(p / sc); bh = -1.0; cb = i == 2 ? vec3(0.82, 0.9, 0.96) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(0.05, 0.25, p.y)); } }
+          }
+          float ah = step(tb, 9e4); vec3 hp = ro + hd * tb; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
+          /* windows: a grid on the walls, faded out with distance (sub-pixel there) */
+          float wu = abs(nb.x) > 0.5 ? hp.z : hp.x; float win = step(0.0, bh) * (1.0 - abs(nb.y)) * step(0.45, fract(wu / 3.2 + bh * 7.0)) * step(0.4, fract(hp.y / 3.6)) * (1.0 - smoothstep(120.0, 600.0, tb));
+          vec3 acol = cb * lam * mix(0.3, 1.0, uDay); acol = mix(acol, mix(vec3(1.0, 0.78, 0.45) * 0.9, acol * 0.55, uDay), win * 0.6);
+          skR = mix(acol, reflTint(acol, refl), 0.35); skA = ah * 0.95; nGlow = cb * 0.3 * ah + vec3(1.0, 0.75, 0.4) * win * (1.0 - uDay) * 0.4;
+        } else
         if (uHF > 4.5) {   /* REFLECTION IMPOSTORS (src/water/impostorRefl.tsx): the reflected ray meets each baked elevation card's vertical plane; the card there
              is the landmark's real look (colours, windows) rendered once at load. Nearest opaque card wins; the ray's climb is halved (2x downward streak). */
           vec3 hd = normalize(vec3(rd.x, rd.y * 0.5, rd.z)); float tb = 1e5; vec4 ic = vec4(0.0);
