@@ -32,16 +32,17 @@ void main(){
     float rr2=max(sr,px*0.7),dd=length(sf-so);float sv=smoothstep(rr2,rr2*0.25,dd)*min(1.0,sr/rr2*1.6);
     float sb=mix(0.3,1.25,pow(fract(sh*29.7),4.0))*(0.8+0.2*sin(uT*(1.3+sz*2.0)+sh*60.0));
     nc+=mix(vec3(0.75,0.85,1.0),vec3(1.0,0.92,0.8),fract(sh*7.3))*sv*sb*3.2*smoothstep(0.06,0.35,dn.y);}}
-  /* aurora v2 (Shifat 10:27 PM 'refs real aurora'; refs: Wikimedia aurora photos - sinuous ribbons sweeping across the sky, sharp bright lower hem, fine vertical rays fading upward, green body, faint magenta crown, stars through) */
-  if(dn.y>0.03){float az=atan(dn.x,-dn.z),el=asin(clamp(dn.y,0.0,1.0));float ab=0.0;vec3 ac=vec3(0.0);
-   for(int k=0;k<2;k++){float fk=float(k);
-    float base=0.32+fk*0.17+0.13*sin(az*2.0+fk*2.1+uT*0.025)+0.05*sin(az*4.0-fk*1.3-uT*0.04);
-    float h=el-base;float hem=smoothstep(-0.012,0.008,h);
-    float ray=0.5+0.22*sin(az*83.0+sin(az*7.0+uT*0.1)*3.0+fk*5.0)*(0.6+0.4*sin(az*11.0+fk))+0.18*sin(az*37.0-uT*0.07+fk)+0.1*sin(az*151.0+sin(az*13.0)*4.0);
-    float tall=exp(-max(h,0.0)*mix(7.0,4.0,ray))*hem;
-    float pch=smoothstep(0.15,0.7,0.5+0.5*sin(az*1.0+fk*2.7+uT*0.015))*(1.0-fk*0.45);
-    float a=tall*ray*pch;ac+=mix(vec3(0.15,1.0,0.5),vec3(0.75,0.2,0.65),smoothstep(0.06,0.3,h))*a*(1.0+1.2*exp(-max(h,0.0)*40.0)*hem);}
-   nc+=ac*0.2*smoothstep(0.03,0.12,dn.y);}
+  /* aurora v3 (Shifat 10:34-10:36 PM: realistic, 3D, progressively blurry, no visible sharpness; refs Wikimedia): the curtain is a real wavy ribbon
+     hanging between 100 and 300 'km' over the sea - the view ray is sampled at 7 heights, each hit point measured against the ribbon line, so curtains
+     foreshorten to the horizon in true perspective; width grows with height (soft hem, blurrier top), colour green -> faint violet with height */
+  if(dn.y>0.02){vec3 ac=vec3(0.0);
+   for(int k=0;k<7;k++){float fk=float(k)/6.0;float H=1.0+fk*2.2;vec2 p=dn.xz/dn.y*H;
+    float fx=-2.6+1.6*sin(p.x*0.35+uT*0.02)+0.7*sin(p.x*0.83-uT*0.03)+0.3*sin(p.x*1.9+uT*0.05);
+    float d=abs(p.y-fx);float w=0.35+fk*1.1;
+    float a=exp(-d*d/(w*w))*exp(-fk*2.6)*(0.55+0.45*sin(p.x*0.6+uT*0.04+fk))*(0.7+0.3*sin(p.x*2.3-uT*0.06));
+    a*=smoothstep(18.0,6.0,length(p))*smoothstep(-14.0,-4.0,p.x*0.0+p.y+8.0);
+    ac+=mix(vec3(0.12,1.0,0.45),vec3(0.55,0.22,0.75),smoothstep(0.35,1.0,fk))*a;}
+   nc+=ac*0.26*smoothstep(0.02,0.1,dn.y);}
   float mg=max(dot(dn,-sun),0.0);nc+=vec3(0.75,0.85,1.0)*(pow(mg,60.0)*0.25)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.2;
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
@@ -49,8 +50,8 @@ void main(){
   vec3 oc=mix(uHor*1.05,uHor*0.72,smoothstep(0.0,0.5,dn2.y))*(0.9+0.2*rn2);c=mix(c,oc,uRain*0.92);}
  /* rainbow (Shifat 9:46 PM): 42 deg ring around the anti-sun point, spectral across its width, faint outer secondary at 51 deg (reversed); shows while rain is light / clearing in daylight with the sun up */
  {vec3 dn3=normalize(vDir);float ra=acos(clamp(dot(dn3,-uSunV),-1.0,1.0));float rw=smoothstep(0.03,0.25,uRain)*(1.0-smoothstep(0.55,0.85,uRain))*uDay*smoothstep(-0.02,0.08,uSunV.y)*smoothstep(0.0,0.05,dn3.y);
-  if(rw>0.001){float u=(ra-0.70)/0.055;vec3 rc=clamp(vec3(1.5-abs(u-0.85)*2.2,1.5-abs(u-0.5)*2.2,1.5-abs(u-0.15)*2.2),0.0,1.0)*smoothstep(0.0,0.2,u)*(1.0-smoothstep(0.8,1.0,u));
-   float u2=(0.945-ra)/0.07;vec3 rc2=clamp(vec3(1.5-abs(u2-0.85)*2.2,1.5-abs(u2-0.5)*2.2,1.5-abs(u2-0.15)*2.2),0.0,1.0)*smoothstep(0.0,0.2,u2)*(1.0-smoothstep(0.8,1.0,u2));
+  if(rw>0.001){float u=(ra-0.695)/0.065;vec3 rc=clamp(vec3(1.5-abs(u-0.85)*2.2,1.5-abs(u-0.5)*2.2,1.5-abs(u-0.15)*2.2),0.0,1.0)*smoothstep(-0.15,0.35,u)*(1.0-smoothstep(0.65,1.15,u));
+   float u2=(0.945-ra)/0.07;vec3 rc2=clamp(vec3(1.5-abs(u2-0.85)*2.2,1.5-abs(u2-0.5)*2.2,1.5-abs(u2-0.15)*2.2),0.0,1.0)*smoothstep(-0.2,0.4,u2)*(1.0-smoothstep(0.6,1.2,u2));
    c+=(rc*0.32+rc2*0.1)*rw*(1.0-smoothstep(0.75,1.0,dn3.y));}}
  gl_FragColor=vec4(c,1.0);
 }`;
