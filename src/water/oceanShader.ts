@@ -161,20 +161,20 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
         if (uHF > 5.5) {   /* ANALYTIC RAYTRACE, EVERY BUILDING (src/water/gridRefl.ts, Shifat 3:57 PM): the rippled reflected ray walks the map grid (2D DDA)
              and is tested exactly against the boxes of each cell it crosses (nearest hit), plus the 3 isle domes. Lit by the face it hit, windows
              on the walls (lit warm at night), softer with distance. The ray's climb is halved: mirrored shapes stretch ~2x downward. */
-          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.5, rd.z)), ih = 1.0 / hd; float tb = 1e5; vec3 cb = vec3(0.0), nb = vec3(0.0, 1.0, 0.0); float bh = 0.0;
+          vec3 ro = vec3(vW.x, 0.0, vW.z), hd = normalize(vec3(rd.x, rd.y * 0.38, rd.z)), ih = 1.0 / hd; float tb = 1e5; vec3 cb = vec3(0.0), nb = vec3(0.0, 1.0, 0.0); float bh = 0.0;
           /* clip the ray to the grid's rectangle first: open-sea rays start outside it and would burn steps on empty cells */
           vec2 gmn = uGB.xy, gmx = uGB.xy + uGN * uGB.z; vec2 ta = (gmn - ro.xz) / hd.xz, tbb = (gmx - ro.xz) / hd.xz; vec2 tlo = min(ta, tbb), thi = max(ta, tbb);
-          float te = max(max(tlo.x, tlo.y), 0.0), tx = min(min(thi.x, thi.y), 170.0 / max(hd.y, 1e-3));
+          float te = max(max(tlo.x, tlo.y), 0.0), tx = min(min(min(thi.x, thi.y), 170.0 / max(hd.y, 1e-3)), 800.0);   /* past ~800 m the sea fog owns the water anyway */
           vec2 g = (ro.xz + hd.xz * (te + 0.01) - uGB.xy) / uGB.z; ivec2 c = ivec2(floor(g)); vec2 sd = sign(hd.xz) + step(0.0, -abs(hd.xz)); ivec2 st = ivec2(sd);
           vec2 ia = 1.0 / max(abs(hd.xz), vec2(1e-5)); vec2 tD = uGB.z * ia; vec2 nx = te + (vec2(c) + step(0.0, sd) - g) * sd * tD; float tc = te; ivec2 N = ivec2(uGN);
           float cov = 0.0; vec3 acc = vec3(0.0);   // soft front-to-back coverage: edges blur with distance
-          for (int i = 0; i < 40; i++) { if (tc > tx || cov > 0.97) break;
+          for (int i = 0; i < 20; i++) { if (tc > tx || cov > 0.97) break;
             if (c.x >= 0 && c.y >= 0 && c.x < N.x && c.y < N.y) {
               vec4 m = texelFetch(uGrid, ivec2(c.x * 3 + 2, c.y), 0);
               if (m.y > 0.5 && hd.y * tc < m.x + 8.0) {
                 vec4 fp = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), cc = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
                 vec3 bm = vec3(fp.x, m.z, fp.y), bx = vec3(fp.z, cc.w, fp.w);
-                float sf = 2.0 + tc * 0.035;   // softness grows with distance (heavy blur far out)
+                float sf = 3.0 + tc * 0.05;   // softness grows with distance (heavy blur far out)
                 vec3 t0 = (bm - vec3(sf, 0.0, sf) - ro) * ih, t1 = (bx + vec3(sf, sf, sf) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
                 float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
                 if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf, bx.y - sf, hd.y * max(a, 0.5));
@@ -192,7 +192,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
           }
           float ah = cov; vec3 sunD = normalize(uSun); float lam = 0.75 + 0.35 * max(dot(nb, sunD), 0.0);
           vec3 acol = cb * lam * mix(0.3, 1.0, uDay);
-          skR = mix(acol, reflTint(acol, refl), 0.35); skA = ah * 0.95; nGlow = cb * 0.3 * ah;
+          skR = mix(acol, reflTint(acol, refl), 0.5); skA = ah * 0.95; nGlow = cb * 0.3 * ah;
         } else
         if (uHF > 4.5) {   /* REFLECTION IMPOSTORS (src/water/impostorRefl.tsx): the reflected ray meets each baked elevation card's vertical plane; the card there
              is the landmark's real look (colours, windows) rendered once at load. Nearest opaque card wins; the ray's climb is halved (2x downward streak). */

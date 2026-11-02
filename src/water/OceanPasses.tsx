@@ -15,7 +15,9 @@ import { bakeHeightRefl } from './heightRefl';
 import { pickAnalytic } from './analyticRefl';
 import { bakeGrid } from './gridRefl';
 export const SSR_ON = typeof location !== 'undefined' && /[?&]ssr\b/.test(location.search);   // reflection batch C - Shifat 3:24 PM 'I permit for this test run' (a second scene render, test flag only)
-const AR_ON = typeof location !== 'undefined' && /[?&]ar\b/.test(location.search);
+/* Shifat Nov 1 3:57 PM chose the analytic raytrace ('lets go with this if performance good'); 4:07 PM 'believable like real sea, ultra fast' -> default.
+   ?ring brings the old skyline ring back for comparison. */
+const AR_ON = typeof location === 'undefined' || !/[?&](ring|hf|hfmix|imp)\b/.test(location.search);
 const HF_ON = typeof location !== 'undefined' && /[?&]hf\b/.test(location.search), HF_MIX = typeof location !== 'undefined' && /[?&]hfmix\b/.test(location.search);   /* Shifat 3:11 PM 'none of these 4 looks okay': back to the ring by default; ?hf / ?hfmix keep the prototypes */   /* Shifat Nov 1 3:02 PM 'test multiple versions, then choose': version 4 (heightfield near + ring far) chosen; ?ring = old ring only, ?hf = heightfield only */   // heightfield-traced reflections prototype (Shifat Nov 1 2:50 PM)
 
 // Per-frame drivers of the sea: the camera-following sheet, the mirror (reflection) pass and the screen-space scene copy for refraction.
