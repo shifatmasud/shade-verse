@@ -45,3 +45,14 @@ Phone and desktop sea water must look exactly the same (1:1). Optimizations are 
 
 ## Resolution floor (Shifat Oct 31 10:13 PM)
 The world (environment) render never goes below DPR 0.8 on any device (Shifat Nov 1 2026 2:14 PM: "Min res dpr can be 0.8 for faster fps"; was 1). The fps scaler may not downscale below 0.8.
+
+## Checkpoint `checkpoint-2026-11-02-sky` — LOCKED by Shifat Nov 2 1:01 AM ("Lock stuff now. Good enough")
+Restore with: `git checkout checkpoint-2026-11-02-sky`.
+Locked looks (change only on Shifat's word):
+- Sky: volumetric-look cumulus with subsurface scattering, grey bases, eroded soft edges (skyFx CLOUD_GLSL, shared with the sea reflection).
+- Sun: blown-out white-hot disc, golden when low, soft edge, wide glow (real sunset photo).
+- Moon: Gullmarn-fjord look - glowing white disc, bright corona, big milky halo (not a detailed disc).
+- Aurora v7: low wide green band, yellow-green hem, soft purplish tops (real photo /tmp/aur/4.jpg).
+- Rainbow: real-photo bands + gaussian blur + warm glow.
+- Sea mirrors clouds, aurora, moon, stars, rainbow; no ink outline on any water.
+- Underwater: soft Snell window, TIR mirror of the seabed outside it, tall kelp forest, vent bubble columns, soft god rays, deeper caustics, thin waterline meniscus.
