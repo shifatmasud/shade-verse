@@ -2,6 +2,12 @@ import { SKYFX_GLSL } from './skyFx';
 // Sky dome shader (gradient, sun disc, clouds). Moved verbatim from Scene.tsx.
 export const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
 export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform sampler2D uMoon;
+float cloudN(vec2 p){vec2 i=floor(p),u=fract(p);u=u*u*(3.0-2.0*u);
+ float a=fract(sin(dot(i,vec2(127.1,311.7)))*43758.5),b=fract(sin(dot(i+vec2(1,0),vec2(127.1,311.7)))*43758.5),
+       c2=fract(sin(dot(i+vec2(0,1),vec2(127.1,311.7)))*43758.5),d=fract(sin(dot(i+vec2(1,1),vec2(127.1,311.7)))*43758.5);
+ return mix(mix(a,b,u.x),mix(c2,d,u.x),u.y);}
+float cloudFbm(vec2 p){ p+=vec2(cloudN(p*0.5),cloudN(p*0.5+7.3))*0.9;   /* domain warp -> billowy cauliflower puffs */
+ float f=0.0,a=0.55; for(int i=0;i<5;i++){ f+=a*cloudN(p); p=mat2(1.6,1.2,-1.2,1.6)*p+vec2(3.1,1.7); a*=0.56; } return f; }
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
  vec3 top=mix(vec3(0.16,0.42,0.9),vec3(0.24,0.5,0.86),uWarm);vec3 mid=mix(vec3(0.6,0.8,0.96),vec3(0.96,0.72,0.68),uWarm);
@@ -17,18 +23,28 @@ void main(){
  {float ci=sin(vDir.x/(vDir.y+0.25)*3.0+uT*0.01)*0.5+0.5;c=mix(c,vec3(1.0,0.75,0.7),smoothstep(0.55,0.8,t)*smoothstep(0.7,1.0,ci)*0.18);}
  {vec2 st=floor(vDir.xz/(abs(vDir.y)+0.2)*90.0);float r=fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5);
  c+=vec3(1.0)*step(0.9965,r)*smoothstep(0.55,0.9,t)*0.5;}
- // golden-hour cloud deck: 4-octave value noise on a projected plane, lit warm toward the sun, dark undersides
- if(vDir.y>0.02){
-  vec2 cp=vDir.xz/(vDir.y+0.12)*1.6+vec2(uT*0.004,0.0);
-  float f=0.0,a=0.5;vec2 q=cp;
-  for(int i=0;i<4;i++){vec2 ip=floor(q),fp=fract(q);fp=fp*fp*(3.0-2.0*fp);
-   float n=mix(mix(fract(sin(dot(ip,vec2(127.1,311.7)))*43758.5),fract(sin(dot(ip+vec2(1,0),vec2(127.1,311.7)))*43758.5),fp.x),mix(fract(sin(dot(ip+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(ip+vec2(1,1),vec2(127.1,311.7)))*43758.5),fp.x),fp.y);
-   f+=n*a;a*=0.5;q=q*2.03+vec2(3.1,1.7);}
-  float cov=smoothstep(0.5,0.78,f)*smoothstep(0.02,0.22,vDir.y);
-  float sl=pow(max(dot(normalize(vDir),sun),0.0),3.0);
-  vec3 cc=mix(vec3(0.42,0.3,0.42),vec3(1.0,0.72,0.58),0.35+0.65*sl);
-  cc+=vec3(1.0,0.6,0.35)*pow(g,8.0)*0.4*(1.0-f);
-  c=mix(c,cc,cov*0.85);
+ /* volumetric-look cumulus (Shifat 12:03 AM 'better volumetric clouds with subsurface scattering'; real refs Wikimedia 'White Cumulus Clouds against Blue Sky'):
+    puffy domain-warped fbm on a curved layer; Beer-Lambert light toward the sun (2nd density tap offset sunward) + powder darkening for bright
+    sunlit tops and soft grey-blue bases; subsurface/forward scattering (HG-like lobe) makes thin edges glow, silver lining when backlit;
+    everything soft, fades into the horizon haze */
+ if(vDir.y>0.0){
+  vec3 dn=normalize(vDir);
+  vec2 cp=dn.xz/(dn.y+0.14)*0.55+vec2(uT*0.006,uT*0.002);
+  vec2 sd2=normalize(sun.xz+vec2(1e-4))*0.14;
+  float cl=smoothstep(0.25,0.75,cloudN(cp*0.32+11.0)); float f=cloudFbm(cp)+0.3*cl-0.12, f2=cloudFbm(cp+sd2)+0.3*cl-0.12;   /* big-scale clustering -> separate puffs with blue gaps */
+  float cov=mix(0.66,0.5,uRain);
+  float d=smoothstep(cov,cov+0.16,f), d2=smoothstep(cov,cov+0.16,f2);
+  float hz=smoothstep(0.0,0.16,dn.y);
+  if(d>0.001){
+   float T=exp(-2.6*d2), pw=1.0-exp(-3.0*d);
+   float lit=clamp(T*mix(1.0,pw,0.6)*1.25,0.0,1.0);
+   float ph=pow(g,6.0)*0.6+pow(g,40.0)*0.9;           /* forward-scattering lobe */
+   float sss=ph*(1.0-d)*1.6+ph*0.25;                  /* thin edges glow brightest */
+   vec3 sunC=mix(vec3(1.0,0.98,0.94),vec3(1.0,0.66,0.42),uWarm);
+   vec3 base=mix(vec3(0.5,0.56,0.68),vec3(0.42,0.36,0.46),uWarm);
+   vec3 cc=mix(base,sunC*1.08,lit)+sunC*sss+uHor*0.12*(1.0-lit);
+   c=mix(c,cc,d*hz*0.95);
+  }
  }
  {vec3 dn=normalize(vDir);vec3 nc=mix(vec3(0.07,0.08,0.19),vec3(0.012,0.02,0.07),smoothstep(0.0,0.6,dn.y));
   /* stars (Shifat 9:46 PM: varied sizes, sparse, subtle, clean): one jittered round point per lucky cell, anti-aliased by fwidth, size + brightness heavy-tailed so most are faint pinpricks and a few are bright; slow gentle twinkle */
@@ -42,8 +58,8 @@ void main(){
      warmer when low (atmosphere), a tight bright halo plus a wide faint glow like the Gullmarn fjord photo */
    { vec3 md=-sun; vec3 mu=normalize(cross(md, abs(md.y)>0.98?vec3(1.0,0.0,0.0):vec3(0.0,1.0,0.0))); vec3 mv=cross(mu,md); vec2 q=vec2(dot(dn,mu),dot(dn,mv))/0.036; float mr=length(q);
      float disc=(1.0-smoothstep(0.95,1.03,mr))*step(0.0,dot(dn,md)); vec3 tint=mix(vec3(1.0,0.82,0.62),vec3(1.0,0.98,0.94),smoothstep(0.0,0.35,md.y));
-     float tx=texture2D(uMoon,clamp(q*0.5+0.5,0.0,1.0)).r; nc=mix(nc,tint*(1.9+0.5*tx),disc);   /* Shifat 11:51 PM: match the Gullmarn fjord photo - a blown-out glowing white disc, the photo texture only a faint hint */
-     nc+=vec3(0.82,0.88,1.0)*(pow(mg,260.0)*0.9+pow(mg,45.0)*0.42+pow(mg,7.0)*0.13);   /* bright corona + big milky halo like the photo */ }
+     float tx=texture2D(uMoon,clamp(q*0.5+0.5,0.0,1.0)).r; nc=mix(nc,tint*(0.25+1.25*pow(tx,1.15)),disc);
+     nc+=vec3(0.75,0.85,1.0)*(pow(mg,90.0)*0.32+pow(mg,10.0)*0.06)*(1.0-disc); }
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
  if(uRain>0.001){vec3 dn2=normalize(vDir);vec2 rq=dn2.xz/(abs(dn2.y)+0.25)*2.2+vec2(uT*0.012,0.0);float rn=fract(sin(dot(floor(rq),vec2(127.1,311.7)))*43758.5);vec2 rf=fract(rq);rf=rf*rf*(3.0-2.0*rf);float rn2=mix(mix(rn,fract(sin(dot(floor(rq)+vec2(1,0),vec2(127.1,311.7)))*43758.5),rf.x),mix(fract(sin(dot(floor(rq)+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(floor(rq)+vec2(1,1),vec2(127.1,311.7)))*43758.5),rf.x),rf.y);
