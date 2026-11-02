@@ -165,7 +165,7 @@ export function App() {
         const m = l < 0.22 ? 0 : 1, nl = l || 1; // auto run: full speed once past the dead zone
         input.mx = m ? dx / nl : 0; input.my = m ? -dy / nl : 0; knobRef.current!.style.transform = `translate(${dx * 38}px,${dy * 38}px)`;
     };
-    const padStart = (e: React.PointerEvent) => { if (stickId.current !== -1 && stickId.current !== null && stickId.current !== undefined) return; stickId.current = e.pointerId; (e.target as HTMLElement).setPointerCapture(e.pointerId); padC.current = { x: e.clientX, y: e.clientY }; const p = padRef.current!; p.style.left = e.clientX - 60 + 'px'; p.style.top = e.clientY - 60 + 'px'; p.style.opacity = '1'; padMove(e); };
+    const padStart = (e: React.PointerEvent) => { if (stickId.current !== -1 && stickId.current !== null && stickId.current !== undefined) return; stickId.current = e.pointerId; try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } padC.current = { x: e.clientX, y: e.clientY }; const p = padRef.current!; p.style.left = e.clientX - 60 + 'px'; p.style.top = e.clientY - 60 + 'px'; p.style.opacity = '1'; padMove(e); };
     const stickEnd = (e: React.PointerEvent) => { if (e.pointerId === stickId.current) { stickId.current = -1; input.mx = 0; input.my = 0; knobRef.current!.style.transform = 'translate(0,0)'; padRef.current!.style.opacity = '0'; } };
     const drag = useRef({ id: -1, x: 0, y: 0 });
     // desktop: no gameplay icon buttons (Shifat, Oct 28 11:24 PM); mouse/keyboard/gamepad instead
@@ -188,7 +188,7 @@ export function App() {
             gl={{ antialias: AA_MSAA, powerPreference: 'high-performance', alpha: false, stencil: false }}
             camera={{ fov: 62, near: 0.5, far: 1600, position: [0, 40, -10] }}
             onCreated={({ gl }) => { gl.setPixelRatio(QK.envDpr);   /* Shifat Nov 1 2:14 PM: floor dpr 0.8 (was 1) */ GL2 = gl.capabilities.isWebGL2; }}
-            onPointerDown={(e) => { if (drag.current.id !== -1 || document.pointerLockElement) return; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; sim.camHeld = true; sim.lastDrag = sim.t; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
+            onPointerDown={(e) => { if (drag.current.id !== -1 || document.pointerLockElement) return; drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; sim.camHeld = true; sim.lastDrag = sim.t; try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } }}
             onPointerMove={(e) => {
                 if (e.pointerId !== drag.current.id) return;
                 sim.yaw -= (e.clientX - drag.current.x) * 0.006; sim.pitch = Math.max(-1.15, Math.min(1.35, sim.pitch + (e.clientY - drag.current.y) * 0.004));
@@ -227,7 +227,7 @@ export function App() {
                 onPointerCancel={() => { const h = holdR.current; clearTimeout(h.skT); h.sk = false; }}><IShock /></button>
             <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } input.meleeQ = true; input.attackQ = true; input.meleeHeld = true; input.meleeAt = performance.now(); }}
                 onPointerUp={() => { input.meleeHeld = false; }} onPointerCancel={() => { input.meleeHeld = false; }} onLostPointerCapture={() => { input.meleeHeld = false; }}><IFist /></button>
-            <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); (e.target as HTMLElement).setPointerCapture(e.pointerId); input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
+            <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
         </>}
 
         {hud.mode === 'play' && desk && locked && <div className={'xhair' + (charge ? ' charge' : '')} aria-hidden><i /></div>}
