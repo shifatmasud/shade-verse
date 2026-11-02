@@ -453,7 +453,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
                 la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e.x, ty, e.z); n++;
                 la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e.x, ty, e.z); n++; snareWebLines += 2;
                 if (sn > SNARE.IMPACT && sn <= SNARE.SHOCK_START) { const p = 1 - (sn - SNARE.IMPACT) / (SNARE.SHOCK_START - SNARE.IMPACT); pulseProgress = p; pulseSegments = writeSnarePulse(xa, pulseSegments, _handL.x, _handL.y, _handL.z, e.x, ty, e.z, p, i * 3.1); pulseSegments = writeSnarePulse(xa, pulseSegments, _handR.x, _handR.y, _handR.z, e.x, ty, e.z, p, i * 3.1 + 1.7); }
-                if (sn > 0 && sn <= SNARE.IMPACT) { const p = 1 - sn / SNARE.IMPACT; ringSegments = writeSnareRing(xa, ringSegments, e.x, ty, e.z, 0.35 + p * 1.75); }
+                /* Nov 2: no solid rings (Shifat) - the expanding Shock impact ring per bot is gone; spark burst + arcs + glow come from combatFx */
             }
         }
         lineGeo.setDrawRange(0, n * 2); la.needsUpdate = true;

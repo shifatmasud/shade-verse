@@ -162,7 +162,7 @@ export function SnareLines({ sim }: { sim: Sim }) {
                 const hp = hw ? hw[sd] : [sim.pos[0], sim.pos[1] + 1.5, sim.pos[2]], o = n * 2; a.setXYZ(o, hp[0], hp[1], hp[2]); a.setXYZ(o + 1, e.x, ty, e.z); n++;
                 if (sn > SNARE.IMPACT && sn <= SNARE.SHOCK_START) { const p = 1 - (sn - SNARE.IMPACT) / (SNARE.SHOCK_START - SNARE.IMPACT); shockProgress = p; pn = writeSnarePulse(sh, pn, hp[0], hp[1], hp[2], e.x, ty, e.z, p, i * 3.1 + sd * 1.7); }
             }
-            if (sn > 0 && sn <= SNARE.IMPACT) { const p = 1 - sn / SNARE.IMPACT; rn = writeSnareRing(sh, rn, e.x, ty, e.z, 0.35 + p * 1.75); }
+            /* Nov 2: no solid rings (Shifat) - the expanding Shock impact ring per bot is gone; spark burst + arcs + glow come from combatFx */
         }
         // web-pull / yank strand: drawn by CombatFX as a thick comic ink line (the 1 px GL line here was invisible)
         geo.setDrawRange(0, n * 2); a.needsUpdate = true; ref.current.visible = n > 0;

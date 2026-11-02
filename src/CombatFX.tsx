@@ -1,25 +1,25 @@
 // Combat FX renderer (Nov 2 2026): draws the pools in src/combatFx.ts.
-// 3 draw calls: additive sprites (glow/ring/spark/core/ground ring/ground streak/lightning segment/preview ring, also drawn in the
-// selective-bloom pass), alpha sprites (comic hit-star with black ink rim, web splat, dust, debris), additive ribbon trails.
+// 3 draw calls: additive sprites (glow/spark/core/ground light smear/ground streak/lightning segment, also drawn in the
+// selective-bloom pass), alpha sprites (comic hit-star with black ink rim, web splat, dust, debris), additive ribbon trails. No ring shapes (Nov 2).
 // Procedural shapes in the fragment shader: no textures, no new passes, pooled fixed-size buffers.
 import { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { addP, alphaP, pool, F, ADD_MAX, ALPHA_MAX, stepPools, stepTrails, trails, trailPoint, TRAIL_PTS, TRAIL_SLOTS, bolts, screenFlash, emit, fxChargeTick, SH_CORE, SH_GLOW, SH_SPARK, SH_SEG, SH_GPREVIEW, SH_GSTREAK, LOW } from './combatFx';
+import { addP, alphaP, pool, F, ADD_MAX, ALPHA_MAX, stepPools, stepTrails, trails, trailPoint, TRAIL_PTS, TRAIL_SLOTS, bolts, screenFlash, emit, fxChargeTick, SH_CORE, SH_GLOW, SH_SPARK, SH_SEG, SH_GSTREAK, LOW } from './combatFx';
 import { MOVES, SNARE, enemyBodyOffset, getCompanionSim, type Sim } from './sim';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
-type FxHero = { getSim: () => Sim | null; rig: any; base: number; visible: () => boolean; acc: { v: number }; full: boolean };
+type FxHero = { getSim: () => Sim | null; rig: any; base: number; visible: () => boolean; acc: { v: number }; acc2: { v: number }; full: boolean };
 const heroes: FxHero[] = [];
 const DBG = !!(import.meta as any).env.VITE_DBG;
 /** heroes register their rig so trails/fist glow read the posed bones at render time (base = first of 2 trail slots) */
 export function registerFxHero(getSim: () => Sim | null, rig: any, base: number, visible: () => boolean = () => true) {
-    const h: FxHero = { getSim, rig, base, visible, acc: { v: 0 }, full: false }; heroes.push(h);
+    const h: FxHero = { getSim, rig, base, visible, acc: { v: 0 }, acc2: { v: 0 }, full: false }; heroes.push(h);
     return () => { const i = heroes.indexOf(h); if (i >= 0) heroes.splice(i, 1); for (let k = 0; k < 2; k++) trails[base + k].n = 0; };
 }
 
-const EXTRA_A = 10;   // alpha per-frame state: Slam radius previews (2) + web strands (2 heroes x 2 hands x 2 segments)
-const EXTRA = 120;   // per-frame state sprites: fist glow / previews, Shock tethers (2 heroes x 5 targets x 7 segments), lightning bolts   // per-frame state sprites: fist glow / preview ring (2 heroes) + lightning segments (5 bolts x 7)
+const EXTRA_A = 10;   // alpha per-frame state: web strands (2 heroes x 2 hands x 2 segments)
+const EXTRA = 160;   // per-frame state sprites: fist glow / previews, Shock tethers (2 heroes x 5 targets x 7 segments), lightning bolts   // per-frame state sprites: fist glow / preview ring (2 heroes) + lightning segments (5 bolts x 7)
 const VS = `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; attribute vec4 iD;
 varying vec2 vQ; varying vec4 vC; varying vec3 vD;
 void main(){
@@ -28,8 +28,9 @@ void main(){
     vec3 ax = iB.xyz; float L = length(ax); ax = L > 1e-4 ? ax / L : vec3(0.0, 1.0, 0.0);
     vec3 vd = normalize(P - cameraPosition); vec3 sd = cross(ax, vd); float sl = length(sd); sd = sl > 1e-4 ? sd / sl : vec3(1.0, 0.0, 0.0);
     mv = viewMatrix * vec4(P + ax * (position.y * 0.5 * L) + sd * (position.x * S), 1.0);
-  } else if (sh > 3.5 && sh < 4.5 || sh > 6.5 && sh < 7.5 || sh > 13.5 && sh < 15.5) {
-    mv = viewMatrix * vec4(P + vec3(position.x * S, 0.0, position.y * S), 1.0);
+  } else if (sh > 3.5 && sh < 4.5) {   // ground light smear: flat on the ground, stretched along its velocity
+    vec3 ax = vec3(iB.x, 0.0, iB.z); float L = length(ax); ax = L > 1e-4 ? ax / L : vec3(1.0, 0.0, 0.0); vec3 sd = vec3(-ax.z, 0.0, ax.x);
+    mv = viewMatrix * vec4(P + ax * (position.y * (S + 0.5 * L)) + sd * (position.x * S), 1.0);
   } else if (sh > 4.5 && sh < 5.5) {
     vec3 ax = vec3(iB.x, 0.0, iB.z); float L = length(ax); ax = ax / max(L, 1e-4); vec3 sd = vec3(-ax.z, 0.0, ax.x);
     mv = viewMatrix * vec4(P + ax * (position.y * 0.5 * L) + sd * (position.x * S), 1.0);
@@ -44,11 +45,7 @@ const FS_ADD = `varying vec2 vQ; varying vec4 vC; varying vec3 vD;
 void main(){
   float sh = vD.x, r = length(vQ), a = 0.0; vec3 col = vC.rgb;
   if (sh < 0.5) { a = max(0.0, 1.0 - r); a *= a; col = mix(col, vec3(1.0), a * a * 0.6); }
-  else if (sh < 1.5 || (sh > 3.5 && sh < 4.5) || sh > 6.5) {
-    float th = vD.z, d = abs(r - (1.0 - th * 0.5)); a = 1.0 - smoothstep(th * 0.2, th * 0.5, d);
-    if (sh > 6.5) { float dash = step(0.35, fract(atan(vQ.y, vQ.x) * 5.0)); a = a * (0.45 + 0.55 * dash) + (r < 1.0 ? 0.10 * r * r : 0.0); }
-    col = mix(col, vec3(1.0), a * a * 0.55);
-  }
+  else if (sh > 3.5 && sh < 4.5) { a = max(0.0, 1.0 - r); a = a * a * a; col = mix(col, vec3(1.0), a * 0.5); }   // soft ground smear, no edge
   else if (sh < 2.5 || (sh > 5.5 && sh < 6.5)) { float ac = max(0.0, 1.0 - abs(vQ.x)); a = ac * ac * (1.0 - vQ.y * vQ.y); col = mix(col, vec3(1.0), ac * ac * ac); r = 0.0; }
   else if (sh < 3.5) { a = smoothstep(1.0, 0.5, r); col = vec3(1.0); }
   else { float ac = max(0.0, 1.0 - abs(vQ.x)); a = ac * smoothstep(1.0, 0.5, abs(vQ.y)); col = mix(col, vec3(1.0), ac * ac); r = 0.0; }
@@ -76,13 +73,6 @@ void main(){
     float ax = abs(vQ.x), w = fwidth(vQ.x) * 1.5, tip = smoothstep(1.0, 0.9, abs(vQ.y));
     a = (1.0 - smoothstep(1.0 - w, 1.0, ax)) * tip;
     col = mix(vec3(1.0), vec3(0.02, 0.02, 0.06), smoothstep(0.45 - w, 0.45, ax));
-  }
-  else if (sh > 13.5) {   // comic shockwave band on the ground: ink rims, white leading edge, hero colour behind it (reads on bright roofs where additive washes out)
-    float th = vD.z, d = r - (1.0 - th * 0.5), w = fwidth(r) * 1.5;
-    a = 1.0 - smoothstep(th * 0.5 - w, th * 0.5, abs(d));
-    float ink = smoothstep(th * 0.32 - w, th * 0.32, abs(d));
-    col = mix(mix(col, vec3(1.0), smoothstep(-th * 0.3, th * 0.3, d)), vec3(0.02, 0.02, 0.06), ink);
-    if (sh > 14.5) { float dash = step(0.4, fract(atan(vQ.y, vQ.x) * 24.0 / 6.2831853 + vD.y)); a *= dash; col = mix(vC.rgb, vec3(0.02, 0.02, 0.06), ink); }   // Slam radius preview: dashed, rotating
   }
   else { float m = max(abs(vQ.x), abs(vQ.y)); a = 1.0 - step(0.85, m); col = mix(col, vec3(0.0), step(0.6, m)); }
   a *= vC.a; if (a < 0.01) discard;
@@ -137,14 +127,14 @@ export function CombatFX({ sim }: { sim: Sim }) {
             if (n >= ADD_MAX + EXTRA) return; const o = n * 4; a1[o] = x; a1[o + 1] = y; a1[o + 2] = z; a1[o + 3] = size; b1[o] = dx; b1[o + 1] = dy; b1[o + 2] = dz; b1[o + 3] = sh; c1[o] = r; c1[o + 1] = g; c1[o + 2] = b; c1[o + 3] = al; d1[o] = u; d1[o + 1] = rot; d1[o + 2] = th; n++;
         };
         for (let i = 0; i < pool.addN; i++) {
-            const o = i * F, u = addP[o + 6] / addP[o + 7], sh = addP[o + 14], size = addP[o + 8] + (addP[o + 9] - addP[o + 8]) * (sh === 1 || sh === 4 ? 1 - Math.pow(1 - u, 3) : u);
-            let al = addP[o + 13] * (addP[o + 19] === 2 ? (1 - u) * (1 - u) : sh === 4 ? (u < 0.6 ? 1 : 1 - (u - 0.6) / 0.4) : sh === 5 ? (1 - u) * ((st.tick >> 1) & 1 ? 1 : 0.55) : 1 - u);
+            const o = i * F, u = addP[o + 6] / addP[o + 7], sh = addP[o + 14], size = addP[o + 8] + (addP[o + 9] - addP[o + 8]) * (sh === 4 ? 1 - Math.pow(1 - u, 2) : u);
+            let al = addP[o + 13] * (addP[o + 19] === 2 ? (1 - u) * (1 - u) : sh === 4 ? (1 - u) * (1 - u * 0.5) : sh === 5 ? (1 - u) * ((st.tick >> 1) & 1 ? 1 : 0.55) : 1 - u);
             let dx = addP[o + 3], dy = addP[o + 4], dz = addP[o + 5];
+            if (sh === 4) { const k = 0.03; dx *= k; dy = 0; dz *= k; }
             if (sh === 2) { const k = 0.035; dx *= k; dy *= k; dz *= k; const L = Math.hypot(dx, dy, dz); if (L < 0.08) { const s = 0.08 / Math.max(1e-4, L); dx *= s; dy *= s; dz *= s; } }
-            put(addP[o], addP[o + 1], addP[o + 2], size, dx, dy, dz, sh, addP[o + 10], addP[o + 11], addP[o + 12], al, u, addP[o + 17], sh === 1 ? Math.min(0.6, Math.max(0.04, addP[o + 18] * (1.15 - u) / Math.max(0.05, size))) : addP[o + 18]);   // ring thickness: metres -> fraction of radius (impact ring thins as it grows); ground ring: fraction
+            put(addP[o], addP[o + 1], addP[o + 2], size, dx, dy, dz, sh, addP[o + 10], addP[o + 11], addP[o + 12], al, u, addP[o + 17], addP[o + 18]);
         }
-        // per-frame state: Charged Slam fist glow + radius preview, dive fists
-        const previews: number[] = [];
+        // per-frame state: Charged Slam fist glow, dive fists (the blast radius is shown by ground motes, see fxChargeTick)
         for (const h of heroes) {
             const s = h.getSim(); if (!s || !h.visible()) continue; const S = (s as any).slam; if (!S) { h.full = false; continue; }
             const col = (s as any).fxCol ?? 0xa855f7; _c.setHex(col);
@@ -153,8 +143,6 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 const c = S.c, hz = 6 + 6 * c, pulse = 0.8 + 0.2 * Math.sin(s.t * hz * Math.PI * 2), size = (0.15 + 0.3 * c) * pulse;
                 put(_v.x, _v.y, _v.z, size * 2.2, 0, 0, 0, SH_GLOW, _c.r, _c.g, _c.b, 0.7 + 0.3 * c, 0, 0, 0);
                 put(_v.x, _v.y, _v.z, size * 0.9, 0, 0, 0, SH_CORE, 1, 1, 1, 0.9, 0, 0, 0);
-                put(s.pos[0], s.pos[1] - 0.95, s.pos[2], S.R, 0, 0, 0, SH_GPREVIEW, _c.r, _c.g, _c.b, 0.25 + 0.25 * c, 0, 0, 0.04);
-                previews.push(s.pos[0], s.pos[1] - 0.96, s.pos[2], S.R, _c.r, _c.g, _c.b, s.t * 0.15);
                 if (S.full && !h.full) emit(SH_CORE, _v.x, _v.y, _v.z, 0, 0, 0, 0.034, 1.2, 1.4, 0xffffff, 1);   // full charge: 1-frame white ping
                 h.full = S.full;
             } else if (S.ph >= 1 && S.ph <= 4) {
@@ -215,7 +203,6 @@ export function CombatFX({ sim }: { sim: Sim }) {
             d2[q] = u; d2[q + 1] = alphaP[o + 17]; d2[q + 2] = alphaP[o + 18];
         }
         let an = pool.alphaN;
-        for (let k = 0; k + 7 < previews.length && an < ALPHA_MAX + EXTRA_A; k += 8, an++) { const q = an * 4; a2[q] = previews[k]; a2[q + 1] = previews[k + 1]; a2[q + 2] = previews[k + 2]; a2[q + 3] = previews[k + 3]; b2[q] = 0; b2[q + 1] = 0; b2[q + 2] = 0; b2[q + 3] = 15; c2[q] = previews[k + 4]; c2[q + 1] = previews[k + 5]; c2[q + 2] = previews[k + 6]; c2[q + 3] = 0.9; d2[q] = previews[k + 7]; d2[q + 1] = 0; d2[q + 2] = 0.05; }
         for (let k = 0; k + 6 < strands.length && an < ALPHA_MAX + EXTRA_A; k += 7, an++) { const q = an * 4; a2[q] = strands[k]; a2[q + 1] = strands[k + 1]; a2[q + 2] = strands[k + 2]; a2[q + 3] = strands[k + 6]; b2[q] = strands[k + 3]; b2[q + 1] = strands[k + 4]; b2[q + 2] = strands[k + 5]; b2[q + 3] = 16; c2[q] = 1; c2[q + 1] = 1; c2[q + 2] = 1; c2[q + 3] = 1; d2[q] = 0; d2[q + 1] = 0; d2[q + 2] = 0; }
         B.instanceCount = an; for (const k of ['iA', 'iB', 'iC', 'iD']) { const at = B.attributes[k] as THREE.InstancedBufferAttribute; at.clearUpdateRanges(); at.addUpdateRange(0, an * 4); at.needsUpdate = true; }
         // ribbons: camera-facing strips, width tapers with age
@@ -249,7 +236,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 if (m.t >= M.hit - 0.09 && m.t <= M.hit + 0.1) { _v.setFromMatrixPosition((h.rig.b[LIMB[m.id]] as THREE.Bone).matrixWorld); trailPoint(h.base, _v.x, _v.y, _v.z, col, m.id >= 3 ? 0.2 : 0.12, 0.3); if (m.id === 7) { _w.setFromMatrixPosition((h.rig.b.handL as THREE.Bone).matrixWorld); trailPoint(h.base + 1, _w.x, _w.y, _w.z, col, 0.12, 0.22); } }
             }
             if (S && S.ph >= 2 && S.ph <= 4) { _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); trailPoint(h.base, _v.x, _v.y, _v.z, col, 0.16, 0.26); _w.setFromMatrixPosition((h.rig.b.handL as THREE.Bone).matrixWorld); trailPoint(h.base + 1, _w.x, _w.y, _w.z, col, 0.16, 0.26); }
-            if (S && S.ph === 0) { _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); fxChargeTick(_v.x, _v.y, _v.z, S.c, col, dt, h.acc); }
+            if (S && S.ph === 0) { _v.setFromMatrixPosition((h.rig.b.handR as THREE.Bone).matrixWorld); fxChargeTick(_v.x, _v.y, _v.z, S.c, col, dt, h.acc, s.pos[0], s.pos[1] - 1, s.pos[2], S.R, h.acc2); }
         }
         // visibility decided here (onBeforeRender only runs for visible meshes): no FX on screen = no FX draw calls
         let slamOn = false; for (const h of heroes) { const s = h.getSim(); if (s && ((s as any).slam || (s as any).snareT > 0 || (s as any).cWeb) && h.visible()) slamOn = true; }
