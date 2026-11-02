@@ -61,17 +61,17 @@ const rayMat = new THREE.ShaderMaterial({
       }`,
 });
 // Shifat Oct 29 "water bubble must be randomized particle emission": round glints with a per-particle size (aSize) and rgba fade.
-const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.11,sizeAttenuation:true,transparent:true,opacity:0.75,depthWrite:false,vertexColors:true});
+const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.42,sizeAttenuation:true,transparent:true,opacity:0.9,depthWrite:false,vertexColors:true});
 bubbleMat.onBeforeCompile = (shader) => {
     shader.vertexShader = 'attribute float aSize;\n' + shader.vertexShader.replace('gl_PointSize = size;', 'gl_PointSize = size * aSize;');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', 'diffuseColor.a*=(1.0-smoothstep(0.32,0.5,br))*(0.32+0.68*smoothstep(0.22,0.40,br));\n#include <opaque_fragment>');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', '/* real vent bubbles (Eifuku ref): clear centre, bright silvery rim, small specular highlight up-left, soft edge */ float hl=1.0-smoothstep(0.0,0.12,length(gl_PointCoord-vec2(0.36,0.32))); diffuseColor.rgb+=hl*0.6; diffuseColor.a*=(1.0-smoothstep(0.36,0.5,br))*(0.22+0.78*smoothstep(0.24,0.42,br))+hl*0.7;\n#include <opaque_fragment>');
 };
-bubbleMat.customProgramCacheKey = () => 'round-bubble-emitter-v3';
+bubbleMat.customProgramCacheKey = () => 'round-bubble-emitter-v4';
 // Pooled randomized bubble emitter: one Points draw, fixed typed arrays, no per-frame allocation. Each particle gets a random
 // size, rise speed, wobble (amplitude/frequency/phase), sideways drift and lifetime; it fades in, rises (speeding up slightly as it
 // grows, like a real bubble), and pops/fades just under the real wave-displaced surface at its own x/z. Emitters: seabed vents at
 // random spots around the camera, plus a stream off the hero while moving/diving (rate scales with speed).
-const BUB_N = QUALITY.coarse || QUALITY.weakGpu ? 110 : 220;
+const BUB_N = QUALITY.coarse || QUALITY.weakGpu ? 260 : 520;
 export function Underwater({ sim }: { sim: Sim }) {
     const kelp = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!), rayInst = useRef<THREE.InstancedMesh>(null!);
     const rayGeo = useMemo(() => { const g = new THREE.PlaneGeometry(1, RAY_LEN, 1, 1); g.translate(0, -RAY_LEN / 2, 0); return g; }, []);
@@ -112,14 +112,20 @@ export function Underwater({ sim }: { sim: Sim }) {
                 let k = -1; for (let j = 0; j < BUB_N; j++) { const q = (B.next + j) % BUB_N; if (B.age[q] >= B.life[q]) { k = q; break; } }
                 if (k < 0) return; B.next = (k + 1) % BUB_N;
                 const r = Math.random();
-                B.x[k] = x; B.y[k] = y; B.z[k] = z; B.age[k] = 0; B.life[k] = 2.5 + Math.random() * 5.5;
+                B.x[k] = x; B.y[k] = y; B.z[k] = z; B.age[k] = 0; B.life[k] = small ? 2.5 + Math.random() * 5.5 : 45;   /* real bubbles rise all the way and pop at the surface */
                 B.sz[k] = small ? 0.35 + r * 0.6 : 0.45 + r * r * 1.6; B.v[k] = 0.35 + B.sz[k] * 0.45 + Math.random() * 0.35;
                 B.wa[k] = 0.03 + Math.random() * 0.12; B.wf[k] = 2 + Math.random() * 5; B.wp[k] = Math.random() * 6.283;
                 B.dx[k] = (Math.random() - 0.5) * 0.25; B.dz[k] = (Math.random() - 0.5) * 0.25;
             };
             // seabed vents: Poisson-ish random emission in a 13 m disc around the camera, sometimes in little bursts
-            B.acc += dt * (BUB_N * 0.11);
+            B.acc += dt * (BUB_N * 0.035);
             while (B.acc >= 1) { B.acc -= 1; const a = Math.random() * 6.283, rr = 1.5 + Math.sqrt(Math.random()) * 11.5, x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr, burst = Math.random() < 0.18 ? 2 + Math.floor(Math.random() * 4) : 1; for (let q = 0; q < burst; q++) spawn(x + (Math.random() - 0.5) * 0.3, floor + Math.random() * 0.4, z + (Math.random() - 0.5) * 0.3, burst > 1); }
+            /* vent columns (real ref: Wikimedia 'Eifuku chimneys bubbles' - round silvery bubbles of mixed sizes streaming up from fixed spots on the floor):
+               fixed vents hashed on a 10 m grid around the camera (about 1 in 4 cells), each a steady stream */
+            { const VC = 10, gx0 = Math.floor(cx / VC), gz0 = Math.floor(cz / VC), hh = (a: number, b: number, s: number) => { const v = Math.sin(a * 127.1 + b * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
+              for (let ix = -2; ix <= 2; ix++) for (let iz = -2; iz <= 2; iz++) { const gx = gx0 + ix, gz = gz0 + iz; if (hh(gx, gz, 3.3) > 0.27) continue;
+                const vx = (gx + hh(gx, gz, 1.1)) * VC, vz = (gz + hh(gx, gz, 2.2)) * VC; if (vz > WATER_Z - 4) continue; const vb = inLake ? floor : seabedAt(vx, vz); if (vb > -2) continue;
+                if (Math.random() < dt * (1.4 + hh(gx, gz, 4.4) * 1.6)) spawn(vx + (Math.random() - 0.5) * 0.25, vb + 0.15, vz + (Math.random() - 0.5) * 0.25, false); } }
             // hero stream: more bubbles the faster you swim, extra on a dive
             const hv = Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]);
             if (hy < surfaceY - 0.3) { B.heroAcc += dt * (hv * 2.2 + (sim.dive ? 10 : 0) + 0.6); while (B.heroAcc >= 1) { B.heroAcc -= 1; spawn(hx + (Math.random() - 0.5) * 0.6, hy + 0.6 + Math.random() * 0.8, hz + (Math.random() - 0.5) * 0.6, true); } }
@@ -132,7 +138,7 @@ export function Underwater({ sim }: { sim: Sim }) {
                 const fin = Math.min(1, B.age[i] / 0.35), fout = Math.min(1, (B.life[i] - B.age[i]) / 0.6, (top - B.y[i]) / 0.35);
                 pa.setXYZ(i, bx, B.y[i], bz); ca.setW(i, fin * Math.max(0, fout)); za.setX(i, B.sz[i] * (1 + 0.15 * Math.min(1, B.age[i] / 3)));
             }
-            za.needsUpdate = true;
+            za.needsUpdate = true; (window as any).__bub = B.age.reduce((s: number, a: number, i: number) => s + (a < B.life[i] ? 1 : 0), 0);
             pa.needsUpdate = true; ca.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
             rays.current.position.set(0, 0, 0); rays.current.rotation.y = 0; rayMat.uniforms.uSurf.value = surfaceY;
             { const cam = st.camera, cx = cam.position.x, cz = cam.position.z, sun = TOD.sunU.value as THREE.Vector3, tilt = Math.min(0.5, Math.hypot(sun.x, sun.z) * 0.45), sa = Math.atan2(sun.x, sun.z), m = rayInst.current;
