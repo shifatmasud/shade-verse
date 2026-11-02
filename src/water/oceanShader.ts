@@ -52,7 +52,7 @@ ${GRID_TRACE_GLSL}
             if (D > 0.0) { float sq = sqrt(D); float t0 = max((-B - sq) / A, 0.5), t1 = min((-B + sq) / A, tb);
               if (t1 > t0) { float dt = (t1 - t0) / 8.0; float t = t0 + dt * 0.5;
                 for (int s = 0; s < 8; s++) { vec3 p = ro + hi * t; vec2 q = (p.xz - I.xy) / I.z; float dh = I.w * sqrt(max(0.0, 1.0 - dot(q, q)));
-                  float by = i == 2 ? I.w * pow(max(0.0, 1.0 - length(q - vec2(-0.13, -0.1)) * 1.1), 1.3) : bedY(p.xz);   /* the berg: one peaked mass, not a flat dome */ float h = i == 2 ? by : by > 9.0 ? dh : min(dh, by); if (i == 1) h = max(min(by, 9.0), I.w * smoothstep(0.92, 0.6, length(q)) * (0.55 + 0.45 * abs(sin(p.x * 0.23 + sin(p.z * 0.11) * 2.0) * sin(p.z * 0.19 + 1.3))));   /* farm: canopy plateau over its low ground */ float sf = (i == 2 ? 3.0 : 1.5) + t * 0.03;
+                  float by = i == 2 ? I.w * pow(max(0.0, 1.0 - length(q - vec2(-0.13, -0.1)) * 1.1), 1.3) : bedY(p.xz);   /* the berg: one peaked mass, not a flat dome */ float h = i == 2 ? by : by > 9.0 ? dh : min(dh, by); if (i == 1) h = max(min(by, 9.0), I.w * smoothstep(0.92, 0.6, length(q)) * (0.55 + 0.45 * abs(sin(p.x * 0.23 + sin(p.z * 0.11) * 2.0) * sin(p.z * 0.19 + 1.3))));   /* farm: canopy plateau over its low ground */ float sf = (i == 2 ? 4.5 : 3.0) + t * 0.05;
                   float k = smoothstep(-sf, sf, h - p.y) * (1.0 - cov);
                   if (k > 0.01) { vec3 col = i == 2 ? vec3(0.74, 0.86, 0.94) : mix(vec3(0.85, 0.8, 0.62), vec3(0.16, 0.42, 0.2), smoothstep(1.5, 5.0, i == 1 ? p.y * 2.0 : h));
                     if (tb > 9e4) { tb = t; nb = normalize(vec3(q.x, 0.6, q.y)); bh = -1.0; }
@@ -165,7 +165,7 @@ ${GRID_TRACE_GLSL}
         /* reflection probe (Shifat 4:30 PM 'cheap techniques?' + 4:57 PM 'super blurry ok'): the rippled reflection ray looks up a tiny cubemap of the
            city / island / bridge, heavily mip-blurred; tinted toward the water's blue and laid in subtly (shared look, src/water/common.ts).
            One blurry fetch for the body + one sharper fetch for the night neon. No mirror render at all. */
-        vec3 rd = normalize(vec3(r.x + n.x * 0.12, max(r.y, 0.02), r.z + n.z * 0.12));
+        vec3 rd = normalize(vec3(r.x + n.x * 0.2, max(r.y, 0.02), r.z + n.z * 0.2));
         /* reflection ILLUSION (Shifat Oct 31 12:58): no probe render - one lookup in the CPU-projected skyline ring (azimuth -> silhouette top + colour).
            The ripple normal smears the elevation test into soft vertical streaks, like real harbour water at dusk. */
         /* Shifat Nov 1 11:13 'reflection moves with the camera, feels wrong': the ring was looked up by direction alone (as if every silhouette were at infinity),
