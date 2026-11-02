@@ -438,8 +438,8 @@ export function rideTarget(s: Sim): number {
     return best;
 }
 /** Web anchor under the nearest suitable car ahead (or null). Same distance/aim rules as building anchors. */
-function findCarAnchor(s: Sim, bestScore: number): { a: V3; sc: number; i: number } | null {
-    const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw); let out: { a: V3; sc: number; i: number } | null = null;
+function findCarAnchor(s: Sim, bestScore: number, hd?: [number, number]): { a: V3; sc: number; i: number } | null {
+    const p = s.pos, fx = hd ? hd[0] : Math.sin(s.yaw), fz = hd ? hd[1] : Math.cos(s.yaw); let out: { a: V3; sc: number; i: number } | null = null;
     for (let i = 0; i < CAR_N; i++) {
         const c = carAt(i, s.t); if (c.wrap) continue;
         const dx = c.x - p[0], dz = c.z - p[2], dh = Math.hypot(dx, dz) || 1, dy = c.y + CAR_BOT - p[1];
@@ -457,10 +457,11 @@ function findCarAnchor(s: Sim, bestScore: number): { a: V3; sc: number; i: numbe
     }
     return out;
 }
-function findAnchor(s: Sim, strict = false): V3 {
-    const p = s.pos, fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+function findAnchor(s: Sim, strict = false, hd?: [number, number], skipB = -1): V3 {
+    const p = s.pos, fx = hd ? hd[0] : Math.sin(s.yaw), fz = hd ? hd[1] : Math.cos(s.yaw);   // hd: search heading override (leaving a wall: away from it)
     let best: V3 | null = null, bs = 1e9;
-    for (const b of blds) {
+    for (let bi = 0; bi < blds.length; bi++) {
+        const b = blds[bi]; if (bi === skipB) continue;   // never the wall the hero is leaving
         const qx = Math.max(b.x0, Math.min(b.x1, p[0])), qz = Math.max(b.z0, Math.min(b.z1, p[2]));
         const dx = qx - p[0], dz = qz - p[2], dh = Math.hypot(dx, dz), dy = b.h - p[1];
         if (dy < 8 || dh < 10) continue;
@@ -479,11 +480,31 @@ function findAnchor(s: Sim, strict = false): V3 {
         const sc = Math.abs(dist - 40) + (1 - dot) * 50;
         if (sc < bs) { bs = sc; best = [a[0], a[1], a[2]]; }
     }
-    const car = findCarAnchor(s, bs);
+    const car = findCarAnchor(s, bs, hd);
     if (car) { const a = car.a as any; a.car = car.i; return a; }
     if (strict && !best) return null as any; // spring-shot needs a real building anchor, never empty air
     return best || [p[0] + fx * 24, p[1] + 26, p[2] + fz * 24];
 }
+
+/* Shifat Nov 2 10:37/10:39 AM: web spring, web swing and flight must work from wall crawling and on rooftops.
+   Leaving a wall: the move heads AWAY from the wall - the camera heading mirrored off the wall (sideways part kept, into-wall part flipped outward),
+   and the camera swings round to that heading so the hero flies out in front of it. */
+function leaveHeading(s: Sim): [number, number] {
+    const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+    if (!s.wall) return [fx, fz];
+    const n = s.wall, d = fx * n[0] + fz * n[1];
+    if (d > 0.5) return [fx, fz];   // camera already looks away from the wall
+    const tx = fx - d * n[0], tz = fz - d * n[1], hx = n[0] + tx * 0.8, hz = n[1] + tz * 0.8, hl = Math.hypot(hx, hz) || 1;
+    return [hx / hl, hz / hl];
+}
+function leaveWall(s: Sim, h: [number, number]) {
+    if (!s.wall) return;
+    s.webDepartB = s.wallB; s.wall = null; s.wallT = 0.3; s.ground = false;
+    const to = Math.atan2(h[0], h[1]), dy = ((to - s.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    if (Math.abs(dy) > 0.3) { const g = s as any; g.yawTo = to; g.yawTurnT = 0.6; g.yawTurnDrag = s.lastDrag; }   // camera swings round behind the hero (cancelled by any manual look)
+}
+/** Air anchor for a web move with no building in reach (open rooftop, open air off a wall): up and out along the heading. */
+function airAnchor(s: Sim, h: [number, number], fwd: number, up: number): V3 { const p = s.pos; return [p[0] + h[0] * fwd, p[1] + up, p[2] + h[1] * fwd]; }
 
 
 // PLASMA WEB SHOT targeting: nearest live enemy near the aim direction with clear line of sight.
@@ -598,6 +619,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
     const turn = (k['arrowleft'] ? 1 : 0) - (k['arrowright'] ? 1 : 0);
     if (turn) { s.yaw += turn * 2.0 * dt; s.lastDrag = s.t; }
+    { const g = s as any; if (g.yawTurnT > 0) { g.yawTurnT -= dt; if (s.lastDrag !== g.yawTurnDrag || s.camHeld) g.yawTurnT = 0; else { const dy = ((g.yawTo - s.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI; s.yaw += dy * (1 - Math.exp(-11 * dt)); } } }   // leave-wall camera swing (leaveWall)
     if (k['arrowup'] || k['arrowdown']) { s.pitch = Math.max(-1.15, Math.min(1.35, s.pitch + ((k['arrowdown'] ? 1 : 0) - (k['arrowup'] ? 1 : 0)) * dt)); s.lastDrag = s.t; }
     const swingHeld = input.swing;   // desktop pass: swing is held through input.swing only (right mouse hold / LT / touch button)
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx;
@@ -607,19 +629,29 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
 
     if (input.swingQ && !s.web) {
         s.grappleFlight = false; s.webDepartB = s.wall ? s.wallB : undefined;
-        { const sa = findAnchor(s, true); s.anchorReal = !!sa; s.anchor = sa || findAnchor(s); (s as any).anchorCar = (sa as any)?.car ?? -1; } s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); s.swings++;
-        const d = norm(sub(s.anchor, p)); v[0] += d[0] * 6; v[1] += d[1] * 4; v[2] += d[2] * 6; s.ground = false; s.wall = null; ev.attach();
+        const fromWall = s.wall, h = leaveHeading(s), roofStart = s.ground && p[1] > 4 && !fromWall;   // a roof (or any raised deck), not the street
+        { const sa = findAnchor(s, true, h, fromWall ? s.wallB : -1); s.anchorReal = !!sa; s.anchor = sa || (fromWall ? airAnchor(s, h, 22, 24) : roofStart ? airAnchor(s, h, 24, 30) : findAnchor(s)); (s as any).anchorCar = (sa as any)?.car ?? -1; } s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); s.swings++;
+        const d = norm(sub(s.anchor, p)); v[0] += d[0] * 6; v[1] += d[1] * 4; v[2] += d[2] * 6; s.ground = false;
+        if (fromWall) { leaveWall(s, h); v[0] += fromWall[0] * 9; v[2] += fromWall[1] * 9; v[1] = Math.max(v[1], 6); }   // kick off the wall into the swing
+        if (roofStart) { v[1] = Math.max(v[1], 15); v[0] += d[0] * 8; v[2] += d[2] * 8; (s as any).swingReel = 0.7; }   // hop off the roof; the web reels you up and out (below) so the arc clears the roof
+        s.wall = null; ev.attach();
     }
     input.swingQ = false;
     if (!swingHeld && s.web) { s.web = false; v[1] += 3; ev.release(); }
     let springAnchor: V3 | null = null;
     // web grab button: two-hand web to the nearest real building anchor, then the same spring travel as the spring jump
-    if (input.grabQ) { input.grabQ = false; if (!s.swim && !s.wall && s.spring <= 0) springAnchor = findAnchor(s, true); }
+    let springWall: [number, number] | null = null, springH: [number, number] | null = null;
+    if (input.grabQ) { input.grabQ = false; if (!s.swim && s.spring <= 0) {
+        springH = leaveHeading(s); springWall = s.wall;
+        springAnchor = findAnchor(s, true, springH, s.wall ? s.wallB : -1) || (s.wall ? airAnchor(s, springH, 22, 20) : airAnchor(s, springH, 22, 18));   // no building in reach: launch up and out anyway (never a dead button)
+        if (!(springAnchor as any).roof && !(springAnchor as any).car) s.anchorReal = false;
+    } }
     if (!springAnchor && input.jumpQ && !s.swim && !s.wall && (s.web || (swingHeld && !s.ground)) && s.spring <= 0) springAnchor = s.web ? (s.anchorReal ? s.anchor : null) : findAnchor(s, true);
     if (springAnchor) {
         // PROTOTYPE spring-shot jump (both hands): JUMP while the web is out, or JUMP while holding SWING in the air, springs toward the anchor
         input.jumpQ = false;
         (s as any).anchorCar = (springAnchor as any).car ?? ((springAnchor === s.anchor) ? (s as any).anchorCar ?? -1 : -1); s.anchor = springAnchor; s.grappleFlight = true;
+        if (springWall && springH) leaveWall(s, springH);   // spring straight off a wall crawl
         const d = norm(sub(s.anchor, p)); s.web = false; s.spring = 0.4; s.ground = false;
         const R = (springAnchor as any).roof as V3 | undefined;
         if (R) {   /* Shifat 3:39 AM 'web spring must take you on top of the attached object': a ballistic arc that clears the roof edge and lands on top */
@@ -715,7 +747,8 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     if (s.web) {
         s.webT += dt; s.rope = Math.max(10, s.rope - 1.5 * dt);
         const a = s.anchor, d = sub(p, a), l = len(d);
-        if (a[1] - p[1] > 25 && l < s.rope - 0.5 && s.webT < 1.6) { // low start: reel the hero up toward the anchor (zip)
+        const reel = ((s as any).swingReel = Math.max(0, ((s as any).swingReel || 0) - dt)) > 0;   // roof start: reel in for 0.7 s so the arc clears the roof
+        if (((a[1] - p[1] > 25 && l < s.rope - 0.5) || reel) && s.webT < 1.6) { // low start: reel the hero up toward the anchor (zip)
             const kk = 34 * dt; v[0] -= d[0] / l * kk; v[1] -= d[1] / l * kk; v[2] -= d[2] / l * kk; s.rope = Math.max(12, Math.min(s.rope, l + 3));
         }
         if (l > s.rope) {
