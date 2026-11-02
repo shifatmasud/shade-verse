@@ -61,8 +61,8 @@ void main(){
     /* Shifat 10:51 PM: white blurry wavy intersection line (ref: Wikimedia 'Blacktip reef sharks at Moorea 2025' split shot - a soft bright
        white-cyan meniscus right on the line, a faint glow just above it, and a darker blue band just below where the underside mirrors the deep) */
     float lb = max(dot(uUwC, vec3(0.3, 0.5, 0.2)) * 3.0, 0.25);   // follows day/night through the underwater colour
-    c = mix(c, c * vec3(0.55, 0.7, 0.85), (1.0 - smoothstep(0.0, 0.09, -wd)) * step(wd, 0.0) * 0.45);
-    c += vec3(0.85, 0.95, 1.0) * min(lb, 1.0) * (exp(-wd * wd / 0.00018) * 0.7 + exp(-(wd - 0.012) * (wd - 0.012) / 0.0016) * 0.18);
+    c = mix(c, c * vec3(0.55, 0.7, 0.85), (1.0 - smoothstep(0.0, 0.05, -wd)) * step(wd, 0.0) * 0.4);
+    c += vec3(0.85, 0.95, 1.0) * min(lb, 1.0) * (exp(-wd * wd / 0.00004) * 0.65 + exp(-(wd - 0.006) * (wd - 0.006) / 0.0004) * 0.12);
   }
   gl_FragColor = vec4(c, 1.0);
 }`;
