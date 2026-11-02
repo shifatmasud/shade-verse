@@ -93,7 +93,7 @@ export function Underwater({ sim }: { sim: Sim }) {
             for (let k = 0; k < m && n < 1400; k++) {
                 const x = (cx + hz(cx, cz, k + 2.1)) * C, z = (cz + hz(cx, cz, k + 5.7)) * C; if (z > WATER_Z - 4) continue; const bed = seabedAt(x, z); if (bed > -3 || bed < -34) continue;
                 const d = -bed, kk = 0.6 + hz(cx, cz, k + 8.3) * 1.1; ko.position.set(x, bed, z); ko.rotation.set(0, hz(cx, cz, k + 3.3) * 3.14, 0);
-                ko.scale.set(kk * (0.5 + hz(cx, cz, k + 4.4) * 0.6), Math.min(d * (0.55 + hz(cx, cz, k + 6.6) * 0.4), 14) / 6, kk); ko.updateMatrix(); kelp.current.setMatrixAt(n++, ko.matrix);
+                ko.scale.set(kk * (0.5 + hz(cx, cz, k + 4.4) * 0.6), Math.max(d * (0.82 + hz(cx, cz, k + 6.6) * 0.16) - 0.6, 1.5) / 6   /* real giant kelp (ref /tmp/uwr/kelp.jpg): stipes rise to just under the surface, forming tall columns */, kk); ko.updateMatrix(); kelp.current.setMatrixAt(n++, ko.matrix);
             }
         }
         kelp.current.count = n; kelp.current.instanceMatrix.needsUpdate = true;
