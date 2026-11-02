@@ -52,7 +52,8 @@ vec4 cloudSky(vec3 dn, vec3 sun, float t, float warm, float rain, vec3 hor){
   float d=smoothstep(cov,cov+0.2,f-er), d2=smoothstep(cov,cov+0.2,f2-er);
   float hz=smoothstep(0.0,0.16,dn.y);
   if(d<=0.001) return vec4(0.0);
-  float T=exp(-2.6*d2), pw=1.0-exp(-3.0*d);
+  float d3=smoothstep(cov,cov+0.2,cloudFbm(cp*0.93)+0.3*cl-0.12-er);   /* cloud mass above this point (toward the zenith) -> we are in the lower part: darker, flatter grey base like real cumulus */
+  float T=exp(-2.6*d2)*mix(1.0,0.55,d3*d), pw=1.0-exp(-3.0*d);
   float lit=clamp(T*mix(1.0,pw,0.6)*1.25,0.0,1.0);
   float ph=pow(g,6.0)*0.6+pow(g,40.0)*0.9;
   float sss=ph*(1.0-d)*1.6+ph*0.25;
