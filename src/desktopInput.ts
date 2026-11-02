@@ -1,7 +1,7 @@
 // Desktop input (Shifat's final desktop map, Oct 29 00:55): mouse + keyboard and gamepad, routed onto the EXISTING input flags only.
 // Mouse: pointer-lock look; left tap = web shot, left hold = Web Shock (specialQ); right tap = web spring (grabQ), right hold = swing.
-// Keys (in App): WASD move, Space = the mobile jump button 1:1, K / Ctrl / M / "." melee.
-// Extra keys (here, env-iter2): I = Space, L / Alt = left button, J / Shift = right button (same tap/hold code path).
+// Keys (in App): WASD move, arrows camera, Space = the mobile jump button 1:1, K / Ctrl melee.
+// Extra keys (Shifat Nov 2 4:40 AM final map): I = Space, J = left button (shot/shock), L = right button (spring/swing).
 // Gamepad (standard mapping): left stick move, right stick camera, A = Space, RB tap shot / hold Web Shock, LT tap spring / hold swing, X melee.
 import { input, type Sim } from './sim';
 
@@ -39,7 +39,7 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
         if (e.button === 0) releaseL('mouse');
         if (e.button === 2) releaseR('mouse');
     };
-    const L_KEYS: Record<string, 1> = { KeyL: 1, AltLeft: 1, AltRight: 1 }, R_KEYS: Record<string, 1> = { KeyJ: 1, ShiftLeft: 1, ShiftRight: 1 };
+    const L_KEYS: Record<string, 1> = { KeyJ: 1 }, R_KEYS: Record<string, 1> = { KeyL: 1 };   /* Shifat Nov 2 4:40 AM final map: J = long range (left button), L = web move (right button) */
     let iHeld = false;   // I = Space 1:1 (same flags as the Space key / mobile jump button); input.keys['@i'] lets Space and I share one press
     const pressJump = () => { if (iHeld) return; iHeld = true; input.keys['@i'] = true; if (!input.keys[' ']) { input.jumpQ = true; input.jumpHeld = true; } };
     const releaseJump = () => { if (!iHeld) return; iHeld = false; input.keys['@i'] = false; if (!input.keys[' ']) { input.jumpHeld = false; input.jumpReleased = true; } };
@@ -115,8 +115,8 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
 }
 
 export const MAP_KB: [string, string][] = [
-    ['WASD', 'Move'], ['Mouse', 'Camera (click to lock, Esc frees)'], ['Space / I', 'Tap jump · 2× double jump · hold fly · release glide · tap cancel'],
-    ['Left click / L / Alt', 'Tap web shot · hold Web Shock'], ['Right click / J / Shift', 'Tap web spring · hold swing'], ['K / Ctrl / M / .', 'Melee'],
+    ['WASD', 'Move'], ['Arrows / Mouse', 'Camera (click to lock, Esc frees)'], ['J / Left click', 'Tap web shot · hold Web Shock'],
+    ['I / Space', 'Tap jump · hold fly'], ['K / Ctrl', 'Melee'], ['L / Right click', 'Tap web spring · hold swing'],
 ];
 export const MAP_PAD: [string, string][] = [
     ['L-stick', 'Move'], ['R-stick', 'Camera'], ['A', 'Tap jump · 2× double · hold fly · release glide'],

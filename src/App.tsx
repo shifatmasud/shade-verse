@@ -119,7 +119,7 @@ export function App() {
             if (sim.mode !== 'play') { if (!e.repeat && !['escape', 'tab', 'meta', 'alt', 'control', 'shift', 'capslock'].includes(k)) start(); input.keys[k] = true; return; }   // title screen: any key starts
             if (!coarse) { deskRef.current = true; setDesk(true); }
             if (k === ' ' && !input.keys[' '] && !input.keys['@i']) { input.jumpQ = true; input.jumpHeld = true; }   // identical flags/timing to the mobile jump button
-            if ((k === 'k' || k === 'm' || k === '.' || k === 'control') && !input.keys[k]) { input.meleeQ = true; input.attackQ = true; }
+            if ((k === 'k' || k === 'control') && !input.keys[k]) { input.meleeQ = true; input.attackQ = true; }
             input.keys[k] = true;
         };
         const up = (e: KeyboardEvent) => { const k = normKey(e); input.keys[k] = false; if (k === ' ' && !input.keys['@i']) { input.jumpHeld = false; input.jumpReleased = true; } };
