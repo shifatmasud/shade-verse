@@ -19,13 +19,15 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
     const pressL = (src: string) => { if (lSrc.has(src)) return; if (lSrc.size === 0) { lmb = { down: true, t: performance.now(), fired: false }; ev.onCharge(true); } lSrc.add(src); };
     const releaseL = (src: string) => {
         if (!lSrc.delete(src) || lSrc.size) return;
-        if (lmb.down) { lmb.down = false; ev.onCharge(false); if (!lmb.fired && playing()) { input.shotQ = true; input.attackQ = true; } }
+        if (lmb.down) { lmb.down = false; ev.onCharge(false); if (!lmb.fired && playing()) { if (performance.now() - lmb.t > HOLD_MS) input.specialQ = true; else { input.shotQ = true; input.attackQ = true; } } }   // the hold is decided by press time, not by whether a frame landed inside it (a long frame read a 450 ms hold as a tap)
     };
     const pressR = (src: string) => { if (rSrc.has(src)) return; if (rSrc.size === 0) rmb = { down: true, t: performance.now(), swinging: false }; rSrc.add(src); };
     const releaseR = (src: string) => {
         if (!rSrc.delete(src) || rSrc.size) return;
-        if (rmb.down) { rmb.down = false; if (rmb.swinging) input.swing = false; else if (playing()) input.grabQ = true; }
+        if (rmb.down) { rmb.down = false; if (rmb.swinging) input.swing = false; else if (playing()) { if (performance.now() - rmb.t > HOLD_MS) lateSwing(); else input.grabQ = true; } }
     };
+    // a hold the frame-tick missed (long frame / hitch): still a swing, held for 2 frames so the sim sees it, then released
+    let lateRel = 0; const lateSwing = () => { input.swing = true; input.swingQ = true; lateRel = 2; };
     const cancelAll = () => { lSrc.clear(); rSrc.clear(); if (rmb.swinging) input.swing = false; if (lmb.down) ev.onCharge(false); lmb.down = rmb.down = false; };
     const onDown = (e: MouseEvent) => {
         if (!isDesk() || !playing()) return;
@@ -78,6 +80,7 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
         // mouse hold thresholds
         if (lmb.down && !lmb.fired && now - lmb.t > HOLD_MS) { lmb.fired = true; ev.onCharge(false); if (playing()) input.specialQ = true; }
         if (rmb.down && !rmb.swinging && now - rmb.t > HOLD_MS && playing()) { rmb.swinging = true; input.swing = true; input.swingQ = true; }
+        if (lateRel > 0 && --lateRel === 0 && !rmb.swinging && !gp.ltSwing) input.swing = false;
         const pads = navigator.getGamepads ? navigator.getGamepads() : [];
         let p: Gamepad | null = null; for (const q of pads) if (q && q.connected) { p = q; break; }
         if (!p) return;
@@ -95,12 +98,12 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
         const rb = b(5);
         if (rb && !gp.rb) { gp.rbT = now; gp.rbFired = false; }
         if (rb && !gp.rbFired && now - gp.rbT > HOLD_MS) { gp.rbFired = true; input.specialQ = true; }
-        if (!rb && gp.rb && !gp.rbFired) { input.shotQ = true; input.attackQ = true; }
+        if (!rb && gp.rb && !gp.rbFired) { if (now - gp.rbT > HOLD_MS) input.specialQ = true; else { input.shotQ = true; input.attackQ = true; } }
         gp.rb = rb;
         const lt = b(6);
         if (lt && !gp.lt) { gp.ltT = now; gp.ltSwing = false; }
         if (lt && !gp.ltSwing && now - gp.ltT > HOLD_MS) { gp.ltSwing = true; input.swing = true; input.swingQ = true; }
-        if (!lt && gp.lt) { if (gp.ltSwing) input.swing = false; else input.grabQ = true; }
+        if (!lt && gp.lt) { if (gp.ltSwing) input.swing = false; else if (now - gp.ltT > HOLD_MS) lateSwing(); else input.grabQ = true; }
         gp.lt = lt;
     };
     raf = requestAnimationFrame(tick);
