@@ -80,15 +80,28 @@ export function Underwater({ sim }: { sim: Sim }) {
     const bGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BUB_N * 3).fill(-9999), 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(BUB_N * 4).fill(1), 4)); g.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(BUB_N).fill(1), 1)); return g; }, []);
     // particle state (pooled): base x/z, y, rise speed, age, life, wobble amp/freq/phase, drift x/z, size; alive when age < life
     const B = useMemo(() => ({ x: new Float32Array(BUB_N), y: new Float32Array(BUB_N), z: new Float32Array(BUB_N), v: new Float32Array(BUB_N), age: new Float32Array(BUB_N).fill(1), life: new Float32Array(BUB_N).fill(0), wa: new Float32Array(BUB_N), wf: new Float32Array(BUB_N), wp: new Float32Array(BUB_N), dx: new Float32Array(BUB_N), dz: new Float32Array(BUB_N), sz: new Float32Array(BUB_N), acc: 0, heroAcc: 0, next: 0, lastT: -1 }), []);
-    useEffect(() => {
-        let r = 3; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647; const o = new THREE.Object3D();
-        for (let i = 0; i < 1400; i++) { const cx = (rn() - 0.5) * 2 * (HALF - 20), cz = WATER_Z - 6 - rn() * 110, k = 0.6 + rn() * 1.1; o.position.set(cx, seabedAt(cx, cz), cz); o.rotation.set(0, rn() * 3.14, 0); o.scale.set(k * (0.5 + rn() * 0.6), 0.45 + rn() * 1.0, k); o.updateMatrix(); kelp.current.setMatrixAt(i, o.matrix); }
-        kelp.current.instanceMatrix.needsUpdate = true;
-    }, []);
+    /* Shifat 11:07 PM 'full seabed must have kelps': a kelp forest that follows the camera over the WHOLE sea floor (was one strip by the city shore).
+       Ref: Wikimedia 'Kelp forest and sardines, San Clemente Island' - tall stipes rising toward the light, clumped, fading into blue haze.
+       Stable per 8 m cell (hash), rebuilt only when the camera crosses a cell; only on 3-34 m deep floor (kelp needs light). */
+    const kc = useMemo(() => ({ cx: 1e9, cz: 1e9 }), []), ko = useMemo(() => new THREE.Object3D(), []);
+    const placeKelp = (px: number, pz: number) => {
+        const C = 8, R = 10, gx = Math.floor(px / C), gz = Math.floor(pz / C); if (gx === kc.cx && gz === kc.cz) return; kc.cx = gx; kc.cz = gz;
+        let n = 0; const hz = (a: number, b: number, s: number) => { const v = Math.sin(a * 127.1 + b * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
+        for (let ix = -R; ix < R; ix++) for (let iz = -R; iz < R; iz++) {
+            const cx = gx + ix, cz = gz + iz; const clump = hz(Math.floor(cx / 3), Math.floor(cz / 3), 9.1); if (clump < 0.35) continue;   // forests come in clumps with open sand between
+            const m = 1 + Math.floor(hz(cx, cz, 1.3) * 4);
+            for (let k = 0; k < m && n < 1400; k++) {
+                const x = (cx + hz(cx, cz, k + 2.1)) * C, z = (cz + hz(cx, cz, k + 5.7)) * C; if (z > WATER_Z - 4) continue; const bed = seabedAt(x, z); if (bed > -3 || bed < -34) continue;
+                const d = -bed, kk = 0.6 + hz(cx, cz, k + 8.3) * 1.1; ko.position.set(x, bed, z); ko.rotation.set(0, hz(cx, cz, k + 3.3) * 3.14, 0);
+                ko.scale.set(kk * (0.5 + hz(cx, cz, k + 4.4) * 0.6), Math.min(d * (0.55 + hz(cx, cz, k + 6.6) * 0.4), 14) / 6, kk); ko.updateMatrix(); kelp.current.setMatrixAt(n++, ko.matrix);
+            }
+        }
+        kelp.current.count = n; kelp.current.instanceMatrix.needsUpdate = true;
+    };
     useFrame((st) => {
         const t = sim.t, hx = sim.pos[0], hy = sim.pos[1], hz = sim.pos[2], inBay = hz < WATER_Z + 6, inLake = isLakeWater(hx, hz), inWater = inBay || inLake, surfaceY = inLake ? waterSurfaceAt(hx, hz, t) : WATER_Y, under = inWater && st.camera.position.y < surfaceY + 1.5 && sim.mode === 'play';
         kelpMat.uniforms.uTime.value = t; rayMat.uniforms.uTime.value = t;
-        kelp.current.visible = inBay && sim.mode === 'play' && st.camera.position.y < surfaceY + 14;   /* Shifat 12:57 AM: the underwater world must show from above too (was: only with the lens under) */   /* Shifat Oct 31 2:29 PM night screenshot: seen from above through the clear water the blades read as rain streaks over the whole sea - only drawn when the lens is at/below the surface */ const cu = under && st.camera.position.y < surfaceY - 0.05 && st.camera.position.y < waterRenderY(st.camera.position.x, st.camera.position.z, t) - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // env-iter3: also below the real (wave-displaced) sea surface, not just the flat sea level   // shafts and bubbles only once the camera is really below either water surface
+        kelp.current.visible = inBay && sim.mode === 'play' && st.camera.position.y < surfaceY + 14; if (kelp.current.visible) placeKelp(st.camera.position.x, st.camera.position.z);   /* Shifat 12:57 AM: the underwater world must show from above too (was: only with the lens under) */   /* Shifat Oct 31 2:29 PM night screenshot: seen from above through the clear water the blades read as rain streaks over the whole sea - only drawn when the lens is at/below the surface */ const cu = under && st.camera.position.y < surfaceY - 0.05 && st.camera.position.y < waterRenderY(st.camera.position.x, st.camera.position.z, t) - 0.05; bub.current.visible = cu; rays.current.visible = cu;   // env-iter3: also below the real (wave-displaced) sea surface, not just the flat sea level   // shafts and bubbles only once the camera is really below either water surface
         if (!inWater) return;
         if (under) {
             const pa = bub.current.geometry.attributes.position as THREE.BufferAttribute, ca = bub.current.geometry.attributes.color as THREE.BufferAttribute, za = bub.current.geometry.attributes.aSize as THREE.BufferAttribute;
