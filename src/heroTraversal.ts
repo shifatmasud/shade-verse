@@ -1,12 +1,13 @@
 import * as THREE from 'three';
+import { buildings, parkH } from './sim';
 
 /* Hero traversal body motion (Shifat Nov 2 1:47 PM: "Learn animations from this", Ultimate Spider-Man PS2 night swinging; notes in files/anim_ref/notes.md).
    Procedural layer on top of the existing rig: it only moves the body (poseRoot pitch/roll + bones). Physics, inputs, timings and hitboxes are untouched.
    SWING (reference 11.2-12.6 s, 20.0-20.9 s, 21.6-22.7 s): the body hangs from the line hand and pendulums with the rope, lagging it (spring), so right after
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
-type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number };
-const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0 });
+type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number };
+const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const sstep = (x: number) => { x = cl(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -26,12 +27,28 @@ function swinging(sim: any) { return !!sim.web && free(sim); }
 /* RELEASE FLIP (ref 12.0-12.8 s, 24.3-25.8 s): letting go on the rise carries the swing's rotation on into a tucked backflip, inverted ~0.25 s after the release,
    upright again by ~0.6 s. Low releases (not rising) go straight to the air pose. A new web, a landing, a wall, glide or any combat move takes over at once. */
 const FLIP_DUR = 0.62;
+/* FREEFALL (ref 13.1-13.7 s, 16.4-16.8 s, 22.8-23.4 s): falling turns the body belly-down into a skydiver frog: arms wide with the forearms up,
+   knees bent and apart, back arched, head up; it banks into turns and has a slow bob/roll. Weight grows with the fall speed (4 -> 14 m/s). */
+// feet height above the roof/street under the hero (roof boxes + park ground; a sea/island miss only means the spread holds a little longer)
+function clearance(x: number, y: number, z: number) {
+    let g = Math.max(0, parkH(x, z));
+    for (let i = 0; i < buildings.length; i++) { const b = buildings[i]; if (b.h > g && x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) g = b.h; }
+    return y - 1 - g;
+}
+// unwinds to feet-first in the last ~0.35 s before touchdown, so a landing never arrives belly-first (short hops stay upright)
+const fallW = (sim: any) => {
+    if (sim.web || !free(sim) || sim.vel[1] > -4) return 0;
+    const w = sstep((-sim.vel[1] - 4) / 10); if (w <= 0) return 0;
+    const tti = clearance(sim.pos[0], sim.pos[1], sim.pos[2]) / -sim.vel[1];
+    return w * sstep((tti - 0.15) / 0.25);
+};
 
 /** after applyHeroRootPose has set the plain lean/bank: swing pitch/roll from the rope, blended in, pivot-compensated */
 export function traversalRoot(sim: any, rig: any, dt: number, scale: number) {
     const T = tv(rig), pr = rig.poseRoot as THREE.Group, root = rig.root as THREE.Group;
     const h = Math.min(dt, 0.1), sw = swinging(sim);
     const lean0 = pr.rotation.x, bank0 = pr.rotation.z;
+    T.fw = 0;
     if (T.fl && (sw || !free(sim))) { T.fl = 0; T.p = wrapPi(T.p); T.pv = cl(T.pv, -8, 8); }   // interrupted: hand the current angle on, no pop
     if (!sw && T.on && !sim.web && free(sim) && sim.vel[1] > 3 && Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]) > 10) {   // released on the rise
         T.fl = 1; T.flT = 0; T.flD = FLIP_DUR; T.flP0 = T.p; T.flV0 = cl(T.pv, -9, 0); T.flE = lean0 - Math.PI * 2;
@@ -54,12 +71,19 @@ export function traversalRoot(sim: any, rig: any, dt: number, scale: number) {
         [T.p, T.pv] = spring(T.p, T.pv, tp, 42, 7.5, h);   // ~6.5 rad/s, under-damped: lags the rope and overshoots a little (follow-through)
         [T.r, T.rv] = spring(T.r, T.rv, tr, 30, 8, h);
         T.w += (1 - T.w) * Math.min(1, h * 14);
+    } else if ((T.fw = fallW(sim)) > 0.01) {
+        T.on = false; const fw = T.fw;
+        [T.p, T.pv] = spring(T.p, T.pv, lean0 + 0.95 + Math.sin(sim.t * 2.6) * 0.05, 30, 9, h);
+        const yr = wrapPi(sim.ang - T.ya) / Math.max(h, 1e-3);
+        [T.r, T.rv] = spring(T.r, T.rv, cl(-yr * 0.35, -0.45, 0.45) + Math.sin(sim.t * 1.7) * 0.05, 20, 8, h);
+        T.w += (fw - T.w) * Math.min(1, h * 6);
     } else {
         T.on = false;
         T.p += (lean0 - T.p) * Math.min(1, h * 7);
         T.w += (0 - T.w) * Math.min(1, h * 7);
         if (T.w < 0.002) T.w = 0;
     }
+    T.ya = sim.ang;
     const w = T.w;
     if (w <= 0) return;
     _e0.set(lean0, 0, bank0, 'ZXY'); _v0.set(0, PIVOT_Y, 0).applyEuler(_e0);
@@ -87,7 +111,18 @@ export function traversalBones(sim: any, rig: any, dt: number) {
     const T = tv(rig), B = rig.b, h = Math.min(dt, 0.1), sw = swinging(sim);
     T.bw += ((sw ? 1 : 0) - T.bw) * Math.min(1, h * (sw ? 14 : 8));
     if (T.bw < 0.003) { T.bw = 0; T.lg = 0; T.lgv = 0; } else swingBones(sim, rig, T, h, sw);
+    fallBones(sim, rig, T, h);
     flipBones(sim, rig, T, h);
+}
+function fallBones(sim: any, rig: any, T: TV, h: number) {
+    const B = rig.b, k = T.fw * (1 - T.tk) * (1 - T.bw) * sstep(T.w * 1.5);   // limbs open as the body tips over, together
+    if (k < 0.01) return;
+    const t = sim.t, wob = Math.sin(t * 3.1) * 0.06;
+    setB(B.uarmR, 0.1, 0, 1.45 + wob, k); setB(B.farmR, -0.2, 0, 0.95, k);
+    setB(B.uarmL, 0.1, 0, -1.45 + wob, k); setB(B.farmL, -0.2, 0, -0.95, k);
+    setB(B.thighR, -0.35, 0, 0.32, k); setB(B.thighL, -0.3, 0, -0.32, k);
+    setB(B.shinR, 1.25 + wob, 0, 0, k); setB(B.shinL, 1.3 - wob, 0, 0, k);
+    setB(B.spine, -0.25, 0, 0, k); setB(B.chest, -0.12, 0, 0, k); setB(B.head, -0.5, 0, 0, k); setB(B.hips, 0, 0, 0, k);
 }
 function flipBones(sim: any, rig: any, T: TV, h: number) {
     const B = rig.b;
