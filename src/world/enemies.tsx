@@ -28,7 +28,6 @@ export function buildEnemy(kind: number, time: { value: number }) {
 // Plasma web shot: soft glowing core + halo (Nov 2, Shifat: no solid shapes / rings / hard edges - was solid spheres + torus rings),
 // a soft impact bloom with glowing embers (was flash sphere + expanding ring + cone debris), and a small lock reticle over the auto-target.
 // Everything is pooled (3 bolts, 4 blasts, 12 sparks each): zero per-frame allocation, additive only, no lights.
-const _pz = new THREE.Vector3(0, 0, 1), _pv = new THREE.Vector3();
 const SOFT_TEX = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
     g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.55)'); g.addColorStop(0.6, 'rgba(255,255,255,0.12)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
@@ -41,45 +40,11 @@ const LOCK_TEX = (() => { const c = document.createElement('canvas'); c.width = 
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 export function PlasmaFx({ sim }: { sim: Sim }) {
     const { camera } = useThree();
-    const proj = useRef<THREE.Group[]>([]);
-    const blasts = useRef<{ g: THREE.Group; flash: THREE.Sprite; sparks: THREE.Points; dir: Float32Array }[]>([]);
     const ret = useRef<THREE.Group>(null!);
-    const colNow = useRef(-1);
     useFrame(() => {
         // Shifat 11:34 AM "Web shot too?": the bolt and its blast take the caster's colour (Shadow purple / Ghost pink, sim fxCol); was cyan/white
         const col = ((sim as any).fxCol ?? SHOCK_SHADOW) as number;
-        if (col !== colNow.current) { colNow.current = col; for (const g of proj.current) if (g) { ((g.children[0] as THREE.Sprite).material as THREE.SpriteMaterial).color.setHex(tint(col, 0.72)); ((g.children[1] as THREE.Sprite).material as THREE.SpriteMaterial).color.setHex(col); } }
-        for (let i = 0; i < 3; i++) {
-            const g = proj.current[i]; if (!g) continue;
-            const b = sim.plasma[i];
-            g.visible = !!b;
-            if (b) {
-                g.position.set(b.x, b.y, b.z);
-                _pv.set(b.vx, b.vy, b.vz).normalize();
-                g.quaternion.setFromUnitVectors(_pz, _pv);
-                const pu = 1 + Math.sin(sim.t * 31) * 0.12; g.children[0].scale.setScalar(0.9 * pu); g.children[1].scale.setScalar(2.2 * pu);
-            }
-        }
-        for (let i = 0; i < 6; i++) {
-            const grp = blasts.current[i]; if (!grp) continue;
-            const bl = sim.blasts[i], on = !!bl && bl.t < 0.85;
-            grp.g.visible = !!on;
-            if (on && bl) {
-                const k = bl.t / 0.85;
-                grp.g.position.set(bl.x, bl.y, bl.z);
-                if (bl.t === 0 || (grp as any).bc !== (bl.col ?? -1)) { (grp as any).bc = bl.col ?? -1;   // web-shot and KO blasts: caster / KO hero hue (hot, lifted toward white); pale cyan only if no colour
-                    (grp.flash.material as THREE.SpriteMaterial).color.setHex(bl.col != null ? tint(bl.col, 0.55) : 0xcfeeff); (grp.sparks.material as THREE.PointsMaterial).color.setHex(bl.col != null ? tint(bl.col, 0.3) : 0xffc890); }
-                const fk = Math.min(1, bl.t / 0.2);
-                grp.flash.scale.setScalar(1.0 + fk * bl.r * 0.9);
-                (grp.flash.material as THREE.SpriteMaterial).opacity = Math.max(0, 0.9 * (1 - bl.t / 0.32));
-                const pa = grp.sparks.geometry.attributes.position as THREE.BufferAttribute;
-                for (let j = 0; j < 12; j++) {
-                    const d = grp.dir, sp = (0.25 + k * bl.r * (0.75 + d[j * 4 + 3] * 0.5));
-                    pa.setXYZ(j, d[j * 4] * sp, d[j * 4 + 1] * sp + k * k * -3.5, d[j * 4 + 2] * sp);
-                }
-                pa.needsUpdate = true; (grp.sparks.material as THREE.PointsMaterial).opacity = 0.95 * (1 - k);
-            }
-        }
+        // web-shot bolt + blast are drawn by CombatFX now (layered particles, Shifat Nov 2 3:00 PM); this keeps only the lock reticle
         const e = sim.aimE;
         const sa = sim as any, inMelee = !!(sa.mv || sa.slam || sa.chainT > 0 || sa.cWeb);   // gap #5: the web-shot lock square cluttered melee (sat over the punched bot) - hidden during a melee move/slam and the combo window
         ret.current.visible = !!e && sim.mode === 'play' && !inMelee; if (DBG) (window as any).__retVis = ret.current.visible;
@@ -92,21 +57,6 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
         }
     });
     return <>
-        {[0, 1, 2].map((i) => <group key={'p' + i} ref={(g) => { if (g) proj.current[i] = g; }} visible={false} frustumCulled={false}>
-            <sprite frustumCulled={false}><spriteMaterial map={SOFT_TEX} color="#f2feff" transparent opacity={1} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></sprite>
-            <sprite frustumCulled={false}><spriteMaterial map={SOFT_TEX} color="#5fd8ff" transparent opacity={0.7} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></sprite>
-        </group>)}
-        {[0, 1, 2, 3, 4, 5].map((i) => <group key={'b' + i} ref={(g) => {
-            if (g && !blasts.current[i]) {
-                const flash = g.children[0] as THREE.Sprite, sparks = g.children[1] as THREE.Points;
-                const dir = new Float32Array(12 * 4);
-                for (let j = 0; j < 12; j++) { const a = (j / 12) * Math.PI * 2 + (j % 3) * 0.4, y = 0.15 + ((j * 7) % 5) * 0.16, l = Math.hypot(Math.cos(a), y, Math.sin(a)); dir[j * 4] = Math.cos(a) / l; dir[j * 4 + 1] = y / l; dir[j * 4 + 2] = Math.sin(a) / l; dir[j * 4 + 3] = ((j * 13) % 10) / 10; }
-                blasts.current[i] = { g, flash, sparks, dir };
-            }
-        }} visible={false}>
-            <sprite frustumCulled={false}><spriteMaterial map={SOFT_TEX} color="#cfeeff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></sprite>
-            <points frustumCulled={false}><bufferGeometry><bufferAttribute attach="attributes-position" args={[new Float32Array(36), 3]} /></bufferGeometry><pointsMaterial map={SOFT_TEX} color="#ffc890" size={0.55} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></points>
-        </group>)}
         <group ref={ret} visible={false} frustumCulled={false}>
             <mesh frustumCulled={false}><planeGeometry args={[1.5, 1.5]} /><meshBasicMaterial map={LOCK_TEX} color="#c99bff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
             <mesh frustumCulled={false}><planeGeometry args={[0.36, 0.36]} /><meshBasicMaterial map={SOFT_TEX} color="#eadcff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>

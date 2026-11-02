@@ -15,7 +15,7 @@ export const SH_GLOW = 0, SH_SPARK = 2, SH_CORE = 3, SH_GPUFF = 4, SH_GSTREAK = 
 // and square debris removed; only soft dust remains on the alpha side.
 export const SH_DUST = 12, SH_SMOKE = 13;   // SH_SMOKE: soft dark-to-warm smoke puff (warm glowing centre early, dark soft edge, no rim)
 
-export const ADD_MAX = 128, ALPHA_MAX = 32;
+export const ADD_MAX = 256, ALPHA_MAX = 32;   // Nov 2 3:00 PM (web-shot particles): 128 -> 256 additive (one instanced draw either way)
 export const F = 21;   // floats per particle
 // layout: 0-2 pos, 3-5 vel (or segment/ground-streak direction), 6 age, 7 life, 8 size0, 9 size1, 10-12 rgb, 13 alpha, 14 shape, 15 gravity, 16 drag, 17 rot, 18 thick, 19 fade power, 20 floor y (bounce; -1e9 = none)
 export const addP = new Float32Array(ADD_MAX * F), alphaP = new Float32Array(ALPHA_MAX * F);
@@ -30,7 +30,7 @@ function slot(alpha: boolean): number {
 }
 // Low FX tier = the game's quality setting (quality.ts QK.fxLow: ?q=low, or any touch/phone device): halve sparks, drop dust,
 // live caps 80 additive + 20 alpha instead of 128 + 32. Desktop auto/high keeps the full path.
-export const ADD_LOW = 80, ALPHA_LOW = 20;
+export const ADD_LOW = 144, ALPHA_LOW = 20;   // phone: 80 -> 144 for the web-shot trail (sprites are small)
 export let LOW = QK.fxLow;
 export function emit(shape: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, s0: number, s1: number, col: number, a = 1, grav = 0, drag = 0, thick = 0.12, fade = 1, floor = -1e9) {
     const alpha = shape >= 10, i = slot(alpha), b = alpha ? alphaP : addP, o = i * F;
@@ -106,15 +106,54 @@ export function fxMelee(x: number, y: number, z: number, col: number, lvl: numbe
     if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x + rnd(-0.15, 0.15), y + rnd(-0.1, 0.1), z + rnd(-0.15, 0.15), bx * 1.2 + rnd(-0.6, 0.6), rnd(0.1, 0.6), bz * 1.2 + rnd(-0.6, 0.6), 0.5, 0.25 * sc, 0.8 * sc, 0xb5aec2, 0.35, 0, 3);   // small dust puff
     if (lvl >= 3 && grounded && !LOW) for (let k = 0; k < 6; k++) { const th = rnd(0, Math.PI * 2), sp = rnd(1.5, 3); emit(SH_DUST, x + Math.cos(th) * 0.3, y - 0.9, z + Math.sin(th) * 0.3, Math.cos(th) * sp, rnd(0.4, 1.2), Math.sin(th) * sp, 0.45, 0.35, 0.9, 0xb9b2c6, 0.55, 0, 3); }
 }
-/** web-shot hit: soft web burst + glow + sparks in the caster's colour (Shifat 11:34 AM "Web shot too?": Shadow purple, Ghost pink;
-    was white core/glow/mist for both). The hot core is the hue lifted toward white so it still reads. No ink splat. */
-export function fxShot(x: number, y: number, z: number, col: number) {
-    emit(SH_CORE, x, y, z, 0, 0, 0, 0.04, 0.35, 0.55, tint(col, 0.75), 1);
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.3, 0.55, 0.8, tint(col, 0.45), 0.55, 0, 0, 0.12, 2);
-    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.16, 0.5, 0.9, col, 0.8, 0, 0, 0.12, 2);
-    sparks(6, x, y, z, col, 5, 10, 0.12, 0.2, 0.05, 0.25, -1e9, tint(col, 0.75));
+/** web-shot hit (Shifat Nov 2 3:00 PM: "Web shot must have more layered vfx. Plain glowy orb projectiles feels basic. Use particles"):
+ *  layered, all soft falloffs in the caster's colour (Shadow purple / Ghost pink): a 3-frame white-hot core, a hot flash, a hero-colour
+ *  bloom, a wide faint wash (the blast reach), velocity-stretched sparks scattered in a hemisphere around the surface normal (n = toward
+ *  the shooter, lifted a little so ground hits spray up), slow glowing motes that drift off the normal and fade, and the pale web mist.
+ *  Replaces the old flash sprite + 12 round points (enemies.tsx PlasmaFx): same pooled instanced draw as every other hit. */
+export function fxShot(x: number, y: number, z: number, col: number, nx = 0, ny = 1, nz = 0) {
+    let ux = nx, uy = ny + 0.35, uz = nz; const ul = Math.hypot(ux, uy, uz) || 1; ux /= ul; uy /= ul; uz /= ul;
+    const hot = tint(col, 0.72);
+    emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.45, 0.85, tint(col, 0.85), 1.25);                       // white-hot core, ~3 frames
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.12, 0.8, 1.7, tint(col, 0.5), 0.85, 0, 0, 0.12, 2);           // hot flash
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.3, 1.0, 2.6, col, 0.6, 0, 0, 0.12, 2);                         // hero-colour bloom
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.34, 1.6, 5.5, col, 0.16, 0, 0, 0.12, 2);                       // wide faint wash (blast reach)
+    const n = LOW ? 7 : 14;
+    for (let k = 0; k < n; k++) {   // sparks: hemisphere around the normal, stretched along their velocity, cool hot -> hero colour
+        const a = rnd(-1, 1), th = rnd(0, Math.PI * 2), r = Math.sqrt(1 - a * a);
+        let vx = ux + Math.cos(th) * r * 0.85, vy = uy + a * 0.85, vz = uz + Math.sin(th) * r * 0.85;
+        if (vx * ux + vy * uy + vz * uz < 0.1) { vx += ux; vy += uy; vz += uz; }
+        const L = Math.hypot(vx, vy, vz) || 1, sp = rnd(7, 16);
+        emit(SH_SPARK, x, y, z, vx / L * sp, vy / L * sp, vz / L * sp, rnd(0.2, 0.36), rnd(0.05, 0.07), 0.02, k & 1 ? hot : col, 1.35, 7, 3, 1.5, 1);
+    }
+    const nm = LOW ? 4 : 8;
+    for (let k = 0; k < nm; k++) emit(SH_GLOW, x + rnd(-0.12, 0.12), y + rnd(-0.12, 0.12), z + rnd(-0.12, 0.12), ux * rnd(0.8, 2.2) + rnd(-1.2, 1.2), uy * rnd(0.8, 2.2) + rnd(-0.6, 0.9), uz * rnd(0.8, 2.2) + rnd(-1.2, 1.2), rnd(0.45, 0.75), rnd(0.1, 0.16), 0.03, k & 1 ? hot : col, 1.0, -0.6, 2.5, 0.12, 1);   // drifting glow motes
     if (!LOW) for (let k = 0; k < 3; k++) emit(SH_DUST, x, y, z, rnd(-0.8, 0.8), rnd(-0.3, 0.6), rnd(-0.8, 0.8), 0.5, 0.2, 0.6, tint(col, 0.7), 0.4, 0, 3);   // soft web mist, pale caster tint
 }
+/** web-shot fire: soft muzzle burst at the hands along the shot direction (dx,dy,dz unit): hot core pop, hero-colour bloom,
+ *  a cone of short stretched sparks with heavy drag, and a few slow motes. */
+export function fxShotMuzzle(x: number, y: number, z: number, dx: number, dy: number, dz: number, col: number) {
+    const hot = tint(col, 0.75);
+    emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.25, 0.5, tint(col, 0.85), 1.1);
+    emit(SH_GLOW, x, y, z, 0, 0, 0, 0.14, 0.5, 1.1, col, 0.7, 0, 0, 0.12, 2);
+    const n = LOW ? 5 : 9;
+    for (let k = 0; k < n; k++) {
+        const vx = dx + rnd(-0.5, 0.5), vy = dy + rnd(-0.4, 0.5), vz = dz + rnd(-0.5, 0.5), L = Math.hypot(vx, vy, vz) || 1, sp = rnd(5, 12);
+        emit(SH_SPARK, x, y, z, vx / L * sp, vy / L * sp, vz / L * sp, rnd(0.1, 0.18), 0.045, 0.015, k & 1 ? hot : col, 1.2, 2, 7, 1.3, 1);
+    }
+    for (let k = 0; k < (LOW ? 2 : 3); k++) emit(SH_GLOW, x, y, z, dx * rnd(1, 2.5) + rnd(-0.6, 0.6), dy * rnd(1, 2.5) + rnd(-0.2, 0.7), dz * rnd(1, 2.5) + rnd(-0.6, 0.6), rnd(0.3, 0.45), 0.2, 0.05, col, 0.5, -0.4, 3, 0.12, 1);
+}
+/** web-shot trail, one puff at (x,y,z) of a bolt flying along (dx,dy,dz unit); k = running count. Velocity-stretched streaks shed
+ *  forward and slightly outward (heavy drag: they slow, shrink and cool white -> hero colour), every 2nd a soft glow puff that drifts. */
+export function fxShotTrail(x: number, y: number, z: number, dx: number, dy: number, dz: number, col: number, k: number) {
+    const px = rnd(-1, 1), py = rnd(-1, 1), pz = rnd(-1, 1), dp = px * dx + py * dy + pz * dz;
+    let ox = px - dx * dp, oy = py - dy * dp, oz = pz - dz * dp; const ol = Math.hypot(ox, oy, oz) || 1; ox /= ol; oy /= ol; oz /= ol;   // random direction across the path
+    const f = rnd(2, 6), o = rnd(0.8, 2.4), r0 = rnd(0.03, 0.12);
+    emit(SH_SPARK, x + ox * r0, y + oy * r0, z + oz * r0, dx * f + ox * o, dy * f + oy * o + 0.3, dz * f + oz * o, rnd(0.24, 0.4), 0.07, 0.014, k % 3 === 0 ? tint(col, 0.5) : col, 1.0, -0.8, 4.5, 1.2, 1);
+    if (k & 1) emit(SH_GLOW, x + ox * r0, y + oy * r0, z + oz * r0, dx * 1.2 + ox * rnd(0.4, 1.1), dy * 1.2 + oy * rnd(0.4, 1.1) + 0.35, dz * 1.2 + oz * rnd(0.4, 1.1), rnd(0.34, 0.5), rnd(0.45, 0.6), 0.1, tint(col, 0.2), 1.0, 0, 2.5, 0.12, 1);   // soft haze puff: drifts, shrinks, fades
+}
+/** trail puff spacing in metres along the bolt's path (phone: sparser) */
+export const SHOT_TRAIL_STEP = LOW ? 0.7 : 0.4;
 /* Shifat Nov 2 10:40 AM: "Ghosts shock color must be pink, & purple for shadow" - every part of the Web Shock (tethers, hand glow, lightning,
    ground arcs, discharge burst, sparks, glow) takes the caster's own colour: Shadow purple 0xa855f7, Ghost pink 0xff1a96 (sim fxCol). Was one cyan for both. */
 export const SHOCK_SHADOW = 0xa855f7, SHOCK_GHOST = 0xff1a96;

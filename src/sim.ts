@@ -528,7 +528,7 @@ function deathBlast(s: Sim, e: Enemy) {
     (e as any).koCol = heroCol(s);   // the KO burst (EnemyDeathFx) takes the colour of the hero who landed the KO; the old pale cyan 5.5 m flash disc is gone (Shifat 1:12 PM: softer, particle glow burst)
 }
 function detonate(s: Sim, x: number, y: number, z: number, ev: Events) {
-    { const dx = s.pos[0] - x, dy = s.pos[1] + 0.5 - y, dz = s.pos[2] - z, d = Math.hypot(dx, dy, dz) || 1, k = Math.min(0.7, d * 0.5) / d; fxShot(x + dx * k, y + dy * k, z + dz * k, heroCol(s)); }   // web splat + 4 sparks + small ring, on the shooter's side of the body
+    { const dx = s.pos[0] - x, dy = s.pos[1] + 0.5 - y, dz = s.pos[2] - z, d = Math.hypot(dx, dy, dz) || 1, k = Math.min(0.7, d * 0.5) / d; fxShot(x + dx * k, y + dy * k, z + dz * k, heroCol(s), dx / d, dy / d, dz / d); }   // layered web-shot hit burst on the shooter's side of the body (sparks scatter around the toward-shooter normal)
     s.blasts.push({ x, y, z, t: 0, r: BLAST_R, col: heroCol(s) });
     if (s.blasts.length > BLAST_CAP) s.blasts.shift();   // cap overlapping effects so repeated shots stay readable
     let any = false;

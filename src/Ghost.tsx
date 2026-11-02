@@ -229,13 +229,11 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     const controls = useMemo(makeControls, []);
     const lineGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(72 * 3), 3)); return g; }, []);
     const shockGeo = useMemo(() => { const cap = SNARE.MAX_TARGETS * (2 * SNARE_PULSE_SEGMENTS + SNARE_RING_SEGMENTS), g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap * 2 * 3), 3)); return g; }, []);
-    const plasmaGeo = useMemo(() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(24 * 3), 3)); g.setDrawRange(0, 0); return g; }, []);
     const morphGeo = useMemo(makeMorphGeometry, []);
     const lineRef = useRef<THREE.LineSegments>(null!);
     const shockRef = useRef<THREE.LineSegments>(null!);
     const lineMatRef = useRef<THREE.LineBasicMaterial>(null!);
     const shockMatRef = useRef<THREE.LineBasicMaterial>(null!);
-    const plasmaRef = useRef<THREE.Points>(null!);
     const morphRef = useRef<THREE.Points>(null!);
     const morphMatRef = useRef<THREE.PointsMaterial>(null!);
     const state = useRef({ ready: false, wallSyncB: -1, leaderSurfaceSeen: false, leaderGround: false, leaderWallB: -1, leaderWall: null as [number, number] | null, lastVaulted: 0, vaultUntil: -1, gB: 0, bYaw: undefined as number | undefined, bR: 0, floorY: 0, floorX: 1e9, floorZ: 1e9, floorT: -1, attackAt: 0, shotAt: 0, jumpAt: 0, swingAt: 0, specialAt: 0, dodgeAt: 0,
@@ -253,7 +251,6 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             if (lineRef.current) lineRef.current.visible = false;
             if (shockRef.current) shockRef.current.visible = false;
             shockGeo.setDrawRange(0, 0);
-            if (plasmaRef.current) plasmaRef.current.visible = false;
             if (morphRef.current) morphRef.current.visible = false;
             morphGeo.setDrawRange(0, 0);
             HERO_REFL.ghost.w = 0;   /* reflection trace: Ghost hidden */
@@ -342,7 +339,6 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             if (lineRef.current) lineRef.current.visible = false;
             if (shockRef.current) shockRef.current.visible = false;
             shockGeo.setDrawRange(0, 0);
-            if (plasmaRef.current) plasmaRef.current.visible = false;
             HERO_REFL.ghost.set(actor.pos[0], actor.pos[1], actor.pos[2], 1);   /* reflection trace only; model/material untouched */
             if (DBG) (window as any).__ghostState = { visible: true, mode: sim.mode, position: [...actor.pos], target: [tx, ty, tz], action: 'transport', leaderTraversal: leaderWall ? 'wall' : sim.web ? 'swing' : leaderAir ? 'glide' : 'ground', ghostTraversal: 'transport', transport: st.morph.phase, morphReason: st.morph.reason, morphT: st.morph.t, morphFrom: [...st.morph.from], morphTo: [...st.morph.to], bodyOpacity, particles: MORPH_PARTICLES, grounded: actor.ground, wallB: actor.wallB, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1, targetSupportY: leaderWall ? null : floorAt(st.morph.to[0], st.morph.to[2]), leaderSurfaceY: leaderWall ? null : sim.pos[1] - 1, animation };
             return;
@@ -423,11 +419,6 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         const animation = animateHuman(actor, model, dt, st, animationSource);
         root.visible = true;
 
-        const pa = plasmaGeo.attributes.position as THREE.BufferAttribute;
-        const bolts = actor.plasma.slice(0, 24);
-        for (let i = 0; i < bolts.length; i++) pa.setXYZ(i, bolts[i].x, bolts[i].y, bolts[i].z);
-        plasmaGeo.setDrawRange(0, bolts.length); pa.needsUpdate = true;
-        if (plasmaRef.current) plasmaRef.current.visible = bolts.length > 0;
 
         const la = lineGeo.attributes.position as THREE.BufferAttribute, xa = shockGeo.attributes.position as THREE.BufferAttribute; let n = 0, webHandMask = 0, pulseSegments = 0, ringSegments = 0, snareWebLines = 0, pulseProgress = 0;
         const webSource = animationSource, webState = webSource as any;
@@ -485,9 +476,6 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false} dispose={null}>
             <lineBasicMaterial ref={shockMatRef} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} />
         </lineSegments>
-        <points ref={plasmaRef} geometry={plasmaGeo} frustumCulled={false} dispose={null}>
-            <pointsMaterial map={SOFT_DOT} alphaTest={0.01} color="#ff9fd0" size={0.62} sizeAttenuation transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />{/* web-shot bolt core: Ghost pink lifted toward white (Shifat 11:34 AM "Web shot too?"; was pale cyan); pink halo + trail in CombatFX */}
-        </points>
         <points ref={morphRef} geometry={morphGeo} visible={false} frustumCulled={false} dispose={null}>
             <pointsMaterial ref={morphMatRef} map={SOFT_DOT} alphaTest={0.01} color="#ffffff" vertexColors size={0.3} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
         </points>
