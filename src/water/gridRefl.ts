@@ -31,7 +31,7 @@ export function bakeGrid() {
     L.forEach((b, i) => { for (let j = Math.floor((b.z0 - z0) / GC); j <= Math.floor((b.z1 - z0) / GC); j++) for (let k = Math.floor((b.x0 - x0) / GC); k <= Math.floor((b.x1 - x0) / GC); k++) if (j >= 0 && j < nz && k >= 0 && k < nx) cells[j * nx + k].push(i); });
     /* LOW DETAIL (Shifat 3:59 PM 'heavy blurry low detail cheap'): each cell is ONE block - the union of its boxes' footprints, the tallest top,
        the lowest bottom (the bridge deck keeps sky under it), the footprint-weighted average colour. texel 0 = x0 z0 x1 z1, texel 1 = r g b top,
-       texel 2 = top count bottom 0 */
+       texel 2 = top count bottom emptyDist */
     const gd = new Float32Array(nx * nz * 3 * 4); let over = 0;
     cells.forEach((c, ci) => { if (!c.length) { gd.set([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ci * 12); return; }
         let ux0 = 1e9, uz0 = 1e9, ux1 = -1e9, uz1 = -1e9, mt = 0, mb = 1e9, w = 0, r = 0, g = 0, bl = 0;
@@ -40,6 +40,13 @@ export function bakeGrid() {
             ux0 = Math.min(ux0, bx0); ux1 = Math.max(ux1, bx1); uz0 = Math.min(uz0, bz0); uz1 = Math.max(uz1, bz1); mt = Math.max(mt, b.y1); mb = Math.min(mb, b.y0);
             const a = Math.max(1, (bx1 - bx0) * (bz1 - bz0)) * b.y1; w += a; r += b.c[0] * a; g += b.c[1] * a; bl += b.c[2] * a; }
         gd.set([ux0, uz0, ux1, uz1, r / w, g / w, bl / w, mt, mt, c.length, mb, 0], ci * 12); });
+    /* empty-space skip: per cell, the Chebyshev distance (in cells, capped at 8) to the nearest occupied cell -> texel 2 .w.
+       An open-sea ray in a cell with distance d can jump d-1 cells at once instead of stepping through empty sea. */
+    { const D = new Float32Array(nx * nz).fill(8);
+      for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) if (cells[z * nx + x].length) {
+        for (let dz = -7; dz <= 7; dz++) for (let dx = -7; dx <= 7; dx++) { const X = x + dx, Z = z + dz; if (X < 0 || Z < 0 || X >= nx || Z >= nz) continue;
+          const d = Math.max(Math.abs(dx), Math.abs(dz)); const k = Z * nx + X; if (d < D[k]) D[k] = d; } }
+      for (let k = 0; k < nx * nz; k++) gd[k * 12 + 11] = D[k]; }
     const mk = (d: Float32Array, w: number, h: number) => { const t = new THREE.DataTexture(d, w, h, THREE.RGBAFormat, THREE.FloatType); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; };
     GRID.box = mk(bd, bw, 1); GRID.tex = mk(gd, nx * 3, nz); GRID.b.set(x0, z0, GC, 0); GRID.n.set(nx, nz); GRID.nb = L.length; GRID.boxW = bw;
     if (typeof window !== 'undefined') (window as any).__grid = { nb: L.length, nx, nz, over, maxPer: Math.max(...cells.map(c => c.length)) };
@@ -61,6 +68,9 @@ export const GRID_TRACE_GLSL = `
           for (int i = 0; i < 20; i++) { if (tc > tx || cov > 0.97) break;
             if (c.x >= 0 && c.y >= 0 && c.x < N.x && c.y < N.y) {
               vec4 m = texelFetch(uGrid, ivec2(c.x * 3 + 2, c.y), 0);
+              if (m.w > 1.5) {   // empty sea around: jump (d-1) cells in one go, then re-seed the DDA there
+                tc += (m.w - 1.0) * uGB.z / max(abs(hd.x), abs(hd.z)); if (tc > tx || hd.y * tc > 170.0) break;
+                g = (ro.xz + hd.xz * (tc + 0.01) - uGB.xy) / uGB.z; c = ivec2(floor(g)); nx = tc + (vec2(c) + step(0.0, sd) - g) * sd * tD; continue; }
               if (m.y > 0.5 && hd.y * tc < m.x + 8.0) {
                 vec4 fp = texelFetch(uGrid, ivec2(c.x * 3, c.y), 0), cc = texelFetch(uGrid, ivec2(c.x * 3 + 1, c.y), 0);
                 vec3 bm = vec3(fp.x, m.z, fp.y), bx = vec3(fp.z, cc.w, fp.w);
