@@ -25,6 +25,48 @@ const S = await p.evaluate((scen) => {
   if (scen === 'shot') s.aimE = e;
   return { t0: s.t };
 }, scen);
+
+if (scen === 'combo' || scen === 'slam') {
+  // frames keyed to the move clock (mv.id, mv.t) or the slam phase, so hit-stop freezes do not shift them
+  const K = scen === 'combo'
+    ? [[1, 0.035], [1, 0.1], [1, 0.15], [2, 0.06], [2, 0.11], [2, 0.19], [3, 0.12], [3, 0.27]]
+    : [['hold', 0.5], ['ph', 1], ['ph', 2], ['ph', 3], ['ph', 4], ['ph', 5, 0.0], ['ph', 5, 0.1], ['ph', 5, 0.25]];
+  const info = [];
+  if (scen === 'slam') await p.evaluate(() => { const g = window.__game; g.input.meleeHeld = true; g.input.meleeAt = performance.now() - 230; g.input.slamHeld = true; window.__slamT0 = window.__game.sim.t; });
+  else await p.evaluate(() => { const g = window.__game; g.input.attackQ = true; g.input.meleeQ = true; });
+  for (let i = 0; i < K.length; i++) {
+    for (let guard = 0; guard < 900; guard++) {
+      const ok = await p.evaluate((k, scen) => {
+        const g = window.__game, s = g.sim, e = s.enemies[0]; if (e.atk < -1 && e.atk > -60) e.atk = -50;
+        if (scen === 'combo') {
+          const m = s.mv; if (!m) { window.__ts = 0.05; return false; }
+          if (m.id === 1 && m.t > 0.12 && !window.__q2) { g.input.attackQ = true; g.input.meleeQ = true; window.__q2 = 1; }
+          if (m.id === 2 && m.t > 0.14 && !window.__q3) { g.input.attackQ = true; g.input.meleeQ = true; window.__q3 = 1; }
+          if (m.id > k[0] || (m.id === k[0] && m.t >= k[1] - 1e-4)) { window.__ts = 0; return true; }
+          window.__ts = m.id === k[0] ? Math.min(0.3, Math.max(0.01, (k[1] - m.t) / 0.1)) : 0.1; return false;
+        } else {
+          const S = s.slam;
+          if (k[0] === 'hold') { if (s.t - window.__slamT0 >= k[1]) { window.__ts = 0; return true; } window.__ts = 0.1; return false; }
+          if (S && S.ph >= 1 && !window.__rel) { g.input.meleeHeld = false; g.input.slamHeld = false; window.__rel = 1; }
+          if (s.t - window.__slamT0 > 0.75 && !window.__rel) { g.input.meleeHeld = false; g.input.slamHeld = false; window.__rel = 1; }
+          if (!S && window.__rel) { window.__ts = 0; return true; }   // the slam already ended
+          if (S && (S.ph > k[1] || (S.ph === k[1] && (k[2] === undefined || (S.t ?? 0) >= k[2])))) { window.__ts = 0; window.__slT5 = window.__slT5; return true; }
+          window.__ts = S && S.ph === 5 ? 0.15 : 0.06; return false;
+        }
+      }, K[i], scen);
+      if (ok) break; await raf(1);
+    }
+    await p.evaluate(() => { window.__ts = 0; const s = window.__game.sim, q = s.pos; const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
+      window.__camOv = [q[0] + fz * 5.2 + fx * 2.2, q[1] + 1.0, q[2] - fx * 5.2 + fz * 2.2, q[0] + fx * 0.6, q[1] + 0.4, q[2] + fz * 0.6]; });
+    await raf(3);
+    const st = await p.evaluate(() => { const s = window.__game.sim; return { t: +s.t.toFixed(3), mv: s.mv ? [s.mv.id, +s.mv.t.toFixed(3)] : null, slam: s.slam ? [s.slam.ph, +(s.slam.t ?? 0).toFixed(3)] : null, anim: window.__shadowAnimation?.action, ehp: s.enemies[0].hp }; });
+    info.push(st);
+    await p.screenshot({ path: `${outdir}/${scen}_${i}.png`, clip: { x: 170, y: 20, width: 300, height: 300 } });
+  }
+  fs.writeFileSync(`${outdir}/${scen}_info.json`, JSON.stringify({ info, errs }, null, 1));
+  console.log(JSON.stringify({ errs: errs.length, first: errs.slice(0, 3), info }));
+  await b.close(); process.exit(0);
+}
 const plan = {
   melee: { taps: [0.0, 0.2, 0.42], times: [0.05, 0.09, 0.13, 0.2, 0.3, 0.45, 0.6, 0.8] },
   react: { taps: [0.0], times: [0.09, 0.105, 0.12, 0.14, 0.17, 0.22, 0.3, 0.42] },

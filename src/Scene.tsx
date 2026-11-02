@@ -7,6 +7,7 @@ import { traversalBones, traversalRoot } from './heroTraversal';
 import { enemyReact } from './enemyReact';
 import { heroHurtBones } from './heroHurt';
 import { shotRecoilBones } from './heroRecoil';
+import { meleeBody } from './heroMelee';
 import gsap from 'gsap';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
@@ -116,7 +117,8 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
     else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, state.t);
         if (fl.ax === 'z') { const s0 = state.t; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
     else { bones.forEach((b, i) => { state.t[i * 3] = b.rotation.x; state.t[i * 3 + 1] = b.rotation.y; state.t[i * 3 + 2] = b.rotation.z; }); }
-    const k = Math.min(1, dt * (sl && (sl.ph === 4 || sl.ph === 5) ? 40 : 24));   // per-bone follow (the slam's hammer-down snaps faster): chained moves blend through each other instead of popping
+    const snap = !!mv && mv.t > MOVES[mv.id].hit * 0.55 && mv.t < MOVES[mv.id].hit + 0.03;   // the strike itself: limbs reach the hit pose ON the hit frame instead of trailing ~50 ms behind it
+    const k = Math.min(1, dt * (sl && (sl.ph === 4 || sl.ph === 5) ? 40 : snap ? 60 : 24));   // per-bone follow (the slam's hammer-down snaps faster): chained moves blend through each other instead of popping
     for (let i = 0; i < state.t.length; i++) state.c[i] += (state.t[i] - state.c[i]) * k;
     const w = state.w;
     bones.forEach((b, i) => { b.rotation.x += (state.c[i * 3] - b.rotation.x) * w; b.rotation.y += (state.c[i * 3 + 1] - b.rotation.y) * w; b.rotation.z += (state.c[i * 3 + 2] - b.rotation.z) * w; });
@@ -124,6 +126,7 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
     if (mv && mv.id === 3) { const u = Math.min(1, mv.t / MOVES[3].dur), sp = cstep(Math.max(0, Math.min(1, (u - 0.08) / 0.72))); h.rotation.y += sp * Math.PI * 2; }
     if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
     if (fl) { const u = Math.min(1, fl.t / fl.dur), a = cstep(u) * Math.PI * 2 * fl.dir; if (fl.ax === 'x') rig.b.hips.rotation.x += a; else rig.b.hips.rotation.z += a; }
+    meleeBody(sim, rig, h, dt, w, MOVES);   // whole-body weight: wind-up, lunge, sit into the hit, rear-heel pivot, recover (src/heroMelee.ts)
     // smear stretch on the striking limb for ~2 frames around the hit, and body squash (anticipation) -> stretch (release) per move
     if (mv) {
         const M = MOVES[mv.id], dh = mv.t - M.hit, sw = Math.max(0, 1 - Math.abs(dh) / 0.045), lb = rig.b[STRETCH_LIMB[mv.id]] as THREE.Bone | undefined;
