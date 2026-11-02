@@ -88,6 +88,7 @@ export const GRID_TRACE_GLSL = `
                   /* Shifat Nov 1 7:50 PM 'nighttime glow reflections are missing': each block's light at night - warm windows across the city, magenta/cyan neon in Neon Harbor */
                   vec3 gc = (cw.x > -40.0 && cw.y < -760.0) ? mix(vec3(1.0, 0.3, 0.85), vec3(0.25, 0.8, 1.0), step(0.5, hs)) : vec3(1.0, 0.72, 0.42) * (0.45 + 0.55 * hs);
                   float kg = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf * 6.0, bx.y - sf * 3.0, hd.y * max(a, 0.5) * 2.4);   // true mirror height (the trace ray climbs squashed): light sits under each building, like a real night mirror
+                  kg *= step(26.0, abs(cw.x - 141.0)) + step(cw.y, -1030.0) + step(-180.0, cw.y);   /* no window glow on the bridge (towers/deck have no lit windows) - it mirrored as a pale slab (Shifat 9:46 PM) */
                   gGlow += (1.0 - gCv) * kg * gc; gCv += (1.0 - gCv) * kg;
                   acc += (1.0 - cov) * k * cc.rgb; cov += (1.0 - cov) * k; }
               }
