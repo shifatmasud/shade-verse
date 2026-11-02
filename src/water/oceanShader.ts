@@ -312,7 +312,7 @@ ${GRID_TRACE_GLSL}
       col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.5);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       if (uBench.y > 3.5 && uBench.y < 4.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
       col += max(nGlow - 0.22, 0.0) * 1.6 * (1.0 - uDay) * (1.0 - fr);
-      col += nGW * 1.30 * smoothstep(15.0, 60.0, length(cameraPosition.xz - vW.xz)) * (1.0 - uDay) * (1.0 - 0.5 * fr);   /* the city's night light, mirrored soft (coverage-weighted, no threshold: no hard edges) */
+      col += nGW * 1.85 * smoothstep(15.0, 60.0, length(cameraPosition.xz - vW.xz)) * (1.0 - uDay) * (1.0 - 0.5 * fr);   /* the city's night light, mirrored soft (coverage-weighted, no threshold: no hard edges) */
       // Sun glitter path: Blinn-Phong on the detailed normal, sharp up close and wider with distance so the sparkles stretch into a path toward a low
       // sun; warm orange at sunset, white at noon. Added after the day/night dimming so it stays bright.
       vec3 sunC = mix(vec3(1.0, 0.42, 0.16), vec3(1.0, 0.93, 0.82), smoothstep(0.02, 0.35, uSun.y));
