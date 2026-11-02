@@ -415,7 +415,8 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             (window as any).__ghostForceSpecial = false;
         }
         for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
-        { const an = (actor as any).slamN || 0; if (an !== st.slamSeen) { st.slamSeen = an; const d = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[2] - sim.pos[2]); if (an && d < 25) (sim as any).shake = Math.min(1, ((sim as any).shake || 0) + 0.35 * (1 - d / 25)); } }   // her Slam shakes the camera too, by distance
+        { const an = (actor as any).slamN || 0; if (an !== st.slamSeen) { st.slamSeen = an; const d = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[2] - sim.pos[2]); if (an && d < 25) { const L = sim as any; L.shake = Math.min(1, (L.shake || 0) + 0.35 * (1 - d / 25));
+            if (!(L.slowT > 0) || L.slowK > 0.3) { const A = actor as any; L.slowK = 0.3; L.slowHold = A.slowHold ?? 0.33; L.slowEase = A.slowEase ?? 0.25; L.slowT = L.slowHold + L.slowEase; } } } }   // her Slam shakes the camera too, by distance, and gets the same brief world slow-mo as Shadow's (0.3x)
         if (leaderAir) actor.vel[1] += Math.max(-8, Math.min(8, (ty - actor.pos[1]) * 0.32 - actor.vel[1] * 0.65)) * dt;
         if (actor.pos[1] > sim.pos[1] + 2.5 && !actor.ground && !actor.web) { actor.vel[1] = Math.min(actor.vel[1], -(actor.pos[1] - sim.pos[1] - 2.5) * 2.5); (actor as any).glideMode = false; }   // never more than 2.5 m above Shadow
         { const dx = actor.pos[0] - sim.pos[0], dz = actor.pos[2] - sim.pos[2], d = Math.hypot(dx, dz); if (d < 1.8 && Math.abs(actor.pos[1] - sim.pos[1]) < 2) { const k = Math.min(1, dt * 8) * (1.8 - d), nx = d > 0.05 ? dx / d : -Math.cos(sim.ang), nz = d > 0.05 ? dz / d : Math.sin(sim.ang); actor.pos[0] += nx * k; actor.pos[2] += nz * k; } }   // finding #1: keep ~2 m apart, no doubled silhouettes
