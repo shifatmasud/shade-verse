@@ -6,8 +6,8 @@ import { buildings, parkH } from './sim';
    SWING (reference 11.2-12.6 s, 20.0-20.9 s, 21.6-22.7 s): the body hangs from the line hand and pendulums with the rope, lagging it (spring), so right after
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
-type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; flDir: number; sp: number; spW: number };
-const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0 });
+type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number };
+const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const sstep = (x: number) => { x = cl(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -132,6 +132,18 @@ export function traversalBones(sim: any, rig: any, dt: number) {
     springBones(sim, rig, T, h);
     flipBones(sim, rig, T, h);
     landBones(sim, rig, T, h);
+    runLean(sim, rig, T, h);
+}
+/* RUN LEAN (ref 0.0-2.5 s, 8.0-9.0 s): the torso leans into the run, more with speed (up to ~17 deg at full sprint), a little extra while
+   speeding up and a lean back when braking; the head stays level. Added after the run clip has scaled the base lean, about the feet. */
+function runLean(sim: any, rig: any, T: TV, h: number) {
+    const v = sim.vel, hs = Math.hypot(v[0], v[2]), acc = (hs - T.hs) / Math.max(h, 1e-3); T.hs = hs;
+    const on = sim.ground && !sim.swim && !sim.wall && !sim.web && !sim.mv && !sim.flip && !sim.slam && !((sim.snareT || 0) > 0) && !(sim.atkT > 0);
+    const tgt = on ? 0.3 * sstep((hs - 3) / 13) + cl(acc * 0.012, -0.18, 0.15) : 0;
+    [T.rl, T.rlv] = spring(T.rl, T.rlv, tgt, 40, 11, h);
+    if (Math.abs(T.rl) < 0.002) return;
+    const pr = rig.poseRoot as THREE.Group; pr.rotation.x += T.rl;
+    rig.b.head.rotation.x -= T.rl * 0.6;
 }
 /* WEB SPRING (ref 21.6-21.9 s, 25.9-26.2 s): the hands already reach the anchor (existing aim). The body coils for the first few frames
    (knees in, chest curled = anticipation), then the yank snaps it out along the pull: legs straight and trailing together, back arched, head up into it.
