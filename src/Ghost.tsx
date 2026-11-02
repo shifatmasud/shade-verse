@@ -297,10 +297,12 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         const actor = actorRef.current;
         actor.mode = 'play'; actor.t = sim.t; actor.time = sim.time; actor.enemies = sim.enemies;
         actor.safe[0] = tx; actor.safe[1] = ty; actor.safe[2] = tz;
-        setCompanionSim(actor);
+        setCompanionSim(actor); if (DBG) (window as any).__ghostActor = actor;
         resetControls(controls);
         const independentSnare = (sim as any).snareT > 0 || (actor as any).snareT > 0;
-        const animationSource = !independentSnare && (hasLiveShadowAction(sim) || sim.t < st.vaultUntil) ? sim : actor;
+        const fightAnim = (o: any) => !!(o.mv || o.slam || o.snareT > 0 || o.atkT > 0 || o.shotT > 0 || o.flip);
+        const independentFight = fightAnim(sim) || fightAnim(actor) || (st.slamHold > 0);   // Nov 2 (recording finding #1): Ghost plays HER OWN attacks; she only mirrors Shadow's traversal
+        const animationSource = !independentSnare && !independentFight && (hasLiveShadowAction(sim) || sim.t < st.vaultUntil) ? sim : actor;
         const toLeader = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[1] - sim.pos[1], actor.pos[2] - sim.pos[2]);
         const targetDistance = Math.hypot(tx - actor.pos[0], ty - actor.pos[1], tz - actor.pos[2]);
         if (!st.ready) {
@@ -379,7 +381,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         if (actor.web && !sim.web && goalD > 8 && longRoute && !leaderAir) controls.swing = true;
         if (actor.web && !sim.web && (!longRoute || goalD < 7 || leaderAir)) controls.swing = false;
         if (leaderAir) {
-            controls.swing = false; controls.jumpHeld = true;
+            controls.swing = false; controls.jumpHeld = actor.pos[1] < ty + 0.5;   // finding #2: hold flight only while below the leader (she used to climb without limit)
             if (!actor.glideOn && (actor.ground || actor.wall || actor.web)) { actor.airT = 0.34; controls.jumpQ = true; }
         } else if (longRoute && actor.ground && !actor.swim && !leaderWall && !sim.web && sim.t >= st.jumpAt) {
             controls.jumpQ = true; st.jumpAt = sim.t + 0.7;
@@ -397,11 +399,11 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         if (fighting && enemy && !((actor as any).snareT > 0) && !((actor as any).slam) && !(st.slamHold > 0) && !(DBG && (window as any).__ghostDisableCombat)) {
             const lifted = ((enemy as any).ly || 0) > 1.1 || ((enemy as any).vy || 0) > 1.2;
             const useSpecial = choice.count >= 2 && (actor as any).snareCd <= 0 && sim.t >= st.specialAt;
-            if (useSpecial) { controls.specialQ = true; st.specialAt = sim.t + 9.2; }
+            if (useSpecial) { controls.specialQ = true; st.specialAt = sim.t + 5; }
             else if (lifted && enemyD < 22 && sim.t >= st.attackAt) {
                 controls.attackQ = true; controls.shotQ = true; st.attackAt = sim.t + 0.48;
             } else if (enemyD < 16 && sim.t >= st.attackAt) {
-                controls.attackQ = true; controls.meleeQ = true; st.attackAt = sim.t + 0.48;
+                controls.attackQ = true; controls.meleeQ = true; st.attackAt = sim.t + 0.3;   // buffered into her combo chain (was 0.48 s)
             } else if (enemyD < 34 && sim.t >= st.shotAt) {
                 controls.attackQ = true; controls.shotQ = true; st.shotAt = sim.t + 1.6;
             }
@@ -415,6 +417,8 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
         { const an = (actor as any).slamN || 0; if (an !== st.slamSeen) { st.slamSeen = an; const d = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[2] - sim.pos[2]); if (an && d < 25) (sim as any).shake = Math.min(1, ((sim as any).shake || 0) + 0.35 * (1 - d / 25)); } }   // her Slam shakes the camera too, by distance
         if (leaderAir) actor.vel[1] += Math.max(-8, Math.min(8, (ty - actor.pos[1]) * 0.32 - actor.vel[1] * 0.65)) * dt;
+        if (actor.pos[1] > sim.pos[1] + 2.5 && !actor.ground && !actor.web) { actor.vel[1] = Math.min(actor.vel[1], -(actor.pos[1] - sim.pos[1] - 2.5) * 2.5); (actor as any).glideMode = false; }   // never more than 2.5 m above Shadow
+        { const dx = actor.pos[0] - sim.pos[0], dz = actor.pos[2] - sim.pos[2], d = Math.hypot(dx, dz); if (d < 1.8 && Math.abs(actor.pos[1] - sim.pos[1]) < 2) { const k = Math.min(1, dt * 8) * (1.8 - d), nx = d > 0.05 ? dx / d : -Math.cos(sim.ang), nz = d > 0.05 ? dz / d : Math.sin(sim.ang); actor.pos[0] += nx * k; actor.pos[2] += nz * k; } }   // finding #1: keep ~2 m apart, no doubled silhouettes
         const animation = animateHuman(actor, model, dt, st, animationSource);
         root.visible = true;
 
