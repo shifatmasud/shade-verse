@@ -17,7 +17,7 @@ const raf = (n) => p.evaluate((n) => new Promise(res => { let k = 0; const f = (
 // park the hero on the street with one bot in front of him
 const S = await p.evaluate((scen) => {
   const g = window.__game, s = g.sim, I = g.input;
-  window.__ts = 0; if (scen !== 'melee' && scen !== 'react') window.__ghostDisableCombat = true;   // keep Ghost's own fight out of the hurt/shot frames
+  window.__ts = 0; if (scen !== 'melee' && scen !== 'react' && scen !== 'ghostkick') window.__ghostDisableCombat = true;   // keep Ghost's own fight out of the hurt/shot frames
   s.enemies.forEach((e, i) => { if (i > 0) { e.down = 1e5; e.atk = 0; e.x = -900; e.z = -900; } });
   I.keys.w = I.keys.a = I.keys.s = I.keys.d = false; I.swing = false; I.swingQ = false; I.jumpQ = false;
   const q = window.__spawn || (window.__spawn = [...s.pos]); s.pos = [q[0], q[1], q[2]]; s.vel = [0, 0, 0]; s.web = false; s.wall = null; s.swim = false; s.glideOn = false; s.ground = true; s.ang = 0; s.yaw = 0; s.mv = null; s.flip = null; s.hp = 100; s.dodgeT = 0; s.atkT = 0;
@@ -26,6 +26,28 @@ const S = await p.evaluate((scen) => {
   return { t0: s.t };
 }, scen);
 
+if (scen === 'ghostkick') {
+  // Ghost's own spin hook kick (move 3 of her combo): Ghost beside the bot, Shadow out of the way; frames at her extension from 3/4, side, front, behind
+  const info = [];
+  await p.evaluate(() => { const s = window.__game.sim, A = window.__ghostActor, e = s.enemies[0]; s.pos = [e.x, e.y, e.z - 12]; if (A) { A.pos = [e.x + 0.3, e.y, e.z - 2.2]; A.vel = [0, 0, 0]; A.ang = 0; } window.__ts = 0.3; });
+  let last = null;
+  for (let guard = 0; guard < 4000; guard++) {
+    last = await p.evaluate(() => { const A = window.__ghostActor, s = window.__game.sim, e = s.enemies[0]; if (!A) return 'noactor'; e.atk = -50; e.hp = 99; e.down = 0; s.hp = 100;
+      const m = A.mv; if (m && m.id === 3 && m.t >= 0.27) { window.__ts = 0; return 'ok'; } window.__ts = m && m.id === 3 ? 0.03 : 0.25; return m ? 'mv' + m.id : 'none'; });
+    if (last === 'ok' || last === 'noactor') break; await raf(1);
+  }
+  for (let i = 0; i < 4; i++) {
+    await p.evaluate((i) => { const A = window.__ghostActor, q = A.pos, a = A.ang || 0; const fx = Math.sin(a), fz = Math.cos(a);
+      const v = i === 0 ? [fz * 0.92 + fx * 0.39, -fx * 0.92 + fz * 0.39] : i === 1 ? [-fz, fx] : i === 2 ? [fx * 0.8 + fz * 0.6, fz * 0.8 - fx * 0.6] : [-fx, -fz];
+      window.__camOv = [q[0] + v[0] * 4.6, q[1] + (i === 2 ? 1.6 : i === 0 ? 1.0 : 0.8), q[2] + v[1] * 4.6, q[0], q[1] + 0.6, q[2]]; }, i);
+    await raf(3);
+    info.push(await p.evaluate(() => { const A = window.__ghostActor; return { mv: A && A.mv ? [A.mv.id, +A.mv.t.toFixed(3)] : null }; }));
+    await p.screenshot({ path: `${outdir}/${scen}_${i}.png`, clip: { x: 170, y: 20, width: 300, height: 300 } });
+  }
+  fs.writeFileSync(`${outdir}/${scen}_info.json`, JSON.stringify({ info, last, errs }, null, 1));
+  console.log(JSON.stringify({ errs: errs.length, first: errs.slice(0, 3), last, info }));
+  await b.close(); process.exit(0);
+}
 if (scen === 'combo' || scen === 'slam' || scen === 'kick') {
   // frames keyed to the move clock (mv.id, mv.t) or the slam phase, so hit-stop freezes do not shift them
   const K = scen === 'kick' ? [[3, 0.14], [3, 0.27], [3, 0.27], [3, 0.27], [3, 0.27], [3, 0.35], [3, 0.42]] : scen === 'combo'

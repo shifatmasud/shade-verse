@@ -7,7 +7,7 @@ import { traversalBones, traversalRoot } from './heroTraversal';
 import { enemyReact } from './enemyReact';
 import { heroHurtBones } from './heroHurt';
 import { shotRecoilBones } from './heroRecoil';
-import { meleeBody, slamBody, slamBodyReset } from './heroMelee';
+import { meleeBody, slamBody, slamBodyReset, supportLegIK } from './heroMelee';
 import gsap from 'gsap';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
@@ -130,6 +130,7 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
     if (mv && mv.id === 3) { const u = Math.min(1, mv.t / MOVES[3].dur), sp = cstep(Math.max(0, Math.min(1, (u - 0.08) / 0.72))); h.rotation.y += sp * Math.PI * 2; }
     if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
     if (fl) { const u = Math.min(1, fl.t / fl.dur), a = cstep(u) * Math.PI * 2 * fl.dir; if (fl.ax === 'x') rig.b.hips.rotation.x += a; else rig.b.hips.rotation.z += a; }
+    if (mv && mv.id === 3) { const u = mv.t / MOVES[3].dur; supportLegIK(rig, 'L', w * cstep(Math.max(0, Math.min(1, (u - 0.24) / 0.14))) * (1 - cstep(Math.max(0, Math.min(1, (u - 0.76) / 0.12))))); }   // spin hook kick: planted support leg by IK (src/heroMelee.ts)
     meleeBody(sim, rig, h, dt, w, MOVES);   // whole-body weight: wind-up, lunge, sit into the hit, rear-heel pivot, recover (src/heroMelee.ts)
     // smear stretch on the striking limb for ~2 frames around the hit, and body squash (anticipation) -> stretch (release) per move
     if (mv) {
@@ -289,7 +290,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
         const sharedPose = sa.__heroPoseState ?? (sa.__heroPoseState = { w: 0, c: new Float32Array(activePoseState.c.length), t: new Float32Array(activePoseState.t.length) });
         sharedPose.w = activePoseState.w; sharedPose.c.set(activePoseState.c); sharedPose.t.set(activePoseState.t);
     }
-    for (const side of ['L', 'R']) { const hf = rig.b['hipFix' + side] as THREE.Bone | undefined, th = rig.b['thigh' + side] as THREE.Bone | undefined; if (hf && th) hf.quaternion.identity().slerp(th.quaternion, 0.5); }   // hip corrective follows its thigh at half the angle (buildRig)
+    for (const side of ['L', 'R']) { const hf = rig.b['hipFix' + side] as THREE.Bone | undefined, th = rig.b['thigh' + side] as THREE.Bone | undefined; if (hf && th) { hf.quaternion.identity().slerp(th.quaternion, 0.5); hf.scale.setScalar(1 + 0.14 * (rig._supW?.[side] ?? 0)); } } if (rig._supW) rig._supW.L = rig._supW.R = 0;   // + the support side's volume keeper: up to 14% fuller hip band while that leg carries the kick's tipped pelvis (supportLegIK), so the big hip angle does not pinch the upper thigh   // hip corrective follows its thigh at half the angle (buildRig)
     const zip = sim.web && sim.webT < 1.6 && sim.anchor[1] - sim.pos[1] > 25 && Math.hypot(sim.anchor[0] - sim.pos[0], sim.anchor[1] - sim.pos[1], sim.anchor[2] - sim.pos[2]) < sim.rope - 0.5;
     const action = sn > 0 ? 'shadow-snare' : sa.mv ? `move-${sa.mv.id}` : sa.flip ? 'dodge-flip' : sim.shotT > 0 ? 'plasma-web-shot' : sim.spring > 0 ? 'web-spring-launch' : sim.web ? (zip ? 'street-zip-up' : 'web-swing') : sim.swim ? (sim.dive ? 'dive' : 'swim') : sim.wall ? 'wall-crawl' : sim.wallT > 0 ? 'wall-jump' : sim.glideOn ? (sa.flightBoost ? 'powered-flight' : 'glide') : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne') : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
     const snarePhase = sn <= 0 ? 'inactive' : sn > SNARE.GATHER_END ? 'gather' : sn > SNARE.SHOCK_START ? 'grip' : sn > SNARE.IMPACT ? 'shockwave' : 'discharge';
@@ -314,6 +315,27 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
         }
         if (DBG) (window as any).__capeVerts = cnt;
     }
+    const legH: Record<number, number[]> = {};
+    {   // knee / ankle pivots onto the leg mesh (Shifat Nov 2 4:40 PM on the kick's support leg: "Its rig bones problem"). The leg mesh stands in a slight A-stance (knee centre ~0.20 out from the midline, ankle ~0.245) but the knee and ankle bones sat in a vertical line under the hip (0.14 / 0.13 out): the knee hinged about a point on the INNER surface of the knee and the ankle 11 cm inside the foot, so any knee bend or leg twist swung the shin around the wrong axis (the support leg's backward kink). Each joint is moved to the middle of its own mesh cross-section (measured here from the vertices, so Ghost's own body gets her own pivots; only the skeleton built here moves, the shared mesh data is not touched, so Ghost's body shaping reads the same bone lines as before); the hip pivot is unchanged. Rest pose unchanged (bind matrices follow the bones); rotations keep their meaning
+        const P = d.pos, bi = (n: string) => d.bones.findIndex((b: any) => b.n === n);
+        const mid = (y0: number, sgn: number, ids: number[], win: number) => {   // middle of the leg's cross-section at height y0 (vertices skinned mostly to these bones, on this side)
+            let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, n = 0;
+            for (let i = 0; i < P.length / 3; i++) {
+                const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2]; if (Math.abs(y - y0) > win || Math.sign(x || 1) !== sgn || Math.abs(x) > 0.42) continue;
+                let w = 0; for (let j = 0; j < 4; j++) if (ids.includes(d.si[i * 4 + j])) w += d.sw[i * 4 + j]; if (w < 0.3) continue;
+                x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); n++;
+            }
+            return n >= 6 ? [(x0 + x1) / 2, (z0 + z1) / 2] : null;
+        };
+        for (const side of ['L', 'R']) {
+            const ti = bi('thigh' + side), si = bi('shin' + side), fi = bi('foot' + side); if (ti < 0 || si < 0 || fi < 0) continue;
+            const sgn = Math.sign(d.bones[ti].h[0] || (side === 'L' ? -1 : 1)), K = d.bones[si].h, A = d.bones[fi].h;
+            const k = mid(K[1], sgn, [ti, si], 0.03), a = mid(A[1] + 0.05, sgn, [si, fi], 0.03);   // the ankle is read just above the foot so the toes do not pull it forward
+            if (k && Math.abs(k[0] - K[0]) < 0.12 && Math.abs(k[1] - K[2]) < 0.08) legH[si] = [k[0], K[1], k[1]];
+            if (a && Math.abs(a[0] - A[0]) < 0.16 && Math.abs(a[1] - A[2]) < 0.08) legH[fi] = [a[0], A[1], a[1]];
+        }
+        if (DBG) ((window as any).__legPivots || ((window as any).__legPivots = [])).push(Object.values(legH).map((h) => h.map((v) => +v.toFixed(3))));
+    }
     if (!d._hipRig) {   // hip corrective (combat feel pass, Shifat Nov 2 4:05 PM 'Edit bone if needed'): a half-angle helper bone at each hip joint (child of hips, identity at rest, so the rest pose is unchanged); the upper-thigh / groin skin is shared between the thigh and its helper, so a big hip angle (the kick's tipped pelvis over a vertical support leg) bends through a rounded band instead of creasing at the joint
         d._hipRig = true;
         const hi = d.bones.findIndex((b: any) => b.n === 'hips'), P = d.pos;
@@ -322,8 +344,10 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
             const J = d.bones[ti].h, ni = d.bones.length; d.bones.push({ n: 'hipFix' + side, p: hi, h: [J[0], J[1], J[2]] });
             for (let i = 0; i < P.length / 3; i++) {
                 const x = P[i * 3], y = P[i * 3 + 1]; if (Math.abs(x) > 0.27 || y < J[1] - 0.26 || y > J[1] + 0.08 || Math.sign(x || 1) !== Math.sign(J[0])) continue;   // the hip / upper thigh band on this side (hands hang wider than 0.27)
-                let k = -1; for (let j = 0; j < 4; j++) if (d.si[i * 4 + j] === ti && d.sw[i * 4 + j] > 0) k = j; if (k < 0) continue;
-                const f = 0.5 * Math.max(0, Math.min(1, (y - (J[1] - 0.26)) / 0.2)); if (f <= 0) continue;
+                let k = -1; for (let j = 0; j < 4; j++) if (d.si[i * 4 + j] === ti && d.sw[i * 4 + j] > 0) k = j;
+                let f = 0.5 * Math.max(0, Math.min(1, (y - (J[1] - 0.26)) / 0.2));
+                if (k < 0 && y >= J[1] && Math.abs(x) > 0.04) { for (let j = 0; j < 4; j++) if (d.si[i * 4 + j] === hi && d.sw[i * 4 + j] > 0) k = j; f = 0.35 * Math.max(0, 1 - (y - J[1]) / 0.08); }   // the hip / buttock skin just above the joint follows a little too, so a big hip angle has no notch at the joint
+                if (k < 0 || f <= 0) continue;
                 let e = -1; for (let j = 0; j < 4; j++) if (d.sw[i * 4 + j] <= 0) { e = j; break; }
                 if (e < 0) { e = 0; for (let j = 1; j < 4; j++) if (j !== k && (e === k || d.sw[i * 4 + j] < d.sw[i * 4 + e])) e = j; if (e === k) continue; const lost = d.sw[i * 4 + e]; d.sw[i * 4 + e] = 0; d.sw[i * 4 + k] += lost; }   // full slot table: fold the smallest weight into the thigh first
                 const wt = d.sw[i * 4 + k]; d.sw[i * 4 + k] = wt * (1 - f); d.si[i * 4 + e] = ni; d.sw[i * 4 + e] = wt * f;
@@ -342,8 +366,8 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
     const bones: THREE.Bone[] = [], byName: Record<string, THREE.Bone> = {};
     d.bones.forEach((b: any, i: number) => {
         const bone = new THREE.Bone(); bone.name = b.n; bones.push(bone); byName[b.n] = bone;
-        const par = b.p >= 0 ? d.bones[b.p].h : [0, 0, 0];
-        bone.position.set(b.h[0] - par[0], b.h[1] - par[1], b.h[2] - par[2]);
+        const h = legH[i] || b.h, par = b.p >= 0 ? legH[b.p] || d.bones[b.p].h : [0, 0, 0];
+        bone.position.set(h[0] - par[0], h[1] - par[1], h[2] - par[2]);
         if (b.p >= 0) bones[b.p].add(bone);
     });
     let mat: THREE.MeshLambertMaterial;
