@@ -5,6 +5,7 @@ import heroData from './hero.json';
 import baseTexUrl from './basetex';
 import { BOSS_BODY_OFFSET, BOSS_ROOT_SCALE, BOSS_SCALE_FACTOR, SHADOW_ROOT_SCALE } from './bossConfig';
 import type { Sim } from './sim';
+import { bossReact } from './enemyReact';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const SOURCE_HERO = JSON.parse(JSON.stringify(heroData)) as any;
@@ -277,7 +278,7 @@ export function GiantBoss({ sim, mini = false }: { sim: Sim; mini?: boolean }) {
         motion.phase += dt * (1.45 + Math.min(1.1, speed * 0.65));
         const stride = Math.sin(motion.phase);
         const attackT = boss.atk > 0 ? Math.max(0, Math.min(1, 1 - boss.atk / 1.3)) : 0;
-        const hit = boss.hit > 0 ? Math.min(0.06, boss.hit * 0.04) : 0;
+        const rx = bossReact(boss, sim, DBG && (window as any).__ts != null ? dt * (window as any).__ts : dt);   // subtle hit read: small tilt away from the blow + soft white-to-hero-colour flash (src/enemyReact.ts)
         const fall = boss.down > 0 ? Math.max(0, Math.min(1, (3 - boss.down) / 0.55)) : 0;
         const b = rig.byName;
         const flightPhase = boss.flight?.phase ?? 'grounded';
@@ -291,7 +292,7 @@ export function GiantBoss({ sim, mini = false }: { sim: Sim; mini?: boolean }) {
 
         root.visible = true;
         root.position.set(boss.x, boss.y + ((boss as any).ly || 0), boss.z);
-        root.rotation.set(-fall * 0.18, boss.ang, fall * 0.76);
+        root.rotation.set(-fall * 0.18, boss.ang, fall * 0.76); root.quaternion.premultiply(rx.q);
         root.scale.setScalar(BOSS_ROOT_SCALE * (mini ? 0.72 : 1) * Math.max(0.002, 1 - fall * 0.78));
 
         rig.bones.forEach((bone) => bone.rotation.set(0, 0, 0));
@@ -312,7 +313,7 @@ export function GiantBoss({ sim, mini = false }: { sim: Sim; mini?: boolean }) {
             b.farmR.rotation.x = -0.38 * lift;
             b.chest.rotation.x = attackT < 0.55 ? 0.08 + lift * 0.12 : 0.2 - (1 - lift) * 0.38;
         }
-        rig.skin.color.setRGB(1 + hit, 1 + hit, 1 + hit);
+        rig.skin.color.setRGB(rx.r, rx.g, rx.b);
     });
 
     return <primitive object={root} visible={false} frustumCulled={false} />;
