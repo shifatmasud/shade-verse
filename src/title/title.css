@@ -78,9 +78,9 @@
 .sv-wordmark{font-weight:400;font-size:clamp(17px,1.25vw,20px);letter-spacing:-.04em;display:inline-flex;align-items:baseline;gap:1px;transition:opacity .24s cubic-bezier(0.19,1,0.22,1)}
 .sv-wordmark__mark{display:inline-block;width:1.05em;height:1.05em;align-self:center}
 .sv-wordmark__mark svg{display:block}
+/* the sound toggle = TitleButton variant 'quiet' (./TitleButton.tsx, ./titleButton.css): press is the portfolio's ink flood */
 .sv-sound{height:44px;min-width:44px;padding:0 10px;border:0;border-radius:999px;background:transparent;color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:background-color .24s cubic-bezier(0.19,1,0.22,1)}
-.sv-sound:active{background:color-mix(in srgb,currentColor 12%,transparent)}
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .sv-sound:focus-visible{outline:2px solid currentColor;outline-offset:3px}
 .sv-wave{width:22px;height:14px;display:block}
 
@@ -102,11 +102,9 @@
 .sv-comic:not(.again) .sv-stage{animation:sv-thud .26s ease-out 1.54s both}
 @keyframes sv-thud{0%,100%{translate:0 0}30%{translate:0 5px}60%{translate:0 -2px}}
 .sv-play{position:absolute;z-index:60;display:flex;align-items:center;justify-content:center;border:0;padding:0;border-radius:999px;background:#fafafa;color:#000;cursor:pointer;
-  box-shadow:0 0 0 3px #000,0 8px 30px rgba(0,0,0,.6);animation:sv-play-in .55s cubic-bezier(0.19,1,0.22,1) 1.66s both;transition:background-color .24s cubic-bezier(0.19,1,0.22,1)}
-.sv-play svg{width:38%;height:38%;margin-left:6%}
+  box-shadow:0 0 0 3px #000,0 8px 30px rgba(0,0,0,.6);animation:sv-play-in .55s cubic-bezier(0.19,1,0.22,1) 1.66s both}
 @keyframes sv-play-in{from{opacity:0;transform:translate3d(0,40%,0) scale(.8)}to{opacity:1;transform:none}}
-@media (hover:hover){.sv-play:hover{background:#d4d6da}}
-.sv-play:active{background:#a9adb3}
+/* Play = TitleButton variant 'play': hover / press are the portfolio's ink flood (./titleButton.css, ./titleInk.ts) */
 .sv-play:focus-visible{outline:2px solid #fafafa;outline-offset:6px}
 .sv-hdr{animation:sv-fade .8s cubic-bezier(0.19,1,0.22,1) .2s both}
 @keyframes sv-fade{from{opacity:0}to{opacity:1}}

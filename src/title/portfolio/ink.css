@@ -1,0 +1,36 @@
+/* Copied from Shifat's portfolio, surface-tension src/styles/app.css (Shifat Nov 2 7:31 PM: "Just use code from my portfolio."):
+   .pill, .pill--quiet (was `.header .pill--quiet`), the hover lift, focus-visible, touch rules and the BUTTON v2 block for the sound
+   pill. Changes to compile here: var(--ease) / var(--radius) written out (the title has no portfolio tokens), selectors scoped to
+   .sv-comic so nothing outside the title can pick them up, font rules dropped (the pill carries no text here). Play (.pill--play)
+   adds only its look: the white disc and comic ring stay on .sv-play (title.css); its ink is the sound pill's own
+   `background: currentColor` = black, the triangle copy inside it white, and the triangle rolls like the portfolio CTA's arrow. */
+.sv-comic .pill { position: relative; height: 40px; padding: 0 16px; border-radius: 999px; border: 0; background: rgba(250, 250, 250, .62); backdrop-filter: blur(14px) saturate(1.1); -webkit-backdrop-filter: blur(14px); display: inline-flex; align-items: center; gap: 8px; cursor: pointer; overflow: hidden; transition: background .5s cubic-bezier(0.19, 1, 0.22, 1), color .5s cubic-bezier(0.19, 1, 0.22, 1), transform .5s cubic-bezier(0.19, 1, 0.22, 1); }
+@media (hover: hover) { .sv-comic .pill:hover { transform: translateY(-1px); } }
+.sv-comic .pill:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; text-decoration: none; }
+.sv-comic .pill--quiet { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0 10px; }
+.sv-comic .pill--quiet { height: 44px; min-width: 44px; justify-content: center; }   /* the title's 44 px hit area (the portfolio pill is 40) */
+.sv-comic .pill { -webkit-touch-callout: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
+/* ── BUTTON v2 (mockup for Shifat 11:48Z "We can do better for button"; 11:50Z / 11:52Z the SVG circle ripple) ──────
+   inkButton.ts drives every value on one rAF loop; here is only the structure. */
+.sv-comic .pill--sound { position: relative; isolation: isolate; overflow: hidden; -webkit-user-select: none; user-select: none; }
+.sv-comic .pill--sound > .sroll { position: relative; z-index: 1; }
+.sv-comic .pill--sound .ink { position: absolute; inset: 0; z-index: 2; pointer-events: none; visibility: hidden; clip-path: circle(0px at 0px 0px); display: flex; align-items: center; }
+.sv-comic .pill--sound .ink { justify-content: center; background: currentColor; border-radius: inherit; }
+/* the masked roll: two copies, the second waits below and is moved by inkButton.ts */
+.sv-comic .sroll { position: relative; display: block; overflow: hidden; width: 22px; height: 14px; }
+.sv-comic .sroll .ir-a, .sv-comic .sroll .ir-b { display: block; position: absolute; inset: 0; }
+.sv-comic .sroll .ir-b { transform: translate3d(0, 100%, 0); }
+/* the magnet replaces the sound pill's 1 px hover lift */
+@media (hover: hover) { .sv-comic .pill--sound:hover { transform: none; } }
+
+/* Play: the triangle in place of the wave, sized as before (38 %, nudged 6 % right), rolling like the CTA arrow (.big-btn .ia-b) */
+.sv-comic .pill--play { position: absolute; padding: 0; gap: 0; justify-content: center; color: #000; background: #fafafa; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.sv-comic .pill--play .sroll { width: 38%; height: 38%; margin-left: 6%; }
+.sv-comic .pill--play .sroll .ia-a, .sv-comic .pill--play .sroll .ia-b { display: block; position: absolute; inset: 0; }
+.sv-comic .pill--play .sroll .ia-b { transform: translate3d(-130%, 130%, 0); }
+.sv-comic .pill--play .sroll svg { display: block; width: 100%; height: 100%; }
+.sv-comic .pill--play .ink .sroll { color: #fafafa; }
+/* the portfolio CTA's ink carries a 1 px white inner rule so the pill does not vanish into its black wall (.big-btn .ink); Play sits on
+   black too, so its black flood carries the same rule (2 px: the stage is scaled down on phones) */
+.sv-comic .pill--play .ink { box-shadow: inset 0 0 0 2px #fafafa; }

@@ -10,7 +10,11 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { ART } from './layout';
 import { PanelArt } from './PanelArt';
 import { TitleHeader } from './TitleHeader';
+import { TitleButton } from './TitleButton';
 
+/** Play is up once its intro lands (.sv-play: sv-play-in .55s after 1.66s, title.css); Space waits for it (Shifat Nov 2 7:37 PM) */
+const PLAY_UP_MS = 2210;
+const REDUCED = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isPhone = (W: number, H: number) => H <= 500 && W / H >= 1.6;   // short landscape phone (844x390 and friends)
 
 /** fits a frame's box to the screen; the box grows by Play's 52 px minimum on small screens, so Play is never cut off */
@@ -70,9 +74,8 @@ export function ComicTitle({ muted, onMute, onStart, extra, leaving, again }: { 
                     {ART.panels.map((p) => <PanelArt key={p.id} p={p} half={half} />)}
                 </svg>
                 <svg className="sv-art sv-top" width={ART.w} height={ART.h} viewBox={`0 0 ${ART.w} ${ART.h}`} aria-hidden="true"><Sticker phone={f.phone} /></svg>
-                <button className="sv-play" aria-label="play" style={{ left: pcx - playD / 2, top: pcy - playD / 2, width: playD, height: playD }} onClick={(e) => { e.stopPropagation(); onStart(); }}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.8l10 6.2-10 6.2z" fill="currentColor" /></svg>
-                </button>
+                <TitleButton variant="play" className="sv-play" label="play" style={{ left: pcx - playD / 2, top: pcy - playD / 2, width: playD, height: playD }} onPress={onStart}
+                    space={!leaving} spaceAfter={again || REDUCED() ? 0 : PLAY_UP_MS} />
             </div>
         </div>
         {extra && <div className="sv-cextra">{extra}</div>}
