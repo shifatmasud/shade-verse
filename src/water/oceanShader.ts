@@ -341,7 +341,9 @@ ${GRID_TRACE_GLSL}
         col += vec3(0.18, 0.26, 0.38) * (1.0-uDay) * pow(max(dot(r, normalize(vec3(-0.3, 0.6, -0.5))), 0.0), 12.0);
         // Night read from above (Shifat 2:29 PM screenshots: flat black): a broad dim moon-sky sheen across the ripples plus a sparse moon glint path.
         { vec3 md = normalize(vec3(-0.3, 0.6, -0.5)); float mr = max(dot(r, md), 0.0); float nt = (1.0 - uDay) * (1.0 - smoothstep(-80.0, -40.0, vW.x) * (1.0 - smoothstep(-760.0, -720.0, vW.z)));   /* Neon Harbor night look stays untouched */
-          col += nt * (vec3(0.035, 0.06, 0.10) * pow(mr, 3.0) + vec3(0.3, 0.36, 0.45) * pow(mr, 90.0) * (1.0 - haze)); }
+          vec3 mm = -uSun; float mup = smoothstep(-0.02, 0.1, mm.y), mq = max(dot(r, mm), 0.0);   /* Shifat Nov 2 8:40 PM moon photo: a soft moonlight glitter path under the REAL moon (was a fixed stylised direction) - the sun glitter recipe above (Blinn-Phong on the detailed normal, sharp near, stretched far), cool and dim */
+          float ndm = max(dot(n, normalize(mm + v)), 0.0), shinM = mix(1400.0, 50.0, pow(smoothstep(8.0, 380.0, wDist), 0.6)), glM = pow(ndm, shinM) * shinM * 0.008; glM = (1.0 - exp(-0.7 * glM)) * mix(0.3, 1.0, smoothstep(6.0, 90.0, wDist));
+          col += nt * (vec3(0.035, 0.06, 0.10) * pow(mr, 3.0) + (vec3(0.62, 0.7, 0.86) * glM * 0.8 + vec3(0.3, 0.36, 0.45) * pow(mq, 40.0) * 0.35) * mup * (1.0 - haze)); }
       }
       // A near-waterline camera can sit inside a displaced crest while viewing its top face.
       // Fade only that nearby top-face sheet so the swimmer remains readable through the split.

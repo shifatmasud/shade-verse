@@ -35,7 +35,7 @@ vec3 lightningSky(vec3 dn, vec3 fd, float f){ if(f<0.002) return vec3(0.0); vec3
 
 // moon + a sparse star field as functions of a direction, so the sea can mirror them too (Shifat 10:59 PM 'everything must be reflected')
 export const SKYFX2_GLSL = `
-vec3 moonSky(vec3 dn, vec3 sunV){ float mg=max(dot(dn,-sunV),0.0); return vec3(0.82,0.88,1.0)*(pow(mg,260.0)*1.4+pow(mg,45.0)*0.5+pow(mg,7.0)*0.1)+vec3(0.95,0.97,1.0)*smoothstep(0.9988,0.9994,mg)*1.6; }   /* matches the sky moon (Gullmarn fjord photo); rippled normals turn it into the glitter path */
+vec3 moonSky(vec3 dn, vec3 sunV){ float mg=max(dot(dn,-sunV),0.0); return vec3(0.8,0.87,1.0)*(pow(mg,260.0)*0.55+pow(mg,45.0)*0.24+pow(mg,7.0)*0.09)+vec3(0.92,0.95,1.0)*smoothstep(0.99952,0.99972,mg)*0.55; }   /* matches the sky moon (Shifat Nov 2 8:40 PM photo: smaller, softer, not blown out); rippled normals turn it into the glitter path */
 vec3 starsLite(vec3 dn){ if(dn.y<0.06) return vec3(0.0); vec2 sp=dn.xz/(abs(dn.y)+0.2)*46.0; vec2 si=floor(sp),sf=fract(sp); float sh=fract(sin(dot(si,vec2(12.9898,78.233)))*43758.5);
   if(sh<=0.95) return vec3(0.0); vec2 so=vec2(fract(sh*91.7),fract(sh*57.3))*0.6+0.2; float dd=length(sf-so); return vec3(0.85,0.9,1.0)*smoothstep(0.18,0.0,dd)*mix(0.15,0.6,pow(fract(sh*29.7),4.0))*smoothstep(0.06,0.35,dn.y); }
 `;

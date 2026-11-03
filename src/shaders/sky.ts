@@ -27,12 +27,19 @@ void main(){
     float sb=mix(0.3,1.25,pow(fract(sh*29.7),4.0))*(0.8+0.2*sin(uT*(1.3+sz*2.0)+sh*60.0));
     nc+=mix(vec3(0.75,0.85,1.0),vec3(1.0,0.92,0.8),fract(sh*7.3))*sv*sb*3.2*smoothstep(0.06,0.35,dn.y);}}
   nc+=auroraSky(dn,uT,7.0);   /* aurora v3 - src/shaders/skyFx.ts (shared with the sea reflection) */
-  float mg=max(dot(dn,-sun),0.0);   /* moon from a real photo (Wikimedia 'FullMoon2010', public/moon.png): the photographed disc in local tangent coords, soft anti-aliased limb,
-     warmer when low (atmosphere), a tight bright halo plus a wide faint glow like the Gullmarn fjord photo */
-   { vec3 md=-sun; vec3 mu=normalize(cross(md, abs(md.y)>0.98?vec3(1.0,0.0,0.0):vec3(0.0,1.0,0.0))); vec3 mv=cross(mu,md); vec2 q=vec2(dot(dn,mu),dot(dn,mv))/0.036; float mr=length(q);
-     float disc=(1.0-smoothstep(0.95,1.03,mr))*step(0.0,dot(dn,md)); vec3 tint=mix(vec3(1.0,0.82,0.62),vec3(1.0,0.98,0.94),smoothstep(0.0,0.35,md.y));
-     float tx=texture2D(uMoon,clamp(q*0.5+0.5,0.0,1.0)).r; nc=mix(nc,tint*(0.25+1.25*pow(tx,1.15)),disc);
-     nc+=vec3(0.75,0.85,1.0)*(pow(mg,90.0)*0.32+pow(mg,10.0)*0.06)*(1.0-disc); }
+  float mg=max(dot(dn,-sun),0.0);   /* moon (Shifat Nov 2 8:40 PM 'I want this moon', ref: his photo of a small moon glowing through thin cloud over the sea): a smaller
+     photographed disc (Wikimedia 'FullMoon2010', public/moon.png) kept under white so its maria still read, a soft limb, warmer when low; thin cloud wisps drift
+     past it in the moon's own tangent plane - they veil the disc a little and catch its light, so the milky corona and the wide halo pool in the wisps
+     around it instead of a flat sticker glow; away from the moon the wisps fade out (no extra clouds elsewhere, aurora + stars untouched) */
+   { vec3 md=-sun; vec3 mu=normalize(cross(md, abs(md.y)>0.98?vec3(1.0,0.0,0.0):vec3(0.0,1.0,0.0))); vec3 mv=cross(mu,md); vec2 q=vec2(dot(dn,mu),dot(dn,mv))/0.026; float mr=length(q);
+     float fr=step(0.0,dot(dn,md)); float disc=(1.0-smoothstep(0.82,1.06,mr))*fr; vec3 tint=mix(vec3(1.0,0.84,0.66),vec3(0.97,0.98,1.0),smoothstep(0.0,0.35,md.y));
+     vec2 wq=q*0.12+vec2(uT*0.006,0.0); float w=svn2(wq*vec2(1.0,2.4))*0.55+svn2(wq*vec2(2.2,4.8)+3.7)*0.3+svn2(wq*vec2(4.6,9.0)+9.1)*0.15; w=smoothstep(0.36,0.78,w);
+     float env=exp(-mr*0.09)*fr;   /* the wisps live only around the moon */
+     nc=mix(nc,vec3(0.055,0.065,0.11),w*0.45*env);   /* unlit wisp undersides hide the stars behind them */
+     float tx=texture2D(uMoon,clamp(q*0.5+0.5,0.0,1.0)).r; vec3 dcol=tint*(0.74+0.42*pow(tx,1.1)); dcol=mix(dcol,vec3(0.7,0.76,0.88),w*0.25);   /* veiled a little where a wisp crosses */
+     nc=mix(nc,dcol,disc);
+     float corona=exp(-max(mr-1.0,0.0)*0.85), halo=exp(-mr*0.17), wide=exp(-mr*0.06);
+     nc+=vec3(0.74,0.81,0.96)*(corona*0.62+halo*0.24*(0.3+2.0*w)+wide*0.11*(0.3+1.6*w))*fr*(1.0-disc); }
   c=mix(nc,c,uDay);}
  /* rain: low overcast deck - flat grey-blue, a little lighter toward the horizon, slow dark cloud mottling */
  if(uRain>0.001){vec3 dn2=normalize(vDir);vec2 rq=dn2.xz/(abs(dn2.y)+0.25)*2.2+vec2(uT*0.012,0.0);float rn=fract(sin(dot(floor(rq),vec2(127.1,311.7)))*43758.5);vec2 rf=fract(rq);rf=rf*rf*(3.0-2.0*rf);float rn2=mix(mix(rn,fract(sin(dot(floor(rq)+vec2(1,0),vec2(127.1,311.7)))*43758.5),rf.x),mix(fract(sin(dot(floor(rq)+vec2(0,1),vec2(127.1,311.7)))*43758.5),fract(sin(dot(floor(rq)+vec2(1,1),vec2(127.1,311.7)))*43758.5),rf.x),rf.y);
