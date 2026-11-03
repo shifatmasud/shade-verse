@@ -14,21 +14,27 @@ import { TitleHeader } from './TitleHeader';
 
 const url = (id: string, half: boolean) => new URL(`./art/${id}${half ? '@h' : ''}.webp`, import.meta.url).href;   // vite bundles every ./art/*.webp
 
+const isPhone = (W: number, H: number) => H <= 500 && W / H >= 1.6;   // short landscape phone (844x390 and friends)
+
+/** fits a frame's box to the screen; the box grows by Play's 52 px minimum on small screens, so Play is never cut off */
 function fit(W: number, H: number) {
-    const [x0, y0, x1, b1] = ART.box, top = Math.min(64, H * 0.12), [, pcy] = ART.play;
+    const phone = isPhone(W, H), L = phone ? ART.phone : ART, [x0, y0, x1, b1] = L.box, [, pcy] = L.play;
+    // phone: the header row only uses the corners, so the art fills the height between a thin top and bottom margin
+    const top = phone ? Math.max(14, H * 0.045) : Math.min(64, H * 0.12), bot = phone ? Math.max(8, H * 0.02) : 0;
     let y1 = b1, k = 1;
-    for (let i = 0; i < 2; i++) {   // the box grows by Play's 52 px minimum on small screens, so Play is never cut off
-        k = Math.min((W * 0.94) / (x1 - x0), ((H - top * 0.35) * 0.97) / (y1 - y0));
+    for (let i = 0; i < 2; i++) {
+        k = phone ? Math.min((W * 0.86) / (x1 - x0), (H - top - bot) / (y1 - y0) / 1.02)   // 1.02: room for the slow push-in
+            : Math.min((W * 0.94) / (x1 - x0), ((H - top * 0.35) * 0.97) / (y1 - y0));
         y1 = Math.max(b1, pcy + 26 / k + 8 / k);
     }
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    return { k, tx: W / 2 - cx * k, ty: H / 2 + top * 0.12 - cy * k };
+    return phone ? { k, phone, tx: W / 2 - cx * k, ty: top + (H - top - bot) / 2 - cy * k } : { k, phone, tx: W / 2 - cx * k, ty: H / 2 + top * 0.12 - cy * k };
 }
 
-function Sticker() {
+function Sticker({ phone }: { phone: boolean }) {
     // "SHADE VERSE" in Anton (OFL, ./anton-title.woff2, only these 7 letters): a tall, condensed comic display face (Shifat Nov 2
     // 4:28 PM: "Shade verse text can be bigger condensed."), white with a thick ink edge and a hard offset shadow in each hero's colour
-    const { cx, cy, size } = ART.title;
+    const { cx, cy, size } = phone ? ART.phone.title : ART.title;
     const gap = size * 0.13, sk = cy * 0.105;   // skewX(-6) shifts x by -tan(6deg)*y: put the pair back on centre
     const word = (t: string, x: number, shadow: string) => <g>
         <text x={x + size * 0.055} y={cy + size * 0.055} fill={shadow} stroke="#05040a" strokeWidth={size * 0.1} paintOrder="stroke" strokeLinejoin="round">{t}</text>
@@ -50,7 +56,7 @@ export function ComicTitle({ muted, onMute, onStart, extra, leaving, again }: { 
         r(); addEventListener('resize', r); return () => removeEventListener('resize', r);
     }, []);
     const half = f.k * Math.min(devicePixelRatio || 1, 2) <= 0.6;
-    const [pcx, pcy, pd] = ART.play, playD = Math.max(pd, 52 / f.k);
+    const [pcx, pcy, pd] = f.phone ? ART.phone.play : ART.play, playD = Math.max(pd, 52 / f.k);
     const ghost = ART.heroes.find((h) => h.id === 'ghost')!;
     return <div ref={root} className={'sv-comic' + (leaving ? ' leaving' : '') + (again ? ' again' : '')}>
         <div className="sv-stage" style={{ width: ART.w, height: ART.h, transform: `translate3d(${f.tx}px,${f.ty}px,0) scale(${f.k})` }}>
@@ -64,7 +70,7 @@ export function ComicTitle({ muted, onMute, onStart, extra, leaving, again }: { 
                     const st = { left: h.x, top: h.y, width: h.w, height: h.h, animationDelay: `${h.delay}s`, '--px': `${h.pop[0]}px`, '--py': `${h.pop[1]}px` } as React.CSSProperties;
                     return <img key={h.id} className={'sv-hero sv-hero-' + h.id} src={url(h.id, half)} alt="" draggable={false} decoding="async" style={st} />;
                 })}
-                <svg className="sv-art sv-top" width={ART.w} height={ART.h} viewBox={`0 0 ${ART.w} ${ART.h}`} aria-hidden="true"><Sticker /></svg>
+                <svg className="sv-art sv-top" width={ART.w} height={ART.h} viewBox={`0 0 ${ART.w} ${ART.h}`} aria-hidden="true"><Sticker phone={f.phone} /></svg>
                 <button className="sv-play" aria-label="play" style={{ left: pcx - playD / 2, top: pcy - playD / 2, width: playD, height: playD }} onClick={(e) => { e.stopPropagation(); onStart(); }}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.8l10 6.2-10 6.2z" fill="currentColor" /></svg>
                 </button>

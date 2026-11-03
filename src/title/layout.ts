@@ -11,6 +11,7 @@ import baked from './art/heroes.json';
 export type Pt = [number, number];
 export interface Panel { id: 'sunset' | 'harbor'; quad: [Pt, Pt, Pt, Pt]; from: [number, number, number]; delay: number }
 export interface Hero { id: 'shadow' | 'ghost'; x: number; y: number; w: number; h: number; hand: Pt; delay: number; pop: [number, number] }
+export interface Frame { box: [number, number, number, number]; title: { cx: number; cy: number; size: number; delay: number }; play: [number, number, number] }
 
 export const ART = {
     w: 1920, h: 1080,
@@ -25,4 +26,12 @@ export const ART = {
     ] as Hero[],
     title: { cx: 962, cy: 814, size: 166, delay: 1.18 },
     play: [962, 900, 78] as [number, number, number],
+    // short landscape phones (e.g. 844x390): a tighter frame so the panels and heroes fill the height. The box is the two panels plus
+    // the title and Play below them; the web may leave the top of the screen (like it leaves its frame). The title tucks up just
+    // under the panels and Play sits right under it.
+    phone: {
+        box: [505, 196, 1420, 878],
+        title: { cx: 962, cy: 762, size: 140, delay: 1.18 },
+        play: [962, 840, 84],
+    } as Frame,
 };
