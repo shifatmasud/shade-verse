@@ -7,7 +7,7 @@ import { buildings, parkH } from './sim';
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
 type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; lU: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number; lc: number };
-const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0, lc: 0 });
+const tv = (rig: any): TV => rig.__tv || (rig.__tv = rig.root.userData.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0, lc: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const sstep = (x: number) => { x = cl(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -315,15 +315,20 @@ function swingBones(sim: any, rig: any, T: TV, h: number, sw: boolean) {
     setB(B.hips, 0, 0, 0, w);
     const pr = rig.poseRoot as THREE.Group;
     setB(B.head, cl(-pr.rotation.x * 0.55, -0.7, 0.7) + 0.12, 0, 0, w);
-    // arms: line hand reaches the anchor; the free arm balances out to the side and comes up to the line on the rise (both hands, ref 12.0-12.5 s)
+    // arms: line hand reaches the anchor; the free arm holds its pose out to the side until the release (both hands, ref 12.0-12.5 s)
     const rLine = sim.swings % 2 === 1, line = rLine ? 'R' : 'L', free = rLine ? 'L' : 'R', so = rLine ? -1 : 1;
     setB(B['uarm' + line], -2.6, 0, 0, w); setB(B['farm' + line], -0.15, 0, 0, w);
-    setB(B['uarm' + free], 0.35 - fwd * 0.4, 0, so * (0.95 - fwd * 0.3), w); setB(B['farm' + free], -0.6, 0, 0, w);
+    /* FREE ARM LOCK (Shifat Nov 2 9:32 PM "non swinging hand sometimes move above this pose", 9:34 PM "Until Release resting hand must lock on this pose"):
+       from the attach until the release the arm not on the web holds the old swing pose (upper arm out to the side and a little forward, soft elbow,
+       hand at chest-to-waist height away from the body), fixed relative to the torso: it no longer drifts with the arc (was eased in/down with the legs
+       on the rise) and is no longer pulled up toward the web line on the rise (was up to +0.75 torso lengths above the waist). It settles in on the swing
+       blend (reaches the full pose once the blend passes 0.92). From the release moment on nothing changes (Shifat 9:39 PM "Release pose is perfect
+       already"): the arm hands off into the release flip and the fall exactly as before. */
+    if (sw) { const lw = Math.min(1, w / 0.92); setB(B['uarm' + free], 0.35, 0, so * 0.95, lw); setB(B['farm' + free], -0.6, 0, 0, lw); }
+    else { setB(B['uarm' + free], 0.35 - fwd * 0.4, 0, so * (0.95 - fwd * 0.3), w); setB(B['farm' + free], -0.6, 0, 0, w); }   // from the release on: exactly the old hand-off into the release flip (Shifat 9:39 PM: release pose locked)
     if (!sim.web) return;
     rig.root.updateWorldMatrix(true, true);
     _tg.set(sim.anchor[0], sim.anchor[1], sim.anchor[2]);
     aim(B['uarm' + line], B['farm' + line], _tg, w); rig.root.updateWorldMatrix(true, true);
     aim(B['farm' + line], B['hand' + line], _tg, w);
-    const rf = w * 0.75 * sstep(up * 1.4);
-    if (rf > 0.02) { rig.root.updateWorldMatrix(true, true); aim(B['uarm' + free], B['farm' + free], _tg, rf); rig.root.updateWorldMatrix(true, true); aim(B['farm' + free], B['hand' + free], _tg, rf); }
 }
