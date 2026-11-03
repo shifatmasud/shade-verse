@@ -59,3 +59,5 @@ Locked looks (change only on Shifat's word):
 - Rainbow: real-photo bands + gaussian blur + warm glow.
 - Sea mirrors clouds, aurora, moon, stars, rainbow; no ink outline on any water.
 - Underwater: soft Snell window, TIR mirror of the seabed outside it, tall kelp forest, vent bubble columns, soft god rays, deeper caustics, thin waterline meniscus.
+
+- Title screen locked at 4f74526 / ed378f6 (Shifat Nov 2 4:51 PM: "Perfect. Lock"). Only hero re-bakes to match in-game model changes are allowed.
