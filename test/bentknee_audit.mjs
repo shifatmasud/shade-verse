@@ -31,6 +31,8 @@ await p.evaluate(() => {
     cam(who, view) {
       const s = window.__game.sim, A = window.__ghostActor, o = who === 'S' ? s : A, q = o.pos, a = o.ang || 0, fx = Math.sin(a), fz = Math.cos(a);
       const v = view === 'side' ? (who === 'S' ? [fz, -fx] : [-fz, fx]) : [fx, fz], d = 5.2;   // side: Shadow from his left, Ghost from her right, so the partner (2.6 m to his right) never stands between camera and subject
+      if (window.__camHips) { const R = who === 'S' ? window.__rig : window.__ghostRig, m = R.b.hips.matrixWorld.elements, c = [m[12], m[13], m[14]], dd = 5.6;   // airborne rows: frame the rendered hips, not the sim position
+        window.__camOv = [c[0] + v[0] * dd, c[1] + 0.25, c[2] + v[1] * dd, c[0], c[1] + 0.05, c[2]]; return; }
       window.__camOv = [q[0] + v[0] * d, q[1] + 0.2, q[2] + v[1] * d, q[0], q[1] - 0.05, q[2]];
     },
   };
@@ -47,7 +49,7 @@ async function until(src, maxFrames = 1500, tsMax = 0.6) {
 const cells = []; const log = [];
 async function shoot(row, who) {
   const st = await p.evaluate((who) => { const s = window.__game.sim, A = window.__ghostActor, o = who === 'S' ? s : A, R = who === 'S' ? window.__rig : null;
-    return { t: +s.t.toFixed(3), ground: o.ground, land: +(o.land || 0).toFixed(2), mv: o.mv ? [o.mv.id, +o.mv.t.toFixed(3)] : null, slam: o.slam ? [o.slam.ph, +(o.slam.t || 0).toFixed(3)] : null, hurtT: +(o.hurtT || 0).toFixed(3), web: !!o.web, vy: +o.vel[1].toFixed(2), anim: who === 'S' ? window.__shadowAnimation?.action : window.__ghostState?.action }; }, who);
+    return { t: +s.t.toFixed(3), ground: o.ground, land: +(o.land || 0).toFixed(2), mv: o.mv ? [o.mv.id, +o.mv.t.toFixed(3)] : null, slam: o.slam ? [o.slam.ph, +(o.slam.t || 0).toFixed(3)] : null, hurtT: +(o.hurtT || 0).toFixed(3), web: !!o.web, vy: +o.vel[1].toFixed(2), anim: who === 'S' ? window.__shadowAnimation?.action : window.__ghostState?.action, flip: o.flip ? [o.flip.ax, o.flip.dir, +(o.flip.t / o.flip.dur).toFixed(2)] : null, tflip: (() => { const T = (who === 'S' ? window.__rig : window.__ghostRig)?.__tv; return T && T.fl ? +(T.flT / T.flD).toFixed(2) : null; })(), glide: !!o.glideOn }; }, who);
   await p.evaluate(() => { window.__eSave = window.__game.sim.enemies.map(e => [e.x, e.z]); window.__game.sim.enemies.forEach(e => { e.x += 400; e.z += 400; }); });
   if (who === 'G') await p.evaluate(() => { const s = window.__game.sim; window.__sSave = [...s.pos]; s.pos[0] += 7; });   // Shadow steps out of Ghost's frame (rendered only; the world is frozen)
   for (const view of ['front', 'side']) {
@@ -105,6 +107,43 @@ if (want('hurt')) {
     await p.evaluate((who) => { const o = who === 'S' ? window.__game.sim : window.__ghostActor; o.hurtT = 0.3; }, who);
     const O = who === 'S' ? 'window.__game.sim' : 'window.__ghostActor';
     const r = await until(`() => { const o = ${O}; return o.hurtT - 0.21; }`, 600, 0.2); log.push({ ['hurt' + who]: r }); await shoot('hurt', who); }
+}
+
+// ---- FLY TUCK + FLIP TUCK (Nov 3): jump/fly hold through rise/apex/fall, glide, dodge flips (front, back, cartwheel), swing-release backflip and spring front flip,
+// each hero triggered on its own and timed on its OWN clock (Ghost's headless clock runs about half Shadow's)
+const OBJ = (who) => who === 'S' ? 'window.__game.sim' : 'window.__ghostActor';
+const RIG = (who) => who === 'S' ? 'window.__rig' : 'window.__ghostRig';
+const prep = async (who) => { await p.evaluate(() => { window.__camHips = false; }); await park(); if (who === 'G') await settleG(); else await settle(); await p.evaluate(() => { window.__camHips = true; }); };
+if (want('fly')) {
+  for (const who of ['S', 'G']) { await prep(who);
+    await p.evaluate((who) => { const o = who === 'S' ? window.__game.sim : window.__ghostActor; o.pos[1] += 1.0; o.ground = false; o.vel = [0, 9, 0]; window.__ts = 0.3; }, who);
+    for (const [row, src] of [['fly_rise', `() => { const o = ${OBJ(who)}; if (o.ground) return null; return (o.vel[1] - 5) / 25; }`], ['fly_apex', `() => { const o = ${OBJ(who)}; if (o.ground) return null; return o.vel[1] / 25; }`], ['fly_fall', `() => { const o = ${OBJ(who)}; if (o.ground) return null; return (o.vel[1] + 3.2) / 25; }`]]) {
+      if (!want(row) && !want('fly')) continue; const r = await until(src, 800, 0.3); log.push({ [row + who]: r }); await shoot(row, who); } }
+}
+if (want('glide')) {
+  for (const who of ['S', 'G']) { await prep(who);
+    await p.evaluate((who) => { const o = who === 'S' ? window.__game.sim : window.__ghostActor; o.pos[1] += 6; o.ground = false; o.vel = [0, -1, 6]; o.glideOn = true; o.airT = 1; window.__t0 = o.t; window.__ts = 0.3;
+      window.__pin = () => { const o = who === 'S' ? window.__game.sim : window.__ghostActor; o.glideOn = true; if (o.vel[1] < -2) o.vel[1] = -2; }; window.__game.input.glide = who === 'S'; }, who);
+    let r = await until(`() => { const o = ${OBJ(who)}; return o.ground ? null : 0.45 - (o.t - window.__t0); }`, 800, 0.3); log.push({ ['glide' + who]: r }); await shoot('glide', who);
+    await p.evaluate(() => { window.__pin = null; window.__game.input.glide = false; }); }
+}
+// dodge flips (sim flip, 0.5 s): ax x = front/back flip, ax z = cartwheel
+for (const [name, ax, dir, us] of [['dflip', 'x', 1, [0.2, 0.45, 0.7]], ['bflip', 'x', -1, [0.45]], ['cart', 'z', 1, [0.3, 0.55]]]) { if (!want(name)) continue;
+  for (const who of ['S', 'G']) { await prep(who);
+    await p.evaluate((who, ax, dir) => { const o = who === 'S' ? window.__game.sim : window.__ghostActor; o.pos[1] += 0.6; o.ground = false; o.vel = [0, 7.5, 0]; o.dodgeT = 0.38; o.flip = { t: 0, dur: 0.5, ax, dir }; window.__ts = 0.0005; }, who, ax, dir);
+    for (const u of us) { const row = `${name}_${Math.round(u * 100)}`;
+      const r = await until(`() => { const f = ${OBJ(who)}.flip; if (!f) return null; return ${u} - f.t / f.dur; }`, 800, 0.2); log.push({ [row + who]: r }); await shoot(row, who); } }
+}
+// traversal flips (heroTraversal, 0.62 s): swing-release backflip (dir -1) and spring-release front flip (dir +1), started on the rig's own traversal state.
+// Ghost only plays these while mirroring Shadow's traversal (her rig runs the flip with Shadow as the driver), so both rigs are started together with Shadow
+// high in the air, and each hero is shot on its own flip clock (Shadow's set first, then a fresh start for Ghost's set).
+for (const [name, dir, us] of [['rflip', -1, [0.25, 0.45, 0.7]], ['sflip', 1, [0.3, 0.5]]]) { if (!want(name)) continue;
+  for (const who of (process.env.TUCK_TRAV_WHO || 'S').split(',')) { await prep('S');   // Ghost: her rig did not advance a flip started this way in the harness (she runs it only while mirroring Shadow's live traversal); TUCK_TRAV_WHO=S,G to try
+    await p.evaluate((dir) => { const s = window.__game.sim, A = window.__ghostActor; s.pos[1] += 9; s.ground = false; s.vel = [0, 7, 8]; A.pos[1] = s.pos[1]; A.ground = false; A.vel = [0, 7, 8];
+      for (const R of [window.__rig, window.__ghostRig]) { const T = R.__tv || (R.__tv = {}); const lean0 = R.poseRoot.rotation.x; Object.assign(T, { fl: 1, flT: 0, flD: 0.62, flP0: T.p || lean0, flV0: dir < 0 ? -6 : 6, flE: lean0 + dir * Math.PI * 2, flDir: dir, on: false, sp: 0 }); }
+      window.__ts = 0.0005; }, dir);
+    for (const u of us) { const row = `${name}_${Math.round(u * 100)}`;
+      const r = await until(`() => { const T = ${RIG(who)}.__tv; if (!T || !T.fl) return null; return ${u} - T.flT / T.flD; }`, 800, 0.2); log.push({ [row + who]: r }); await shoot(row, who); } }
 }
 fs.writeFileSync(`${outdir}/cells.json`, JSON.stringify({ cells, log, errs }, null, 1));
 console.log('ERRORS', errs.length, JSON.stringify(errs.slice(0, 5)));

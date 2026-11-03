@@ -76,6 +76,7 @@ function makeGhostRig() {
     rig.root.name = 'ghost-human-companion';
     rig.root.scale.setScalar(GHOST_SCALE);
     rig.root.visible = false;
+    if (DBG) (window as any).__ghostRig = rig;   // pose audits (test/bentknee_audit.mjs): her traversal state lives on the rig
     return { ...rig, suit };
 }
 

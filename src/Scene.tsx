@@ -93,6 +93,12 @@ function samplePose(keys: [number, PoseK][], u: number, out: Float32Array) {
     const [u0, A] = keys[k], [u1, B] = keys[k + 1], f = cstep(Math.max(0, Math.min(1, (u - u0) / Math.max(1e-4, u1 - u0))));
     CP_BONES.forEach((n, i) => { const a = A[n], b = B[n]; for (let j = 0; j < 3; j++) out[i * 3 + j] = a[j] + (b[j] - a[j]) * f; });
 }
+/* Dodge flip visual clock (Nov 3 tuck audit). The dodge flip lasts 0.5 s, but a dodge from the ground is only airborne ~0.23 s (7.5 m/s up at G 60,
+   down at G_FALL 80), so on the old 0.5 s clock the hero touched down at ~46% of the flip, nearly upside down, and finished the turn on the floor
+   (sat on the butt / inverted on the ground). The rotation and tuck now run on the airborne window, so the flip is upright again with the legs
+   opening right at touchdown; the rest of the dodge is the guard pose. Visual only: flip timing, dodge i-frames, velocity and controls unchanged. */
+const FLIP_AIR = 0.46;
+const flipAirU = (fl: { t: number; dur: number }) => Math.min(1, fl.t / (fl.dur * FLIP_AIR));
 // Charged Slam poses (Shifat Nov 2: hold melee = charge, release = leap + slam; ref Miles' Venom Smash, files/combat_refs)
 const SLAM_POSE: PoseK[] = [
     P({ spine: [0.38, 0, 0], chest: [0, 0.45, 0], hips: [0, 0.25, 0], uarmR: [0.55, 0, -0.3], farmR: [-1.7, 0, 0], uarmL: [-1.25, 0, 0.45], farmL: [-1.5, 0, 0], thighL: [-0.95, 0, -0.08], shinL: [1.35, 0, 0], thighR: [-0.25, 0, 0.1], shinR: [1.2, 0, 0], head: [-0.25, -0.3, 0] }),   // 0 charge: crouched, fist drawn back
@@ -119,7 +125,7 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
         if (sl.ph === 5 && sl.t > 0.12) { const u = cstep(Math.min(1, (sl.t - 0.12) / 0.23)); CP_BONES.forEach((n, i) => { const a = SLAM_POSE[4][n], g = GUARD[n]; for (let j = 0; j < 3; j++) state.t[i * 3 + j] = a[j] + (g[j] - a[j]) * u; }); }   // hold the impact ~0.12 s, then rise to guard
     }
     else if (mv) { const M = MOVES[mv.id]; samplePose(POSES[mv.id], Math.min(1, mv.t / M.dur), state.t); }
-    else if (fl) { const u = fl.t / fl.dur, tuck = Math.sin(Math.min(1, u * 1.15) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, state.t);
+    else if (fl) { const u = flipAirU(fl), tuck = Math.sin(Math.min(1, u * 1.1) * Math.PI); samplePose([[0, GUARD], [1, P({ thighL: [-1.7, 0, 0], shinL: [2.2, 0, 0], thighR: [-1.6, 0, 0], shinR: [2.2, 0, 0], uarmL: [-1.2, 0, 0.6], farmL: [-1.8, 0, 0], uarmR: [-1.2, 0, -0.6], farmR: [-1.8, 0, 0], spine: [0.45, 0, 0] })]], fl.ax === 'x' ? tuck : tuck * 0.35, state.t);
         if (fl.ax === 'z') { const s0 = state.t; s0[4 * 3 + 2] = -1.5 * tuck; s0[6 * 3 + 2] = 1.5 * tuck; s0[8 * 3 + 2] = -0.5 * tuck; s0[10 * 3 + 2] = 0.5 * tuck; } }
     else { bones.forEach((b, i) => { state.t[i * 3] = b.rotation.x; state.t[i * 3 + 1] = b.rotation.y; state.t[i * 3 + 2] = b.rotation.z; }); }
     const snap = !!mv && mv.t > MOVES[mv.id].hit * 0.55 && mv.t < MOVES[mv.id].hit + 0.03;   // the strike itself: limbs reach the hit pose ON the hit frame instead of trailing ~50 ms behind it
@@ -130,7 +136,7 @@ export function combatPose(sim: any, rig: any, h: THREE.Object3D, dt: number, st
     // whole-body turns, not smoothed (continuous 0..2pi): spin hook kick, flips/cartwheels around the hips
     if (mv && mv.id === 3) { const u = Math.min(1, mv.t / MOVES[3].dur), sp = cstep(Math.max(0, Math.min(1, (u - 0.08) / 0.72))); h.rotation.y += sp * Math.PI * 2; }
     if (mv && mv.id === 5) { const u = Math.min(1, mv.t / MOVES[5].dur); rig.b.hips.rotation.x += cstep(Math.min(1, u / 0.5)) * 0.6 * (1 - cstep(Math.max(0, (u - 0.6) / 0.4))); }
-    if (fl) { const u = Math.min(1, fl.t / fl.dur), a = cstep(u) * Math.PI * 2 * fl.dir; if (fl.ax === 'x') rig.b.hips.rotation.x += a; else rig.b.hips.rotation.z += a; }
+    if (fl) { const u = flipAirU(fl), a = cstep(u) * Math.PI * 2 * fl.dir; if (fl.ax === 'x') rig.b.hips.rotation.x += a; else rig.b.hips.rotation.z += a; }
     if (mv && mv.id === 3) { const u = mv.t / MOVES[3].dur; supportLegIK(rig, 'L', w * cstep(Math.max(0, Math.min(1, (u - 0.24) / 0.14))) * (1 - cstep(Math.max(0, Math.min(1, (u - 0.76) / 0.12))))); }   // spin hook kick: planted support leg by IK (src/heroMelee.ts)
     meleeBody(sim, rig, h, dt, w, MOVES);   // whole-body weight: wind-up, lunge, sit into the hit, rear-heel pivot, recover (src/heroMelee.ts)
     // smear stretch on the striking limb for ~2 frames around the hit, and body squash (anticipation) -> stretch (release) per move
