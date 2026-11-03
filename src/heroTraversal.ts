@@ -6,8 +6,8 @@ import { buildings, parkH } from './sim';
    SWING (reference 11.2-12.6 s, 20.0-20.9 s, 21.6-22.7 s): the body hangs from the line hand and pendulums with the rope, lagging it (spring), so right after
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
-type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; lU: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number };
-const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0 });
+type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; lU: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number; lc: number };
+const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0, lc: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const sstep = (x: number) => { x = cl(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -170,6 +170,7 @@ function springBones(sim: any, rig: any, T: TV, h: number) {
 const _fa = new THREE.Vector3(), _fb = new THREE.Vector3(), _sc = new THREE.Vector3();
 function landBones(sim: any, rig: any, T: TV, h: number) {
     const B = rig.b, root = rig.root as THREE.Group, pr = rig.poseRoot as THREE.Group;
+    T.lc = 0;
     if (sim.ground && !T.wg && sim.land > 0.08 && !sim.swim && !sim.wall) { T.lOn = 1; T.lt = 0; T.li = sim.land; T.lh = (sim.landHard || 0) > 0 ? 1 : 0; T.lU = 1; }
     T.wg = !!sim.ground;
     // this landing owns the body sink + pitch (Scene.tsx applyHeroRootPose adds them from sim.land; undone here, re-applied on the pose envelope)
@@ -188,6 +189,7 @@ function landBones(sim: any, rig: any, T: TV, h: number) {
     // fully owns the legs instead of half-mixing with the airborne pose that is still blending out
     const d = hd ? 1 : 0.12 + 0.6 * sstep((li - 0.2) / 0.65), k = e;   // hop (li ~0.25) 0.13, standing jump (~0.8) 0.64, biggest soft drop 0.7
     if (k < 0.005) return;
+    if (hd) { superheroBones(rig, T, k); return; }
     const m = (a: number, b: number) => a + (b - a) * hd;   // soft -> hard pose
     const big = hd ? 0 : sstep((li - 0.6) / 0.27);           // big soft drops: arms out for balance (a standing jump half way)
     const P = m(0.16 * d, 0.34) * k; pr.rotation.x += P;       // whole-body lean over the feet (the knees do the rest)
@@ -215,6 +217,68 @@ function landBones(sim: any, rig: any, T: TV, h: number) {
         if (sh) { sh.getWorldPosition(_fb); lift = Math.max(lift, gy + 0.05 * s - _fb.y); }
     }
     if (lift > -1e8) root.position.y += lift * sstep(k / 0.12);
+}
+/* SUPERHERO LANDING (Nov 3, "clean classic superhero landing"; refs: the Iron Man / Spider-Man three-point landing):
+   front (right) knee up with its shin plumb and the foot flat, back (left) knee on the floor with the shin lying back along it, toes down,
+   the left fist planted on the floor beside the front foot, the right arm out behind for balance, back straight, chest up, head up looking ahead.
+   Posed in WORLD space (aim at targets) so it reads the same on Shadow and on Ghost (0.93 scale) whatever the bone axes are; the envelope k
+   rises over 45 ms, holds, then blends the whole pose out so the hero rises out of it. The cape (Shadow) is lifted by the impact and settles
+   back down over the hold (T.lc, read by Scene.tsx's cape chain). Purely visual: no timing, input or physics change. */
+const _sf = new THREE.Vector3(), _sr = new THREE.Vector3(), _sh = new THREE.Vector3(), _sk = new THREE.Vector3(), _st = new THREE.Vector3(), _sa = new THREE.Vector3(), _sb = new THREE.Vector3();
+const _rq = new THREE.Quaternion(), _wq = new THREE.Quaternion(), _xq = new THREE.Quaternion(), _ax = new THREE.Vector3(1, 0, 0);
+// turn a bone so its WORLD orientation is the root's (upright, facing ahead) pitched by `pitch` about the body's side axis
+function setWorldPitch(b: THREE.Object3D | undefined, root: THREE.Object3D, pitch: number, w: number) {
+    if (!b || !b.parent) return;
+    root.getWorldQuaternion(_rq); _xq.setFromAxisAngle(_ax, pitch); _rq.multiply(_xq);
+    b.parent.getWorldQuaternion(_wq); _wq.invert().multiply(_rq);
+    b.quaternion.slerp(_wq, w); b.updateMatrixWorld(true);
+}
+function superheroBones(rig: any, T: TV, k: number) {
+    const B = rig.b, root = rig.root as THREE.Group, pr = rig.poseRoot as THREE.Group;
+    // torso: the lean comes from the hips with a straight back (no hunch), chest lifted
+    pr.rotation.x += 0.72 * k;
+    setB(B.hips, 0, 0, 0, k); setB(B.spine, 0.04, 0, 0.17, k); setB(B.chest, -0.14, 0, 0.05, k);   // + a lean toward the planted fist
+    root.updateMatrixWorld(true);
+    const s = (_sc.setFromMatrixScale(B.thighR.matrixWorld).x + _sc.y + _sc.z) / 3 || 1, gy = root.position.y, ank = ((rig.ankleY ?? 0.055) as number) * s;
+    const re = root.matrixWorld.elements;
+    _sf.set(re[8], 0, re[10]).normalize(); _sr.set(re[0], 0, re[2]).normalize();   // body forward / right (level)
+    const Lt = B.thighR.getWorldPosition(_sa).distanceTo(B.shinR.getWorldPosition(_sb)), Ls = _sb.distanceTo(B.footR.getWorldPosition(_sk));
+    // front leg (right): thigh level straight ahead (knee a touch out), shin plumb
+    B.thighR.getWorldPosition(_sh);
+    _st.copy(_sh).addScaledVector(_sf, Lt).addScaledVector(_sr, 0.12 * Lt).addScaledVector(_sk.set(0, 1, 0), 0.42 * Lt);   // knee a little above the hip: a deep, low stance
+    aim(B.thighR, B.shinR, _st, k); root.updateMatrixWorld(true);
+    B.shinR.getWorldPosition(_sa); _st.copy(_sa).addScaledVector(_sf, 0.02 * Ls); _st.y -= Ls;
+    aim(B.shinR, B.footR, _st, k); root.updateMatrixWorld(true);
+    setWorldPitch(B.footR, root, 0, k);   // flat on the floor
+    // back leg (left): knee down on the floor level with the front sole, the thigh dropping from the hip, shin flat back along the floor
+    B.footR.getWorldPosition(_sa); const floorY = _sa.y - ank, kneeY = floorY + 0.06 * s;
+    B.thighL.getWorldPosition(_sh); const dy = Math.min(0.97 * Lt, Math.max(0.2 * Lt, _sh.y - kneeY)), dz = Math.sqrt(Lt * Lt - dy * dy);
+    _st.copy(_sh).addScaledVector(_sf, -dz).addScaledVector(_sr, -0.06 * Lt); _st.y = _sh.y - dy;
+    aim(B.thighL, B.shinL, _st, k); root.updateMatrixWorld(true);
+    B.shinL.getWorldPosition(_sa); _st.copy(_sa).addScaledVector(_sf, -Ls); _st.y += 0.1 * Ls;
+    aim(B.shinL, B.footL, _st, k); root.updateMatrixWorld(true);
+    setWorldPitch(B.footL, root, 1.25, k);   // toes tucked down onto the floor
+    // plant: the kneeling knee / front sole on the floor
+    let lift = -1e9;
+    for (const sd of ['R', 'L']) {
+        const ft = B['foot' + sd], sh = B['shin' + sd];
+        if (ft) { ft.getWorldPosition(_fa); lift = Math.max(lift, gy + ank - _fa.y); }
+        if (sh) { sh.getWorldPosition(_fb); lift = Math.max(lift, gy + 0.05 * s - _fb.y); }
+    }
+    if (lift > -1e8) { root.position.y += lift * sstep(k / 0.12); root.updateMatrixWorld(true); }
+    // arms: left fist planted on the floor beside the front foot, right arm swept back and out for balance
+    B.uarmL.getWorldPosition(_sh);
+    _st.copy(_sh).addScaledVector(_sf, 0.22 * Lt).addScaledVector(_sr, -0.12 * Lt); _st.y = gy + 0.07 * s;
+    aim(B.uarmL, B.farmL, _st, k); root.updateMatrixWorld(true); aim(B.farmL, B.handL, _st, k); root.updateMatrixWorld(true);
+    B.uarmR.getWorldPosition(_sh);
+    _st.copy(_sh).addScaledVector(_sf, -0.75).addScaledVector(_sr, 0.75).add(_sk.set(0, -0.05, 0));
+    aim(B.uarmR, B.farmR, _st, k); root.updateMatrixWorld(true);
+    B.farmR.getWorldPosition(_sh); _st.copy(_sh).addScaledVector(_sf, -0.7).addScaledVector(_sr, 0.55).add(_sk.set(0, 0.22, 0));
+    aim(B.farmR, B.handR, _st, k); root.updateMatrixWorld(true);
+    // head up, eyes ahead (a touch down at the street), neck carrying part of it so it reads as a proud chin, not a cranked neck
+    setWorldPitch(B.neck, root, 0.2, k * 0.6); setWorldPitch(B.head, root, 0.12, k);
+    // cape: the impact throws it up behind, then it settles down over the back during the hold
+    T.lc = k * (0.12 + 0.3 * (1 - sstep(T.lt / 0.3)));
 }
 function fallBones(sim: any, rig: any, T: TV, h: number) {
     const B = rig.b, k = T.fw * (1 - T.tk) * (1 - T.bw) * sstep(T.w * 1.5);   // limbs open as the body tips over, together

@@ -411,6 +411,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             controls.specialQ = true;
             (window as any).__ghostForceSpecial = false;
         }
+        if (DBG && (window as any).__ghostHold) resetControls(controls);   // pose tests (test/superhero_landing.mjs): she stands where she is put, no follow/jump
         for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
         { const an = (actor as any).slamN || 0; if (an !== st.slamSeen) { st.slamSeen = an; const d = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[2] - sim.pos[2]); if (an && d < 25) { const L = sim as any; L.shake = Math.min(1, (L.shake || 0) + 0.35 * (1 - d / 25));
             if (!(L.slowT > 0) || L.slowK > 0.3) { const A = actor as any; L.slowK = 0.3; L.slowHold = A.slowHold ?? 0.33; L.slowEase = A.slowEase ?? 0.25; L.slowT = L.slowHold + L.slowEase; } } } }   // her Slam shakes the camera too, by distance, and gets the same brief world slow-mo as Shadow's (0.3x)
