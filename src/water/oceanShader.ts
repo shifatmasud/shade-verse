@@ -371,7 +371,7 @@ ${GRID_TRACE_GLSL}
       if (!below && uDay < 0.95) {   /* Shifat 10:37 PM 'reflection must' (ref: Wikimedia 'Aurora Borealis above Bear Lake, Alaska'): the aurora mirrored in the sea - soft, smeared by the ripples, strong where the curtain's bright hem sits low */
         vec3 rm = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.45))); rm.y = abs(rm.y);
         float rk = (1.0 - smoothstep(300.0, 900.0, length(cameraPosition - vW)));
-        col += (auroraSky(rm, uSkyT, 4.0) * uAur + moonSky(rm, uSun) * 0.8 + starsLite(rm) * 0.7) * (1.0 - uDay) * mix(0.5, 0.95, fr) * vec3(0.8, 0.95, 1.0) * rk; }
+        col += ((uAur > 0.002 ? auroraSky(rm, uSkyT, 4.0) * uAur : vec3(0.0)) + moonSky(rm, uSun) * 0.8 + starsLite(rm) * 0.7) * (1.0 - uDay) * mix(0.5, 0.95, fr) * vec3(0.8, 0.95, 1.0) * rk; }
       if (!below && uDay > 0.05) {   /* Shifat 12:14 AM 'Must reflect': the cumulus mirrored in the sea - ripple-smeared, darker and blue-tinted like all reflections, stronger at grazing angles */
         vec3 rc = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.5))); rc.y = abs(rc.y);
         vec4 cr = cloudSky(normalize(rc), uSun, uSkyT, 0.0, 0.0, uSky);

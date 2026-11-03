@@ -19,14 +19,14 @@ void main(){
  {vec2 st=floor(vDir.xz/(abs(vDir.y)+0.2)*90.0);float r=fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5);
  c+=vec3(1.0)*step(0.9965,r)*smoothstep(0.55,0.9,t)*0.5*(1.0-uDay);}   /* no stars in a daylight sky */
  { vec4 cs=cloudSky(normalize(vDir),sun,uT,uWarm,uRain,uHor); c=mix(c,cs.rgb,cs.a); }   /* clouds - src/shaders/skyFx.ts CLOUD_GLSL (shared with the sea) */
- {vec3 dn=normalize(vDir);vec3 nc=mix(vec3(0.07,0.08,0.19),vec3(0.012,0.02,0.07),smoothstep(0.0,0.6,dn.y));
+ if(uDay<0.9999){vec3 dn=normalize(vDir);vec3 nc=mix(vec3(0.07,0.08,0.19),vec3(0.012,0.02,0.07),smoothstep(0.0,0.6,dn.y));
   /* stars (Shifat 9:46 PM: varied sizes, sparse, subtle, clean): one jittered round point per lucky cell, anti-aliased by fwidth, size + brightness heavy-tailed so most are faint pinpricks and a few are bright; slow gentle twinkle */
   {vec2 sp=dn.xz/(abs(dn.y)+0.2)*46.0;vec2 si=floor(sp),sf=fract(sp);float sh=fract(sin(dot(si,vec2(12.9898,78.233)))*43758.5);
    if(sh>0.95){vec2 so=vec2(fract(sh*91.7),fract(sh*57.3))*0.6+0.2;float sz=fract(sh*13.1),sr=mix(0.035,0.12,sz*sz*sz),px=max(fwidth(sp.x),fwidth(sp.y));
     float rr2=max(sr,px*0.7),dd=length(sf-so);float sv=smoothstep(rr2,rr2*0.25,dd)*min(1.0,sr/rr2*1.6);
     float sb=mix(0.3,1.25,pow(fract(sh*29.7),4.0))*(0.8+0.2*sin(uT*(1.3+sz*2.0)+sh*60.0));
     nc+=mix(vec3(0.75,0.85,1.0),vec3(1.0,0.92,0.8),fract(sh*7.3))*sv*sb*3.2*smoothstep(0.06,0.35,dn.y);}}
-  nc+=auroraSky(dn,uT,7.0)*uAur;   /* aurora v3 - src/shaders/skyFx.ts (shared with the sea reflection) */
+  if(uAur>0.002) nc+=auroraSky(dn,uT,7.0)*uAur;   /* aurora v3 - src/shaders/skyFx.ts (shared with the sea reflection) */
   float mg=max(dot(dn,-sun),0.0);   /* moon (Shifat Nov 2 8:40 PM 'I want this moon', ref: his photo of a small moon glowing through thin cloud over the sea): a smaller
      photographed disc (Wikimedia 'FullMoon2010', public/moon.png) kept under white so its maria still read, a soft limb, warmer when low; thin cloud wisps drift
      past it in the moon's own tangent plane - they veil the disc a little and catch its light, so the milky corona and the wide halo pool in the wisps
