@@ -120,3 +120,20 @@ kbd{font:600 11px/1.2 system-ui,sans-serif;min-width:84px;display:inline-block;c
 .ico.special .ring{inset:auto;left:50%;top:50%;width:66px;height:66px;margin:-33px 0 0 -33px}
 /* HUD pill + sound button sit above the title overlay: before, the overlay covered them, so tapping the sound button on the title started the game */
 .stage.menu .hud,.mute{z-index:3}
+
+/* Nov 2 phone controls polish (layout A positions and the comic outline unchanged; src/touchButtons.ts sets data-down / data-held) */
+.stage,.stage *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.ico svg{pointer-events:none}
+.ico::before{content:'';position:absolute;inset:-5px;border-radius:50%}   /* 5 px of extra hit area around each icon, invisible */
+.ico[data-down]{transform:scale(.92)}
+.ico[data-down] svg{color:#fff}
+.ico.hold{--hc:#fff}.ico.hold.swing{--hc:#8fe9ff}.ico.hold.special{--hc:#c9a7ff}.ico.hold.melee{--hc:#ff9a6a}
+.ico.hold::after{content:'';position:absolute;left:50%;top:50%;width:74px;height:74px;margin:-37px 0 0 -37px;box-sizing:border-box;border-radius:50%;border:3px solid #fff;opacity:0;transform:scale(.5);pointer-events:none;transition:opacity .14s ease-out,transform .14s ease-out}
+.ico.hold[data-down]::after{opacity:.8;transform:scale(1);transition:transform 220ms linear,opacity .05s}   /* ring grows over HOLD_MS (220 ms) */
+.ico.hold[data-held]::after{opacity:1;border-width:4px;border-color:var(--hc);box-shadow:0 0 10px var(--hc),inset 0 0 8px var(--hc)}
+.ico.hold[data-held]{transform:scale(1.08);filter:drop-shadow(1.6px 0 0 #000) drop-shadow(-1.6px 0 0 #000) drop-shadow(0 1.6px 0 #000) drop-shadow(0 -1.6px 0 #000) drop-shadow(0 0 9px var(--hc))}
+.ico.swing.hold::after{width:84px;height:84px;margin:-42px 0 0 -42px}
+.ico.melee.hold::after,.ico.special.hold::after{width:68px;height:68px;margin:-34px 0 0 -34px}
+.padzone{height:60%}
+.dpad.run .knob{background:rgba(255,255,255,.5)!important;box-shadow:0 0 10px rgba(255,255,255,.6)}
+.ico.off[data-down],.ico.off[data-held],.ico.hold.off[data-held]{transform:scale(0)}

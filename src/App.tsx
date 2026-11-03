@@ -25,6 +25,7 @@ function SceneReady() {
 }
 import { createSim, buildings, resetSim, input, actionCtx, type Events } from './sim';
 import { installDesktopInput, MAP_KB, MAP_PAD, HOLD_MS } from './desktopInput';
+import { newBtn, pressBtn, releaseBtn, releaseAllBtns, setHapticGate } from './touchButtons';
 import { QUALITY, QK, AA_MSAA } from './quality';
 import { audio } from './audio/engine';
 import { SoundDirector } from './audio/director';
@@ -166,7 +167,7 @@ export function App() {
         let dx = (e.clientX - padC.current.x) / 56, dy = (e.clientY - padC.current.y) / 56;
         const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
         const m = l < 0.22 ? 0 : 1, nl = l || 1; // auto run: full speed once past the dead zone
-        input.mx = m ? dx / nl : 0; input.my = m ? -dy / nl : 0; knobRef.current!.style.transform = `translate(${dx * 38}px,${dy * 38}px)`;
+        input.mx = m ? dx / nl : 0; input.my = m ? -dy / nl : 0; padRef.current!.classList.toggle('run', !!m); knobRef.current!.style.transform = `translate(${dx * 38}px,${dy * 38}px)`;
     };
     const padStart = (e: React.PointerEvent) => { if (stickId.current !== -1 && stickId.current !== null && stickId.current !== undefined) return; stickId.current = e.pointerId; try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } padC.current = { x: e.clientX, y: e.clientY }; const p = padRef.current!; p.style.left = e.clientX - 60 + 'px'; p.style.top = e.clientY - 60 + 'px'; p.style.opacity = '1'; padMove(e); };
     const stickEnd = (e: React.PointerEvent) => { if (e.pointerId === stickId.current) { stickId.current = -1; input.mx = 0; input.my = 0; knobRef.current!.style.transform = 'translate(0,0)'; padRef.current!.style.opacity = '0'; } };
@@ -178,7 +179,18 @@ export function App() {
     const [charge, setCharge] = useState(false), [locked, setLocked] = useState(false);
     useEffect(() => { if (!ctrlToast) return; const id = setTimeout(() => setCtrlToast(null), 4200); return () => clearTimeout(id); }, [ctrlToast]);
     const [swingOn, setSwingOn] = useState(false);
-    const holdR = useRef({ sw: false, swT: 0, swAt: 0, sk: false, skT: 0, skAt: 0 });   // *At: press time, so a release after HOLD_MS is a hold even if the timer was late
+    const tb = useRef({ sw: newBtn(), sk: newBtn(), me: newBtn(), ju: newBtn() }).current;   // phone buttons: owner finger, press time, hold state (src/touchButtons.ts)
+    const swEnd = () => { input.swing = false; setSwingOn(false); }, meEnd = () => { input.meleeHeld = false; }, juEnd = () => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } };
+    useEffect(() => {   // nothing stays pressed when the page hides, the window loses focus or play ends; no pinch-zoom / double-tap zoom on iOS
+        setHapticGate(() => !mutedRef.current);
+        const drop = () => { releaseAllBtns(); if (stickId.current !== -1) { stickId.current = -1; input.mx = 0; input.my = 0; if (padRef.current) padRef.current.style.opacity = '0'; } };
+        const vis = () => { if (document.hidden) drop(); };
+        const noZoom = (e: Event) => e.preventDefault();
+        document.addEventListener('visibilitychange', vis); window.addEventListener('blur', drop); window.addEventListener('pagehide', drop);
+        if (coarse) { document.addEventListener('gesturestart', noZoom); document.addEventListener('dblclick', noZoom); }
+        if (hud.mode !== 'play') drop();
+        return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', drop); window.removeEventListener('pagehide', drop); document.removeEventListener('gesturestart', noZoom); document.removeEventListener('dblclick', noZoom); };
+    }, [hud.mode]); // eslint-disable-line
     const [load, setLoad] = useState<{ on: boolean; pct: number }>({ on: false, pct: 0 });   // Play pressed before everything was in memory
     const starting = useRef(false), readyRef = useRef(false);   /* Shifat Nov 1 8:19 PM 'Only load when tap play': nothing downloads on the title; Play loads everything, then gameplay begins. The title odometer reads preloadProgress() itself (no App re-render per file) */
     const [boot, setBoot] = useState(false);   // no WebGL canvas, no scene build, no render loop until the first Play
@@ -216,20 +228,24 @@ export function App() {
         {/* Shifat Nov 1 2:14 PM 'weird black lines in title screen': the cinematic letterbox bars over the menus are gone */}
 
         {hud.mode === 'play' && <>
-            <div className="padzone" onPointerDown={padStart} onPointerMove={(e) => { if (e.pointerId === stickId.current) padMove(e); }} onPointerUp={stickEnd} onPointerCancel={stickEnd} />
+            <div className="padzone" onPointerDown={padStart} onPointerMove={(e) => { if (e.pointerId === stickId.current) padMove(e); }} onPointerUp={stickEnd} onPointerCancel={stickEnd} onLostPointerCapture={stickEnd} />
             <div className="dpad" ref={padRef}><svg width="120" height="120" viewBox="0 0 120 120" {...IC} strokeWidth={2}><path d="M60 8l9 11H51zM60 112l-9-11h18zM8 60l11-9v18zM112 60l-11 9V51z" fill="currentColor" stroke="none" opacity=".85" /><circle cx="60" cy="60" r="38" opacity=".35" /></svg><div className="knob" ref={knobRef} /></div>
             {/* Shifat Nov 2 4:26/4:30 AM: one button per pair, same as desktop - tap = web spring, hold = swing; tap = web shot, hold = Web Shock (HOLD_MS) */}
-            <button className={'ico swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web spring (tap) / web swing (hold)"
-                onPointerDown={(e) => { burst(e, '#8fe9ff', -25, false); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } const h = holdR.current; h.sw = false; h.swAt = performance.now(); clearTimeout(h.swT); h.swT = window.setTimeout(() => { h.sw = true; input.swing = true; input.swingQ = true; setSwingOn(true); }, HOLD_MS); }}
-                onPointerUp={() => { const h = holdR.current; clearTimeout(h.swT); if (h.sw) { input.swing = false; setSwingOn(false); } else if (performance.now() - h.swAt > HOLD_MS) { input.swing = true; input.swingQ = true; requestAnimationFrame(() => requestAnimationFrame(() => { if (!holdR.current.sw) input.swing = false; })); } else input.grabQ = true; h.sw = false; }}
-                onPointerCancel={() => { const h = holdR.current; clearTimeout(h.swT); input.swing = false; setSwingOn(false); h.sw = false; }}><ISwing /></button>
-            <button className={'ico special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn || hud.sh ? '' : ' off')} aria-label="web shot (tap) / Web Shock (hold)"
-                onPointerDown={(e) => { try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } const h = holdR.current; h.sk = false; h.skAt = performance.now(); clearTimeout(h.skT); const el = e.currentTarget; h.skT = window.setTimeout(() => { h.sk = true; burst({ currentTarget: el } as any, '#c9a7ff', 180); input.specialQ = true; }, HOLD_MS); }}
-                onPointerUp={(e) => { const h = holdR.current; clearTimeout(h.skT); if (!h.sk) { if (performance.now() - h.skAt > HOLD_MS) { burst(e, '#c9a7ff', 180); input.specialQ = true; } else { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; } } h.sk = false; }}
-                onPointerCancel={() => { const h = holdR.current; clearTimeout(h.skT); h.sk = false; }}><IShock /></button>
-            <button className={'ico melee' + (hud.me ? '' : ' off')} aria-label="melee" onPointerDown={(e) => { burst(e, '#ff9a6a', -35); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } input.meleeQ = true; input.attackQ = true; input.meleeHeld = true; input.meleeAt = performance.now(); }}
-                onPointerUp={() => { input.meleeHeld = false; }} onPointerCancel={() => { input.meleeHeld = false; }} onLostPointerCapture={() => { input.meleeHeld = false; }}><IFist /></button>
-            <button className="ico jump" aria-label="jump" onPointerDown={(e) => { burst(e, '#ffe27a', 0); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* synthetic / stale pointer */ } input.jumpHeld = true; input.jumpQ = true; }} onPointerUp={() => { input.jumpHeld = false; input.jumpReleased = true; }} onPointerCancel={() => { input.jumpHeld = false; input.jumpCancelled = true; }} onLostPointerCapture={() => { if (input.jumpHeld) { input.jumpHeld = false; input.jumpCancelled = true; } }}><IJump /></button>
+            {/* Nov 2 phone polish: one finger per button, every release path ends the press once (src/touchButtons.ts); data-down / data-held drive the pressed and past-HOLD_MS looks */}
+            <button className={'ico hold swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web spring (tap) / web swing (hold)"
+                onPointerDown={(e) => { if (!pressBtn(tb.sw, e, () => { input.swing = true; input.swingQ = true; setSwingOn(true); }, swEnd)) return; burst(e, '#8fe9ff', -25, false); }}
+                onPointerUp={(e) => { const r = releaseBtn(tb.sw, e); if (!r) return; if (r.held) { input.swing = false; setSwingOn(false); } else if (r.long) { input.swing = true; input.swingQ = true; requestAnimationFrame(() => requestAnimationFrame(() => { if (tb.sw.id === -1) input.swing = false; })); } else input.grabQ = true; }}
+                onPointerCancel={(e) => { if (releaseBtn(tb.sw, e)) swEnd(); }} onLostPointerCapture={(e) => { if (releaseBtn(tb.sw, e)) swEnd(); }}><ISwing /></button>
+            <button className={'ico hold special' + (hud.sc > 0 ? ' cd' : '') + (hud.sn || hud.sh ? '' : ' off')} aria-label="web shot (tap) / Web Shock (hold)"
+                onPointerDown={(e) => { const el = e.currentTarget; pressBtn(tb.sk, e, () => { burst({ currentTarget: el } as any, '#c9a7ff', 180); input.specialQ = true; }, () => {}); }}
+                onPointerUp={(e) => { const r = releaseBtn(tb.sk, e); if (!r || r.held) return; if (r.long) { burst(e, '#c9a7ff', 180); input.specialQ = true; } else { burst(e, '#8fe9ff', 30); input.shotQ = true; input.attackQ = true; } }}
+                onPointerCancel={(e) => { releaseBtn(tb.sk, e); }} onLostPointerCapture={(e) => { releaseBtn(tb.sk, e); }}><IShock /></button>
+            <button className={'ico hold melee' + (hud.me ? '' : ' off')} aria-label="melee (tap) / Charged Slam (hold)"
+                onPointerDown={(e) => { if (!pressBtn(tb.me, e, () => {}, meEnd)) return; burst(e, '#ff9a6a', -35); input.meleeQ = true; input.attackQ = true; input.meleeHeld = true; input.meleeAt = performance.now(); }}
+                onPointerUp={(e) => { if (releaseBtn(tb.me, e)) meEnd(); }} onPointerCancel={(e) => { if (releaseBtn(tb.me, e)) meEnd(); }} onLostPointerCapture={(e) => { if (releaseBtn(tb.me, e)) meEnd(); }}><IFist /></button>
+            <button className="ico jump" aria-label="jump"
+                onPointerDown={(e) => { if (!pressBtn(tb.ju, e, undefined, juEnd)) return; burst(e, '#ffe27a', 0); input.jumpHeld = true; input.jumpQ = true; }}
+                onPointerUp={(e) => { if (releaseBtn(tb.ju, e)) { input.jumpHeld = false; input.jumpReleased = true; } }} onPointerCancel={(e) => { if (releaseBtn(tb.ju, e)) juEnd(); }} onLostPointerCapture={(e) => { if (releaseBtn(tb.ju, e)) juEnd(); }}><IJump /></button>
         </>}
 
         {hud.mode === 'play' && desk && locked && <div className={'xhair' + (charge ? ' charge' : '')} aria-hidden><i /></div>}
