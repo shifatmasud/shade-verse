@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure a reference body (glTF, A-pose) against the hero mesh, for src/ghostBody.ts (Nov 2 2026).
 
-Usage: python3 tools/body_ref/measure_ref.py <scene.gltf> [ghost_pos.json]
+Usage: python3 tools/body_ref/measure_ref.py <scene.gltf> [ghost_pos.json] [--arms]
   scene.gltf: "Female Body (A-Pose & T-Pose) Free" by Leafar, CC-BY-4.0 (see CREDITS.md). Not in the repo; reference only.
   ghost_pos.json (optional): {"ghost": [x,y,z,...]} = feminineHeroData().pos, dumped with esbuild, to print Ghost beside it.
 Needs numpy. Prints cross-section widths/depths at body landmarks (torso half-width, front/back depth; per-leg width/depth),
@@ -53,16 +53,18 @@ def leg(A, idx, y, maxx=0.32):
     return P[:, 0].max() - P[:, 0].min(), P[:, 2].max() - P[:, 2].min()
 
 def main():
-    R, Ri = load_ref(sys.argv[1]); H = json.load(open(HERO))
+    R, Ri = load_ref([a for a in sys.argv[1:] if not a.startswith('--')][0]); H = json.load(open(HERO))
     S = np.array(H['pos']).reshape(-1, 3); Si = np.array(H['idx']).reshape(-1, 3)
     si = np.array(H['si']).reshape(-1, 4); sw = np.array(H['sw']).reshape(-1, 4); names = [b['n'] for b in H['bones']]
     legw = (np.isin(si, [names.index(n) for n in names if n[:5] in ('thigh', 'shinL', 'shinR', 'footL', 'footR')]) * sw).sum(1)
     Li = Si[(legw[Si] > 0.5).all(1)]
-    G = np.array(json.load(open(sys.argv[2]))['ghost']).reshape(-1, 3) if len(sys.argv) > 2 else None
+    A = [a for a in sys.argv[1:] if not a.startswith('--')]
+    G = np.array(json.load(open(A[1]))['ghost']).reshape(-1, 3) if len(A) > 1 else None
     k = (S[:, 1].max()) / R[:, 1].max()               # height (the hood tip vs the crown: crotch/knee/shoulder then agree within 2 cm)
     hipR = torso(R, Ri, 0.99 / k)[0] * k; hipH = torso(G if G is not None else S, Si, 0.99, 0.04)[0]
     w = hipH / hipR                                    # width: reference hip = hero hip
     print(f"height scale {k:.3f}, hip-width scale {w:.3f} (on top of height)")
+    if '--arms' in sys.argv: arms(R, Ri, S, G, k); return
     print("TORSO  y    ref half/zf/zb (hip-scaled)   shadow half/zf/zb" + ("   ghost" if G is not None else ""))
     for y in np.arange(0.99, 1.45, 0.03):
         r = torso(R, Ri, y / k); s = torso(S, Si, y, 0.04); gg = torso(G, Si, y, 0.04) if G is not None else None
@@ -73,6 +75,20 @@ def main():
         r = leg(R, Ri, y / k, 0.2); s = leg(S, Li, y); gg = leg(G, Li, y) if G is not None else None
         f = lambda t, m=1: ("%.3f %.3f" % (t[0] * m, t[1] * m)) if t else "  -"
         print(f"      {y:.2f}  {f(r, k * w)}   {f(s)}" + (f"   {f(gg)}" if G is not None else ""))
+
+def arms(R, Ri, S, G, k):
+    """--arms (Nov 2, 6:19 PM pass): outer shoulder/deltoid half-width by height, and the arm's cross-section, reference scaled to height only."""
+    print("SHOULDER y   ref outer half-width   shadow" + ("   ghost" if G is not None else ""))
+    for y in np.arange(1.30, 1.63, 0.05):
+        r = np.abs(R[np.abs(R[:, 1] - y / k) < 0.01 / k, 0]).max() * k; s = np.abs(S[np.abs(S[:, 1] - y) < 0.02, 0]).max()
+        g = np.abs(G[np.abs(G[:, 1] - y) < 0.02, 0]).max() if G is not None else None
+        print(f"      {y:.2f}  {r:.3f}   {s:.3f}" + (f"   {g:.3f}" if g is not None else ""))
+    print("REF ARM  y   x0..x1 (horizontal cut)  z0..z1   (arm beyond the torso cluster; ~21 deg off vertical, so across-the-arm ~0.93x)")
+    for y in np.arange(0.95, 1.48, 0.05):
+        t = torso(R, Ri, y / k)
+        if t is None: continue
+        P = xsec(R, Ri, y / k) * k; P = P[P[:, 0] > t[0] * k + 0.005]
+        if len(P): print(f"      {y:.2f}  {P[:, 0].min():.3f}..{P[:, 0].max():.3f}   {P[:, 2].min():+.3f}..{P[:, 2].max():+.3f}")
 
 if __name__ == '__main__':
     main()

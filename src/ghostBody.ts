@@ -1,6 +1,6 @@
 /**
  * Ghost's body, shared by the game (src/Ghost.tsx) and the first screen's build-time hero bake (tools/title/heroBake.ts), so the
- * title Ghost is always exactly the in-game Ghost. Moved here from Ghost.tsx (pass 2, 7cb1d5f); shoulders/arms/hands back to Shadow's own (Nov 2, 4:54 PM).
+ * title Ghost is always exactly the in-game Ghost. Moved here from Ghost.tsx (pass 2, 7cb1d5f); shoulders/arms/hands back to Shadow's own (Nov 2, 4:54 PM), then slimmed to the reference body (Nov 2, 6:19 PM).
  */
 import heroData from './hero.json';
 
@@ -13,8 +13,23 @@ export const GHOST_HEIGHT = 0.93;
    the bone segments it is skinned to, blended by its own skin weights (smooth across joints): thighs follow Shadow's straight hip-to-knee
    line a touch narrower (about 0.93 at the hip easing to 0.84 toward the knee; Shifat Nov 2 5:18 PM on the hip flare: "They are too thick.
    Look at shadow. His ones thighs looks great"), slimmer calves. Head/hood a touch smaller. Shoulders, shoulder flaps, arms and hands are Shadow's own (no pull-in, no flap shrink,
-   no arm/hand slimming), as on the first screen before the pass-2 body: Shifat Nov 2 4:53 PM "Old shoulder, hand looked better", 4:54 PM "Same" (in game too). */
+   no arm/hand slimming), as on the first screen before the pass-2 body: Shifat Nov 2 4:53 PM "Old shoulder, hand looked better", 4:54 PM "Same" (in game too).
+   REPLACED Nov 2 6:19 PM: asked whether to slim her shoulders and arms to the reference body too ("shoulders ~40% narrower and much slimmer
+   arms"), Shifat said "Yes". Shoulders, arms and hands now follow the reference (REF_ARM below); the shoulder flaps ride along, scaled with
+   the shoulder. */
 const FEM_LIMB: Record<string, number> = { thighL: 0.84, thighR: 0.84, shinL: 0.78, shinR: 0.78, footL: 0.90, footR: 0.90, head: 0.90, neck: 0.88 };
+/* Arms from the reference (same A-pose mesh, same scale; tools/body_ref/measure_ref.py --arms). Measured on the hero mesh (Shadow) vs the reference:
+   outer deltoid half-width at chest height ~0.39 vs 0.24, upper-arm thickness across the arm ~0.18 x 0.24 deep (deltoid + flap) vs ~0.07 x 0.08,
+   forearm ~0.11 x 0.12 vs ~0.05 x 0.05 (the reference is a slim, untrained body). Taken most of the way, not all of it (athletic, not twig-thin):
+   the whole arm (skin and its bones, so every joint still pivots inside the mesh) moves in toward the body, the shoulder top follows it, and each
+   arm segment is slimmed about its own bone. Bone lengths and arm angles are unchanged, so every animation plays the same. */
+const REF_ARM = {
+    shoulderIn: 0.095,   // the whole arm + shoulder cap moves this far toward the midline: outer shoulder half-width at 1.45 0.388 -> 0.282 (ref 0.240), at 1.60 0.305 -> 0.210 (ref 0.199)
+    uarm: 0.66,          // upper arm (deltoid, bicep/tricep and the shoulder flap riding on it) about its bone (ref ~0.4 of Shadow's; 0.66 keeps her athletic)
+    farm: 0.72,          // forearm/glove about its bone (ref ~0.45 of Shadow's gauntlet)
+    hand: 0.88,          // hands proportionally a little smaller, about the wrist
+};
+const ARM_SLIM: Record<string, number> = { uarmL: REF_ARM.uarm, uarmR: REF_ARM.uarm, farmL: REF_ARM.farm, farmR: REF_ARM.farm, handL: REF_ARM.hand, handR: REF_ARM.hand };
 /* Reference-driven anatomy (Shifat Nov 2 5:54-5:55 PM, sending a female body model: "Or use it as reference and modify ghosts current body mesh
    (not clothes)"). The A-pose mesh of "Female Body (A-Pose & T-Pose) Free" by Leafar (CC-BY-4.0, credited in CREDITS.md; not shipped) was scaled to
    her height (crotch, knee and shoulder land within 2 cm of hers, so leg length is untouched) and to her 2d8c41e hip width, then measured in
@@ -33,8 +48,10 @@ const REF = {
 export function feminineHeroData() {
     const d = JSON.parse(JSON.stringify(heroData)) as any;
     const p: number[] = d.pos, si: number[] = d.si, sw: number[] = d.sw, bones: { n: string; p: number; h: number[] }[] = d.bones;
-    const arm: number[] = [];   // per-vertex skin weight on the arm bones (so the flank pull-in never touches arms, shoulders, flaps or hands)
-    for (let v = 0; v < sw.length / 4; v++) { let a = 0, t = 0; for (let k = 0; k < 4; k++) { const w = sw[v * 4 + k]; t += w; if (/arm|hand/.test(bones[si[v * 4 + k]].n)) a += w; } arm.push(t > 0 ? Math.min(1, a / t * 1.6) : 0); }
+    const arm: number[] = [], armW: number[] = [];   // per-vertex skin weight on the arm bones (arm: boosted, so the flank pull-in never touches arms, shoulders, flaps or hands; armW: exact share, moves the skin with its bones)
+    for (let v = 0; v < sw.length / 4; v++) { let a = 0, t = 0; for (let k = 0; k < 4; k++) { const w = sw[v * 4 + k]; t += w; if (/arm|hand/.test(bones[si[v * 4 + k]].n)) a += w; } arm.push(t > 0 ? Math.min(1, a / t * 1.6) : 0); armW.push(t > 0 ? a / t : 0); }
+    const neckW: number[] = [];   // the back of the shoulder flaps is skinned to the neck (so it rides the head turn, not the arm swing)
+    for (let v = 0; v < sw.length / 4; v++) { let a = 0, t = 0; for (let k = 0; k < 4; k++) { const w = sw[v * 4 + k]; t += w; if (bones[si[v * 4 + k]].n === 'neck') a += w; } neckW.push(t > 0 ? a / t : 0); }
     const gauss = (y: number, center: number, width: number) => Math.exp(-(((y - center) / width) ** 2));
     const sstep = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     const child: number[] = bones.map(() => -1);
@@ -66,7 +83,7 @@ export function feminineHeroData() {
         let ox = 0, oy = 0, oz = 0, wsum = 0;
         for (let k = 0; k < 4; k++) {
             const w = sw[v * 4 + k]; if (w <= 0) continue;
-            const bi = si[v * 4 + k], b = bones[bi], s = FEM_LIMB[b.n];
+            const bi = si[v * 4 + k], b = bones[bi], s = FEM_LIMB[b.n] ?? ARM_SLIM[b.n];
             r[0] = q[0]; r[1] = q[1]; r[2] = q[2];
             if (s !== undefined) {
                 const h0 = b.h, c = child[bi];
@@ -88,8 +105,14 @@ export function feminineHeroData() {
             ox += r[0] * w; oy += r[1] * w; oz += r[2] * w; wsum += w;
         }
         if (wsum > 0) { ox /= wsum; oy /= wsum; oz /= wsum; } else { ox = q[0]; oy = q[1]; oz = q[2]; }
+        // narrower shoulders: arm-skinned skin moves in with its bones (by its arm weight); the torso's shoulder top (trapezius to the
+        // shoulder cap, and the cape's top edge across it) follows smoothly, from nothing at the neck to the full shift at the shoulder joint
+        // (the capelet hanging down the back below that band, and the neck-skinned back of the shoulder flaps, narrow with it, so nothing flares out past the narrower shoulders)
+        const sx = Math.sign(x) || 1, aw = armW[v], cap = sstep(0.1, 0.3, Math.abs(x)) * Math.max(sstep(1.36, 1.5, y), sstep(-0.08, -0.13, z) * sstep(1.08, 1.18, y), Math.min(1, neckW[v] * 2) * sstep(1.25, 1.3, y));
+        ox -= sx * REF_ARM.shoulderIn * (aw + (1 - aw) * cap);
         p[i] = ox; p[i + 1] = oy; p[i + 2] = oz;
     }
+    for (const b of bones) if (/^(uarm|farm|hand)[LR]$/.test(b.n)) b.h = [b.h[0] - Math.sign(b.h[0]) * REF_ARM.shoulderIn, b.h[1], b.h[2]];   // the arm's joints move in with its skin
     d.rebuildNormals = true;
     return d;
 }
