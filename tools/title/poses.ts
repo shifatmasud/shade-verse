@@ -1,5 +1,5 @@
 /**
- * The first screen's hero poses (bone eulers in degrees on the rest pose), placement and framing, baked by bake_heroes.mjs.
+ * The first screen's hero poses (bone eulers in degrees on the rest pose), placement and framing for the real game reference shots (refshots.mjs / shot.ts).
  * box = the design px (1920x1080 stage) each render covers; the trimmed cut-out keeps its place inside it.
  */
 import type { HeroSpec } from './heroBake';

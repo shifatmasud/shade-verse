@@ -97,10 +97,6 @@
 .sv-art{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 .sv-pg{transform-box:fill-box;transform-origin:50% 50%;animation:sv-panel-in .62s cubic-bezier(0.2,0.9,0.25,1.12) both}
 @keyframes sv-panel-in{from{opacity:0;transform:translate(var(--fx),var(--fy)) rotate(var(--fr)) scale(.86)}55%{opacity:1}to{opacity:1;transform:none}}
-.sv-hero{position:absolute;display:block;max-width:none;pointer-events:none;user-select:none;-webkit-user-drag:none;transform-origin:50% 60%;
-  animation:sv-hero-in .55s cubic-bezier(0.3,1.5,0.5,1) both,sv-float 5.5s ease-in-out 2.4s infinite alternate}
-.sv-hero-ghost{animation-direction:normal,alternate-reverse}
-@keyframes sv-hero-in{from{opacity:0;transform:translate3d(var(--px),var(--py),0) scale(.7)}40%{opacity:1}to{opacity:1;transform:none}}
 @keyframes sv-float{to{transform:translate3d(0,-6px,0) rotate(-.4deg)}}
 .sv-sticker{transform-box:fill-box;transform-origin:50% 55%;animation:sv-stamp .42s cubic-bezier(0.2,1.5,0.4,1) both}
 @keyframes sv-stamp{from{opacity:0;transform:scale(1.9) rotate(-5deg)}35%{opacity:1}to{opacity:1;transform:none}}
@@ -119,7 +115,7 @@
 .sv-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0}
 /* back from a game over: the art is already up, no second intro */
 .sv-comic.again *{animation-delay:0s!important}
-.sv-comic.again .sv-pg,.sv-comic.again .sv-hero,.sv-comic.again .sv-sticker,.sv-comic.again .sv-play,.sv-comic.again .sv-hdr{animation-duration:.01s,5.5s!important}
+.sv-comic.again .sv-pg,.sv-comic.again .sv-sticker,.sv-comic.again .sv-play,.sv-comic.again .sv-hdr{animation-duration:.01s,5.5s!important}
 /* the title's own HUD pieces step aside on the first screen (the new header carries the sound toggle) */
 .stage:has(.sv-comic:not(.leaving)) .hud,.stage:has(.sv-comic:not(.leaving)) .mute{visibility:hidden}
 @media (prefers-reduced-motion:reduce){.sv-comic *,.sv-comic .sv-stage{animation:none!important;transition:none!important}}

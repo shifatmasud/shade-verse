@@ -4,7 +4,8 @@
  * in-game hero mesh, skeleton and costume texture (src/hero.json, src/basetex.ts, trim recolour src/heroTrim.ts), posed by hand,
  * with a comic finish: the game's inverted-hull ink outline (thicker) and a halftone cel pass in the material. Shadow (purple trim)
  * swings on a taut web; Ghost (white suit, pink trim, feminine build) fires her pink Shock.
- * Run: node tools/title/bake_heroes.mjs  (vite dev server + headless Chrome; writes src/title/art/*.webp + heroes.json).
+ * Now used by tools/title/shot.ts (buildHero/applyPose/suitTexture) to stage the heroes in the real game world for the reference shots
+ * behind the AI panel art (tools/title/refshots.mjs); the title itself no longer ships hero cut-outs (Shifat Nov 2 6:03 PM).
  * Ghost's body is src/ghostBody.ts (the same code the game uses) at GHOST_HEIGHT; her suit colours mirror Ghost.tsx recoloredSuitMaterial().
  */
 import * as THREE from 'three';
@@ -18,7 +19,7 @@ export type Pose = Record<string, [number, number, number]>;   // bone -> euler 
 const D2R = Math.PI / 180;
 
 /** the costume texture, repainted per hero on a canvas (Shadow: gold -> purple; Ghost: dark panels -> white, gold -> pink, lens -> pink) */
-function suitTexture(ghost: boolean, done: () => void): Promise<THREE.Texture> {
+export function suitTexture(ghost: boolean, done: () => void): Promise<THREE.Texture> {
     return new Promise((res, rej) => {
         const img = new Image();
         img.onload = () => {
@@ -65,7 +66,7 @@ function comicMaterial(map: THREE.Texture, ghost: boolean) {
     return m;
 }
 
-function buildHero(ghost: boolean, mat: THREE.Material) {
+export function buildHero(ghost: boolean, mat: THREE.Material) {
     const d: any = ghost ? feminineHeroData() : JSON.parse(JSON.stringify(heroData));
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
@@ -92,7 +93,7 @@ function buildHero(ghost: boolean, mat: THREE.Material) {
     return { root, by, mesh, ol, g, om };
 }
 
-function applyPose(by: Record<string, THREE.Bone>, pose: Pose) {
+export function applyPose(by: Record<string, THREE.Bone>, pose: Pose) {
     const e = new THREE.Euler();
     for (const k in by) by[k].quaternion.identity();
     for (const k in pose) { const b = by[k]; if (!b) continue; const [x, y, z] = pose[k]; e.set(x * D2R, y * D2R, z * D2R, 'XYZ'); b.quaternion.setFromEuler(e); }

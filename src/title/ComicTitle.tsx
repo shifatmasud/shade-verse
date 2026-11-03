@@ -1,18 +1,15 @@
 /**
- * The first screen before Play, all illustration from code (Shifat Nov 2 4:03 PM: "Generate everything Illustration from code";
- * 3:44 PM: "2 panels & title after that. I like things cleaner."): two tilted comic panels on black (SVG backgrounds, ./PanelArt.tsx),
- * the heroes breaking out over the frames (the REAL game models posed in code, baked at build time to transparent webp by
- * tools/title/bake_heroes.mjs, so nothing 3D loads before Play), the sticker title (SVG), a round Play, his portfolio wordmark
- * top-left and the portfolio sound toggle top-right.
- * Intro: panel 1 slides/tilts in, panel 2, the heroes pop out, the title stamps on, Play fades up; then a very slow push-in.
- * Cheap: SVG + two <img> + CSS transforms/opacity, no canvas, no per-frame JS; reduced motion shows the finished frame.
+ * The first screen before Play (Shifat Nov 2 3:44 PM: "2 panels & title after that. I like things cleaner."): two tilted comic
+ * frames on black holding AI-rendered 3D key art of each hero (Shifat Nov 2 6:03 PM: "Or just ai generated image as close to real 3d
+ * as possible"; small baked webp, ./PanelArt.tsx, so nothing 3D loads before Play), the sticker title (SVG), a round Play, his
+ * portfolio wordmark top-left and the portfolio sound toggle top-right.
+ * Intro: panel 1 slides/tilts in, panel 2, the title stamps on, Play fades up; then a very slow push-in.
+ * Cheap: SVG + two images + CSS transforms/opacity, no canvas, no per-frame JS; reduced motion shows the finished frame.
  */
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { ART } from './layout';
-import { PanelArt, PanelDefs } from './PanelArt';
+import { PanelArt } from './PanelArt';
 import { TitleHeader } from './TitleHeader';
-
-const url = (id: string, half: boolean) => new URL(`./art/${id}${half ? '@h' : ''}.webp`, import.meta.url).href;   // vite bundles every ./art/*.webp
 
 const isPhone = (W: number, H: number) => H <= 500 && W / H >= 1.6;   // short landscape phone (844x390 and friends)
 
@@ -61,13 +58,8 @@ export function ComicTitle({ muted, onMute, onStart, extra, leaving, again }: { 
         <div className="sv-stage" style={{ width: ART.w, height: ART.h, transform: `translate3d(${f.tx}px,${f.ty}px,0) scale(${f.k})` }}>
             <div className="sv-push">
                 <svg className="sv-art" width={ART.w} height={ART.h} viewBox={`0 0 ${ART.w} ${ART.h}`} aria-hidden="true">
-                    <PanelDefs />
-                    {ART.panels.map((p) => <PanelArt key={p.id} p={p} />)}
+                    {ART.panels.map((p) => <PanelArt key={p.id} p={p} half={half} />)}
                 </svg>
-                {ART.heroes.map((h) => {
-                    const st = { left: h.x, top: h.y, width: h.w, height: h.h, animationDelay: `${h.delay}s`, '--px': `${h.pop[0]}px`, '--py': `${h.pop[1]}px` } as React.CSSProperties;
-                    return <img key={h.id} className={'sv-hero sv-hero-' + h.id} src={url(h.id, half)} alt="" draggable={false} decoding="async" style={st} />;
-                })}
                 <svg className="sv-art sv-top" width={ART.w} height={ART.h} viewBox={`0 0 ${ART.w} ${ART.h}`} aria-hidden="true"><Sticker phone={f.phone} /></svg>
                 <button className="sv-play" aria-label="play" style={{ left: pcx - playD / 2, top: pcy - playD / 2, width: playD, height: playD }} onClick={(e) => { e.stopPropagation(); onStart(); }}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.8l10 6.2-10 6.2z" fill="currentColor" /></svg>
