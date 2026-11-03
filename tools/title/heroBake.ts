@@ -5,30 +5,17 @@
  * with a comic finish: the game's inverted-hull ink outline (thicker) and a halftone cel pass in the material. Shadow (purple trim)
  * swings on a taut web; Ghost (white suit, pink trim, feminine build) fires her pink Shock.
  * Run: node tools/title/bake_heroes.mjs  (vite dev server + headless Chrome; writes src/title/art/*.webp + heroes.json).
- * Ghost's look mirrors Ghost.tsx feminineHeroData() + recoloredSuitMaterial() (that module pulls in the whole game); keep in sync.
+ * Ghost's body is src/ghostBody.ts (the same code the game uses) at GHOST_HEIGHT; her suit colours mirror Ghost.tsx recoloredSuitMaterial().
  */
 import * as THREE from 'three';
 import heroData from '../../src/hero.json';
+import { feminineHeroData, GHOST_HEIGHT } from '../../src/ghostBody';   // the in-game Ghost body itself (no mirror to drift)
 import baseTexUrl from '../../src/basetex';
 import { paintTrim, SHADOW_TRIM, GHOST_TRIM } from '../../src/heroTrim';
 
 export type Pose = Record<string, [number, number, number]>;   // bone -> euler degrees (XYZ), applied on the rest pose
 
 const D2R = Math.PI / 180;
-
-function feminine(d: any) {   // mirror of Ghost.tsx feminineHeroData()
-    const p: number[] = d.pos;
-    const gauss = (y: number, c: number, w: number) => Math.exp(-(((y - c) / w) ** 2));
-    for (let i = 0; i < p.length; i += 3) {
-        const x = p[i], y = p[i + 1];
-        const tw = Math.max(0, 1 - Math.abs(x) / 0.34);
-        const hip = 1 + 0.13 * gauss(y, 0.92, 0.15), waist = 1 - 0.20 * gauss(y, 1.18, 0.15), chest = 1 - 0.07 * gauss(y, 1.52, 0.16);
-        p[i] = x * (1 + ((y < 1.06 ? hip : y < 1.36 ? waist : chest) - 1) * tw);
-        if (Math.abs(x) < 0.27 && p[i + 2] > 0) p[i + 2] += 0.025 * tw * gauss(y, 1.38, 0.17);
-    }
-    d.rebuildNormals = true;
-    return d;
-}
 
 /** the costume texture, repainted per hero on a canvas (Shadow: gold -> purple; Ghost: dark panels -> white, gold -> pink, lens -> pink) */
 function suitTexture(ghost: boolean, done: () => void): Promise<THREE.Texture> {
@@ -79,7 +66,7 @@ function comicMaterial(map: THREE.Texture, ghost: boolean) {
 }
 
 function buildHero(ghost: boolean, mat: THREE.Material) {
-    const d: any = JSON.parse(JSON.stringify(heroData)); if (ghost) feminine(d);
+    const d: any = ghost ? feminineHeroData() : JSON.parse(JSON.stringify(heroData));
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(d.nor, 3));
@@ -132,6 +119,7 @@ export async function bakeHero(s: HeroSpec, scale: number): Promise<HTMLCanvasEl
     mat.onBeforeCompile = ((orig) => (sh: any, r: any) => { orig(sh, r); sh.uniforms.uDot.value = s.dot ?? 5 * scale; })(mat.onBeforeCompile);
     const h = buildHero(s.ghost, mat);
     h.root.position.set(...s.pos); h.root.rotation.set(s.rot[0] * D2R, s.rot[1] * D2R, s.rot[2] * D2R);
+    if (s.ghost) h.root.scale.setScalar(GHOST_HEIGHT);   // she is ~7% shorter than Shadow in game; the rig root is at her feet, so they stay put
     applyPose(h.by, s.pose); scene.add(h.root); h.root.updateMatrixWorld(true);
     const hand = new THREE.Vector3(); h.by.handR.getWorldPosition(hand);
     if (!s.ghost) {   // a taut, straight web from the raised hand up out of the frame (white core, ink edge)
