@@ -136,6 +136,8 @@ const NLD = LONG_WAVES.map(w => { const [dx, dz, k] = kn(w, 0, 1); return [...w.
 const NGD = NGA.map((w, i) => { const [dx, dz, k] = kn(GOLDEN_WAVES[i], 6, 7); return [...w, dx, dz, 0.9 * Math.PI / k, 0.45 * Math.PI / k]; });
 const sst = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 /** swellK() of the shader. */
+/** Upper bound of |waveMeshHJS| / swellKJS: every train at full strength in phase (the waterline solve skips view depths whose highest possible crest can't reach the line found so far). */
+export const WAVE_HMAX = NLD.reduce((s, w) => s + Math.abs(w[3]), 0) + NGD.reduce((s, w) => s + Math.abs(w[13]) * (Math.abs(w[0]) + Math.abs(w[1])), 0);
 export function swellKJS(x: number, z: number) { return (1 + 1.3 * sst(-300, -750, z)) * (0.22 + 0.78 * sst(105, 215, Math.hypot(x + 160, z + 820))); }
 /** whdV() of the sea's vertex shader: out = [height, sideways x, sideways z] at the undisplaced point (x, z) for local grid spacing sp (m). */
 export function waveMeshJS(x: number, z: number, t: number, sp: number, out: number[]) {

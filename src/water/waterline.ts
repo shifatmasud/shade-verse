@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { waveDispJS, waveMeshHJS } from './waves';
+import { waveDispJS, waveMeshHJS, swellKJS, WAVE_HMAX } from './waves';
+const DBG = !!(import.meta as any).env.VITE_DBG;
 import { OCEAN_HALF, OCEAN_N, OCEAN_SNAP, OCEAN_WARP } from './seabed';
 import { WATER_Y } from '../sim';
 import { WATERLINE } from '../world/env';
@@ -14,7 +15,7 @@ import { WATERLINE } from '../world/env';
    and each mismatch showed as a band of underwater tint above the line.
    Now: solved on the exact surface the sea mesh draws (same trains, same grid fades, Gerstner push inverted), 25 columns x up to 30 depths,
    one shared GLSL function for the sea and the post pass (bit-identical cut), the sea's side per fragment read from its real triangle (screen
-   derivatives), not the GPU facing flag. Cost: ~550 CPU wave evaluations a frame (half the columns each frame) only while the lens straddles the surface, a 4-tap uniform
+   derivatives), not the GPU facing flag. Cost: every column every frame (Nov 2 8:06 PM fix, see updateWaterline), depths that can't beat the line skipped; only while the lens straddles the surface, a 4-tap uniform
    spline per pixel; nothing otherwise. */
 export const WL_N = 25, WL_D = 1.2;
 const WL_EPS = 0.02;   // the line sits 2 cm above the analytic surface: the drawn triangles cut the curve up to ~2 cm high in troughs, and a line under the mesh would open a sliver of sky above it
@@ -51,29 +52,47 @@ export function seaMeshY(x: number, z: number, t: number, sx: number, sz: number
  *  the water; that reach shrinks to the lens plane itself as the camera rises 0.35 -> 0.9 m over the surface, so the line slides off the bottom
  *  of the screen before the split view ends instead of popping). Above the line nothing of the sea within that reach is drawn. */
 const NEAR = 6, WL_FAR = 250;   // 250 m: past it the sea is drawn flat (Shifat Oct 31), so nothing further out rises over the line
-const TS: number[] = []; for (let d = WL_D; d < WL_FAR; d *= d < NEAR ? 1.38 : 1.2) TS.push(d); TS.push(WL_FAR);   // 6 depths inside 6 m (mesh-exact, chop), then every 20 % out to 250 m
+const colJ = new Int32Array(WL_N).fill(1 << 20), colNy = new Float64Array(WL_N);   // per column: the view depth that set the line last frame, and its height
 let wlFrame = 0, wlLastT = -1e9;
+const TS: number[] = []; for (let d = WL_D; d < WL_FAR; d *= d < NEAR ? 1.38 : 1.2) TS.push(d); TS.push(WL_FAR);   // 6 depths inside 6 m (mesh-exact, chop), then every 20 % out to 250 m
 export function updateWaterline(camera: THREE.PerspectiveCamera, t: number, lakeY: ((x: number, z: number) => number) | null, dy: number) {
+    const t0 = DBG ? performance.now() : 0; let ev = 0;
     const sx = Math.round(camera.position.x / OCEAN_SNAP) * OCEAN_SNAP, sz = Math.round(camera.position.z / OCEAN_SNAP) * OCEAN_SNAP;
     camera.getWorldDirection(_f); _r.set(1, 0, 0).applyQuaternion(camera.quaternion); _u.set(0, 1, 0).applyQuaternion(camera.quaternion);
     const ty = Math.tan(camera.fov * Math.PI / 360), tx = ty * camera.aspect, c = camera.position, q = WATERLINE.q;
-    const reach = lakeY ? WL_D : WL_FAR * Math.pow(WL_D / WL_FAR, sst(0.35, 0.9, dy)), fresh = !(Math.abs(t - wlLastT) < 0.25), par = wlFrame++ & 1; wlLastT = t;
+    const reach = lakeY ? WL_D : WL_FAR * Math.pow(WL_D / WL_FAR, sst(0.35, 0.9, dy));
+    /* Shifat Nov 2 8:06 PM 'water line is getting wavy distorted based on camera movements': every column is re-cut every frame against THIS
+       frame's camera. Was: half the columns per frame (odd/even alternating) and the other half kept as last frame's ndc heights - fine for the
+       slow swell, but those heights belonged to last frame's camera, so any pan/tilt/move left every second column off by the camera's own motion
+       and the spline through them swam as a wave with a two-column period (0.021 ndc mean, 0.035 max on a 2 deg/frame pan vs 0.0006 held still).
+       Now half the columns get the full depth search (as before) and the other half re-solve, with this frame's camera, the view depth that set
+       their line last frame and its two neighbours; the full search skips depths whose highest possible crest can't beat the line found so far.
+       Fewer wave evaluations per frame than before. */
+    const fresh = !(Math.abs(t - wlLastT) < 0.25), par = wlFrame++ & 1; wlLastT = t;
+    let nj = 0; while (nj < TS.length && (nj === 0 || TS[nj] <= reach * 1.0001)) nj++;   // depths inside this frame's reach
     for (let k = 0; k < WL_N; k++) {
-        if (!fresh && (k & 1) !== par) continue;   // half the columns per frame (the swell moves a few mm per frame); every column on the first frame of a split
-        const nx = -1 + k * 2 / (WL_N - 1); let best = -3, ny = 0;
-        for (let j = 0; j < TS.length; j++) {
-            const d = TS[j]; if (d > reach * 1.0001 && j > 0) break;
-            const uy = d * ty * _u.y || 1e-4, near = d < NEAR;
+        const nx = -1 + k * 2 / (WL_N - 1), fy = _f.y + nx * tx * _r.y, full = fresh || (k & 1) === par || colJ[k] >= nj;
+        let best = -3, bj = 0, ny = full ? 0 : colNy[k];
+        const j0 = full ? 0 : Math.max(0, colJ[k] - 1), j1 = full ? nj - 1 : Math.min(nj - 1, colJ[k] + 1);
+        for (let j = j0; j <= j1; j++) {
+            const d = TS[j], uy = d * ty * _u.y || 1e-4, near = d < NEAR;
+            if (full && !lakeY && j > 0 && uy > 0 && !(DBG && (window as any).__wlNoSkip)) {   // exact skip: this depth's highest possible crest (all trains in phase) stays under the line already found
+                const px = c.x + d * (_f.x + nx * tx * _r.x + ny * ty * _u.x), pz = c.z + d * (_f.z + nx * tx * _r.z + ny * ty * _u.z);
+                const hb = WATER_Y + WAVE_HMAX * swellKJS(px, Math.min(pz, -222)) * 1.05 + 0.05 + WL_EPS;
+                if ((hb - c.y - d * fy) / uy <= best) continue;
+            }
             for (let it = 0, n = near ? 2 : 1; it < n; it++) {   // the point at view depth d under ndc (nx, ny): solve its height = surface height for ny (warm start from the previous depth)
                 const px = c.x + d * (_f.x + nx * tx * _r.x + ny * ty * _u.x), pz = c.z + d * (_f.z + nx * tx * _r.z + ny * ty * _u.z);
-                const h = (lakeY ? lakeY(px, pz) : seaMeshY(px, pz, t, sx, sz, near ? 1 : 0)) + WL_EPS;
-                ny = Math.max(-3, Math.min(3, (h - c.y - d * (_f.y + nx * tx * _r.y)) / uy));
+                const h = (lakeY ? lakeY(px, pz) : seaMeshY(px, pz, t, sx, sz, near ? 1 : 0)) + WL_EPS; if (DBG) ev += near ? 2 : 1;
+                ny = Math.max(-3, Math.min(3, (h - c.y - d * fy) / uy));
             }
-            if (ny > best) best = ny;
+            if (ny > best) { best = ny; bj = j; }
         }
+        colJ[k] = bj; colNy[k] = best;
         (q[k >> 2] as any)[XYZW[k & 3]] = best;
     }
     q[6].y = Math.atan2(-_f.x, -_f.z); q[6].z = tx;
     WATERLINE.v.set(t, reach, 1 - 0.8 * sst(-0.1, 0.4, dy), 1);
+    if (DBG) { const g = window as any, ms = performance.now() - t0; g.__wlMs = (g.__wlMs || 0) * 0.9 + ms * 0.1; g.__wlN = (g.__wlN || 0) + 1; g.__wlEv = ev; }
 }
 const XYZW = ['x', 'y', 'z', 'w'];
