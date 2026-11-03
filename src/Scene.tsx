@@ -11,6 +11,7 @@ import { meleeBody, slamBody, slamBodyReset } from './heroMelee';
 import gsap from 'gsap';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
+import { trimTexture, SHADOW_TRIM } from './heroTrim';
 import clipIdle from './clips/idle.json';
 import clipJump from './clips/jump.json';
 import clipWall from './clips/climbing_wall.json';
@@ -331,7 +332,7 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
     let mat: THREE.MeshLambertMaterial;
     if (materialOverride) mat = materialOverride;
     else if (d.uv) {
-        const tex = new THREE.TextureLoader().load(baseTexUrl); tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 16;   // hero-only path (bots/boss build their own); three clamps to the GPU max
+        const tex = trimTexture(baseTexUrl, SHADOW_TRIM, () => mat);   // hero-only path (bots/boss build their own); gold trim repainted Shadow purple (Shifat Nov 2)
         mat = new THREE.MeshLambertMaterial({ map: tex, emissive: new THREE.Color('#ffffff'), emissiveMap: tex, emissiveIntensity: 0.45 });
     } else mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1a2a66'), emissiveIntensity: 0.18 });
     // procedural suit weave in the fragment shader (object-space lattice, screen-AA'd), so fine detail doesn't depend on vertex density

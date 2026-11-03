@@ -11,6 +11,7 @@ Unlocked Nov 2 2026 (Shifat, 5:25-5:49 AM): hero melee (new hold-melee Charged S
 The Shadow hero model, HUD, and controls are locked.
 
 The heroes (Shadow and Ghost) are locked, including their models, materials, textures, animation and the hero HD pass (`src/heroHD.ts`). Shifat, Oct 29 2026: "Heroes must be locked cause they are perfect already, don't touch without permission." Change nothing about them without his explicit permission.
+Hero trim colour unlocked Nov 2 2026 (Shifat, 3:49 PM: "We can redesign our gold pipings to ghost & shadows colors like the illustration"): the costume's gold piping, chest emblem and buckle are repainted per hero (Shadow purple 0xa855f7, Ghost hot pink 0xff1a96, src/heroTrim.ts). Models, base suit colours, faceplates, eyes and ink outlines unchanged.
 
 ## Display orientation
 

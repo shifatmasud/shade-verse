@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import heroData from './hero.json';
 import baseTexUrl from './basetex';
+import { paintTrim, GHOST_TRIM } from './heroTrim';
 import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
 import { registerFxHero } from './CombatFX';
 import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
@@ -64,7 +65,9 @@ function recoloredSuitMaterial() {
             const lum = r * 0.2126 + g * 0.7152 + b * 0.0722;
             const goldTrim = r > g * 1.10 && g > b * 1.06 && r > 55;
             const purpleLens = b > g * 1.55 && r > g * 1.18 && b > r * 1.12 && b > 72;
-            if (purpleLens) {
+            if (goldTrim && paintTrim(data, i, GHOST_TRIM)) {
+                // gold piping / emblem / buckle -> Ghost's hot pink (Shifat Nov 2 3:49 PM)
+            } else if (purpleLens) {
                 // Keep the lens texture's shading, but shift its purple hue to hot pink.
                 const shade = 0.82 + 0.18 * (lum / 255);
                 data[i] = 255 * shade; data[i + 1] = 26 * shade; data[i + 2] = 150 * shade;
