@@ -1,4 +1,4 @@
-// dev-only (vite dev server, loaded INTO the running DBG game page by bake_heroes.mjs): stages one title hero inside the real game
+// dev-only (vite dev server, loaded INTO the running DBG game page by refshots.mjs): stages one title hero inside the real game
 // world for a panel shot. The hero is the real in-game mesh/skeleton/costume (./heroBake.ts buildHero + the pose from ./poses.ts) with the
 // game's own hero material (Scene.tsx buildRig: Lambert + emissive suit 0.45) and the game's ink hull, lit by the game's own sun, sky and
 // fog at a chosen time of day; the camera is the game camera (DBG __camOv) at the pose's framing. Shadow gets his taut web, Ghost her
