@@ -1,0 +1,41 @@
+diff --git a/src/water/OceanPasses.tsx b/src/water/OceanPasses.tsx
+index 0995552..5a1045f 100644
+--- a/src/water/OceanPasses.tsx
++++ b/src/water/OceanPasses.tsx
+@@ -82,7 +82,7 @@ function rtType(gl: THREE.WebGLRenderer) { const e = gl.extensions; return (e.ha
+ export function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef: React.MutableRefObject<THREE.Mesh | null>; perf: { scale: number } }) {
+     const { gl, scene, camera } = useThree();
+     const target = useMemo(() => { const t = new THREE.WebGLRenderTarget(4, 4, { type: rtType(gl) }); t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType; return t; }, []);
+-    const st = useMemo(() => ({ fr: new THREE.Frustum(), pv: new THREE.Matrix4(), buf: new THREE.Vector2(), n: 0, copies: 0 }), []);
++    const st = useMemo(() => ({ fr: new THREE.Frustum(), pv: new THREE.Matrix4(), buf: new THREE.Vector2(), n: 0, copies: 0, hooked: false, g2: null as any, q: null as any, qPend: null as any, qOn: false, hid: 0 }), []);
+     useEffect(() => () => target.dispose(), [target]);
+     useFrame(() => {
+         const u = waterMat.uniforms, cam = camera as THREE.PerspectiveCamera, w = waterRef.current;
+@@ -90,8 +90,16 @@ export function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef:
+         st.pv.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); st.fr.setFromProjectionMatrix(st.pv);
+         const near = cam.position.z < WATER_Z + 170 && cam.position.y > WATER_Y - 0.5 && cam.position.y < 140, scale = perf.scale;
+         const phoneFar = PHONE_REFL && cam.position.z < WATER_Z - 320;   /* Shifat 9:16 AM phone fps: the copy is a second full scene render; out at sea the bed is analytic and near water is see-through, so phones skip it there */
+-        const ok = !!w && near && !phoneFar && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;
+-        if (!ok) { u.uUseScene.value = 0; return; }
++        /* Shifat 6:46 PM 'fps drops in any water body': swimming in the jungle pool the sea is fully hidden behind the island, yet its frustum box passed, so the half-rate scene copy (a 2nd full scene render) ran for nothing.
++           A WebGL2 occlusion query on the sea's own draw tells us whether any sea pixel survived the depth test; after 8 hidden frames the copy stops, and it resumes the first frame the sea shows again. */
++        if (w && !st.hooked) { st.hooked = true; const g2 = gl.getContext() as WebGL2RenderingContext;
++            if (typeof (g2 as any).createQuery === 'function') { st.g2 = g2;
++                w.onBeforeRender = (_r: any, _s: any, c: any) => { if (c !== camera || st.qOn || st.q) return; st.q = g2.createQuery(); g2.beginQuery(g2.ANY_SAMPLES_PASSED_CONSERVATIVE, st.q); st.qOn = true; };
++                w.onAfterRender = () => { if (st.qOn) { g2.endQuery(g2.ANY_SAMPLES_PASSED_CONSERVATIVE); st.qOn = false; st.qPend = st.q; st.q = null; } }; } }
++        if (st.qPend && st.g2.getQueryParameter(st.qPend, st.g2.QUERY_RESULT_AVAILABLE)) { const vis = !!st.g2.getQueryParameter(st.qPend, st.g2.QUERY_RESULT); st.g2.deleteQuery(st.qPend); st.qPend = null; st.hid = vis ? 0 : st.hid + 1; }
++        const seaHidden = st.hid > 8;
++        const ok = !!w && near && !phoneFar && !seaHidden && st.fr.intersectsBox(_oceanBox) && scale > 0.5 && !(UW as any).on;
++        if (!ok) { u.uUseScene.value = 0; if (DBG) (window as any).__ocean = { copies: st.copies, on: 0, hid: st.hid }; return; }
+         st.n++;
+         const farSea = cam.position.z < WATER_Z - 320;
+         if ((scale > 0.6 && !PHONE_REFL && !farSea) || st.n % 2 === 0 || st.copies === 0) {   /* phones always, desktop out at open sea (Shifat 10:27 'go alternative'): half rate - one frame of lag under rippled water is invisible */
+@@ -104,7 +112,7 @@ export function OceanScreenSpace({ sim, waterRef, perf }: { sim: Sim; waterRef:
+             st.copies++;
+         }
+         u.tScene.value = target.texture; u.tDepth.value = target.depthTexture; u.uUseScene.value = 1;
+-        if (DBG) (window as any).__ocean = { copies: st.copies, on: 1 };
++        if (DBG) (window as any).__ocean = { copies: st.copies, on: 1, hid: st.hid };
+     });
+     return null;
+ }

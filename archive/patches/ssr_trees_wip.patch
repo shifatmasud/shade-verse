@@ -1,0 +1,185 @@
+diff --git a/src/heroHD.ts b/src/heroHD.ts
+index 588fa74..09b3dd9 100644
+--- a/src/heroHD.ts
++++ b/src/heroHD.ts
+@@ -71,19 +71,6 @@ const patched = new WeakSet<THREE.Material>();
+ const _R = new THREE.Matrix4();
+ const mirCam = new THREE.PerspectiveCamera(); mirCam.matrixAutoUpdate = false; mirCam.matrixWorldAutoUpdate = false;
+ const mirSaved: [THREE.Material, boolean, boolean, THREE.Side][] = [];
+-/* Shifat 3:27 PM 'separate trees render pass & use them like hero reflection': a small copy of just the pond-bank trees (polyforkEnvironment
+-   PondTreeMirror) lives on its own layer and is drawn here through the same mirrored camera, clipped to the pond outline, only near the pond. */
+-export const POND_MIRROR_LAYER = 3;
+-export const POND_MIRROR = { meshes: [] as THREE.Mesh[], y: 0, cx: 0, cz: 0, r: 0 };
+-export function registerPondMirror(meshes: THREE.Mesh[], y: number, cx: number, cz: number, r: number) {
+-    POND_MIRROR.meshes = meshes; POND_MIRROR.y = y; POND_MIRROR.cx = cx; POND_MIRROR.cz = cz; POND_MIRROR.r = r;
+-    for (const m of meshes) {
+-        m.layers.set(POND_MIRROR_LAYER);
+-        for (const x of (Array.isArray(m.material) ? m.material : [m.material]) as THREE.Material[]) {
+-            patchWater(x); x.transparent = true; x.depthWrite = false; x.side = x.side === THREE.DoubleSide ? THREE.DoubleSide : x.side === THREE.BackSide ? THREE.FrontSide : THREE.BackSide;
+-        }
+-    }
+-}
+ function patchWater(m: THREE.Material) {
+     if (patched.has(m)) return; patched.add(m);
+     const prev = m.onBeforeCompile, prevKey = m.customProgramCacheKey.bind(m);
+@@ -139,7 +126,7 @@ export function createHeroComposite() {
+     const mats = new Set<THREE.Material>();
+     const saved = new Map<THREE.Material, [boolean, number, number]>();
+     const retag = (scene: THREE.Scene) => {
+-        lights.length = 0; scene.traverse((o) => { if ((o as THREE.Light).isLight) { o.layers.enable(HERO_LAYER); o.layers.enable(POND_MIRROR_LAYER); lights.push(o); } });
++        lights.length = 0; scene.traverse((o) => { if ((o as THREE.Light).isLight) { o.layers.enable(HERO_LAYER); lights.push(o); } });
+         heroMeshes.length = 0; mats.clear();
+         HD.roots.forEach((r) => r.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { o.layers.set(HERO_LAYER); heroMeshes.push(m); (Array.isArray(m.material) ? m.material : [m.material]).forEach(patchWater); }   /* Shifat 9:58 AM 'draw heroes HD only': hero meshes live ONLY on the hero layer, so the dpr-1 world pass skips them and they are drawn once, here */ }));
+     };
+@@ -181,16 +168,6 @@ export function createHeroComposite() {
+                     for (const [x, t, d, s] of mirSaved) { x.transparent = t; x.depthWrite = d; x.side = s; } mirSaved.length = 0;
+                 }
+             }
+-            const pm = POND_MIRROR;
+-            if (pm.meshes.length && (camera as THREE.PerspectiveCamera).isPerspectiveCamera && camera.position.y > pm.y + 0.3 && Math.hypot(camera.position.x - pm.cx, camera.position.z - pm.cz) < 80) {
+-                _R.set(1, 0, 0, 0, 0, -1, 0, 2 * pm.y, 0, 0, 1, 0, 0, 0, 0, 1);
+-                mirCam.matrixWorld.multiplyMatrices(_R, camera.matrixWorld); mirCam.matrixWorldInverse.copy(mirCam.matrixWorld).invert();
+-                mirCam.projectionMatrix.copy((camera as THREE.PerspectiveCamera).projectionMatrix); mirCam.projectionMatrixInverse.copy((camera as THREE.PerspectiveCamera).projectionMatrixInverse);
+-                mirCam.layers.set(POND_MIRROR_LAYER);
+-                const wl0 = HERO_WATER.uWL.value;
+-                HERO_WATER.uWL.value = pm.y; HERO_WATER.uPondC.value.set(pm.cx, pm.cz, pm.r); HERO_WATER.uMirA.value = 0.7; HERO_WATER.uMir.value = 1;
+-                try { gl.render(scene, mirCam); } finally { HERO_WATER.uWL.value = wl0; HERO_WATER.uPondC.value.z = 0; HERO_WATER.uMirA.value = 0.45; HERO_WATER.uMir.value = 0; }
+-            }
+         } finally {
+             saved.forEach((v, x) => { x.polygonOffset = v[0]; x.polygonOffsetFactor = v[1]; x.polygonOffsetUnits = v[2]; }); saved.clear(); mats.clear();
+             gl.shadowMap.autoUpdate = oldShadow;
+diff --git a/src/polyforkEnvironment.tsx b/src/polyforkEnvironment.tsx
+index cffaa86..bdb5a44 100644
+--- a/src/polyforkEnvironment.tsx
++++ b/src/polyforkEnvironment.tsx
+@@ -1,4 +1,5 @@
+ import { worldBufferSize } from './heroHD';
++import { TREE_SSR_LAYER } from './renderLayers';
+ import React, { useEffect, useMemo, useRef } from 'react';
+ import { useFrame, useLoader, useThree } from '@react-three/fiber';
+ import * as THREE from 'three';
+@@ -240,7 +241,7 @@ function chooseBuildingAsset(b: (typeof buildings)[number], index: number): Asse
+     return pool[Math.floor(h * pool.length) % pool.length];
+ }
+ 
+-const LAKE_COPY = false;
++const LAKE_COPY = true;   // Shifat 3:44 PM: small-scale, trees-only SSR copy for the pond (replaces the 9:33 AM lock)
+ export function PolyforkBuildings() {
+     const gltfs = useLoader(GLTFLoader, CITY_ASSETS.map((asset) => asset.url)) as GLTF[];
+     const models = useMemo(() => CITY_ASSETS.map((asset, i) => prepareModel(asset.id, gltfs[i])), [gltfs]);
+@@ -518,7 +519,6 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
+     useMemo(() => projectPondSkyline(PARK_POND.cx, PARK_POND.cz, PARK_POND_Y, PARK_POND.rx), []);   // #5: static pond skyline ring (projected once)
+     // low-res opaque scene copy (colour + depth) for SSR + screen-space refraction; never allocated on ?q=low.
+     const copyTarget = useMemo(() => {
+-        if (LOWQ) return null;
+         const t = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: true, stencilBuffer: false, samples: 0, type: THREE.UnsignedByteType });
+         t.depthTexture = new THREE.DepthTexture(4, 4); t.depthTexture.type = THREE.UnsignedIntType;
+         t.texture.minFilter = t.texture.magFilter = THREE.LinearFilter; t.texture.generateMipmaps = false;
+@@ -593,19 +593,21 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
+         // scene copy: only while the lake is on screen and close enough to matter; adaptive when the frame budget is tight.
+         const scale = perf ? perf.scale : 1;
+         projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(projView);
+-        const visible = frustum.intersectsSphere(lakeSphere) && cam.position.distanceTo(lakeSphere.center) < 170;
++        const visible = frustum.intersectsSphere(lakeSphere) && cam.position.distanceTo(lakeSphere.center) < 70;
+         const struggling = scale <= 0.5, everyOther = scale <= 0.6;
+         copyFrame.current++;
+         const wantCopy = !!copyTarget && visible && !struggling && (!everyOther || copyFrame.current % 2 === 0);
+         if (LAKE_COPY && copyTarget && visible && !struggling) {   /* Shifat 9:33 AM: no second render, no reflections - LOCKED off */
+             if (wantCopy) {
+                 worldBufferSize(gl, bufSize);   // world size (hero HD pass keeps the canvas at native)
+-                const w = Math.max(160, Math.round(bufSize.x * QK.lakeCopyScale)), h = Math.max(90, Math.round(bufSize.y * QK.lakeCopyScale));
++                const w = Math.max(160, Math.round(bufSize.x * 0.25)), h = Math.max(90, Math.round(bufSize.y * 0.25));   // same small copy on every device
+                 if (copyTarget.width !== w || copyTarget.height !== h) copyTarget.setSize(w, h);
+                 const previousTarget = gl.getRenderTarget(), previousAutoClear = gl.autoClear, previousShadows = gl.shadowMap.autoUpdate;
+                 try {
+                     water.visible = false; gl.shadowMap.autoUpdate = false; gl.autoClear = true;
+-                    gl.setRenderTarget(copyTarget); gl.clear(true, true, true); gl.render(scene, camera);
++                    if ((copies.current & 63) === 0) scene.traverse((o) => { if ((o as THREE.Light).isLight) o.layers.enable(TREE_SSR_LAYER); });   // lights must light the trees-only copy
++                    const mask = camera.layers.mask, bg = scene.background; camera.layers.set(TREE_SSR_LAYER); scene.background = null; gl.setClearColor(0x000000, 0);
++                    gl.setRenderTarget(copyTarget); gl.clear(true, true, true); try { gl.render(scene, camera); } finally { camera.layers.mask = mask; scene.background = bg; }
+                 } finally {
+                     gl.setRenderTarget(previousTarget); gl.autoClear = previousAutoClear; gl.shadowMap.autoUpdate = previousShadows; water.visible = true;
+                 }
+diff --git a/src/renderLayers.ts b/src/renderLayers.ts
+index 0439d57..1221264 100644
+--- a/src/renderLayers.ts
++++ b/src/renderLayers.ts
+@@ -1 +1,2 @@
+ export const SELECTIVE_BLOOM_LAYER = 1;
++export const TREE_SSR_LAYER = 4;   // park trees, for the pond's small trees-only SSR copy
+diff --git a/src/world/forest.tsx b/src/world/forest.tsx
+index 8059a57..183c06e 100644
+--- a/src/world/forest.tsx
++++ b/src/world/forest.tsx
+@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
+ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+ import { SELECTIVE_BLOOM_LAYER } from '../renderLayers';
+ import { useFrame } from '@react-three/fiber';
+-import { registerPondMirror } from '../heroHD';
++import { TREE_SSR_LAYER } from '../renderLayers';
+ 
+ const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
+ 
+@@ -72,29 +72,8 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?:
+         for (let i = 0; i < 70; i++) { const p = pts[i < 45 ? i % pts.length : Math.min(pts.length - 1, 130 + i - 45)], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + (i < 45 ? 3 + (i % 5) : 0), 0.02 + parkH(p.x + (i < 45 ? 3 + (i % 5) : 0), p.z + (i < 45 ? 2 : 0)), p.z + (i < 45 ? 2 : 0)); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.22 + ((p.c * 5.7) % 1) * 0.08, 0.18 + ((p.c * 2.3) % 1) * 0.12, 0.55 + ((p.c * 9.1) % 1) * 0.20)); }
+         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
+     }, [pts]);
+-    /* Pond tree reflection (Shifat 3:27 PM 'separate trees render pass & use them like hero reflection'): the lakeside trees once more as small
+-       instanced copies (trunk + low-LOD leaves, cloned materials) on their own layer; the hero pass draws them through its mirrored camera, clipped to
+-       the pond outline, only while the camera is near the pond (src/heroHD.ts POND_MIRROR). The world pass never draws them. */
+-    const mirG = useRef<THREE.Group>(null!), mirPairs = useRef<[THREE.MeshLambertMaterial, THREE.MeshLambertMaterial][]>([]);
+-    useEffect(() => {
+-        const R = PARK_POND.rx * LAKE_SHORE + 16, near = pts.filter((p) => Math.hypot(p.x - PARK_POND.cx, p.z - PARK_POND.cz) < R);
+-        const o = new THREE.Object3D(), col = new THREE.Color(), out: THREE.InstancedMesh[] = [];
+-        const cl = (src: THREE.Material) => { const m = src.clone() as THREE.MeshLambertMaterial; m.onBeforeCompile = src.onBeforeCompile; m.customProgramCacheKey = src.customProgramCacheKey; mirPairs.current.push([src as THREE.MeshLambertMaterial, m]); return m; };
+-        for (let v = 0; v < NT; v++) {
+-            const ps = near.filter((p) => p.v === v); if (!ps.length || !tr.current[v] || !lo.current[v]) continue;
+-            const t = new THREE.InstancedMesh(geos[v].trunk, cl(tr.current[v].material as THREE.Material), ps.length), l = new THREE.InstancedMesh(geos[v].leaves, cl((lf.current[v] || lo.current[v]).material as THREE.Material), ps.length);
+-            ps.forEach((p, i) => { o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); t.setMatrixAt(i, o.matrix); l.setMatrixAt(i, o.matrix);
+-                const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1;
+-                if (geos[v].kind === 'cherry' || geos[v].kind === 'palm') col.setRGB(1, 1, 1).multiplyScalar(0.86 + w * 0.22); else col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30);
+-                t.setColorAt(i, col.setRGB(1, 1, 1)); l.setColorAt(i, q >= 0 ? (geos[v].kind === 'cherry' || geos[v].kind === 'palm' ? col.setRGB(1, 1, 1).multiplyScalar(0.86 + w * 0.22) : col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30)) : col); });
+-            t.dispose();   // trunks are hidden under the canopies in the reflection: leaves only = 1 draw per tree family
+-            for (const m of [l]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.frustumCulled = false; out.push(m); mirG.current.add(m); }
+-        }
+-        registerPondMirror(out, PARK_POND_Y, PARK_POND.cx, PARK_POND.cz, PARK_POND.rx * LAKE_SHORE);
+-        if (DBG) (window as any).__pondMirrorN = out.length;
+-        return () => { registerPondMirror([], 0, 0, 0, 0); out.forEach((m) => { mirG.current?.remove(m); (m.material as THREE.Material).dispose(); }); mirPairs.current = []; };
+-    }, [pts]);
+-    useFrame(() => { for (const [a, b] of mirPairs.current) b.emissive.copy(a.emissive); });
++    // Shifat 3:44 PM 'small scale trees only SSR': the park trees also live on TREE_SSR_LAYER so the pond's tiny screen-space copy renders just them.
++    useEffect(() => { for (const arr of [tr.current, lf.current, lo.current]) for (const m of arr) m?.layers.enable(TREE_SSR_LAYER); }, []);
+     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
+     useFrame(() => { const gm2 = grass.current && (grass.current.material as THREE.MeshLambertMaterial); if (gm2) { const nn2 = 1 - TOD.day.value; gm2.color.setRGB(1 - 0.35 * nn2, 1 - 0.12 * nn2, 1 + 0.35 * nn2); gm2.emissive.setRGB(0.0, 0.002 * nn2, 0.006 * nn2); } });   // night: cool the ground tone to match the cool tufts
+     const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)
+@@ -120,7 +99,6 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?:
+                 <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
+             </>}
+         </group>)}
+-        <group ref={mirG} name="pond-tree-mirror" />
+         <points geometry={petalGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} uniforms={petalU} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying float vR; void main(){ float life = fract(uTime * 0.055 + ph); vec3 p = position; p.y += 4.6 * (1.0 - life); p.x += sin(uTime * 0.9 + ph * 40.0) * 0.6 + life * 2.2; p.z += cos(uTime * 0.7 + ph * 23.0) * 0.5; vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vA = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.85, 1.0, life)); vR = uTime * 2.0 + ph * 30.0; gl_PointSize = clamp(55.0 / -mv.z, 1.5, 7.0); }`} fragmentShader={`uniform float uDayP; varying float vA; varying float vR; void main(){ vec2 q = gl_PointCoord - 0.5; float c = cos(vR), s = sin(vR); q = mat2(c, -s, s, c) * q; float e = length(q * vec2(1.0, 1.9)); if (e > 0.48) discard; gl_FragColor = vec4(mix(vec3(0.5, 0.33, 0.42), vec3(1.0, 0.78, 0.86), uDayP), vA * 0.95); }`} /></points>
+         <instancedMesh ref={bush} args={[undefined, undefined, 70]} frustumCulled={false}><primitive object={bushGeo} attach="geometry" /><meshLambertMaterial map={bushTex} color="#dce1cd" emissive="#182510" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={leafWindShader} /></instancedMesh>
+     </group>;
+diff --git a/src/world/park/lake.ts b/src/world/park/lake.ts
+index 5e21c41..9851882 100644
+--- a/src/world/park/lake.ts
++++ b/src/world/park/lake.ts
+@@ -123,7 +123,7 @@ void main(){
+   for(int i=0;i<16;i++){if(float(i)>=uSteps)break;float k=(float(i)+1.0)/uSteps;float t=90.0*k*k;vec3 Q=vView+Rv*t;vec4 c=uProj*vec4(Q,1.0);if(c.w<=0.0)break;vec2 uv=c.xy/c.w*0.5+0.5;
+    if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0)break;float sz=sceneZ(uv);if(Q.z<sz&&Q.z>sz-(t-tp)*1.2-0.6&&sz>-uFar*0.98){
+     if(uSteps>12.0){float a0=tp,a1=t;for(int j=0;j<4;j++){float m=0.5*(a0+a1);vec3 M=vView+Rv*m;vec4 cm=uProj*vec4(M,1.0);vec2 um=cm.xy/cm.w*0.5+0.5;if(M.z<sceneZ(um)){a1=m;uv=um;}else a0=m;}}
+-    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);vec2 bo=vec2(0.0035,0.0045)*(1.0+0.6*clamp(t/40.0,0.0,1.0));vec3 rs=(texture2D(tScene,uv).rgb*2.0+texture2D(tScene,uv+vec2(bo.x,0.0)).rgb+texture2D(tScene,uv-vec2(bo.x,0.0)).rgb+texture2D(tScene,uv+vec2(0.0,bo.y)).rgb+texture2D(tScene,uv-vec2(0.0,bo.y)).rgb)/6.0;/* soft 5-tap: the low-res scene copy no longer reads as pixel blocks, and blurs more for far objects like real ripple-roughened water */refl=mix(refl,reflTint(rs,refl),e*WATER_REFL_W);reflDist=t;break;}/* same soft blue subtle reflections as the sea */
++    float e=smoothstep(0.0,0.1,uv.x)*(1.0-smoothstep(0.9,1.0,uv.x))*(1.0-smoothstep(0.82,1.0,uv.y))*smoothstep(0.0,0.08,uv.y);vec2 bo=vec2(0.0035,0.0045)*(1.0+0.6*clamp(t/40.0,0.0,1.0));vec3 rs=(texture2D(tScene,uv).rgb*2.0+texture2D(tScene,uv+vec2(bo.x,0.0)).rgb+texture2D(tScene,uv-vec2(bo.x,0.0)).rgb+texture2D(tScene,uv+vec2(0.0,bo.y)).rgb+texture2D(tScene,uv-vec2(0.0,bo.y)).rgb)/6.0;/* soft 5-tap: the low-res scene copy no longer reads as pixel blocks, and blurs more for far objects like real ripple-roughened water */refl=mix(refl,mix(rs,reflTint(rs,refl),0.3),e*0.85);F=max(F,0.35*e);reflDist=t;break;}/* trees-only SSR (Shifat 3:44 PM): the canopy reads clearly, lightly water-tinted *//* same soft blue subtle reflections as the sea */
+    tp=t;}}
+  if(!below&&reflDist>9e4){/* #5 pond reflection illusion v2 (Shifat 3:20 PM 'looks a bit wrong'): the bank trees are an analytic ring (cylinder) around the
+    pond, hit by the per-pixel reflected ray, so the mirrored tree line hugs the shore with true parallax like a real pond; above the trees the far
+@@ -149,7 +149,8 @@ void main(){
+  // refraction / transmission
+  vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.46,0.12,0.075);/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
+  vec3 trans;float alpha=1.0;
+- if(uUseScene>0.5&&!below){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
++ /* the scene copy holds only the trees now (Shifat 3:44 PM trees-only SSR), so transmission always uses the analytic bed */
++ if(false){float dd=max(wz-sceneZ(suv),0.0);vec3 Nv=(viewMatrix*vec4(N,0.0)).xyz;vec2 uv2=suv+Nv.xy*0.05*clamp(dd*0.5,0.0,1.0);
+   float sz2=sceneZ(uv2);if(sz2>wz){uv2=suv;sz2=sceneZ(suv);}float th=clamp(wz-sz2,0.0,12.0)*1.15;vec3 T=exp(-absorb*th);
+   vec3 behind=texture2D(tScene,uv2).rgb;vec3 hn2;float th2=1e5;/* #3: the real diving heroes draw through the water now (src/heroHD.ts), the analytic stand-in (Shifat 2:53 PM 'weird blue thingy') is off */if(th2<th+0.5&&(vWorld+Td*th2).y<vWorld.y)behind=mix(behind,heroCol(hn2),0.85);trans=behind*T+deepCol*(1.0-T);trans=trans*vec3(0.78,1.0,0.97)+vec3(0.0,0.025,0.03)*uDay;}/* clear-pond green-turquoise cast even in the shallows (was reading grey) */
+  else{float th=bedDepth/max(abs(Td.y),0.25);vec3 T=exp(-absorb*th);float Ts=clamp(dot(T,vec3(0.2,0.4,0.4)),0.0,1.0);
