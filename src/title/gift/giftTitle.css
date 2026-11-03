@@ -1,0 +1,34 @@
+/* Shade Verse title GIFT: the portfolio's dialog shell (surface-tension src/styles/app.css R6.83 .gift rules + the tokens they
+   read, styles/tokens.css) and its gift sticker (src/dom/sections/contact.css R6.89), copied as is; only the sticker's spot is
+   the title's own (TitleGift.tsx places it on the corner of Ghost's frame). This file is in the title bundle (tiny); the stage's
+   own css (gift.css) rides the lazy chunk. */
+.gift { --ease: cubic-bezier(0.19, 1, 0.22, 1); --ease-sine: cubic-bezier(0.37, 0, 0.63, 1); --vu: 1vh; --fs-small: 12.5px;
+  --pad-x: max(4.2vw, 20px, env(safe-area-inset-right)); --pad-y: clamp(14px, 4.2vh, 34px);
+  font-family: 'Inter Variable', 'SV Inter', 'Inter', system-ui, sans-serif; color: #fafafa; }
+.gift { position: fixed; inset: 0; z-index: 58; overscroll-behavior: contain; touch-action: none; }
+.gift__bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transform: scale(1.0); transition: opacity .9s var(--ease-sine), transform 1.8s var(--ease); }
+.gift__tint { position: absolute; inset: 0; background: rgba(8, 10, 14, .3); opacity: 0; transition: opacity .9s var(--ease-sine); }
+.gift.is-in .gift__bg { opacity: 1; transform: scale(1.04); }
+.gift.is-in .gift__tint { opacity: 1; }
+.gift.is-out .gift__bg, .gift.is-out .gift__tint { opacity: 0; transition-duration: .75s; transition-delay: .08s; }
+.gift--live .gift__bg { display: none; }
+.gift--live .gift__tint { -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+@media (prefers-reduced-motion: reduce) { .gift__bg, .gift__tint { transition-duration: .15s !important; transform: none !important; } }
+
+/* the sticker (contact.css R6.89 / R6.91, as is) */
+.gift-sticker { position: absolute; width: 92px; height: 92px; padding: 0; margin: 0; border: 0; border-radius: 26px;
+  background: transparent; cursor: grab; visibility: hidden; -webkit-tap-highlight-color: transparent; z-index: 2;
+  touch-action: pinch-zoom; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; transform-origin: 50% 50%; pointer-events: auto; }
+.gift-sticker:active { cursor: grabbing; }
+.gift-sticker.is-gone { visibility: hidden; pointer-events: none; }
+.gift-sticker.is-on { visibility: visible; }
+.gift-sticker__cv { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.gift-sticker:focus { outline: none; }
+.gift-sticker:focus-visible { outline: 2px solid #ff2e93; outline-offset: 6px; }
+
+/* the title's layer for it: the stage's own box on screen (ComicTitle's fit), with the stage's slow push-in (title.css sv-push,
+   same origin, timing and curve), so the sticker stays stuck to the frame corner it is slapped on */
+.sv-gift { position: absolute; z-index: 3; pointer-events: none; transform-origin: 50% 45%; animation: sv-push 26s cubic-bezier(0.45,0,0.55,1) 1.8s infinite alternate both; }
+.sv-comic.leaving .sv-gift { animation-play-state: paused; }
+/* a pointer open (TitleGift): no keyboard focus ring on the box / card link until a key is pressed */
+html.gift-ptr .gift__hit:focus-visible, html.gift-ptr .gift__cta:focus-visible { outline: none; box-shadow: none; }

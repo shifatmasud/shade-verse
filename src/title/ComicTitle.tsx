@@ -11,6 +11,7 @@ import { ART } from './layout';
 import { PanelArt } from './PanelArt';
 import { TitleHeader } from './TitleHeader';
 import { TitleButton } from './TitleButton';
+import { TitleGift } from './gift/TitleGift';   // Shifat Nov 2 7:37 PM: the portfolio's gift sticker + 3D gift (lazy)
 
 /** Play is up once its intro lands (.sv-play: sv-play-in .55s after 1.66s, title.css); Space waits for it (Shifat Nov 2 7:37 PM) */
 const PLAY_UP_MS = 2210;
@@ -78,6 +79,7 @@ export function ComicTitle({ muted, onMute, onStart, extra, leaving, again }: { 
                     space={!leaving} spaceAfter={again || REDUCED() ? 0 : PLAY_UP_MS} />
             </div>
         </div>
+        <TitleGift f={f} again={again} />
         {extra && <div className="sv-cextra">{extra}</div>}
         <TitleHeader word="Shade Verse" muted={muted} onToggle={onMute} />
         <h1 className="sv-sr">Shade Verse</h1>
