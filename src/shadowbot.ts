@@ -66,12 +66,13 @@ export function shadowMat(time: { value: number }, rate: number, pedestrian = fa
     m.onBeforeCompile = (sh) => {
         occludeFade(sh);
         sh.uniforms.uT = time; sh.uniforms.uRate = { value: rate };
-        sh.vertexShader = 'uniform float uT,uRate;\nvec3 rotX(vec3 p,vec3 c,float a){float s=sin(a),k=cos(a);vec3 d=p-c;return c+vec3(d.x,d.y*k-d.z*s,d.y*s+d.z*k);}\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        sh.vertexShader = (pedestrian ? 'const float aStill = 0.0;\n' : 'attribute float aStill;\n') + 'uniform float uT,uRate;\nvec3 rotX(vec3 p,vec3 c,float a){float s=sin(a),k=cos(a);vec3 d=p-c;return c+vec3(d.x,d.y*k-d.z*s,d.y*s+d.z*k);}\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
         { float ph = uT * uRate + instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.51, sd = transformed.x < 0.0 ? -1.0 : 1.0, y = transformed.y, ax = abs(transformed.x);
           ${gaitMasks}
+          wl *= 1.0 - aStill; wa *= 1.0 - aStill;   // aStill: KO'd enemies go limp (src/enemyReact.ts)
           transformed = mix(transformed, rotX(transformed, vec3(0.0, 1.0, 0.0), sin(ph) * 0.5 * sd), wl);
           transformed = mix(transformed, rotX(transformed, vec3(sd * 0.31, 1.55, 0.0), -sin(ph) * 0.45 * sd), wa);
-          transformed.y += abs(sin(ph)) * 0.035; }`);
+          transformed.y += abs(sin(ph)) * 0.035 * (1.0 - aStill); }`);
     };
     m.customProgramCacheKey = () => pedestrian ? 'shadowbot-pedestrian-hands' : 'shadowbot'; return m;
 }

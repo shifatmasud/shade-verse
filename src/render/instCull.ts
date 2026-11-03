@@ -14,12 +14,13 @@ export function cullInstances(m: THREE.InstancedMesh, fr: THREE.Frustum, grow = 
     if (DBG && (window as any).__noInstCull) return;
     const g = m.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); const bs = g.boundingSphere!, c = bs.center;
     const a = m.instanceMatrix.array as Float32Array, col = m.instanceColor ? (m.instanceColor.array as Float32Array) : null, n = m.count; let w = 0;
+    const sa = g.getAttribute('aStill') as THREE.InstancedBufferAttribute | undefined, still = sa && (sa as any).isInstancedBufferAttribute ? (sa.array as Float32Array) : null;   // per-instance KO limpness (enemies) travels with its instance
     for (let i = 0; i < n; i++) {
         const o = i * 16, sc = Math.sqrt(Math.max(a[o] * a[o] + a[o + 1] * a[o + 1] + a[o + 2] * a[o + 2], a[o + 4] * a[o + 4] + a[o + 5] * a[o + 5] + a[o + 6] * a[o + 6], a[o + 8] * a[o + 8] + a[o + 9] * a[o + 9] + a[o + 10] * a[o + 10]));
         _s.center.set(a[o] * c.x + a[o + 4] * c.y + a[o + 8] * c.z + a[o + 12], a[o + 1] * c.x + a[o + 5] * c.y + a[o + 9] * c.z + a[o + 13], a[o + 2] * c.x + a[o + 6] * c.y + a[o + 10] * c.z + a[o + 14]);
         _s.radius = bs.radius * sc * grow + pad;
         if (!fr.intersectsSphere(_s)) continue;
-        if (w !== i) { a.copyWithin(w * 16, o, o + 16); if (col) col.copyWithin(w * 3, i * 3, i * 3 + 3); }
+        if (w !== i) { a.copyWithin(w * 16, o, o + 16); if (col) col.copyWithin(w * 3, i * 3, i * 3 + 3); if (still) still[w] = still[i]; }
         w++;
     }
     m.count = w;

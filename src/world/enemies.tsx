@@ -17,10 +17,14 @@ export const ENEMY_DEFS: any[] = [
     { model: 'companion', eye: EYE_RED, dark: [0.14, 0.14, 0.17], shell: [0.18, 0.18, 0.21], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.6, extras: armorCompanion, dy: -0.85, spd: 6 },
     { model: 'survey', eye: EYE_RED, shell: [0.20, 0.21, 0.24], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.7, extras: armorDrone, dy: 0.45, spd: 0 },
     { model: 'shadow', eye: EYE_RED, shell: [0.20, 0.21, 0.25], accent: [0.55, 0.07, 0.07], scale: 1.0, dy: 0, spd: 9 }];   // kind 3: Shadow-body heavy armoured robot (replaces the dome)
+export const ENEMY_INST_MAX = 48;
 export function buildEnemy(kind: number, time: { value: number }) {
-    const d = ENEMY_DEFS[kind]; if (d.model === 'shadow') return { geo: shadowGeo({ shell: d.shell, accent: d.accent, eye: d.eye, heavy: true }), mat: shadowMat(time, d.spd) };
-    const r = robotGeo(d); r.geo.translate(0, d.dy, 0);
-    return { geo: r.geo, mat: robotMat(r.parts, r.scale, time, d.spd) };
+    const d = ENEMY_DEFS[kind];
+    // aStill (per instance, 0..1): a KO'd bot's limbs go limp instead of walking on while it lies there (written by Scene from enemyReact)
+    const still = () => new THREE.InstancedBufferAttribute(new Float32Array(ENEMY_INST_MAX), 1).setUsage(THREE.DynamicDrawUsage);
+    if (d.model === 'shadow') { const geo = shadowGeo({ shell: d.shell, accent: d.accent, eye: d.eye, heavy: true }); geo.setAttribute('aStill', still()); return { geo, mat: shadowMat(time, d.spd) }; }
+    const r = robotGeo(d); r.geo.translate(0, d.dy, 0); r.geo.setAttribute('aStill', still());
+    return { geo: r.geo, mat: robotMat(r.parts, r.scale, time, d.spd, true) };
 }
 
 

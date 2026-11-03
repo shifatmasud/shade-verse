@@ -61,19 +61,21 @@ export function robotGeo(o: RobotOpts) {
     return { geo: g, parts: d.parts as { m: number; piv?: number[]; s?: number }[], scale: o.scale };
 }
 // one animated Lambert material per geometry: legs/arms swing about their baked pivots, rotors spin (all on the GPU, no per-frame JS per robot)
-export function robotMat(parts: { m: number; piv?: number[]; s?: number }[], scale: number, time: { value: number }, speed: number) {
+export function robotMat(parts: { m: number; piv?: number[]; s?: number }[], scale: number, time: { value: number }, speed: number, still = false) {   // still: the geometry carries a per-instance aStill (1 = limbs go limp; KO'd enemies)
     const piv = Array.from({ length: 8 }, (_, i) => { const p = parts[i]; return p && p.piv ? new THREE.Vector4(p.piv[0] * scale, p.piv[1] * scale, p.piv[2] * scale, p.m) : new THREE.Vector4(0, 0, 0, 0); });
     const sgn = Array.from({ length: 8 }, (_, i) => (parts[i] && parts[i].s) || 0);
     const m = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, blending: THREE.NormalBlending });
+    m.customProgramCacheKey = () => still ? 'robot-still' : 'robot';   // the two shader variants must not share one cached program
     m.onBeforeCompile = (sh) => {
         occludeFade(sh);
         sh.uniforms.uRT = time; sh.uniforms.uPiv = { value: piv }; sh.uniforms.uSgn = { value: sgn }; sh.uniforms.uSpd = { value: speed };
-        sh.vertexShader = 'attribute float aPart;uniform float uRT;uniform vec4 uPiv[8];uniform float uSgn[8];uniform float uSpd;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        sh.vertexShader = 'attribute float aPart;' + (still ? 'attribute float aStill;' : 'const float aStill=0.;') + 'uniform float uRT;uniform vec4 uPiv[8];uniform float uSgn[8];uniform float uSpd;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
     int pi=int(aPart+.5);
     if(pi>0){vec4 pv=uPiv[pi];float md=pv.w;float ph=uRT*uSpd+instanceMatrix[3].x*.37+instanceMatrix[3].z*.31;vec3 d=transformed-pv.xyz;
-      if(md<1.5){float a=sin(ph)*.6*uSgn[pi];float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x,d.y*c-d.z*s,d.y*s+d.z*c);}
-      else if(md<2.5){float a=sin(ph)*.5*uSgn[pi];float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x,d.y*c-d.z*s,d.y*s+d.z*c);}
-      else {float a=uRT*38.*uSgn[pi]+float(pi);float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x*c+d.z*s,d.y,-d.x*s+d.z*c);}}`);
+      float lv=1.-aStill;
+      if(md<1.5){float a=sin(ph)*.6*uSgn[pi]*lv;float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x,d.y*c-d.z*s,d.y*s+d.z*c);}
+      else if(md<2.5){float a=sin(ph)*.5*uSgn[pi]*lv;float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x,d.y*c-d.z*s,d.y*s+d.z*c);}
+      else {float a=(uRT*38.*uSgn[pi]+float(pi))*lv;float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x*c+d.z*s,d.y,-d.x*s+d.z*c);}}`);
     };
     return m;
 }
