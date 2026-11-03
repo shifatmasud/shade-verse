@@ -9,8 +9,8 @@ import React, { useEffect, useState } from 'react';
 import { MAP_PAD } from '../desktopInput';
 
 const KB: [string, string][] = [
-    ['WASD', 'Move'], ['Mouse / Arrows', 'Camera · click to lock, Esc frees'], ['J / Left click', 'Tap web shot · hold Web Shock'],
-    ['I / Space', 'Tap jump · hold fly'], ['K / Ctrl', 'Tap melee · hold Slam'], ['L / Right click', 'Tap web spring · hold swing'],
+    ['WASD', 'Move'], ['Mouse / Arrows', 'Camera · click to lock, Esc frees'], ['J / LMB / Alt', 'Tap web shot · hold Web Shock'],
+    ['I / Space', 'Tap jump · hold fly'], ['K / Ctrl', 'Tap melee · hold Slam'], ['L / RMB / Shift', 'Tap web spring · hold swing'],
 ];
 const reducedMQ = typeof matchMedia !== 'undefined' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 

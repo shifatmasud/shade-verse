@@ -41,7 +41,7 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
         if (e.button === 0) releaseL('mouse');
         if (e.button === 2) releaseR('mouse');
     };
-    const L_KEYS: Record<string, 1> = { KeyJ: 1 }, R_KEYS: Record<string, 1> = { KeyL: 1 };   /* Shifat Nov 2 4:40 AM final map: J = long range (left button), L = web move (right button) */
+    const L_KEYS: Record<string, 1> = { KeyJ: 1, AltLeft: 1, AltRight: 1 }, R_KEYS: Record<string, 1> = { KeyL: 1, ShiftLeft: 1, ShiftRight: 1 };   /* Shifat Nov 3 11:54 AM: L / RMB / Shift tap spring, hold swing · J / LMB / Alt tap shot, hold shock */   /* Shifat Nov 2 4:40 AM final map: J = long range (left button), L = web move (right button) */
     let iHeld = false;   // I = Space 1:1 (same flags as the Space key / mobile jump button); input.keys['@i'] lets Space and I share one press
     const pressJump = () => { if (iHeld) return; iHeld = true; input.keys['@i'] = true; if (!input.keys[' ']) { input.jumpQ = true; input.jumpHeld = true; } };
     const releaseJump = () => { if (!iHeld) return; iHeld = false; input.keys['@i'] = false; if (!input.keys[' ']) { input.jumpHeld = false; input.jumpReleased = true; } };
@@ -118,8 +118,8 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
 }
 
 export const MAP_KB: [string, string][] = [
-    ['WASD', 'Move'], ['Arrows / Mouse', 'Camera (click to lock, Esc frees)'], ['J / Left click', 'Tap web shot · hold Web Shock'],
-    ['I / Space', 'Tap jump · hold fly'], ['K / Ctrl', 'Melee'], ['L / Right click', 'Tap web spring · hold swing'],
+    ['WASD', 'Move'], ['Arrows / Mouse', 'Camera (click to lock, Esc frees)'], ['J / LMB / Alt', 'Tap web shot · hold Web Shock'],
+    ['I / Space', 'Tap jump · hold fly'], ['K / Ctrl', 'Melee'], ['L / RMB / Shift', 'Tap web spring · hold swing'],
 ];
 export const MAP_PAD: [string, string][] = [
     ['L-stick', 'Move'], ['R-stick', 'Camera'], ['A', 'Tap jump · 2× double · hold fly · release glide'],
