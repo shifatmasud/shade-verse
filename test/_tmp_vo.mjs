@@ -1,4 +1,0 @@
-import puppeteer from 'puppeteer-core';
-const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox','--autoplay-policy=no-user-gesture-required','--use-gl=angle','--use-angle=swiftshader']});const p=await b.newPage();
-await p.goto('http://127.0.0.1:4311/?debug');await new Promise(r=>setTimeout(r,2500));await p.mouse.click(400,300);await p.evaluate(()=>window.__game.start());await new Promise(r=>setTimeout(r,12000));
-console.log(JSON.stringify(await p.evaluate(async()=>{const E=window.__audio.engine;const before=[...E.bufs.keys()].filter(k=>k.startsWith('vo_')).length;const t0=performance.now();const bb=await E.load('vo_cs_3');const ms=performance.now()-t0;for(let i=0;i<40;i++)await E.load('vo_cg_'+i);return {before,decodeMs:ms,dur:bb&&bb.duration,kept:[...E.bufs.keys()].filter(k=>k.startsWith('vo_')).length,total:E.bufs.size}})));await b.close();

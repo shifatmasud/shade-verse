@@ -1,1 +1,0 @@
-import { BRIDGE, BRIDGE_L } from '../src/seaWorld'; console.log(JSON.stringify({BRIDGE, BRIDGE_L}));

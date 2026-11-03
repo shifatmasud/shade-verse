@@ -1,3 +1,0 @@
-import fs from 'fs';
-const b=fs.readFileSync(process.argv[2]); const jl=b.readUInt32LE(12); const j=JSON.parse(b.slice(20,20+jl).toString());
-console.log(JSON.stringify({meshes:j.meshes.map(m=>({n:m.name,p:m.primitives.map(p=>({a:Object.keys(p.attributes),mat:p.material,cnt:j.accessors[p.attributes.POSITION].count}))})),mats:j.materials.map(m=>({n:m.name,c:m.pbrMetallicRoughness&&m.pbrMetallicRoughness.baseColorFactor,e:m.emissiveFactor})),nodes:j.nodes.length}));

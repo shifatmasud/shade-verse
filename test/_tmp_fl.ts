@@ -1,1 +1,0 @@
-import { FALLS, POOL, POOLS, islandH } from '../src/seaWorld'; console.log(JSON.stringify({FALLS, POOL, h: islandH(FALLS.x, FALLS.z), hp: islandH(POOL.cx,POOL.cz), pools: POOLS.map((p:any)=>[p.cx,p.cz,p.y,p.r])}));
