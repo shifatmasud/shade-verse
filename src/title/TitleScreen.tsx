@@ -131,7 +131,6 @@ export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, 
             <div className="sv-mask"><h1 className="sv-name">Shade Verse</h1></div>
             <div className="sv-mask sv-cmask" aria-hidden="true"><div className="sv-count" ref={count}>
                 <span className="sv-odo">{[0, 1, 2].map((i) => <span key={i} className="sv-col"><span className="sv-strip">{REEL.map((d, k) => <span key={k}>{d}</span>)}</span></span>)}</span>
-                <span className="sv-pct">%</span>
             </div></div>
         </div>
         {(phase === 'title' || phase === 'load') && <ComicTitle muted={muted} onMute={onMute} onStart={onStart} extra={phase === 'title' ? extra : undefined} leaving={phase !== 'title'} again={comicSeen.current && phase === 'title'} />}
