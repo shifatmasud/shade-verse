@@ -24,9 +24,9 @@
 /* the magnet replaces the sound pill's 1 px hover lift */
 @media (hover: hover) { .sv-comic .pill--sound:hover { transform: none; } }
 
-/* Play: the triangle in place of the wave, sized as before (38 %, nudged 6 % right), rolling like the CTA arrow (.big-btn .ia-b) */
+/* Play: the triangle in place of the wave, sized as before (38 %; the path's own centroid sits on centre, so no extra nudge — Shifat: optical balance), rolling like the CTA arrow (.big-btn .ia-b) */
 .sv-comic .pill--play { position: absolute; padding: 0; gap: 0; justify-content: center; color: #000; background: #fafafa; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.sv-comic .pill--play .sroll { width: 38%; height: 38%; margin-left: 6%; }
+.sv-comic .pill--play .sroll { width: 38%; height: 38%; margin-left: 0; }
 .sv-comic .pill--play .sroll .ia-a, .sv-comic .pill--play .sroll .ia-b { display: block; position: absolute; inset: 0; }
 .sv-comic .pill--play .sroll .ia-b { transform: translate3d(-130%, 130%, 0); }
 .sv-comic .pill--play .sroll svg { display: block; width: 100%; height: 100%; }
