@@ -20,7 +20,7 @@ import { giftMark } from './gift'   // R7.09 QA timeline
 const GIFT_OLD = /[?&]giftold\b/.test(location.search)
 import { CSS3DRenderer, CSS3DObject } from 'three/examples/jsm/renderers/CSS3DRenderer.js' // R6.88b CRISP TYPE
 
-const CASE_URL = 'https://shade-verse-case-study.sites.tab.bot/'   // Shade Verse: the Shade Verse case study
+const CASE_URL = 'https://shade-verse-case-study.pages.dev/'   // Shade Verse: the Shade Verse case study
 const PINK = new THREE.Color('#ff2e93')
 const INK = '#121315'
 const WARM = new THREE.Color('#ffe0c0'), COOL = new THREE.Color('#9cc6ff')
