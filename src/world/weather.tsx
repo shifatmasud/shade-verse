@@ -125,6 +125,10 @@ const hash1 = (n: number) => { const x = Math.sin(n * 127.1 + W_SEED * 311.7) * 
 function rainAt(t: number) { const k = Math.floor(t / SLOT); if (k < 0 || hash1(k) > RAIN_P) return 0; const dur = 60 + hash1(k + 0.37) * 60, st = k * SLOT + 40 + hash1(k + 0.71) * (SLOT - 60 - dur); return t >= st && t < st + dur ? 1 : 0; }
 /* Rainbow only after rain (Shifat 10:17 PM 'rainbow comes after rain'): WEATHER.bow rises once a shower ends (as the drops thin out),
    holds ~35 s and fades; the sky shader adds its own daylight gate, so a shower that ends at night leaves no bow. */
+/* Random aurora (Shifat Nov 2 10:25 PM 'Aurora is random too'): each 20-min day/night loop (the night sits wholly inside one loop index)
+   rolls whether its night gets an aurora, ~1 in 2; it eases in/out over ~20 s, so it never pops. Rain doesn't affect it. */
+const DN_LOOP = 1200, AUR_P = 0.5;
+const aurAt = (t: number) => (hash1(Math.floor(t / DN_LOOP) + 500.5) < AUR_P ? 1 : 0);
 const bowEnv = (s: number) => { const a = Math.max(0, Math.min(1, (s - 2) / 8)), b = Math.max(0, Math.min(1, (s - 45) / 15)); return a * a * (3 - 2 * a) * (1 - b * b * (3 - 2 * b)); };
 
 export function Weather() {
@@ -144,6 +148,7 @@ export function Weather() {
         const t = st.clock.elapsedTime;
         const target = WEATHER.force >= 0 ? WEATHER.force : rainAt(t);
         { const B = bw.current; if (B.prev > 0.5 && target < 0.5) B.end = t; B.prev = target; WEATHER.bow.value = target > 0.5 ? 0 : bowEnv(t - B.end); }
+        { const at = WEATHER.aurForce >= 0 ? WEATHER.aurForce : aurAt(t), A = WEATHER.aur; A.value += (at - A.value) * Math.min(1, dt / 20 * 3); }
         const r = WEATHER.rain; r.value += (target - r.value) * Math.min(1, dt / 8 * 3);
         if (WEATHER.force >= 0 && Math.abs(r.value - target) < 0.02) r.value = target;
         { // storm lightning (Nov 2, real photos 'Lightning storm over ocean', 'Lightning over the Atlantic'): every few seconds in heavy rain a flash lights the

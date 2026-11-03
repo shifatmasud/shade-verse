@@ -1,7 +1,7 @@
 import { SKYFX_GLSL, CLOUD_GLSL } from './skyFx';
 // Sky dome shader (gradient, sun disc, clouds). Moved verbatim from Scene.tsx.
 export const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
-export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform float uBow;uniform float uFlash;uniform vec3 uFd;uniform sampler2D uMoon;
+export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform float uBow;uniform float uAur;uniform float uFlash;uniform vec3 uFd;uniform sampler2D uMoon;
 float svh2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} float svn2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(svh2(i),svh2(i+vec2(1,0)),f.x),mix(svh2(i+vec2(0,1)),svh2(i+vec2(1,1)),f.x),f.y);}
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
@@ -26,7 +26,7 @@ void main(){
     float rr2=max(sr,px*0.7),dd=length(sf-so);float sv=smoothstep(rr2,rr2*0.25,dd)*min(1.0,sr/rr2*1.6);
     float sb=mix(0.3,1.25,pow(fract(sh*29.7),4.0))*(0.8+0.2*sin(uT*(1.3+sz*2.0)+sh*60.0));
     nc+=mix(vec3(0.75,0.85,1.0),vec3(1.0,0.92,0.8),fract(sh*7.3))*sv*sb*3.2*smoothstep(0.06,0.35,dn.y);}}
-  nc+=auroraSky(dn,uT,7.0);   /* aurora v3 - src/shaders/skyFx.ts (shared with the sea reflection) */
+  nc+=auroraSky(dn,uT,7.0)*uAur;   /* aurora v3 - src/shaders/skyFx.ts (shared with the sea reflection) */
   float mg=max(dot(dn,-sun),0.0);   /* moon (Shifat Nov 2 8:40 PM 'I want this moon', ref: his photo of a small moon glowing through thin cloud over the sea): a smaller
      photographed disc (Wikimedia 'FullMoon2010', public/moon.png) kept under white so its maria still read, a soft limb, warmer when low; thin cloud wisps drift
      past it in the moon's own tangent plane - they veil the disc a little and catch its light, so the milky corona and the wide halo pool in the wisps

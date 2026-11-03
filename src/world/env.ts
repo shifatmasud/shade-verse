@@ -15,4 +15,4 @@ export const WATERLINE = { v: new THREE.Vector4(0, 0, 1, 0), col: new THREE.Colo
 /* Weather (Shifat Oct 31 5:42 PM: sunny & rainy weather; rain must not get the outline pass; raindrop impacts on water).
    rain: 0..1 shared uniform (every water body reads it for impact rings; DayNight greys the sky/fog by it). The Weather component drives it:
    a slow sunny/rainy cycle, or forced with ?rain=1 / ?rain=0 in the URL. */
-export const WEATHER = { rain: { value: 0 }, force: -1 as number, flash: { value: 0 }, bow: { value: 0 }, fdir: { value: new THREE.Vector3(0, 0.1, -1) } };   /* flash/fdir: storm lightning (src/world/weather.tsx), lights the sky dome + sea */
+export const WEATHER = { rain: { value: 0 }, force: -1 as number, flash: { value: 0 }, bow: { value: 0 }, aur: { value: 1 }, aurForce: -1 as number, fdir: { value: new THREE.Vector3(0, 0.1, -1) } };   /* flash/fdir: storm lightning (src/world/weather.tsx), lights the sky dome + sea */

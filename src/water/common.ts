@@ -12,7 +12,8 @@ vec2 fftSlope(vec2 xz, float t){ vec4 c = texture2D(uNrm, xz * 0.045 + vec2(0.01
 // Rain (Shifat Oct 31 5:42 PM): raindrop impact rings on every water body, scaled by the shared uRain uniform (src/world/env.ts WEATHER.rain).
 // Two jittered 0.9 m / 1.3 m cell grids, each cell one drop: an expanding ring that fades as it spreads. Returns a slope like fftSlope.
 uniform float uRain;
-uniform float uBow;   // rainbow envelope (WEATHER.bow, src/world/weather.tsx)
+uniform float uBow;
+uniform float uAur;   // aurora on/off per night (WEATHER.aur, src/world/weather.tsx)   // rainbow envelope (WEATHER.bow, src/world/weather.tsx)
 uniform float uFlash;
 uniform vec3 uFd;
 float rainHash(vec2 c){ return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
