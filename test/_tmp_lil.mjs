@@ -1,0 +1,2 @@
+import { ISLAND, FARM, islandH } from '../src/seaWorld.ts'; import { seabedAt } from '../src/sim.ts';
+let n=0; for (let a=0;a<6.28 && n<6;a+=0.3){ for (const k of [1.1,1.25,1.4]){ const x=ISLAND.cx+Math.cos(a)*ISLAND.R*k, z=ISLAND.cz+Math.sin(a)*ISLAND.R*k, h=islandH(x,z), sb=seabedAt(x,z); if(!((h!==null&&h>-0.8)||sb<-9||sb>-0.9)){console.log(x.toFixed(0),z.toFixed(0),sb.toFixed(1)); n++; break;} } }

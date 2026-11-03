@@ -1,0 +1,12 @@
+import puppeteer from 'puppeteer-core'; import http from 'http'; import fs from 'fs'; import path from 'path';
+const root='/tmp/svprof'; const srv=http.createServer((q,s)=>{let f=path.join(root,decodeURIComponent(q.url.split('?')[0])); if(f.endsWith('/'))f+='index.html'; if(!fs.existsSync(f)) f=root+'/index.html'; const ext=path.extname(f); s.writeHead(200,{'Content-Type':{'.js':'text/javascript','.html':'text/html','.css':'text/css','.png':'image/png','.glb':'model/gltf-binary','.mp3':'audio/mpeg','.ogg':'audio/ogg','.json':'application/json'}[ext]||'application/octet-stream'}); fs.createReadStream(f).pipe(s);}).listen(4399);
+const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage(); await p.emulate({viewport:{width:915,height:412,deviceScaleFactor:1,isMobile:true,hasTouch:true,isLandscape:true},userAgent:'Mozilla/5.0 (Linux; Android 11; SM-A107F) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36'});
+const w=ms=>new Promise(r=>setTimeout(r,ms)); await p.goto('http://127.0.0.1:4399/?debug',{waitUntil:'load'}); await w(2500); await p.evaluate(()=>window.__game.start()); await w(2000);
+const [x,y,z]=JSON.parse(process.env.POS); await p.evaluate((x,y,z)=>{const s=window.__game.sim; s.pos=[x,y,z]; s.vel=[0,0,0];},x,y,z); await w(10000);
+const res=await p.evaluate(async()=>{ const seen=new Map(); const snap=()=>{const out=[]; window.__scene.traverse(o=>{ const g=o.geometry; if(!g) return; const atts=Object.entries(g.attributes||{}); if(o.isInstancedMesh){atts.push(['instanceMatrix',o.instanceMatrix]); if(o.instanceColor) atts.push(['instanceColor',o.instanceColor]);} for(const [n,a] of atts){ out.push([o,n,a,a.version]); } }); return out;};
+ const s0=snap(); await new Promise(r=>setTimeout(r,3000)); const s1=new Map(snap().map(x=>[x[2],x[3]])); const rows=[];
+ for(const [o,n,a,v] of s0){ const v1=s1.get(a); if(v1!==undefined && v1>v){ let top='',q=o; const ch=[]; while(q){ ch.push(q.name||q.type); q=q.parent;} rows.push([ch.slice(0,4).join('<'), n, a.array.byteLength, v1-v]); } }
+ return JSON.stringify(rows.sort((a,b)=>b[2]*b[3]-a[2]*a[3]).slice(0,15)); });
+console.log('VER', res);
+const c=await p.target().createCDPSession();  console.log('ok', JSON.stringify(await p.evaluate(()=>window.__dbgStats))); await b.close(); srv.close();

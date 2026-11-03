@@ -1,0 +1,2 @@
+import { seabedAt } from '../src/sim.ts'; import { ISLAND, islandH } from '../src/seaWorld.ts';
+for (const d of [0, 60, 90, 110, 130, 150]) console.log(d, seabedAt(ISLAND.cx + d, ISLAND.cz).toFixed(2), String(islandH(ISLAND.cx + d, ISLAND.cz)), ISLAND.R);

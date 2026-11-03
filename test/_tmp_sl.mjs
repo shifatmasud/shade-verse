@@ -1,0 +1,9 @@
+import puppeteer from 'puppeteer-core'; import http from 'http'; import fs from 'fs'; import path from 'path';
+const root='/tmp/svprof'; const srv=http.createServer((q,s)=>{let f=path.join(root,decodeURIComponent(q.url.split('?')[0])); if(f.endsWith('/'))f+='index.html'; if(!fs.existsSync(f)) f=root+'/index.html'; const ext=path.extname(f); s.writeHead(200,{'Content-Type':{'.js':'text/javascript','.html':'text/html','.css':'text/css','.png':'image/png','.glb':'model/gltf-binary','.mp3':'audio/mpeg','.ogg':'audio/ogg','.json':'application/json'}[ext]||'application/octet-stream'}); fs.createReadStream(f).pipe(s);}).listen(4399);
+const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage(); await p.emulate({viewport:{width:915,height:412,deviceScaleFactor:1,isMobile:true,hasTouch:true,isLandscape:true},userAgent:'Mozilla/5.0 (Linux; Android 11; SM-A107F) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36'});
+const w=ms=>new Promise(r=>setTimeout(r,ms)); await p.goto('http://127.0.0.1:4399/?debug',{waitUntil:'load'}); await w(2500); await p.evaluate(()=>window.__game.start()); await w(2000);
+const [x,y,z]=JSON.parse(process.env.POS); await p.evaluate((x,y,z)=>{const s=window.__game.sim; s.pos=[x,y,z]; s.vel=[0,0,0];},x,y,z); await w(10000);
+const rs=await p.evaluate(async()=>{ await new Promise(r=>setTimeout(r,500)); let tot=0, full=0; window.__scene.traverse(o=>{ if(o.material&&o.material.uniforms&&o.material.uniforms.uBench&&o.visible){ const g=o.geometry; full=g.index.count; const dr=g.drawRange; tot+=Math.min(dr.count, g.index.count-dr.start); } }); return JSON.stringify({tot, full, frac:(tot/full).toFixed(2)}); });
+console.log('SL',rs);
+const c=await p.target().createCDPSession();  console.log('ok', JSON.stringify(await p.evaluate(()=>window.__dbgStats))); await b.close(); srv.close();

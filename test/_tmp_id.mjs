@@ -1,0 +1,5 @@
+import puppeteer from 'puppeteer-core';
+const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader']});const p=await b.newPage();
+await p.setViewport({width:915,height:412});
+await p.goto('http://127.0.0.1:4311/?q=low&debug');await new Promise(r=>setTimeout(r,2500));await p.evaluate(()=>window.__game.start());await new Promise(r=>setTimeout(r,8000));
+console.log(JSON.stringify(await p.evaluate(()=>{const s=window.__scene;const out=[];s.traverse(o=>{if(!o.isMesh||!o.geometry)return;const g=o.geometry;const t=(g.index?g.index.count:g.attributes.position.count)/3;if(o.material&&o.material.type==='ShaderMaterial'&&t>5000){const ch=[];let q=o;while(q){ch.push(q.name||q.type);q=q.parent;}out.push({t,geo:g.type,v:g.attributes.position.count,chain:ch.slice(0,5),fs:(o.material.fragmentShader||'').slice(0,160),uni:Object.keys(o.material.uniforms||{}).slice(0,8),ro:o.renderOrder,pos:o.position.toArray().map(x=>Math.round(x))})}});return out})));await b.close();

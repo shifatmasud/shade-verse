@@ -1,0 +1,6 @@
+import puppeteer from 'puppeteer-core';
+const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader']});const p=await b.newPage();
+await p.setViewport({width:915,height:412,isMobile:true,hasTouch:true,deviceScaleFactor:1.75});
+await p.goto('http://127.0.0.1:4311/?q=low&debug');await new Promise(r=>setTimeout(r,2500));await p.evaluate(()=>window.__game.start());await new Promise(r=>setTimeout(r,9000));await p.evaluate(()=>{const g=window.__game;if(g&&g.tp)g.tp(21.5,0.5,40)});await new Promise(r=>setTimeout(r,4000));
+console.log(JSON.stringify(await p.evaluate(()=>new Promise(res=>{const gl=window.__gl||window.__r3f?.gl;const R=gl;const orig=R.render.bind(R);const log=[];R.info.autoReset=false;R.render=(s,c)=>{const tg=R.getRenderTarget(),t0=R.info.render.triangles,d0=R.info.render.calls;orig(s,c);log.push([s.name||s.type,c.type,c.layers.mask,tg?tg.width+'x'+tg.height:'screen',R.info.render.triangles-t0,R.info.render.calls-d0]);};
+requestAnimationFrame(()=>{log.length=0;requestAnimationFrame(()=>{R.render=orig;R.info.autoReset=true;res(log)})})}))));await b.close();

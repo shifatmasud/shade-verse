@@ -1,0 +1,2 @@
+import puppeteer from 'puppeteer-core';const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox']});const p=await b.newPage();
+p.on('pageerror',e=>console.log('ERR',String(e)));await p.goto('http://127.0.0.1:4392/wlbench.html');for(let i=0;i<60;i++){const r=await p.evaluate(()=>window.__res);if(r){console.log(JSON.stringify(r));break}await new Promise(r=>setTimeout(r,500))}await b.close();

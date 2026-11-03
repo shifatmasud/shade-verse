@@ -19,9 +19,9 @@ function caption(who: string, text: string) {
 }
 const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
-// mirror of Scene's day/night clock (DN_DUR 300 s), so birds sing by day and crickets take over at night without touching Scene.tsx
+// mirror of Scene's day/night clock (DN_DUR 1200 s), so birds sing by day and crickets take over at night without touching Scene.tsx
 const T0 = typeof performance !== 'undefined' ? performance.now() : 0;
-function daylight() { const ph = Math.asin(0.22 / 0.95) + (((performance.now() - T0) / 1000) / 300) * Math.PI * 2; const x = -0.5, y = Math.sin(ph) * 0.95, z = Math.cos(ph) * 0.85 + 0.3; const sy = y / Math.hypot(x, y, z); return sstep(-0.12, 0.3, sy); }
+function daylight() { const ph = Math.asin(0.22 / 0.95) + (((performance.now() - T0) / 1000) / 1200) * Math.PI * 2; const x = -0.5, y = Math.sin(ph) * 0.95, z = Math.cos(ph) * 0.85 + 0.3; const sy = y / Math.hypot(x, y, z); return sstep(-0.12, 0.3, sy); }
 
 type Surface = 'concrete' | 'grass' | 'sand';
 export function surfaceAt(x: number, z: number, y: number, groundY: number): Surface {

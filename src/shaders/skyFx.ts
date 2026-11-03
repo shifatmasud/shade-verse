@@ -9,8 +9,8 @@ vec3 auroraSky(vec3 dn, float uT, float ns){ vec3 ac=vec3(0.0); if(dn.y<=0.02) r
     a*=smoothstep(26.0,8.0,length(p))*smoothstep(-16.0,-6.0,p.y+8.0);
     ac+=mix(mix(vec3(0.42,1.0,0.5),vec3(0.1,0.95,0.4),smoothstep(0.0,0.3,fk)),vec3(0.75,0.3,0.85)*0.95,smoothstep(0.35,0.9,fk))*a*(7.0/ns);}   /* ref /tmp/aur/4.jpg: bright yellow-green lower hem, pure green body, violet-pink fringe on top */
   return ac*0.8*smoothstep(0.03,0.17,dn.y); }
-vec3 rainbowSky(vec3 dn3, vec3 sunV, float rain, float day){
-  float ra=acos(clamp(dot(dn3,-sunV),-1.0,1.0));float rw=smoothstep(0.03,0.25,rain)*(1.0-smoothstep(0.55,0.85,rain))*day*smoothstep(-0.02,0.08,sunV.y)*smoothstep(0.0,0.05,dn3.y);
+vec3 rainbowSky(vec3 dn3, vec3 sunV, float rain, float day){   /* rain = WEATHER.bow (Shifat Nov 2 10:17 PM 'rainbow comes after rain'): 0..1 envelope that only rises once a shower ends, see src/world/weather.tsx */
+  float ra=acos(clamp(dot(dn3,-sunV),-1.0,1.0));float rw=clamp(rain,0.0,1.0)*day*smoothstep(-0.02,0.08,sunV.y)*smoothstep(0.0,0.05,dn3.y);
   if(rw<=0.001) return vec3(0.0);
   /* Shifat 11:29 PM 'more glow + more blur': gaussian colour bands (no triangle corners) wider than before, plus a wide warm-white glow around the bow */
   float u=(ra-0.695)/0.075;vec3 rc=exp(-pow((vec3(u)-vec3(0.85,0.5,0.15))/0.38,vec3(2.0)))*smoothstep(-0.6,0.3,u)*(1.0-smoothstep(0.7,1.6,u));

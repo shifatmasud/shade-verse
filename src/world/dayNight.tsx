@@ -9,7 +9,7 @@ import { FOG } from '../sim';
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
 // Day/night cycle: drives the shared TOD uniforms (sun, fog, warmth) and the sea's colours over a 5-minute loop.
-const DN_DUR = 300, DN_PH0 = Math.asin(0.22 / 0.95);
+const DN_DUR = 1200 /* Shifat Nov 2 10:17 PM 'night & day time must be longer': 20-min loop, ~10 min day / ~10 min night (was 300) */, DN_PH0 = Math.asin(0.22 / 0.95);
 const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _cn = new THREE.Color(0.035, 0.055, 0.13), _cnoon = new THREE.Color(0.6, 0.77, 0.94) /* Shifat Nov 1 4:29 PM 'distance haze must be based on sky colour, not white': the noon horizon/haze is the sky's own low blue (was a pale near-white 0.76,0.84,0.93) */, _cwarm = new THREE.Color(FOG[0], FOG[1], FOG[2]);
 const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const _uwDay = new THREE.Color();

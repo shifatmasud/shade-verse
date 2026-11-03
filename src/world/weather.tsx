@@ -117,7 +117,15 @@ function dropGeo() {
 
 const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('rain') : null;
 if (q === '1') WEATHER.force = 1; else if (q === '0') WEATHER.force = 0;
-const CYCLE = 260, RAIN_FROM = 0.62;   // ~100 s of rain every ~4.3 min, eased in/out over ~8 s
+/* Random weather (Shifat Nov 2 10:17 PM 'randomly rainy or sunny'; was a fixed ~100 s of rain every ~4.3 min). The 20-min day/night loop is split
+   into 10-min slots; each slot rolls (hash of a per-session seed + slot index) whether it gets one shower, when it starts and how long it lasts
+   (60-120 s). So a game day has 0-2 showers and some days stay sunny. Eased in/out over ~8 s as before. */
+const SLOT = 600, RAIN_P = 0.5, W_SEED = Math.random() * 1000;
+const hash1 = (n: number) => { const x = Math.sin(n * 127.1 + W_SEED * 311.7) * 43758.5453; return x - Math.floor(x); };
+function rainAt(t: number) { const k = Math.floor(t / SLOT); if (k < 0 || hash1(k) > RAIN_P) return 0; const dur = 60 + hash1(k + 0.37) * 60, st = k * SLOT + 40 + hash1(k + 0.71) * (SLOT - 60 - dur); return t >= st && t < st + dur ? 1 : 0; }
+/* Rainbow only after rain (Shifat 10:17 PM 'rainbow comes after rain'): WEATHER.bow rises once a shower ends (as the drops thin out),
+   holds ~35 s and fades; the sky shader adds its own daylight gate, so a shower that ends at night leaves no bow. */
+const bowEnv = (s: number) => { const a = Math.max(0, Math.min(1, (s - 2) / 8)), b = Math.max(0, Math.min(1, (s - 45) / 15)); return a * a * (3 - 2 * a) * (1 - b * b * (3 - 2 * b)); };
 
 export function Weather() {
     const { mesh, mat, smesh, smat } = useMemo(() => {
@@ -131,9 +139,11 @@ export function Weather() {
     }, []);
     const gy = React.useRef({ y: 0, last: 0, t: 0 });
     const lt = React.useRef({ next: 3, start: -9, seed: 0 });
+    const bw = React.useRef({ prev: 0, end: -1e4 });
     useFrame((st, dt) => {
-        const t = st.clock.elapsedTime, ph = (t / CYCLE) % 1;
-        const target = WEATHER.force >= 0 ? WEATHER.force : (ph > RAIN_FROM ? 1 : 0);
+        const t = st.clock.elapsedTime;
+        const target = WEATHER.force >= 0 ? WEATHER.force : rainAt(t);
+        { const B = bw.current; if (B.prev > 0.5 && target < 0.5) B.end = t; B.prev = target; WEATHER.bow.value = target > 0.5 ? 0 : bowEnv(t - B.end); }
         const r = WEATHER.rain; r.value += (target - r.value) * Math.min(1, dt / 8 * 3);
         if (WEATHER.force >= 0 && Math.abs(r.value - target) < 0.02) r.value = target;
         { // storm lightning (Nov 2, real photos 'Lightning storm over ocean', 'Lightning over the Atlantic'): every few seconds in heavy rain a flash lights the

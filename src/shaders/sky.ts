@@ -1,7 +1,7 @@
 import { SKYFX_GLSL, CLOUD_GLSL } from './skyFx';
 // Sky dome shader (gradient, sun disc, clouds). Moved verbatim from Scene.tsx.
 export const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
-export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform float uFlash;uniform vec3 uFd;uniform sampler2D uMoon;
+export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform float uBow;uniform float uFlash;uniform vec3 uFd;uniform sampler2D uMoon;
 float svh2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} float svn2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(svh2(i),svh2(i+vec2(1,0)),f.x),mix(svh2(i+vec2(0,1)),svh2(i+vec2(1,1)),f.x),f.y);}
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
@@ -48,6 +48,6 @@ void main(){
   {vec2 hz=normalize(dn2.xz+1e-5);float pm=smoothstep(0.5,0.78,svn2(hz*0.42+vec2(uT*0.001,0.0))*0.7+svn2(hz*1.0+vec2(3.1,-uT*0.0007))*0.3);   /* noise on the horizon circle: no seam */
    float hh=smoothstep(0.26,0.04,dn2.y)*smoothstep(-0.06,0.0,dn2.y);float stk=0.75+0.25*svn2(hz*27.0+vec2(dn2.y*9.0-uT*0.06,0.0));
    c=mix(c,uHor*0.3,pm*hh*stk*0.7*smoothstep(0.3,0.8,uRain));}}
- c+=lightningSky(normalize(vDir),uFd,uFlash); c+=rainbowSky(normalize(vDir),uSunV,uRain,uDay);   /* rainbow - src/shaders/skyFx.ts */
+ c+=lightningSky(normalize(vDir),uFd,uFlash); c+=rainbowSky(normalize(vDir),uSunV,uBow,uDay);   /* rainbow - src/shaders/skyFx.ts */
  gl_FragColor=vec4(c,1.0);
 }`;

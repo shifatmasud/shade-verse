@@ -1,0 +1,5 @@
+import puppeteer from 'puppeteer-core';
+const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader']});const p=await b.newPage();
+await p.setViewport({width:915,height:412,isMobile:true,hasTouch:true,deviceScaleFactor:1.75});
+await p.goto('http://127.0.0.1:4311/?q=low&debug');await new Promise(r=>setTimeout(r,2500));await p.evaluate(()=>window.__game.start());await new Promise(r=>setTimeout(r,8000));
+console.log(JSON.stringify(await p.evaluate(()=>{const s=window.__scene;let n=0,auto=0,vis=0;s.traverse(o=>{n++;if(o.matrixAutoUpdate)auto++;if(o.visible)vis++});const t0=performance.now();for(let i=0;i<50;i++)s.updateMatrixWorld();const ms=(performance.now()-t0)/50;return {n,auto,vis,msPerUpdate:ms}})));await b.close();

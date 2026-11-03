@@ -1,0 +1,8 @@
+import { WAVES_GLSL, waveSumJS } from '../src/water/waves.ts';
+import fs from 'fs';
+const old = fs.readFileSync('/tmp/old_glsl.txt','utf8');
+console.log('glsl_equal', old === WAVES_GLSL, old.length, WAVES_GLSL.length);
+if (old !== WAVES_GLSL) { for (let i=0;i<old.length;i++) if (old[i]!==WAVES_GLSL[i]) { console.log('diff at', i, JSON.stringify(old.slice(i-60,i+40)), JSON.stringify(WAVES_GLSL.slice(i-60,i+40))); break; } }
+function oldSum(x,z,t) { return (Math.sin(x * 0.008 + z * 0.005 + t * 0.32) * 0.78 + Math.sin(-x * 0.012 + z * 0.009 + t * 0.42) * 0.42 + Math.sin(x * 0.033 - z * 0.023 + t * 0.72) * 0.12 + Math.sin(x * 0.076 + z * 0.054 + t * 0.98) * 0.035 + Math.sin(x * 0.1464 + z * 0.04529 + 1.3 * Math.sin(x * -0.00317 + z * 0.01025 + 0.0 * 2.3) + t * 0.6744) * 0.26 * (0.55 + 0.45 * Math.sin(x * -0.0018 + z * 0.00583 + 0.0 + t * 0.03))+Math.sin(x * -0.19587 + z * 0.0926 + 1.3 * Math.sin(x * -0.00648 + z * -0.01371 + 1.7 * 2.3) + t * 0.8018) * 0.18 * (0.55 + 0.45 * Math.sin(x * -0.00261 + z * -0.00551 + 1.7 + t * 0.03))+Math.sin(x * 0.10942 + z * -0.26808 + 1.3 * Math.sin(x * 0.01877 + z * 0.00766 + 3.4 * 2.3) + t * 0.927) * 0.12 * (0.55 + 0.45 * Math.sin(x * 0.00565 + z * 0.00231 + 3.4 + t * 0.03))+Math.sin(x * 0.13366 + z * 0.36156 + 1.3 * Math.sin(x * -0.02531 + z * 0.00936 + 5.1 * 2.3) + t * 1.0695) * 0.08 * (0.55 + 0.45 * Math.sin(x * -0.00572 + z * 0.00212 + 5.1 + t * 0.03))); }
+let bad=0, maxd=0; for (let i=0;i<20000;i++) { const x=(Math.random()-0.5)*3000, z=(Math.random()-0.5)*3000, t=Math.random()*1000; const a=oldSum(x,z,t), b=waveSumJS(x,z,t); if (a!==b) { bad++; maxd=Math.max(maxd,Math.abs(a-b)); } }
+console.log('js_mismatch', bad, maxd);
