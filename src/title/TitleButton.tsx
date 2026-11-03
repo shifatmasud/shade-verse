@@ -23,7 +23,12 @@ function inv(c: string) {
   return (0.2126 * +m[0] + 0.7152 * +m[1] + 0.0722 * +m[2]) > 128 ? '#121315' : '#fafafa'
 }
 
-/** the sound toggle's ONE thin stroke: on, a gentle sine drifts; off, it eases to flat; static under reduced motion */
+/** the sound toggle's ONE thin stroke: on, a gentle sine drifts; off, it eases to flat; static under reduced motion.
+ *  The toggle MORPHS the stroke in place (Shifat Nov 2 9:24 PM: "Title screen volume line must morph into new on off state instead
+ *  of slide"): the sine's height tweens to the new state over MORPH_MS with an ease-in-out (from wherever it is, so a fast
+ *  double tap reverses smoothly), the wave folding flat into the line / swelling back out of it. The press no longer rolls it. */
+const MORPH_MS = 280;
+const easeInOut = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 function Wave({ on, invert = false }: { on: boolean; invert?: boolean }) {
     const ref = useRef<HTMLCanvasElement>(null), onRef = useRef(on), kick = useRef<() => void>(() => {});
     onRef.current = on;
@@ -32,17 +37,20 @@ function Wave({ on, invert = false }: { on: boolean; invert?: boolean }) {
         const W = 22, H = 14, dpr = Math.min(devicePixelRatio || 1, 2); c.width = W * dpr; c.height = H * dpr; ctx.scale(dpr, dpr);
         const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
         let raf = 0, amp = onRef.current ? 1 : 0, phase = 0, last = performance.now();
+        let from = amp, to = amp, t0 = 0;                                     // the morph: amp tweens from -> to from t0
         const draw = (now: number) => {
-            const dt = Math.min(0.05, (now - last) / 1000); last = now;
+            const dt = Math.min(0.05, Math.max(0, now - last) / 1000); last = now;
             const target = onRef.current ? 1 : 0;
-            amp = reduced ? target : amp + (target - amp) * (1 - Math.exp(-6 * dt));
+            if (target !== to) { from = amp; to = target; t0 = now; }
+            const k = reduced ? 1 : Math.min(1, Math.max(0, now - t0) / MORPH_MS);
+            amp = from + (to - from) * easeInOut(k);
             if (!reduced) phase += dt * 3.2;
             const color = getComputedStyle(c).color;
             ctx.clearRect(0, 0, W, H); ctx.lineWidth = 1.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = invert ? inv(color) : color;
             ctx.beginPath();
             for (let x = 1; x <= W - 1; x += 0.5) { const env = Math.sin((Math.PI * (x - 1)) / (W - 2)); const y = H / 2 + Math.sin(x * 0.62 - phase) * 3 * amp * env; x === 1 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
             ctx.stroke();
-            if (reduced || (target === 0 && amp < 0.002)) { raf = 0; return; }   // settled and still: stop drawing until the state changes
+            if (reduced || (target === 0 && k >= 1)) { raf = 0; return; }   // settled and still: stop drawing until the state changes
             raf = requestAnimationFrame(draw);
         };
         kick.current = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(draw); } };
