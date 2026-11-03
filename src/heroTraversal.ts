@@ -6,7 +6,7 @@ import { buildings, parkH } from './sim';
    SWING (reference 11.2-12.6 s, 20.0-20.9 s, 21.6-22.7 s): the body hangs from the line hand and pendulums with the rope, lagging it (spring), so right after
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
-type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number };
+type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; lU: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number };
 const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
@@ -159,26 +159,62 @@ function springBones(sim: any, rig: any, T: TV, h: number) {
 }
 /* LANDING (ref 4.1-4.9 s, 7.8 s, 13.8-14.0 s): touchdown drops into a crouch for a few frames: knees bend, hips sink, chest folds over, head up.
    A hard landing (sim.landHard) is the low superhero landing: front knee up, back knee down, one hand planted, the other arm out behind;
-   held ~0.2 s, then it pushes back up (0.55 s total). A normal one is a quick symmetric crouch (~0.3 s) scaled by the impact. */
+   held ~0.2 s, then it pushes back up (0.55 s total).
+   Nov 3 (landing feel, "make landings read"): a normal one is now WEIGHTED by the impact (sim.land = fall speed / 30): a small hop is a
+   tiny knee dip (~0.2 s), a big drop a deep crouch held a beat longer with the arms out to the sides for balance (~0.38 s).
+   FEET PLANTED: the root sink used to follow sim.land (which decays in land/3 s) while the knees followed this pose's own envelope, so a
+   small hop bent the knees with no sink and the feet hovered ~0.2 m over the floor. The sink and the whole-body pitch are now driven by
+   the same envelope as the knees, and after posing the root is moved so the lowest ankle (or a kneeling knee) sits exactly on the floor.
+   The feet stay flat (the ankle takes back the shin's lean) and the hips sink straight down between the heels: no butt pushed back.
+   Purely visual and never holds the hero: the sim already lets them act; any move, shot, dodge, web or running off blends it out fast. */
+const _fa = new THREE.Vector3(), _fb = new THREE.Vector3(), _sc = new THREE.Vector3();
 function landBones(sim: any, rig: any, T: TV, h: number) {
-    const B = rig.b;
-    if (sim.ground && !T.wg && sim.land > 0.08 && !sim.swim && !sim.wall) { T.lOn = 1; T.lt = 0; T.li = sim.land; T.lh = (sim.landHard || 0) > 0 ? 1 : 0; }
+    const B = rig.b, root = rig.root as THREE.Group, pr = rig.poseRoot as THREE.Group;
+    if (sim.ground && !T.wg && sim.land > 0.08 && !sim.swim && !sim.wall) { T.lOn = 1; T.lt = 0; T.li = sim.land; T.lh = (sim.landHard || 0) > 0 ? 1 : 0; T.lU = 1; }
     T.wg = !!sim.ground;
+    // this landing owns the body sink + pitch (Scene.tsx applyHeroRootPose adds them from sim.land; undone here, re-applied on the pose envelope)
+    if (T.lU && (sim.slam || sim.swim || !(sim.land > 0))) T.lU = 0;
+    if (T.lU) { root.position.y += sim.land * 0.5; pr.rotation.x -= sim.land * 0.5; }
     if (!T.lOn) return;
     if (!sim.ground || sim.swim || sim.web || sim.mv || sim.flip || sim.slam || (sim.snareT || 0) > 0) { T.lOn = 0; return; }
-    T.lt += h;
-    const hd = T.lh, dur = hd ? 0.55 : 0.3, hold = hd ? 0.22 : 0.06;
+    const hd = T.lh, li = cl(T.li, 0, 1);
+    const dur = hd ? 0.55 : 0.2 + 0.18 * li, hold = hd ? 0.22 : 0.02 + 0.08 * li;
+    // acting again (shot, dodge, attack wind-up, running off): the crouch lets go at once and blends out over ~0.1 s
+    const act = sim.shotT > 0 || sim.dodgeT > 0 || sim.atkT > 0 || sim.spring > 0 || Math.hypot(sim.vel[0], sim.vel[2]) > 3.5;
+    T.lt += act ? h * 2.5 : h; if (act && T.lt < hold) T.lt = hold;
     if (T.lt >= dur) { T.lOn = 0; return; }
     const e = sstep(T.lt / 0.045) * (1 - sstep((T.lt - hold) / (dur - hold)));
-    const k = e * (hd ? 1 : 0.4 + 0.6 * T.li);
-    if (k < 0.01) return;
+    // depth scales the shape (small hop = slight knee give, big drop = deep crouch); the weight is the envelope, so at its peak the crouch
+    // fully owns the legs instead of half-mixing with the airborne pose that is still blending out
+    const d = hd ? 1 : 0.12 + 0.6 * sstep((li - 0.2) / 0.65), k = e;   // hop (li ~0.25) 0.13, standing jump (~0.8) 0.64, biggest soft drop 0.7
+    if (k < 0.005) return;
     const m = (a: number, b: number) => a + (b - a) * hd;   // soft -> hard pose
-    setB(B.thighR, m(-1.15, -1.55), 0, m(0.12, 0.1), k); setB(B.shinR, m(1.95, 2.05), 0, 0, k);
-    setB(B.thighL, m(-1.05, -0.25), 0, m(-0.12, -0.15), k); setB(B.shinL, m(1.9, 2.35), 0, 0, k);
-    setB(B.spine, m(0.4, 0.55), 0, 0, k); setB(B.chest, m(0.18, 0.25), 0, 0, k); setB(B.head, m(-0.35, -0.5), 0, 0, k);
-    setB(B.uarmR, m(-0.6, -0.55), 0, m(0.3, 0.12), k); setB(B.farmR, m(-0.5, -0.15), 0, 0, k);
-    setB(B.uarmL, m(-0.6, 0.75), 0, m(-0.3, -0.75), k); setB(B.farmL, m(-0.5, -0.4), 0, 0, k);
-    B.hips.position.y -= m(0.3, 0.42) * k;
+    const big = hd ? 0 : sstep((li - 0.6) / 0.27);           // big soft drops: arms out for balance (a standing jump half way)
+    const P = m(0.16 * d, 0.34) * k; pr.rotation.x += P;       // whole-body lean over the feet (the knees do the rest)
+    // clean columns: the pelvis is levelled (no forward tilt = no butt pushed back) and each soft leg folds so the ankle stays under the hip:
+    // thigh forward by a, knee bent by 2a, measured from the body's actual pitch, so the shin leans forward exactly as much as the thigh
+    setB(B.hips, 0, 0, 0, k);
+    const hp = pr.rotation.x, aR = 1.0 * d, aL = 0.94 * d;
+    setB(B.thighR, m(-(aR + hp), -1.55), 0, m(0.1 * d, 0.1), k); setB(B.shinR, m(2 * aR * 0.97 + 0.04, 2.05), 0, 0, k);
+    setB(B.thighL, m(-(aL + hp), -0.25), 0, m(-0.1 * d, -0.15), k); setB(B.shinL, m(2 * aL * 0.97 + 0.04, 2.35), 0, 0, k);
+    setB(B.spine, m(0.3 * d, 0.55), 0, 0, k); setB(B.chest, m(0.12 * d, 0.25), 0, 0, k); setB(B.head, m(-0.3 * d, -0.75), 0, 0, k);   // superhero: chin up, eyes forward
+    setB(B.uarmR, m((-0.6 + 0.3 * big) * d, -0.55), 0, m(0.12 + (0.18 + 0.75 * big) * d, 0.12), k); setB(B.farmR, m(-0.25 - 0.25 * d + 0.2 * big, -0.15), 0, m(0.3 * big, 0), k);
+    setB(B.uarmL, m((-0.6 + 0.3 * big) * d, 0.75), 0, m(-0.12 - (0.18 + 0.75 * big) * d, -0.75), k); setB(B.farmL, m(-0.25 - 0.25 * d + 0.2 * big, -0.4), 0, m(-0.3 * big, 0), k);
+    // flat feet: the ankle takes back the shin's world lean (whole-body pitch + hips + thigh + knee), so the soles stay on the floor
+    // (the planted front foot on a superhero landing too; its kneeling back foot keeps its toes down)
+    const hx = pr.rotation.x + (B.hips ? B.hips.rotation.x : 0);
+    if (B.footR) B.footR.rotation.x += (-(hx + B.thighR.rotation.x + B.shinR.rotation.x) * 0.92 - B.footR.rotation.x) * k;
+    if (B.footL && !hd) B.footL.rotation.x += (-(hx + B.thighL.rotation.x + B.shinL.rotation.x) * 0.92 - B.footL.rotation.x) * k;
+    // plant: lowest ankle on the floor (standing ankle height), or a kneeling knee on it
+    root.updateMatrixWorld(true);
+    const s = (_sc.setFromMatrixScale(B.thighR.matrixWorld).x + _sc.y + _sc.z) / 3 || 1, gy = root.position.y, ank = ((rig.ankleY ?? 0.055) as number) * s;
+    let lift = -1e9;
+    for (const sd of ['R', 'L']) {
+        const ft = B['foot' + sd], sh = B['shin' + sd];
+        if (ft) { ft.getWorldPosition(_fa); lift = Math.max(lift, gy + ank - _fa.y); }
+        if (sh) { sh.getWorldPosition(_fb); lift = Math.max(lift, gy + 0.05 * s - _fb.y); }
+    }
+    if (lift > -1e8) root.position.y += lift * sstep(k / 0.12);
 }
 function fallBones(sim: any, rig: any, T: TV, h: number) {
     const B = rig.b, k = T.fw * (1 - T.tk) * (1 - T.bw) * sstep(T.w * 1.5);   // limbs open as the body tips over, together

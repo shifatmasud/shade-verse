@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { traversalBones, traversalRoot } from './heroTraversal';
+import { landFeel } from './landFeel';
 import { enemyReact } from './enemyReact';
 import { heroHurtBones } from './heroHurt';
 import { shotRecoilBones } from './heroRecoil';
@@ -25,7 +26,7 @@ import { Mist } from './world/mist';
 import { BossArenaMarker } from './BossArenaMarker';
 import { poolAt, HBOSS } from './seaWorld';
 import { attachInk, syncInk } from './ink';
-import { buildings, WATER_Z, parkH, WATER_Y, SEABED, seabedAt, HALF, FOG, isLakeWater, waterSurfaceAt, stepSim, stepBeacon, resetSim, MOVES, SNARE, enemyBodyOffset, simTimeScale, type Sim, type Events } from './sim';
+import { buildings, WATER_Z, parkH, WATER_Y, SEABED, seabedAt, HALF, FOG, isLakeWater, waterSurfaceAt, stepSim, stepBeacon, resetSim, MOVES, SNARE, enemyBodyOffset, simTimeScale, getCompanionSim, type Sim, type Events } from './sim';
 import { CombatFX, registerFxHero } from './CombatFX';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { RoofProps } from './RoofProps';
@@ -698,6 +699,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             camera.translateX(n2 * 0.03 * k); camera.translateY(n1 * 0.03 * k);
         } }
         hitFeelCamera(camera, sim, dt, !ov || !!(window as any).__camOvShake);   // impact kick along the blow + FOV pinch (src/hitFeel.ts)
+        landFeel(camera, sim, getCompanionSim(), dt, !ov || !!(window as any).__camOvShake);   // landing puff (both heroes) + big-drop camera dip (src/landFeel.ts)
         const cp = camera as THREE.PerspectiveCamera;
         if (DBG) (window as any).__camObj = camera;   // test hook: hit-feel checks (shake rotation, fov punch)
         // Near-clip-aware waterline: retain the nearby underside instead of cutting a hole through it.
