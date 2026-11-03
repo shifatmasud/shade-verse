@@ -9,9 +9,10 @@ export const GHOST_HEIGHT = 0.93;
 
 /* Ghost's heroine build (Shifat Nov 2 3:50 PM: "Ghosts body need to be feminine like our illustrations too"). Rest-pose vertex reshape only:
    Shadow's mesh, UVs, skin weights and bones are reused untouched, so every animation, the ink outline (rebuilt normals) and the hitboxes
-   stay as they were. Torso: defined waist, fuller hips, narrower upper chest, a soft bust. Legs: each vertex is slimmed radially around
-   the bone segments it is skinned to, blended by its own skin weights (smooth across joints): thighs slim toward the knee (hips keep their
-   width), slimmer calves. Head/hood a touch smaller. Shoulders, shoulder flaps, arms and hands are Shadow's own (no pull-in, no flap shrink,
+   stay as they were. Torso: defined waist, narrower upper chest, a soft bust; no hip flare. Legs: each vertex is slimmed radially around
+   the bone segments it is skinned to, blended by its own skin weights (smooth across joints): thighs follow Shadow's straight hip-to-knee
+   line a touch narrower (about 0.93 at the hip easing to 0.84 toward the knee; Shifat Nov 2 5:18 PM on the hip flare: "They are too thick.
+   Look at shadow. His ones thighs looks great"), slimmer calves. Head/hood a touch smaller. Shoulders, shoulder flaps, arms and hands are Shadow's own (no pull-in, no flap shrink,
    no arm/hand slimming), as on the first screen before the pass-2 body: Shifat Nov 2 4:53 PM "Old shoulder, hand looked better", 4:54 PM "Same" (in game too). */
 const FEM_LIMB: Record<string, number> = { thighL: 0.84, thighR: 0.84, shinL: 0.78, shinR: 0.78, footL: 0.90, footR: 0.90, head: 0.90, neck: 0.88 };
 export function feminineHeroData() {
@@ -26,10 +27,9 @@ export function feminineHeroData() {
         const x = p[i], y = p[i + 1], z = p[i + 2];
         // torso (pass 2, Shifat Nov 2 4:20 PM: stronger hourglass, a bit more bust)
         const torsoWeight = Math.max(0, 1 - Math.abs(x) / 0.34);
-        const hip = 1 + 0.24 * gauss(y, 0.93, 0.15);
-        const waist = 1 - 0.36 * gauss(y, 1.18, 0.13);
+                const waist = 1 - 0.36 * gauss(y, 1.18, 0.13);
         const chest = 1 - 0.15 * gauss(y, 1.52, 0.16);
-        const factor = 1 + ((y < 1.06 ? hip : y < 1.36 ? waist : chest) - 1) * torsoWeight;
+        const factor = 1 + ((y < 1.06 ? 1 : y < 1.36 ? waist : chest) - 1) * torsoWeight;
         const depth = 1 - 0.14 * gauss(y, 1.18, 0.12) * torsoWeight;   // the waist narrows front-to-back too, so the hourglass reads in 3/4 and side
         q[0] = x * factor; q[1] = y; q[2] = z * depth;
         if (z > 0 && Math.abs(x) < 0.27) {   // bust: two soft rounded forms, fuller lower edge, fading out at the sides and into the collar
@@ -49,7 +49,7 @@ export function feminineHeroData() {
                     const h1 = bones[c].h, ax = h1[0] - h0[0], ay = h1[1] - h0[1], az = h1[2] - h0[2], L = Math.hypot(ax, ay, az);
                     const ux = ax / L, uy = ay / L, uz = az / L, vx = q[0] - h0[0], vy = q[1] - h0[1], vz = q[2] - h0[2];
                     const t = vx * ux + vy * uy + vz * uz;
-                    const ss = b.n.startsWith('thigh') ? 1 - (1 - s) * sstep(0, 0.55, t / L) : s;
+                    const ss = b.n.startsWith('thigh') ? 1 - (1 - s) * (0.45 + 0.55 * sstep(0, 0.55, t / L)) : s;
                     r[0] = h0[0] + ux * t + (vx - ux * t) * ss; r[1] = h0[1] + uy * t + (vy - uy * t) * ss; r[2] = h0[2] + uz * t + (vz - uz * t) * ss;
                 } else {
                     const cx = b.n === 'head' || b.n === 'neck' ? 0 : h0[0], cy = b.n === 'head' || b.n === 'neck' ? 1.72 : h0[1], cz = b.n === 'head' || b.n === 'neck' ? 0 : h0[2];
