@@ -4,6 +4,7 @@
 // Nov 2 (Shifat): no rings, no comic shapes, no hard edges - every shape is a soft falloff, lit by the always-on bloom.
 // Procedural shapes in the fragment shader: no textures, no new passes, pooled fixed-size buffers.
 import { useEffect, useMemo } from 'react';
+import { hitFeelTrails } from './hitFeel';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { addP, alphaP, pool, F, ADD_MAX, ALPHA_MAX, stepPools, stepTrails, trails, trailPoint, TRAIL_PTS, TRAIL_SLOTS, bolts, screenFlash, emit, fxChargeTick, SH_CORE, SH_GLOW, SH_SPARK, SH_SEG, SH_GSTREAK, LOW, fxShotMuzzle, fxShotTrail, SHOT_TRAIL_STEP, tint } from './combatFx';
@@ -265,6 +266,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
                 f.x = b.x; f.y = b.y; f.z = b.z;
             }
         }
+        hitFeelTrails(sim, dt);   // knockback wisps (src/hitFeel.ts)
         stepPools(dt); stepTrails(dt); for (let i = bolts.length - 1; i >= 0; i--) { bolts[i].t += dt; if (bolts[i].t >= bolts[i].life) bolts.splice(i, 1); }
         // trails + charge particles from the posed bones of the previous render (matrixWorld)
         for (const h of heroes) {

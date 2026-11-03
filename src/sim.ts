@@ -1,4 +1,5 @@
 import { fxMelee, fxShot, fxShock, fxSlam, fxDischarge } from './combatFx';
+import { capHitStop } from './hitFeel';
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
 import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone, FARM, ICE } from './seaWorld';
@@ -599,6 +600,7 @@ export function stepSim(s: Sim, dt: number, ev: Events, controls: Input = input,
 }
 function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, options: StepOptions = {}) {
     const input = controls;
+    capHitStop(s);   // hit-stop <= 60 ms (src/hitFeel.ts)
     if ((s as any).hitStop > 0) { (s as any).hitStop -= dt; if ((s as any).hitStop > 0) return; }
     const p = s.pos, v = s.vel, k = input.keys;
     { const S = (s as any).slam; if (S && S.ph >= 1) { if (S.ph === 5 && S.t >= SLAM.REC_CANCEL) { if (input.jumpQ || input.swingQ || input.grabQ) (s as any).slam = null; } else { input.jumpQ = false; input.swingQ = false; input.grabQ = false; } } }   // Charged Slam: leap/dive/early recovery own the body; jump/web cancel after 200 ms of recovery

@@ -1,4 +1,5 @@
 import { Lilies } from './world/lilies';
+import { hitFeelCamera, hitFeelFov } from './hitFeel';
 import { ContactShadows, StaticShadows } from './world/contactShadows';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -690,6 +691,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             camera.rotateY(n1 * 1.2 * D2R * k); camera.rotateX(n2 * 1.2 * D2R * k); camera.rotateZ(n3 * 2.0 * D2R * k);
             camera.translateX(n2 * 0.03 * k); camera.translateY(n1 * 0.03 * k);
         } }
+        hitFeelCamera(camera, sim, dt, !ov || !!(window as any).__camOvShake);   // impact kick along the blow + FOV pinch (src/hitFeel.ts)
         const cp = camera as THREE.PerspectiveCamera;
         if (DBG) (window as any).__camObj = camera;   // test hook: hit-feel checks (shake rotation, fov punch)
         // Near-clip-aware waterline: retain the nearby underside instead of cutting a hole through it.
@@ -700,7 +702,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         const targetFov = 62 + Math.min(14, speed * 0.25) + fx.fov;
         fovBase.current += (targetFov - fovBase.current) * Math.min(1, dt * 6);
         let punch = 0; { const sa = sim as any; if (sa.fovK) { sa.fovKT = (sa.fovKT || 0) + dt; const t = sa.fovKT, env = t < 0.05 ? t / 0.05 : Math.pow(Math.max(0, 1 - (t - 0.05) / 0.3), 3); punch = sa.fovK * env; if (t > 0.35) sa.fovK = 0; } if (sa.slam && sa.slam.ph === 0) punch += -2 * sa.slam.c; }   // punch-in (narrow): finisher -3, Slam -6, in 50 ms, out 300 ms; charging narrows -2
-        const fovNow = fovBase.current + punch;
+        const fovNow = fovBase.current + punch + hitFeelFov();
         if (Math.abs(cp.fov - fovNow) > 0.02) { cp.fov = fovNow; cp.updateProjectionMatrix(); }
         {   // water: animate, and split view (waterline across the screen when the camera is at the surface)
             waterMat.uniforms.uTime.value = sim.t; seabedMat.uniforms.uTime.value = sim.t; wallMat.uniforms.uTime.value = sim.t;
