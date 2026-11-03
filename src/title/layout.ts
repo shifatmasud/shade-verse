@@ -16,14 +16,16 @@ export const ART = {
         { id: 'sunset', quad: [[545, 232], [955, 208], [945, 600], [525, 628]], from: [-170, -60, -8], delay: 0.15 },
         { id: 'harbor', quad: [[985, 218], [1385, 248], [1370, 632], [970, 602]], from: [180, -40, 7], delay: 0.42 },
     ] as Panel[],
-    title: { cx: 962, cy: 814, size: 166, delay: 1.18 },
-    play: [962, 900, 78] as [number, number, number],
+    title: { cx: 962, cy: 750, size: 166, delay: 1.18 },
+    // the caption box behind the title, in units of the title size around its baseline (w: width, top/bot: above/below the baseline)
+    caption: { on: true, w: 4.96, top: 0.93, bot: 0.15 },
+    play: [962, 860, 78] as [number, number, number],
     // short landscape phones (e.g. 844x390): a tighter frame so the panels and heroes fill the height. The box is the two panels plus
-    // the title and Play below them; the web may leave the top of the screen (like it leaves its frame). The title tucks up just
-    // under the panels and Play sits right under it.
+    // the title and Play below them; the web may leave the top of the screen (like it leaves its frame). The title's caption box
+    // tucks up over the frames' bottom edge (as on desktop) and Play sits right under it.
     phone: {
         box: [505, 196, 1420, 878],
-        title: { cx: 962, cy: 762, size: 140, delay: 1.18 },
+        title: { cx: 962, cy: 726, size: 140, delay: 1.18 },
         play: [962, 840, 84],
     } as Frame,
 };

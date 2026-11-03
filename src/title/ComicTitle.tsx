@@ -30,17 +30,26 @@ function fit(W: number, H: number) {
 
 function Sticker({ phone }: { phone: boolean }) {
     // "SHADE VERSE" in Anton (OFL, ./anton-title.woff2, only these 7 letters): a tall, condensed comic display face (Shifat Nov 2
-    // 4:28 PM: "Shade verse text can be bigger condensed."), white with a thick ink edge and a hard offset shadow in each hero's colour
+    // 4:28 PM: "Shade verse text can be bigger condensed."), white with a thick ink edge and a hard offset shadow in each hero's colour.
+    // Straight, no lean, tucked up over the bottom edge of both frames like a comic caption (Shifat Nov 2 6:39 PM: "Shade verse Text tilt
+    // feels wrong & feels disconnected from the panels", 6:41 PM picked "Straighten the text and tuck it up so it overlaps the bottom edge of
+    // both panels, like a comic caption banner"). The caption box sits behind the words, centred on the seam between the two frames, in
+    // the frames' own border (off-white with an ink edge), so frames + caption read as one piece.
     const { cx, cy, size } = phone ? ART.phone.title : ART.title;
-    const gap = size * 0.13, sk = cy * 0.105;   // skewX(-6) shifts x by -tan(6deg)*y: put the pair back on centre
+    const gap = size * 0.13;
     const word = (t: string, x: number, shadow: string) => <g>
         <text x={x + size * 0.055} y={cy + size * 0.055} fill={shadow} stroke="#05040a" strokeWidth={size * 0.1} paintOrder="stroke" strokeLinejoin="round">{t}</text>
         <text x={x} y={cy} fill="#fbf8f2" stroke="#05040a" strokeWidth={size * 0.1} paintOrder="stroke" strokeLinejoin="round">{t}</text>
     </g>;
+    const B = ART.caption, bw = size * B.w, bt = cy - size * B.top, bb = cy + size * B.bot;
     return <g className="sv-sticker" style={{ animationDelay: `${ART.title.delay}s` }}>
-        <g transform={`rotate(-3 ${cx} ${cy}) skewX(-6)`} style={{ fontFamily: "'SV Anton','Anton','Impact','Arial Narrow',sans-serif", fontWeight: 400, fontSize: size, letterSpacing: '0.005em' }} textAnchor="end">
-            {word('SHADE', cx + sk - gap / 2, '#a855f7')}
-            <g textAnchor="start">{word('VERSE', cx + sk + gap / 2, '#ff1a96')}</g>
+        {B.on && <g>
+            <rect x={cx - bw / 2} y={bt} width={bw} height={bb - bt} fill="#05040a" stroke="#05040a" strokeWidth="16" strokeLinejoin="round" />
+            <rect x={cx - bw / 2} y={bt} width={bw} height={bb - bt} fill="#05040a" stroke="#f4efe4" strokeWidth="9" strokeLinejoin="round" />
+        </g>}
+        <g style={{ fontFamily: "'SV Anton','Anton','Impact','Arial Narrow',sans-serif", fontWeight: 400, fontSize: size, letterSpacing: '0.005em' }} textAnchor="end">
+            {word('SHADE', cx - gap / 2, '#a855f7')}
+            <g textAnchor="start">{word('VERSE', cx + gap / 2, '#ff1a96')}</g>
         </g>
     </g>;
 }
