@@ -111,10 +111,6 @@ function applyPose(by: Record<string, THREE.Bone>, pose: Pose) {
     for (const k in pose) { const b = by[k]; if (!b) continue; const [x, y, z] = pose[k]; e.set(x * D2R, y * D2R, z * D2R, 'XYZ'); b.quaternion.setFromEuler(e); }
 }
 
-const SOFT = () => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.3, 'rgba(255,255,255,0.8)'); g.addColorStop(0.65, 'rgba(255,255,255,0.22)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = g; x.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
-
 export interface HeroSpec {
     id: string; ghost: boolean; pose: Pose; rot: [number, number, number]; pos: [number, number, number];
     box: [number, number, number, number];          // design px (1920x1080) the render covers; the trimmed cut-out is placed inside it
@@ -143,10 +139,8 @@ export async function bakeHero(s: HeroSpec, scale: number): Promise<HTMLCanvasEl
         const mk = (r: number, color: number, over: boolean) => { const len = from.distanceTo(top); const geo = new THREE.CylinderGeometry(r, r, len, 10, 1, true); const me = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, depthTest: !over }));
             me.position.copy(from).lerp(top, 0.5); me.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); return me; };
         const ink = mk(0.04, 0x05040a, true), core = mk(0.019, 0xf4f1ff, true); ink.renderOrder = 2; core.renderOrder = 3; scene.add(ink, core);
-    } else {      // the pink Shock in her palm: soft glow, white-hot core, crackling bolts (the game's Shock colours)
-        const soft = SOFT();
-        const add = (size: number, color: number, op: number) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: soft, color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })); sp.scale.setScalar(size); sp.position.copy(hand); sp.renderOrder = 3; scene.add(sp); };
-        add(0.9, 0xff5cc0, 0.85); add(0.42, 0xffffff, 1);   // the wide soft glow is a screen-blended DOM layer on the title (it lights the panel)
+    } else {      // the pink Shock in her palm: crackling inked bolts (the game's Shock colours), comic style
+        // no soft orb or white disc at the palm (Shifat Nov 2 4:38 PM: "Soft orb looks bad in this illustration"): inked bolts only
         let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5;
         const glowM = new THREE.MeshBasicMaterial({ color: 0xff1a96, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
         const coreM = new THREE.MeshBasicMaterial({ color: 0xffd6ef, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });

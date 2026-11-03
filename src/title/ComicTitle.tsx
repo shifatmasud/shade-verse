@@ -57,7 +57,6 @@ export function ComicTitle({ muted, onMute, onStart, extra, leaving, again }: { 
     }, []);
     const half = f.k * Math.min(devicePixelRatio || 1, 2) <= 0.6;
     const [pcx, pcy, pd] = f.phone ? ART.phone.play : ART.play, playD = Math.max(pd, 52 / f.k);
-    const ghost = ART.heroes.find((h) => h.id === 'ghost')!;
     return <div ref={root} className={'sv-comic' + (leaving ? ' leaving' : '') + (again ? ' again' : '')}>
         <div className="sv-stage" style={{ width: ART.w, height: ART.h, transform: `translate3d(${f.tx}px,${f.ty}px,0) scale(${f.k})` }}>
             <div className="sv-push">
@@ -65,7 +64,6 @@ export function ComicTitle({ muted, onMute, onStart, extra, leaving, again }: { 
                     <PanelDefs />
                     {ART.panels.map((p) => <PanelArt key={p.id} p={p} />)}
                 </svg>
-                <div className="sv-glow" style={{ left: ghost.hand[0], top: ghost.hand[1], animationDelay: `${ghost.delay + 0.1}s, ${ghost.delay + 0.7}s` }} />
                 {ART.heroes.map((h) => {
                     const st = { left: h.x, top: h.y, width: h.w, height: h.h, animationDelay: `${h.delay}s`, '--px': `${h.pop[0]}px`, '--py': `${h.pop[1]}px` } as React.CSSProperties;
                     return <img key={h.id} className={'sv-hero sv-hero-' + h.id} src={url(h.id, half)} alt="" draggable={false} decoding="async" style={st} />;

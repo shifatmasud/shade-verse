@@ -102,12 +102,6 @@
 .sv-hero-ghost{animation-direction:normal,alternate-reverse}
 @keyframes sv-hero-in{from{opacity:0;transform:translate3d(var(--px),var(--py),0) scale(.7)}40%{opacity:1}to{opacity:1;transform:none}}
 @keyframes sv-float{to{transform:translate3d(0,-6px,0) rotate(-.4deg)}}
-/* Ghost's Shock lights the panel: a soft screen-blended glow at her palm that flares on and then breathes */
-.sv-glow{position:absolute;width:520px;height:520px;margin:-260px 0 0 -260px;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
-  background:radial-gradient(circle,rgba(255,120,200,.95) 0,rgba(255,26,150,.55) 18%,rgba(255,26,150,.18) 42%,rgba(255,26,150,0) 68%);
-  animation:sv-glow-in .5s ease-out both,sv-glow-breathe 1.6s ease-in-out infinite alternate}
-@keyframes sv-glow-in{from{opacity:0;transform:scale(.3)}to{opacity:1;transform:none}}
-@keyframes sv-glow-breathe{from{opacity:1;transform:scale(1)}to{opacity:.78;transform:scale(.92)}}
 .sv-sticker{transform-box:fill-box;transform-origin:50% 55%;animation:sv-stamp .42s cubic-bezier(0.2,1.5,0.4,1) both}
 @keyframes sv-stamp{from{opacity:0;transform:scale(1.9) rotate(-5deg)}35%{opacity:1}to{opacity:1;transform:none}}
 .sv-comic:not(.again) .sv-stage{animation:sv-thud .26s ease-out 1.54s both}
@@ -125,7 +119,7 @@
 .sv-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0}
 /* back from a game over: the art is already up, no second intro */
 .sv-comic.again *{animation-delay:0s!important}
-.sv-comic.again .sv-pg,.sv-comic.again .sv-hero,.sv-comic.again .sv-sticker,.sv-comic.again .sv-play,.sv-comic.again .sv-glow,.sv-comic.again .sv-hdr{animation-duration:.01s,5.5s!important}
+.sv-comic.again .sv-pg,.sv-comic.again .sv-hero,.sv-comic.again .sv-sticker,.sv-comic.again .sv-play,.sv-comic.again .sv-hdr{animation-duration:.01s,5.5s!important}
 /* the title's own HUD pieces step aside on the first screen (the new header carries the sound toggle) */
 .stage:has(.sv-comic:not(.leaving)) .hud,.stage:has(.sv-comic:not(.leaving)) .mute{visibility:hidden}
 @media (prefers-reduced-motion:reduce){.sv-comic *,.sv-comic .sv-stage{animation:none!important;transition:none!important}}
