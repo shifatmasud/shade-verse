@@ -1,7 +1,7 @@
 /**
  * The portfolio's header, for the Shade Verse first screen (Shifat Nov 2 3:24 PM: "Top left side logo like my portfolio. Top right
  * volume button like my portfolio"). Ported from surface-tension src/dom/ui/Header.tsx + app.css .header/.wordmark/.pill--quiet:
- *  - left: the wordmark, his flat mark (.82em) + a word, Inter 400 at body size, -0.04em; hover dims to .56, press .4;
+ *  - left: his flat mark ONLY, no word beside it (Shifat Nov 2 4:24 PM: "Top left logo don't need logo text. Symbol only.");
  *  - right: the quiet sound toggle, ONE thin stroke (his W19 note: "Volume button doesn't need volume icon just animate simple
  *    single wave line"): on, a gentle sine drifts; off, it eases to flat; static under reduced motion. 40 px tall, 44 px+ hit area.
  * The mute itself is the game's master mute (App passes muted / onToggle); the choice persists (localStorage 'sv-muted').
@@ -41,7 +41,7 @@ function Wave({ on }: { on: boolean }) {
 
 export function TitleHeader({ word, muted, onToggle }: { word: string; muted: boolean; onToggle: () => void }) {
     return <header className="sv-hdr" onClick={(e) => e.stopPropagation()}>
-        <span className="sv-wordmark"><span className="sv-wordmark__mark"><Mark /></span><span>{word}</span></span>
+        <span className="sv-wordmark" role="img" aria-label={word}><span className="sv-wordmark__mark"><Mark /></span></span>
         <button type="button" className="sv-sound" onClick={(e) => { e.stopPropagation(); onToggle(); }} aria-pressed={!muted} aria-label={muted ? 'Sound off' : 'Sound on'}><Wave on={!muted} /></button>
     </header>;
 }

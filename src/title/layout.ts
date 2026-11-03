@@ -14,7 +14,7 @@ export interface Hero { id: 'shadow' | 'ghost'; x: number; y: number; w: number;
 
 export const ART = {
     w: 1920, h: 1080,
-    box: [420, 20, 1600, 915] as [number, number, number, number],
+    box: [420, 20, 1600, 944] as [number, number, number, number],
     panels: [
         { id: 'sunset', quad: [[545, 232], [955, 208], [945, 600], [525, 628]], from: [-170, -60, -8], delay: 0.15 },
         { id: 'harbor', quad: [[985, 218], [1385, 248], [1370, 632], [970, 602]], from: [180, -40, 7], delay: 0.42 },
@@ -23,6 +23,6 @@ export const ART = {
         { id: 'shadow', ...(baked as any).shadow, delay: 0.78, pop: [-40, 60] },
         { id: 'ghost', ...(baked as any).ghost, delay: 0.92, pop: [40, 50] },
     ] as Hero[],
-    title: { cx: 962, cy: 748, size: 118, delay: 1.18 },
-    play: [962, 858, 84] as [number, number, number],
+    title: { cx: 962, cy: 814, size: 166, delay: 1.18 },
+    play: [962, 900, 78] as [number, number, number],
 };

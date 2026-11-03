@@ -15,22 +15,29 @@ import { TitleHeader } from './TitleHeader';
 const url = (id: string, half: boolean) => new URL(`./art/${id}${half ? '@h' : ''}.webp`, import.meta.url).href;   // vite bundles every ./art/*.webp
 
 function fit(W: number, H: number) {
-    const [x0, y0, x1, y1] = ART.box, top = Math.min(64, H * 0.12);
-    const k = Math.min((W * 0.94) / (x1 - x0), ((H - top * 0.35) * 0.97) / (y1 - y0));
+    const [x0, y0, x1, b1] = ART.box, top = Math.min(64, H * 0.12), [, pcy] = ART.play;
+    let y1 = b1, k = 1;
+    for (let i = 0; i < 2; i++) {   // the box grows by Play's 52 px minimum on small screens, so Play is never cut off
+        k = Math.min((W * 0.94) / (x1 - x0), ((H - top * 0.35) * 0.97) / (y1 - y0));
+        y1 = Math.max(b1, pcy + 26 / k + 8 / k);
+    }
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     return { k, tx: W / 2 - cx * k, ty: H / 2 + top * 0.12 - cy * k };
 }
 
 function Sticker() {
+    // "SHADE VERSE" in Anton (OFL, ./anton-title.woff2, only these 7 letters): a tall, condensed comic display face (Shifat Nov 2
+    // 4:28 PM: "Shade verse text can be bigger condensed."), white with a thick ink edge and a hard offset shadow in each hero's colour
     const { cx, cy, size } = ART.title;
+    const gap = size * 0.13, sk = cy * 0.105;   // skewX(-6) shifts x by -tan(6deg)*y: put the pair back on centre
     const word = (t: string, x: number, shadow: string) => <g>
-        <text x={x + 9} y={cy + 9} fill={shadow} stroke="#05040a" strokeWidth={size * 0.13} paintOrder="stroke" strokeLinejoin="round">{t}</text>
-        <text x={x} y={cy} fill="#fbf8f2" stroke="#05040a" strokeWidth={size * 0.13} paintOrder="stroke" strokeLinejoin="round">{t}</text>
+        <text x={x + size * 0.055} y={cy + size * 0.055} fill={shadow} stroke="#05040a" strokeWidth={size * 0.1} paintOrder="stroke" strokeLinejoin="round">{t}</text>
+        <text x={x} y={cy} fill="#fbf8f2" stroke="#05040a" strokeWidth={size * 0.1} paintOrder="stroke" strokeLinejoin="round">{t}</text>
     </g>;
     return <g className="sv-sticker" style={{ animationDelay: `${ART.title.delay}s` }}>
-        <g transform={`rotate(-4 ${cx} ${cy}) skewX(-9)`} style={{ fontFamily: "'SV Inter','Inter',system-ui,sans-serif", fontWeight: 900, fontSize: size, letterSpacing: '-0.035em' }} textAnchor="end">
-            {word('SHADE', cx + 0.12 * size + cy * 0.158 - 8, '#a855f7')}
-            <g textAnchor="start">{word('VERSE', cx + 0.12 * size + cy * 0.158 + 22, '#ff1a96')}</g>
+        <g transform={`rotate(-3 ${cx} ${cy}) skewX(-6)`} style={{ fontFamily: "'SV Anton','Anton','Impact','Arial Narrow',sans-serif", fontWeight: 400, fontSize: size, letterSpacing: '0.005em' }} textAnchor="end">
+            {word('SHADE', cx + sk - gap / 2, '#a855f7')}
+            <g textAnchor="start">{word('VERSE', cx + sk + gap / 2, '#ff1a96')}</g>
         </g>
     </g>;
 }

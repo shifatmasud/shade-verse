@@ -1,6 +1,9 @@
 /* Shade Verse title, in the aesthetic of Shifat's portfolio preloader (surface-tension src/styles/app.css .intro / .odo, tokens.css):
    black, white / silver, Inter 400 only, giant display vs tiny labels, the house eases (expo-out entrances 1 s, in-out exits),
    masked rolls for every change. Sizes come from the title box itself (container units), landscape phone to desktop. */
+/* the sticker title's face: Anton (SIL Open Font License 1.1, (c) 2020 The Anton Project Authors, github.com/googlefonts/AntonFont),
+   subset to S H A D E V R only (3 KB, inlined by the build); see ./anton-title.LICENSE.txt */
+@font-face{font-family:'SV Anton';src:url('./anton-title.woff2') format('woff2');font-weight:400;font-style:normal;font-display:block}
 @font-face{font-family:'SV Inter';src:url('./inter-title.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:block}
 .sv-title{--ease:cubic-bezier(0.19,1,0.22,1);--ease-io:cubic-bezier(0.65,0,0.35,1);--silver:#a9adb3;--silver3:#5f646b;
   --pad-x:max(4.2cqw,20px,env(safe-area-inset-left),env(safe-area-inset-right));--pad-y:clamp(14px,4.2cqh,34px);
@@ -74,7 +77,7 @@
   padding:max(var(--pad-y,18px),env(safe-area-inset-top)) var(--pad-x,24px) 0;font-family:'SV Inter','Inter',system-ui,sans-serif;color:#fafafa}
 .sv-hdr>*{pointer-events:auto}
 .sv-wordmark{font-weight:400;font-size:clamp(17px,1.25vw,20px);letter-spacing:-.04em;display:inline-flex;align-items:baseline;gap:1px;transition:opacity .24s cubic-bezier(0.19,1,0.22,1)}
-.sv-wordmark__mark{display:inline-block;width:.82em;height:.82em;margin-right:.4em;align-self:center}
+.sv-wordmark__mark{display:inline-block;width:1.05em;height:1.05em;align-self:center}
 .sv-wordmark__mark svg{display:block}
 .sv-sound{height:44px;min-width:44px;padding:0 10px;border:0;border-radius:999px;background:transparent;color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
   -webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:background-color .24s cubic-bezier(0.19,1,0.22,1)}
