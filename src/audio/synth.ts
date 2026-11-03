@@ -221,6 +221,28 @@ export const RECIPES: Record<string, Recipe> = {
         const b = O(c, 'sine', 60, 0.55, 2.2), bg = hit(c, 0.55, 0.005, 1.6); E(b.frequency, [[0.55, 70], [2.0, 30, 'e']]); chain(b, bg, c.destination);
         const n = N(c, 'brown', 0.55, 1.5, 392), lp = F(c, 'lowpass', 900), ng = hit(c, 0.55, 0.005, 1.3), ns = G(c, 0.8); chain(n, lp, ng, ns, c.destination);
     } },
+    // ---------------- audio polish (Nov 3): low-end layer for the big hits, Slam charge, UI tick ----------------
+    // thump: a short sub "body" under the recorded hit, so the heavy blows (finisher, dunk, Slam, Shock) carry the same weight as the
+    // camera kick of hitFeel.ts. Mostly < 120 Hz (a 2 ms beater click on top so it still reads on phone speakers), no ring, 0.45 s tail.
+    thump: { dur: 0.5, build: (c) => {
+        const b = O(c, 'sine', 90, 0, 0.5), bg = hit(c, 0, 0.004, 0.38); E(b.frequency, [[0, 92], [0.08, 52, 'e'], [0.4, 36, 'e']]); chain(b, bg, c.destination);
+        const t = O(c, 'triangle', 140, 0, 0.12), tg = hit(c, 0, 0.002, 0.07), ts = G(c, 0.35); E(t.frequency, [[0, 180], [0.06, 70, 'e']]); chain(t, tg, ts, c.destination);   // beater: what a phone speaker can play
+        const n = N(c, 'brown', 0, 0.2, 501), lp = F(c, 'lowpass', 240), ng = hit(c, 0, 0.002, 0.14), ns = G(c, 0.6); chain(n, lp, ng, ns, c.destination);
+        const k = N(c, 'white', 0, 0.01, 502), kl = F(c, 'lowpass', 2200), kg = hit(c, 0, 0.0005, 0.006), ks = G(c, 0.18); chain(k, kl, kg, ks, c.destination);
+    } },
+    // slam_charge: the K-hold past HOLD_MS (Slam charging) had no sound; a low rising swell with a soft energy shimmer, stopped on release
+    slam_charge: { dur: 1.6, build: (c, r) => {
+        const o = O(c, 'sawtooth', 55, 0, 1.6), o2 = O(c, 'sawtooth', 55.6, 0, 1.6), lp = F(c, 'lowpass', 220, 2.5), g = G(c, 0);
+        E(o.frequency, [[0, 52], [1.5, 104, 'e']]); E(o2.frequency, [[0, 52.5], [1.5, 105, 'e']]); E(lp.frequency, [[0, 180], [1.5, 1100, 'e']]); E(g.gain, [[0, 0.0001], [0.25, 0.25, 'e'], [1.45, 0.5, 'e'], [1.6, 0.0001, 'e']]);
+        o.connect(lp); o2.connect(lp); chain(lp, g, c.destination);
+        const sub = O(c, 'sine', 41, 0, 1.6), sg = G(c, 0); E(sub.frequency, [[0, 40], [1.5, 62]]); E(sg.gain, [[0, 0], [0.3, 0.35], [1.45, 0.55], [1.6, 0]]); chain(sub, sg, c.destination);
+        const s = N(c, 'pink', 0, 1.6, 511), bp = F(c, 'bandpass', 900, 1.8), ng = G(c, 0); E(bp.frequency, [[0, 700], [1.5, 2600, 'e']]); E(ng.gain, [[0, 0], [1.4, 0.12], [1.6, 0]]); chain(s, bp, ng, c.destination);
+    } },
+    // ui_tick: in-game sound-on confirmation (the HUD mute chip); one soft click, 60 ms
+    ui_tick: { dur: 0.08, build: (c) => {
+        const o = O(c, 'sine', 1500, 0, 0.08), g = hit(c, 0, 0.002, 0.05); E(o.frequency, [[0, 1650], [0.05, 1150, 'e']]); chain(o, g, c.destination);
+        const o2 = O(c, 'sine', 3300, 0, 0.03), g2 = hit(c, 0, 0.001, 0.015), s2 = G(c, 0.2); chain(o2, g2, s2, c.destination);
+    } },
     // ---------------- hooks for the Iron Man-style enemy/boss weapons (wire when that feature lands) ----------------
     repulsor_charge: { dur: 1.0, build: (c) => {
         const o = O(c, 'sine', 400, 0, 1), o2 = O(c, 'triangle', 404, 0, 1), g = G(c, 0); E(o.frequency, [[0, 380], [0.95, 1700, 'e']]); E(o2.frequency, [[0, 386], [0.95, 1720, 'e']]); E(g.gain, [[0, 0.0001], [0.9, 0.22, 'e'], [1, 0.0001, 'e']]); o.connect(g); o2.connect(g); g.connect(c.destination);

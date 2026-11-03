@@ -6,7 +6,7 @@ import { WEATHER } from '../world/env';
 const VO_MIX = 1.2;
 import { FALLS, HARBOR, ISLAND, isIsland, inHarbor, bridgeDeckY, isFarm, isIce, isPirate } from '../seaWorld';
 import { BANTER, type BanterTrig } from './banter';
-import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, PED_VOICE, type Sim } from '../sim';
+import { PARK, PARK_POND, WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, sandWeight, isLegacyCityCore, bridgeSurfaceAt, SNARE, enemyBodyOffset, PED_VOICE, getCompanionSim, type Sim } from '../sim';
 
 // small fading caption at the bottom of the screen ("Ghost: ...", "Shadow: ...")
 let capEl: HTMLDivElement | null = null, capT = 0;
@@ -32,7 +32,7 @@ export function surfaceAt(x: number, z: number, y: number, groundY: number): Sur
     return 'concrete';
 }
 
-interface Prev { web: boolean; spring: number; shotT: number; atkT: number; snareT: number; swim: boolean; dive: boolean; glide: boolean; mode: string; hit: number[]; down: number[]; speed: number }
+interface Prev { slamPh: number; cc: number; csn: number; muted: boolean; web: boolean; spring: number; shotT: number; atkT: number; snareT: number; swim: boolean; dive: boolean; glide: boolean; mode: string; hit: number[]; down: number[]; speed: number }
 
 /* Per-move hit sounds (Shifat Nov 2 3:42 PM on the synth layers of 77696ea: "Sounds wrong. Hit should sound like real hits. Study real sounds refs").
    Every hit is now a REAL recording (CC0 foley: boxing-mitt and punching-bag hits, face/body punches, a power kick, body falls, metal clanks;
@@ -43,6 +43,16 @@ interface Prev { web: boolean; spring: number; shotT: number; atkT: number; snar
 const HIT_SET: Record<number, [string, number, number]> = {
     1: ['jab', 0.78, 0], 2: ['cross', 0.78, 0], 3: ['kick', 0.8, 0], 4: ['launcher', 0.78, 0], 5: ['dunk', 0.85, 0], 6: ['webpull', 0.78, 0.22], 7: ['yank', 0.82, 0.25],
 };
+/* Audio polish (Nov 3): low-end layer matched to hitFeel.ts's camera kick. The recorded hit stays the voice of the blow; a short procedural
+   sub 'thump' underneath gives the heavy ones their weight, scaled like the kick: jab/cross/web-pull none, launcher light, yank light,
+   finisher (spin hook kick) and dunk medium, Shock and Slam heaviest. Pitch/level jittered each time so repeats never sound copy-pasted. */
+const THUMP: Record<number, number> = { 3: 0.5, 4: 0.28, 5: 0.6, 7: 0.3 };
+function thump(gain: number, o: { pos?: Vec3; rate?: number; delay?: number } = {}) {
+    if (gain <= 0.01) return;
+    audio.play('thump', { gain: gain * (0.9 + Math.random() * 0.15), rate: (o.rate ?? 1) * (0.94 + Math.random() * 0.1), pos: o.pos, ref: 10, prio: 4, when: o.delay ? audio.ctx.currentTime + o.delay : undefined });
+}
+/** move-specific whoosh for the melee wind-up: the jab is short and bright, the cross fuller, the spin kick a deeper, longer sweep */
+const SWISH: Record<number, [number, number]> = { 1: [0.34, 1.15], 2: [0.4, 1.0], 3: [0.5, 0.78], 4: [0.42, 0.9], 5: [0.46, 0.82], 6: [0.38, 0.95], 7: [0.4, 0.92] };
 const hitRR: Record<string, number> = {};
 /** plays one take of a hit-sprite set: round-robin, small random pitch/level */
 function playHit(set: string, gain: number, o: { pos?: Vec3; prio?: number; ref?: number; rate?: number } = {}) {
@@ -51,10 +61,10 @@ function playHit(set: string, gain: number, o: { pos?: Vec3; prio?: number; ref?
     audio.play('hits', { offset: off, dur, gain: gain * (0.92 + Math.random() * 0.16), rate: (o.rate ?? 1) * (0.96 + Math.random() * 0.08), pos: o.pos, ref: o.ref, prio: o.prio ?? 3 });
 }
 export class SoundDirector {
-    private p: Prev = { web: false, spring: 0, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
+    private p: Prev = { slamPh: -1, cc: 0, csn: 0, muted: false, web: false, spring: 0, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
     private stepAcc = 0; private stepI = 0;
     private intensity = 0; private idleT = 0; private combatT = 0; private swingVol = 0; private lastLand = -9;
-    private chargeV: any = null;
+    private chargeV: any = null; private slamV: any = null;
     // ---- character voices: one line at a time world-wide, per-kind cooldowns, so the world chatters without spamming ----
     private voGap = 0; private voCd: Record<string, number> = { shadow: 0, ghost: 0, robot: 0, boss: 0, ped: 0 }; private bossAggro = false;
     vo(kind: string, pick?: number[], o: { pos?: Vec3; gain?: number; cd?: number; force?: boolean } = {}) {
@@ -114,16 +124,23 @@ export class SoundDirector {
     onLand(hard: boolean) {
         const s = this.sim; if (s.t - this.lastLand < 0.15) return; this.lastLand = s.t;
         audio.play(hard ? 'land' : 'land_soft', { gain: hard ? 0.85 : 0.45, rate: 0.95 + Math.random() * 0.1, prio: 3 });
+        if (hard && !(this.sim as any).slam) thump(0.35, { rate: 1.08 });   // hard landing: a little body under it (the Slam has its own)
         this.step(1.0);
     }
     onHit() {   // real recorded hit per move (see HIT_SET)
         const m = (this.sim as any).mv, H = m ? HIT_SET[m.id] : undefined;
-        if (!H) playHit('cross', 0.62);   // web-shot hits, slam (its heavy ground layer comes from onBlast)
-        else { playHit(H[0], H[1]); if (H[2] > 0) audio.play('attach', { gain: H[2], rate: 1.05 + Math.random() * 0.1, prio: 2 }); }
+        const sa = this.sim as any, slam = sa.slam && sa.slam.ph >= 4, shock = (sa.snareT || 0) > 0;
+        if (!H) playHit('cross', slam ? 0.66 : shock ? 0.6 : 0.5);   // web-shot hits (lighter than a jab now: shot < jab in the weight order), slam/Shock (their low end comes from onBlast / the zap)
+        else { playHit(H[0], H[1]); if (H[2] > 0) audio.play('attach', { gain: H[2], rate: 1.05 + Math.random() * 0.1, prio: 2 }); thump(THUMP[m.id] ?? 0); }
         this.combatT = 6;
     }
-    onBlast(x: number, y: number, z: number) { playHit('dunk', 0.9, { pos: [x, y, z], rate: 0.92 }); this.combatT = 6; }
-    onHurt() { audio.play('hurt', { gain: 0.7, prio: 4 }); this.combatT = 6; if (Math.random() < 0.55 && this.banter('hurt')) return; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
+    onBlast(x: number, y: number, z: number) {
+        const sa = this.sim as any;
+        if (sa.slam && sa.slam.ph >= 4) { playHit('dunk', 0.82, { pos: [x, y, z], rate: 0.86 }); thump(0.7, { rate: 0.82 }); thump(0.3, { rate: 0.62, delay: 0.035 }); }   // Slam: the heaviest blow -> deepest, doubled sub (a 35 ms flam, felt more than heard)
+        else playHit('dunk', 0.66, { pos: [x, y, z], rate: 0.95, prio: 2 });   // web-shot detonation / bot-into-wall: was 0.9 on EVERY shot, louder than a jab; now under the melee hits
+        this.combatT = 6;
+    }
+    onHurt() { audio.play('hurt', { gain: 0.66 + Math.random() * 0.08, rate: 0.93 + Math.random() * 0.12, prio: 4 }); this.combatT = 6; if (Math.random() < 0.55 && this.banter('hurt')) return; if (Math.random() < 0.45) this.vo('shadow', [7, 8, 12], { cd: 5 }); }
     onOrb() { audio.play('orb', { gain: 0.45, rate: 1 + Math.min(this.sim.score, 20) * 0.012, prio: 2 }); }
     onFall() { audio.play('whoosh', { gain: 0.6, rate: 0.55, prio: 3 }); }
     onStart() { audio.playSoon('start_hit', { gain: 0.8, prio: 5 }); }
@@ -155,6 +172,9 @@ export class SoundDirector {
         const sp = Math.hypot(s.vel[0], s.vel[1], s.vel[2]), hs = Math.hypot(s.vel[0], s.vel[2]);
         const x = s.pos[0], y = s.pos[1], z = s.pos[2];
         if (p.mode !== s.mode && s.mode === 'play') this.onStart();
+        // in-game sound-on tick (HUD mute chip): only in play, only when turning sound back ON (a muted tick would be inaudible anyway); title untouched
+        if (play && p.muted && !audio.muted) audio.play('ui_tick', { gain: 0.35, when: audio.ctx.currentTime + 0.12, prio: 5 });
+        p.muted = audio.muted;
 
         // ---------- zone weights ----------
         const inBay = z < WATER_Z + 6, inLake = isLakeWater(x, z), surfY = inLake ? waterSurfaceAt(x, z, s.t) : WATER_Y;
@@ -208,10 +228,16 @@ export class SoundDirector {
             if (!s.web && p.web && !s.ground) audio.play('whoosh', { gain: 0.25 + 0.35 * clamp01(sp / 40), rate: 1.0 + clamp01(sp / 50) * 0.5, prio: 2 });
             if (s.spring > 0.3 && p.spring <= 0.05) audio.play('spring', { gain: 0.6, rate: 0.95 + Math.random() * 0.1, prio: 3 });
             if (s.shotT > p.shotT + 0.1) { audio.play('thwip', { gain: 0.55, rate: 1.2 + Math.random() * 0.15, prio: 3 }); this.combatT = 6; }
-            if (s.atkT > p.atkT + 0.1 && s.shotT <= p.shotT + 0.1) audio.play('swish', { gain: 0.4, rate: 0.9 + Math.random() * 0.25, prio: 2 });
+            if (s.atkT > p.atkT + 0.1 && s.shotT <= p.shotT + 0.1) { const W = SWISH[sa.mv?.id] ?? [0.4, 1]; audio.play('swish', { gain: W[0] * (0.9 + Math.random() * 0.2), rate: W[1] * (0.92 + Math.random() * 0.16), prio: 2 }); }
+            // Slam: holding K past HOLD_MS (ph 0 = charging) now has a rising charge swell; it cuts the moment the leap starts
+            const slPh = sa.slam ? sa.slam.ph : -1;
+            if (slPh === 0 && p.slamPh !== 0) { audio.stopVoice(this.slamV, 0.05); this.slamV = audio.play('slam_charge', { gain: 0.55, rate: 0.97 + Math.random() * 0.06, prio: 4 }); this.combatT = 8; }
+            if (slPh !== 0 && p.slamPh === 0) { audio.stopVoice(this.slamV, 0.06); this.slamV = null; }
+            if (slPh === 4 && p.slamPh !== 4 && p.slamPh >= 0) audio.play('whoosh', { gain: 0.45, rate: 0.6 + Math.random() * 0.08, prio: 3 });   // the dive down onto the ground
+            p.slamPh = slPh;
             const snT = sa.snareT || 0;
-            if (snT > 0 && !(p.snareT > 0)) { this.chargeV = audio.play('shock_charge', { gain: 0.6, prio: 4 }); this.combatT = 8; }
-            if (p.snareT > SNARE.IMPACT && snT <= SNARE.IMPACT) { audio.stopVoice(this.chargeV, 0.05); this.chargeV = null; audio.play('zap', { gain: 0.85, prio: 5 }); }
+            if (snT > 0 && !(p.snareT > 0)) { this.chargeV = audio.play('shock_charge', { gain: 0.6, rate: 0.97 + Math.random() * 0.06, prio: 4 }); this.combatT = 8; }
+            if (p.snareT > SNARE.IMPACT && snT <= SNARE.IMPACT) { audio.stopVoice(this.chargeV, 0.05); this.chargeV = null; audio.play('zap', { gain: 0.8 + Math.random() * 0.08, rate: 0.95 + Math.random() * 0.1, prio: 5 }); thump(0.8, { rate: 0.9 }); }   // Shock discharge: zap + sub thump (matches the hitFeel kick)
             if (s.swim !== p.swim || (s.dive && !p.dive)) audio.play('splash', { gain: s.swim ? 0.7 : 0.45, rate: 0.9 + Math.random() * 0.2, prio: 3 });
             if (s.glideOn && !p.glide) audio.play('whoosh', { gain: 0.25, rate: 0.7, prio: 1 });
             // footsteps: one per stride of travelled ground distance (stride grows with speed)
@@ -228,6 +254,19 @@ export class SoundDirector {
                 if (e.down > 0 && !(pd > 0)) audio.play(e.boss ? 'boss_down' : 'enemy_down', { gain: e.boss ? 1 : 0.75, rate: 0.92 + Math.random() * 0.16, pos, prio: e.boss ? 5 : 3, ref: e.boss ? 20 : 10, maxDist: 200 });
                 p.hit[i] = e.hit; p.down[i] = e.down;
             }
+            // Ghost (companion) runs on a silent event set, so her landed blows only had the robot's metal clank. Now each landed hit of hers
+            // plays her move's recorded hit (positional, a touch under Shadow's so the player's own blows stay on top) + the same thump layer.
+            const cs = getCompanionSim() as any;
+            if (cs && cs !== s) {
+                const cc = cs.combo || 0;
+                if (cc > p.cc) { const cm = cs.mv, H = cm ? HIT_SET[cm.id] : undefined, cpos: Vec3 = [cs.pos[0], cs.pos[1] + 1, cs.pos[2]];
+                    playHit(H ? H[0] : 'cross', (H ? H[1] : 0.5) * 0.72, { pos: cpos, prio: 2, ref: 10, rate: 1.04 });
+                    const tg = cm ? (THUMP[cm.id] ?? 0) : (cs.slam && cs.slam.ph >= 4 ? 0.8 : (cs.snareT || 0) > 0 ? 0.6 : 0); thump(tg * 0.6, { pos: cpos, rate: 1.05 }); }
+                p.cc = cc;
+                const csn = cs.snareT || 0;   // her pink Shock discharge was silent too
+                if (p.csn > SNARE.IMPACT && csn <= SNARE.IMPACT) { const cpos: Vec3 = [cs.pos[0], cs.pos[1] + 1, cs.pos[2]]; audio.play('zap', { gain: 0.6 + Math.random() * 0.08, rate: 1.06 + Math.random() * 0.08, pos: cpos, ref: 10, prio: 3 }); thump(0.45, { pos: cpos, rate: 1.0 }); }
+                p.csn = csn;
+            } else { p.cc = 0; p.csn = 0; }
 
             // ---------- character voices ----------
             this.voGap = Math.max(0, this.voGap - dt); for (const k in this.voCd) this.voCd[k] = Math.max(0, this.voCd[k] - dt);

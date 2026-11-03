@@ -42,7 +42,7 @@ export class AudioEngine {
     ctx: AudioContext | null = null;
     readonly phone = coarse;
     readonly maxVoices = coarse ? 8 : 14;
-    master!: GainNode; world!: GainNode; sfx!: GainNode; amb!: GainNode; music!: GainNode; muffle!: BiquadFilterNode;
+    master!: GainNode; /** the output stage (desktop limiter / phone soft clip): the last node before the speakers */ out!: AudioNode; world!: GainNode; sfx!: GainNode; amb!: GainNode; music!: GainNode; muffle!: BiquadFilterNode;
     bufs = new Map<string, AudioBuffer>();
     private loading = new Map<string, Promise<AudioBuffer | null>>();
     voices: Voice[] = [];
@@ -77,8 +77,13 @@ export class AudioEngine {
                 this.sfx.connect(this.world);
                 { const hs = c.createBiquadFilter(); hs.type = 'highshelf'; hs.frequency.value = 3800; hs.gain.value = -7; const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 8000; lp.Q.value = 0.5; this.amb.connect(hs); hs.connect(lp); lp.connect(this.world); }   // Shifat 6:30 PM 'ambient sounds softer, it's harsh': every ambient bed through a soft top-end roll-off (level stays 1x)
                 this.world.connect(this.muffle); this.muffle.connect(this.master); this.music.connect(this.master);   // Oct 31 7:50 PM fix: this routing had been swallowed by the comment above -> no sound at all (Shifat 7:44)
-                if (!this.phone) { const lim = c.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 6; lim.ratio.value = 8; lim.attack.value = 0.003; lim.release.value = 0.2; this.master.connect(lim); lim.connect(c.destination); }
-                else this.master.connect(c.destination);   // phone: no compressor (CPU); levels are set to leave headroom instead
+                if (!this.phone) { const lim = c.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 6; lim.ratio.value = 8; lim.attack.value = 0.003; lim.release.value = 0.2; this.master.connect(lim); lim.connect(c.destination); this.out = lim; }
+                else {   // phone: no compressor (CPU). Audio polish Nov 3: a WaveShaper soft clip instead (one table lookup per sample): exactly linear up to
+                    // 0.7, then bends smoothly toward 1.0, so a stacked big hit (recorded hit + thump + clank + KO) rounds off instead of hard-clipping
+                    const ws = c.createWaveShaper(), n = 2048, cv = new Float32Array(n);
+                    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x); cv[i] = a <= 0.7 ? x : Math.sign(x) * (0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
+                    ws.curve = cv; ws.oversample = 'none'; this.master.connect(ws); ws.connect(c.destination); this.out = ws;
+                }
                 this.preload(['start_hit', 'thwip', 'whoosh', 'attach', 'jump', 'land', 'land_soft', 'steps', 'hits', 'wind', 'city', 'swingair', 'punch', 'swish', 'metal', 'orb']);
             }
             if (this.ctx.state !== 'running' && !this.hidden) { const p = this.ctx.resume(); if (p && (p as any).catch) (p as any).catch(() => { /* ignore */ }); }
