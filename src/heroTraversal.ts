@@ -6,8 +6,8 @@ import { buildings, parkH } from './sim';
    SWING (reference 11.2-12.6 s, 20.0-20.9 s, 21.6-22.7 s): the body hangs from the line hand and pendulums with the rope, lagging it (spring), so right after
    the attach it is still laid out along the velocity; legs trail back on the down-swing and whip forward with knees up on the up-swing, torso leaning back. */
 
-type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; lU: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number; lc: number; fa: number; fav: number; fs: number; rw: number; rt: number };
-const tv = (rig: any): TV => rig.__tv || (rig.__tv = rig.root.userData.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0, lc: 0, fa: 0.2, fav: 0, fs: 0, rw: 0, rt: 0 });
+type TV = { on: boolean; w: number; p: number; pv: number; r: number; rv: number; lg: number; lgv: number; bw: number; fl: number; flT: number; flD: number; flP0: number; flV0: number; flE: number; tk: number; ya: number; fw: number; wg: boolean; lOn: number; lt: number; li: number; lh: number; lU: number; flDir: number; sp: number; spW: number; rl: number; rlv: number; hs: number; lc: number };
+const tv = (rig: any): TV => rig.__tv || (rig.__tv = { on: false, w: 0, p: 0, pv: 0, r: 0, rv: 0, lg: 0, lgv: 0, bw: 0, fl: 0, flT: 0, flD: 0.62, flP0: 0, flV0: 0, flE: 0.3, tk: 0, ya: 0, fw: 0, wg: true, lOn: 0, lt: 0, li: 0, lh: 0, flDir: -1, sp: 0, spW: 0, rl: 0, rlv: 0, hs: 0, lc: 0 });
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cl = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const sstep = (x: number) => { x = cl(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -131,7 +131,6 @@ export function traversalBones(sim: any, rig: any, dt: number) {
     fallBones(sim, rig, T, h);
     springBones(sim, rig, T, h);
     flipBones(sim, rig, T, h);
-    freeArm(sim, rig, T, h, sw);
     landBones(sim, rig, T, h);
     runLean(sim, rig, T, h);
 }
@@ -303,44 +302,6 @@ function flipBones(sim: any, rig: any, T: TV, h: number) {
     setB(B.spine, 0.5, 0, 0, k); setB(B.chest, 0.25, 0, 0, k); setB(B.head, 0.35, 0, 0, k);
     setB(B.uarmR, -1.25, 0, -0.55, k); setB(B.farmR, -1.9, 0, 0, k); setB(B.uarmL, -1.25, 0, 0.55, k); setB(B.farmL, -1.9, 0, 0, k);
 }
-/* FREE ARM (Shifat Nov 2 8:07 PM "Web swing must relax the non swinging hand. Now it looks awkward"; 8:08 PM "Free arm must not raise up"). It used to be held
-   out ~55 deg to the side, pulled up to the line on the rise, then thrown into the tuck on release. Now, from the attach through the release flip, the arm
-   that is not on the web hangs loose: shoulder dropped, upper arm close to the side (never lifted past ~20 deg forward or out), elbow softly bent (~22-30 deg),
-   hand by the hip/thigh, always below the waist. It leans a little toward gravity and trails the swing's momentum on a soft under-damped spring, so it lags
-   and sways with the arc (follow-through) instead of being locked. Poses only; the line arm, legs, body and the swing itself are unchanged. */
-function freeArm(sim: any, rig: any, T: TV, h: number, sw: boolean) {
-    const B = rig.b, pr = rig.poseRoot as THREE.Group;
-    if (sw) { T.rt = 0; T.rw = T.bw; }
-    else if (T.fs) {   // released: stays relaxed through the release flip (+0.2 s), then hands the arm back to whatever pose follows
-        T.rt += h;
-        const keep = free(sim) && !sim.web && !(sim.spring > 0) && (T.fl > 0 || T.rt < 0.2 || T.tk > 0.05) && T.rt < 1.2;
-        if (!keep) T.rw += (0 - T.rw) * Math.min(1, h * (free(sim) ? 6 : 14));
-    }
-    if (T.rw < 0.003) { T.rw = 0; T.fs = 0; T.fa = 0.12; T.fav = 0; return; }
-    const so = T.fs || 1, side = so < 0 ? 'L' : 'R', v = sim.vel, hsN = Math.hypot(v[0], v[2]);
-    const acc = cl((hsN - T.hs) / Math.max(h, 1e-3) / 30, -1, 1);   // T.hs = last frame's speed (runLean writes it after this)
-    const g = (T.fl ? 0 : 0.3) * (1 - T.tk), px = cl(wrapPi(pr.rotation.x), -0.9, 0.9);
-    const tgt = 0.04 - px * g * 0.8 + acc * 0.08;   // hang (+ a little toward gravity) + a touch of lag on speed-up
-    [T.fa, T.fav] = spring(T.fa, T.fav, cl(tgt, -0.3, 0.3), 40, 9, h);
-    const fa = cl(T.fa, -0.33, 0.5), sway = cl(T.fav / 4, -1, 1);
-    const out = cl(0.1 - so * cl(wrapPi(pr.rotation.z), -0.5, 0.5) * 0.3 * (1 - T.tk), 0.08, 0.3);   // just clear of the hip; hangs a touch with the roll
-    setB(B['uarm' + side], fa, 0, so * out, T.rw);
-    setB(B['farm' + side], -0.24 - 0.04 * sway, 0, 0, T.rw);
-    // hard rule (8:08 PM "Free arm must not raise up"): whatever the torso does (roll, release-flip tuck and open), the upper arm is soft-capped at ~26 deg off the
-    // body's own down axis (hips -> chest), so the hand stays below the waist on every frame. Below ~22 deg (the normal hang) it is untouched.
-    rig.root.updateWorldMatrix(true, true);
-    const ua = B['uarm' + side], fr = B['farm' + side];
-    B.hips.getWorldPosition(_fa1); B.chest.getWorldPosition(_fa2); _fa2.sub(_fa1).normalize();
-    ua.getWorldPosition(_fa1); fr.getWorldPosition(_fa3); _fa3.sub(_fa1).normalize();
-    const ang = Math.acos(cl(-_fa3.dot(_fa2), -1, 1)), A0 = 0.38;
-    if (ang > A0 + 1e-3) {
-        const cap = A0 + 0.07 * Math.tanh((ang - A0) / 0.07);
-        _fa4.copy(_fa3).addScaledVector(_fa2, -_fa3.dot(_fa2)); if (_fa4.lengthSq() < 1e-8) _fa4.set(so, 0, 0); _fa4.normalize();
-        _tg.copy(_fa1).addScaledVector(_fa2, -Math.cos(cap)).addScaledVector(_fa4, Math.sin(cap));
-        aim(ua, fr, _tg, T.rw);
-    }
-}
-const _fa1 = new THREE.Vector3(), _fa2 = new THREE.Vector3(), _fa3 = new THREE.Vector3(), _fa4 = new THREE.Vector3();
 function swingBones(sim: any, rig: any, T: TV, h: number, sw: boolean) {
     const B = rig.b;
     const v = sim.vel, up = cl(v[1] / 9, -1, 1);
@@ -354,13 +315,15 @@ function swingBones(sim: any, rig: any, T: TV, h: number, sw: boolean) {
     setB(B.hips, 0, 0, 0, w);
     const pr = rig.poseRoot as THREE.Group;
     setB(B.head, cl(-pr.rotation.x * 0.55, -0.7, 0.7) + 0.12, 0, 0, w);
-    // arms: line hand reaches the anchor; the free arm is posed in freeArm() (relaxed, never raised)
+    // arms: line hand reaches the anchor; the free arm balances out to the side and comes up to the line on the rise (both hands, ref 12.0-12.5 s)
     const rLine = sim.swings % 2 === 1, line = rLine ? 'R' : 'L', free = rLine ? 'L' : 'R', so = rLine ? -1 : 1;
     setB(B['uarm' + line], -2.6, 0, 0, w); setB(B['farm' + line], -0.15, 0, 0, w);
-    T.fs = so;
+    setB(B['uarm' + free], 0.35 - fwd * 0.4, 0, so * (0.95 - fwd * 0.3), w); setB(B['farm' + free], -0.6, 0, 0, w);
     if (!sim.web) return;
     rig.root.updateWorldMatrix(true, true);
     _tg.set(sim.anchor[0], sim.anchor[1], sim.anchor[2]);
     aim(B['uarm' + line], B['farm' + line], _tg, w); rig.root.updateWorldMatrix(true, true);
     aim(B['farm' + line], B['hand' + line], _tg, w);
+    const rf = w * 0.75 * sstep(up * 1.4);
+    if (rf > 0.02) { rig.root.updateWorldMatrix(true, true); aim(B['uarm' + free], B['farm' + free], _tg, rf); rig.root.updateWorldMatrix(true, true); aim(B['farm' + free], B['hand' + free], _tg, rf); }
 }
