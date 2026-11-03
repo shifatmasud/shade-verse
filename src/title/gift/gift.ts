@@ -10,10 +10,11 @@
  * box itself (./GiftStage) is a dynamic import fetched on the first click only; its small context is destroyed on close.
  */
 import { engine, props, scroll, titleStill } from './env'
+const DBG = !!(import.meta as any).env.VITE_DBG   // QA hooks only in instrumented builds (VITE_DBG=1), never in release
 
 type Stage = { close(): Promise<void>; show?: () => void; park?: () => Promise<void> }
 /** R7.09 QA: a step of the open, in ms since the tap (window.__giftT) */
-export function giftMark(k: string) { const T = (window as any).__giftT; if (T && T[k] === undefined) T[k] = Math.round(performance.now() - T.tap) }
+export function giftMark(k: string) { if (!DBG) return; const T = (window as any).__giftT; if (T && T[k] === undefined) T[k] = Math.round(performance.now() - T.tap) }
 let state: 'idle' | 'open' | 'closing' = 'idle'
 let root: HTMLDivElement | null = null
 let stage: Stage | null = null
@@ -73,7 +74,7 @@ export function giftPrewarm() {
     parked = { ...shell, stage: s }
   }).catch(() => { warming = false })
 }
-;(window as any).__giftPark = () => ({ parked: !!parked, warming })
+;if (DBG) (window as any).__giftPark = () => ({ parked: !!parked, warming })
 
 function hold(on: boolean) {
   if (held === on) return
@@ -87,7 +88,7 @@ export function giftOpen(from?: HTMLElement | null) {
   if (state === 'closing') { wantOpen = { from }; return }
   if (state !== 'idle') return
   state = 'open'
-  ;(window as any).__giftT = { tap: performance.now() }   // R7.09 QA: the open's timeline (ms since the tap)
+  if (DBG) (window as any).__giftT = { tap: performance.now() }   // R7.09 QA: the open's timeline (ms since the tap)
   back = from ?? (document.activeElement as HTMLElement | null)
   // R7.09: a stage parked ahead of the tap (giftPrewarm) is taken as is: its dialog, built and linked, only waits to be shown
   const pk = parked; parked = null
@@ -153,7 +154,7 @@ export function giftTrigger(e: { preventDefault(): void; currentTarget: EventTar
 export function giftKey(e: { key: string; preventDefault(): void; currentTarget: EventTarget | null }) {
   if (e.key === 'Enter' || e.key === ' ') giftTrigger(e)
 }
-;(window as any).__gift = { open: giftOpen, close: giftClose }
+;if (DBG) (window as any).__gift = { open: giftOpen, close: giftClose }
 
 /** Shade Verse: the title is going (Play): release a stage kept from an earlier open (its WebGL context, scene, textures) */
 export function giftDispose() {

@@ -7,6 +7,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { waterRenderY } from '../water/waveHeight';
 import { WL_GLSL } from '../water/waterline';
+const DBG = !!(import.meta as any).env.VITE_DBG;   // QA hooks only in instrumented builds
 
 // Underwater life (user must-haves 10:29): kelp forest, jellyfish, tiny bubbles, god rays, current drift. Reference cues (viewed underwater shots): cyan light band near the surface, light shafts, sandy floor, haze to teal. All procedural approximations, small instance counts.
 const UW_FOG = 'vec3(0.09, 0.43, 0.55)';
@@ -141,7 +142,7 @@ export function Underwater({ sim }: { sim: Sim }) {
                 const fin = Math.min(1, B.age[i] / 0.35), fout = Math.min(1, (B.life[i] - B.age[i]) / 0.6, (top - B.y[i]) / 0.35);
                 pa.setXYZ(i, bx, B.y[i], bz); ca.setW(i, fin * Math.max(0, fout)); za.setX(i, B.sz[i] * (1 + 0.15 * Math.min(1, B.age[i] / 3)));
             }
-            za.needsUpdate = true; (window as any).__bub = B.age.reduce((s: number, a: number, i: number) => s + (a < B.life[i] ? 1 : 0), 0);
+            za.needsUpdate = true; if (DBG) (window as any).__bub = B.age.reduce((s: number, a: number, i: number) => s + (a < B.life[i] ? 1 : 0), 0);
             pa.needsUpdate = true; ca.needsUpdate = true; bub.current.geometry.computeBoundingSphere();
             rays.current.position.set(0, 0, 0); rays.current.rotation.y = 0; rayMat.uniforms.uSurf.value = surfaceY;
             { const cam = st.camera, cx = cam.position.x, cz = cam.position.z, sun = TOD.sunU.value as THREE.Vector3, tilt = Math.min(0.5, Math.hypot(sun.x, sun.z) * 0.45), sa = Math.atan2(sun.x, sun.z), m = rayInst.current;

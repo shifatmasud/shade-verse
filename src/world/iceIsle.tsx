@@ -64,7 +64,7 @@ function chunksGeo() {   // floating ice chunks: flattened, jagged low-poly berg
     for (let t = 0, n = 0; n < (PHONE ? 26 : 38) && t < 900; t++) {
         const a = rnd() * 6.283, r = ICE.R * (1.12 + rnd() * 1.3), x = ICE.cx + Math.cos(a) * r, z = ICE.cz + Math.sin(a) * r;
         if (iceRR(x, z) < 1.08) continue; n++;
-        const s = 1.2 + rnd() * (n < 6 ? 6 : 2.6), g = new THREE.IcosahedronGeometry(1, 0).toNonIndexed(), p = g.attributes.position as THREE.BufferAttribute;
+        const s = 1.2 + rnd() * (n < 6 ? 6 : 2.6), g0 = new THREE.IcosahedronGeometry(1, 0), g = g0.index ? g0.toNonIndexed() : g0, p = g.attributes.position as THREE.BufferAttribute;
         for (let k = 0; k < p.count; k++) { const vx = p.getX(k), vy = p.getY(k), vz = p.getZ(k), h = Math.sin(vx * 7.1 + vz * 3.3 + n) * 0.18; p.setXYZ(k, vx * (1 + h), vy > 0 ? vy * 0.55 + 0.25 : vy * 1.2, vz * (1 - h)); }
         g.scale(s * (1 + rnd() * 0.8), s, s); g.rotateY(rnd() * 6.28); g.translate(x, -1.0 + s * 0.12, z); g.computeVertexNormals();
         const c = new THREE.Color('#d9f1fa'), nc = g.attributes.normal as THREE.BufferAttribute, col = new Float32Array(p.count * 3), ic = new Float32Array(p.count);

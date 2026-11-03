@@ -93,7 +93,7 @@ export function RoofProps({ harborOnly = false }: { harborOnly?: boolean }) {   
     </group>;
 }
 function mergeTwo(a: THREE.BufferGeometry, b: THREE.BufferGeometry) {
-    const A = a.toNonIndexed(), B = b.toNonIndexed(), g = new THREE.BufferGeometry();
+    const A = a.index ? a.toNonIndexed() : a, B = b.index ? b.toNonIndexed() : b, g = new THREE.BufferGeometry();
     for (const k of ['position', 'normal']) { const x = A.getAttribute(k).array as Float32Array, y = B.getAttribute(k).array as Float32Array, o = new Float32Array(x.length + y.length); o.set(x); o.set(y, x.length); g.setAttribute(k, new THREE.BufferAttribute(o, 3)); }
     return g;
 }

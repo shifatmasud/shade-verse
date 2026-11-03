@@ -295,5 +295,6 @@ export function bindInk(el: HTMLElement | null, kind: Kind) {
     el.removeEventListener('pointerdown', down); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up)
     el.removeEventListener('focus', focus); el.removeEventListener('blur', blur); el.removeEventListener('keydown', kd); el.removeEventListener('keyup', ku)
     const i = btns.indexOf(b); if (i >= 0) btns.splice(i, 1); f.remove()
+    if (magnetOn && !btns.length) { magnetOn = false; window.removeEventListener('pointermove', onMove) }   // the last button gone (title unmounted): stop listening
   }
 }

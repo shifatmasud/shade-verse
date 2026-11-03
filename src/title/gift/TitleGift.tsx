@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react'
 import { ART } from '../layout'
 import { mountGiftSticker } from './giftSticker'
+const DBG = !!(import.meta as any).env.VITE_DBG   // QA hooks only in instrumented builds (VITE_DBG=1), never in release
 import { giftDispose, giftIsOpen } from './gift'
 import { audio } from '../../audio/engine'
 import './giftTitle.css'
@@ -52,7 +53,7 @@ export function TitleGift({ f, again }: { f: Fit; again: boolean }) {
         const guard = (e: KeyboardEvent) => { if (giftIsOpen() && e.key !== 'Escape' && !(e.target instanceof Element && e.target.closest('.gift'))) e.stopPropagation() }
         addEventListener('keydown', guard, true)
         const t = window.setTimeout(() => ctl.set(true), again ? 700 : 2200)
-        ;(window as any).__svGift = { ctl, open: () => b.click(), isOpen: giftIsOpen }
+        if (DBG) (window as any).__svGift = { ctl, open: () => b.click(), isOpen: giftIsOpen }
         return () => { clearTimeout(t); removeEventListener('keydown', guard, true); evs.forEach((n) => b.removeEventListener(n, own)); b.removeEventListener('pointerdown', wake, true); ctl.destroy(); giftDispose() }
     }, [size]) // eslint-disable-line
     const s = f.phone ? SPOT.phone : SPOT.desk

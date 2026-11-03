@@ -15,7 +15,8 @@ import { browser, viewport, onViewport } from './env'
 import { LOW_END_GPU } from './envGL'
 import { blurFadeIn, blurFadeOut } from './blurFade'
 import './gift.css'
-import { giftSound } from './giftSound'
+import { giftSound, giftSoundWav } from './giftSound'
+const DBG = !!(import.meta as any).env.VITE_DBG   // QA hooks only in instrumented builds (VITE_DBG=1), never in release
 import { giftMark } from './gift'   // R7.09 QA timeline
 const GIFT_OLD = /[?&]giftold\b/.test(location.search)
 import { CSS3DRenderer, CSS3DObject } from 'three/examples/jsm/renderers/CSS3DRenderer.js' // R6.88b CRISP TYPE
@@ -584,7 +585,7 @@ export function mountGift(root: HTMLElement, opts: GiftOpts): GiftHandle {
  *  task), its programs submitted one object per frame and drawn once off screen, then held until show(): the tap only
  *  reveals it. */
 export function mountGiftParked(root: HTMLElement, opts: GiftOpts): Promise<GiftHandle> {
-  ;(window as any).__giftT = { tap: performance.now(), parkedWarm: true }   // QA: the warm's own timeline (replaced by the tap's)
+  if (DBG) (window as any).__giftT = { tap: performance.now(), parkedWarm: true }   // QA: the warm's own timeline (replaced by the tap's)
   return new Promise((res) => {
     const g = mountSteps(root, { ...opts, parked: true })
     const step = () => { const r = g.next(); if (r.done) res(r.value); else requestAnimationFrame(step) }
@@ -971,7 +972,7 @@ function* mountSteps(root: HTMLElement, opts: GiftOpts): Generator<void, GiftHan
     }
   }
 
-  const QA = /[?&]giftqa/.test(location.search)
+  const QA = DBG && /[?&]giftqa/.test(location.search)
   let qaT = 0
   const step = (n: number) => { for (let i = 0; i < n; i++) { qaT += 1 / 30; update(qaT, 1 / 30) } draw(); return qaT }
   const tick = (now: number) => {
@@ -1061,7 +1062,7 @@ function* mountSteps(root: HTMLElement, opts: GiftOpts): Generator<void, GiftHan
   addEventListener('resize', onResizeStill)
 
   // test hooks for the QA rig
-  ;(window as any).__giftStage = { open: (x?: number, y?: number) => open(x, y), step, state: () => ({ ready, opened, spin, dpr, ctaOn }), wav: QA ? () => import('./giftSound').then((m) => m.giftSoundWav(TL)) : undefined }
+  if (DBG) (window as any).__giftStage = { open: (x?: number, y?: number) => open(x, y), step, state: () => ({ ready, opened, spin, dpr, ctaOn }), wav: QA ? () => giftSoundWav(TL) : undefined }
 
   return {
     show,
@@ -1115,7 +1116,7 @@ function* mountSteps(root: HTMLElement, opts: GiftOpts): Generator<void, GiftHan
       for (const t of [frontTex, backTex, btnTex, btnTexH, stripeTex, haloTex, shadowTex, sTex]) t.dispose()
       envRT?.dispose(); envB.dispose()
       renderer.dispose(); renderer.forceContextLoss()
-      delete (window as any).__giftStage
+      if (DBG) delete (window as any).__giftStage
       canvas.remove(); css.domElement.remove(); sr.remove(); hit.remove(); cta.remove(); closeBtn.remove()
     },
   }

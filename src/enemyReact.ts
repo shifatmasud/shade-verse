@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getCompanionSim, enemyBodyOffset } from './sim';
+import { getCompanionSim, enemyBodyOffset, shadowFloorAt, waterSurfaceAt } from './sim';
 import { emit, SH_GLOW, SH_DUST, LOW, tint } from './combatFx';
 
 /* Enemy hit reactions (Nov 2 combat-feel pass, reworked Nov 3 "never stop" queue: make the struck bot READ the hit). Render-only:
@@ -21,7 +21,7 @@ import { emit, SH_GLOW, SH_DUST, LOW, tint } from './combatFx';
    Bosses get the same read at a fraction: a small tilt away from the blow and a softer flash (bossReact). */
 type HR = { h: number; t: number; pt: number; ux: number; uz: number; a: number; av: number; s: number; sv: number; y: number; yv: number;
     w: number; kind: number; n: number; r: number; g: number; b: number; halo: number;
-    ko?: number; kt?: number; ka0?: number; kimp?: number; kpuff?: number; kmote?: number };
+    ko?: number; kt?: number; ka0?: number; kimp?: number; kpuff?: number; kmote?: number; kh?: number; kfl?: number; kwet?: number };
 const _ax = new THREE.Vector3(), _c = new THREE.Color(), _q2 = new THREE.Quaternion(), _ax2 = new THREE.Vector3(), _ay = new THREE.Vector3(0, 1, 0);
 const PURPLE = 0xa855f7;
 const DBG = !!(import.meta as any).env.VITE_DBG;
@@ -40,10 +40,12 @@ function classify(hit: number, ea: any): number {
     if (hit <= 0.31) return K_HOLD;
     return hit >= 0.7 ? K_SHOCK : hit >= 0.52 ? K_FIN : K_CROSS;
 }
-function spring(x: number, v: number, tgt: number, k: number, c: number, dt: number): [number, number] {
+/** under-damped spring step; the result rides one preallocated scratch (no per-frame tuple) */
+const _sp = { x: 0, v: 0 };
+function spring(x: number, v: number, tgt: number, k: number, c: number, dt: number): typeof _sp {
     const n = Math.max(1, Math.ceil(dt / (1 / 120))), h = dt / n;
     for (let i = 0; i < n; i++) { v += (k * (tgt - x) - c * v) * h; x += v * h; }
-    return [x, v];
+    _sp.x = x; _sp.v = v; return _sp;
 }
 /** the striking hero (whichever of Shadow / Ghost is nearer the bot) */
 function striker(e: any, sim: any) {
@@ -85,9 +87,9 @@ export function enemyReact(e: any, sim: any, dt: number, hold: number): ReactOut
     const lean = e.down > 0 || hold <= 0 ? 0 : Math.min(1, hit / 0.3) * (0.04 + 0.46 * w);
     if (!frozen && dt > 0) {
         st.pt += dt;   // the white pop holds through the freeze, then cools
-        [st.a, st.av] = spring(st.a, st.av, lean, 260, 14, dt);
-        [st.s, st.sv] = spring(st.s, st.sv, 0, 420, 16, dt);
-        [st.y, st.yv] = spring(st.y, st.yv, 0, 110, 9, dt);
+        { const r = spring(st.a, st.av, lean, 260, 14, dt); st.a = r.x; st.av = r.v; }
+        { const r = spring(st.s, st.sv, 0, 420, 16, dt); st.s = r.x; st.sv = r.v; }
+        { const r = spring(st.y, st.yv, 0, 110, 9, dt); st.y = r.x; st.yv = r.v; }
     }
     const a = Math.max(-0.95, Math.min(0.95, st.a)), s = Math.max(-0.34, Math.min(0.25, st.s));
     _ax.set(st.uz, 0, -st.ux); out.q.setFromAxisAngle(_ax, a);   // up x away: positive angle tips the top away from the blow
@@ -136,30 +138,36 @@ export function enemyReact(e: any, sim: any, dt: number, hold: number): ReactOut
          EMBERS  - the killing blow's hero colour lingers on the shell and cools;
          DISSOLVE- last 1.0 s: the shell warms into a soft glow in the hero's colour, swells a touch, then eases away while soft glowing motes
                    drift up off it, ending in one soft glow puff - no pop. Soft, blurry, additive glow only (Shifat: no sharp VFX). */
-const KO_ANG = 1.5, KO_FALL = 0.36, KO_DIS = 1.0;
+const KO_ANG = 1.5, KO_FALL = 0.36, KO_DIS = 1.0, KO_G = 18, KO_DROP_MAX = 1.2;   // airborne KO drop: ~gravity, capped so even a high drone lands well before the dissolve
 const _kq = new THREE.Quaternion();
 const ss = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 function koPose(st: HR, e: any, sim: any, dt: number, frozen: boolean, aNow: number) {
     if (!st.ko) {
         st.ko = 1; st.kt = 0; st.ka0 = Math.max(0, Math.min(0.9, aNow)); st.kimp = 0; st.kpuff = 0; st.kmote = 0;
+        // a hover drone (or any airborne bot) is KO'd where it hangs: it drops to the floor below first (falls under a gravity ease,
+        // h*u^2), toppling on the way down, and the impact bounce + dust happen when it lands. Ground bots: no drop (unchanged).
+        st.kh = 0; st.kfl = KO_FALL; st.kwet = 0;
+        if (e.air && !(DBG && (globalThis as any).__koNoDrop)) { const fl = shadowFloorAt(e.x, e.y, e.z), fy = fl ?? waterSurfaceAt(e.x, e.z), h = e.y - fy;
+            if (h > 0.25) { st.kh = h; st.kwet = fl === null ? 1 : 0; st.kfl = Math.max(KO_FALL, Math.min(KO_DROP_MAX, Math.sqrt(2 * h / KO_G))); } }
         if (st.pt > 0.3) { const hs = striker(e, sim), dx = e.x - hs.pos[0], dz = e.z - hs.pos[2], d = Math.hypot(dx, dz); if (d > 0.01) { st.ux = dx / d; st.uz = dz / d; } }   // downed without a fresh blow (e.g. a blast): fall away from the nearer hero
     }
     if (!frozen && dt > 0) st.kt! += dt;
-    const kt = st.kt!, a0 = st.ka0!, w = st.w;
+    const kt = st.kt!, a0 = st.ka0!, w = st.w, TF = st.kfl ?? KO_FALL, kh = st.kh || 0;
     let th: number;
-    if (kt < KO_FALL) { const u = kt / KO_FALL; th = a0 + (KO_ANG - a0) * u * u; }
-    else { const tb = kt - KO_FALL; th = KO_ANG - (0.1 + 0.08 * w) * Math.exp(-tb / 0.12) * Math.abs(Math.sin(tb * Math.PI / 0.16)); }
+    if (kt < TF) { const u = kt / TF; th = a0 + (KO_ANG - a0) * u * u; }
+    else { const tb = kt - TF; th = KO_ANG - (0.1 + 0.08 * w) * Math.exp(-tb / 0.12) * Math.abs(Math.sin(tb * Math.PI / 0.16)); }
     // pivot on the leading foot edge (half the bot's depth ahead along the fall): offset = h(u(1-cos) + up sin)
     const sc = e.kind === 3 ? 1 : 1.25, hd = 0.24 * sc, c = Math.cos(th), sn = Math.sin(th);
     _ax.set(st.uz, 0, -st.ux); out.q.setFromAxisAngle(_ax, th);
     if (Math.abs(st.y) > 1e-4) { _kq.setFromAxisAngle(_ay, Math.max(-0.5, Math.min(0.5, st.y)) * 0.6); out.q.multiply(_kq); }
-    out.jx += st.ux * hd * (1 - c); out.jz += st.uz * hd * (1 - c); out.jy += hd * sn - 0.04 * ss(0, 1, th / KO_ANG);
+    const drop = kh > 0 ? (kt < TF ? kh * (kt / TF) * (kt / TF) : kh) : 0;   // airborne KO: fall to the floor (h*u^2), then lie there
+    out.jx += st.ux * hd * (1 - c); out.jz += st.uz * hd * (1 - c); out.jy += hd * sn - 0.04 * ss(0, 1, th / KO_ANG) - drop;
     // IMPACT: squash + soft dust and a faint ground glow along the body
-    const bodyY = e.y + (e.ly || 0), len = Math.max(0.8, Math.min(2.2, enemyBodyOffset(e) * 2));
+    const bodyY = e.y + (e.ly || 0) - drop, len = Math.max(0.8, Math.min(2.2, enemyBodyOffset(e) * 2));
     const col = ((Math.round(st.r * 255) << 16) | (Math.round(st.g * 255) << 8) | Math.round(st.b * 255));
-    if (!st.kimp && kt >= KO_FALL) {
+    if (!st.kimp && kt >= TF) {
         st.kimp = 1; st.sv -= 6 + 4 * w;
-        const n = LOW ? 2 : 4;
+        const n = st.kwet ? 0 : LOW ? 2 : 4;   // no ground dust off water
         for (let i = 0; i < n; i++) { const f = (i + 0.5) / n * len, px = e.x + st.ux * f, pz = e.z + st.uz * f, sx = (Math.random() - 0.5) * 1.2;
             emit(SH_DUST, px, bodyY + 0.12, pz, -st.uz * sx + st.ux * 0.5, 0.35 + Math.random() * 0.3, st.ux * sx + st.uz * 0.5, 0.55, 0.5, 1.4, 0x9aa3b8, 0.32, 0, 2.5, 0.12, 1.5); }
         emit(SH_GLOW, e.x + st.ux * len * 0.5, bodyY + 0.15, e.z + st.uz * len * 0.5, 0, 0.1, 0, 0.35, 1.0, 2.2, col, 0.3, 0, 3, 0.12, 2);
@@ -170,7 +178,7 @@ function koPose(st: HR, e: any, sim: any, dt: number, frozen: boolean, aNow: num
     const gl = ss(0, 0.5, f), hot = 1 - 0.6 * gl;   // white body tone gives way to the hero colour
     const lift = 4.6 * gl + ember, pt = st.pt, pk = pt < 0.5 ? (3 + 3 * w) * Math.exp(-pt / (0.035 + 0.05 * w)) * (0.45 + 0.55 * w) * hot : 0;   // the killing blow's white-hot pop, as in enemyReact
     out.r = 1 + pk + lift * (st.r * 1.6 - 0.25) + 0.9 * gl; out.g = 1 + pk + lift * (st.g * 1.6 - 0.25) + 0.9 * gl; out.b = 1 + pk + lift * (st.b * 1.6 - 0.25) + 0.9 * gl;
-    out.hot = true; out.ko = true; out.limp = ss(0, KO_FALL, kt);   // limbs stop walking as it goes over
+    out.hot = true; out.ko = true; out.limp = ss(0, TF, kt);   // limbs stop walking as it goes over
     out.ksc = Math.max(0.001, (1 + 0.07 * Math.sin(Math.PI * Math.min(1, f / 0.5))) * (1 - ss(0.45, 1, f)));   // glows at full size first, then eases away
     out.jy += 0.22 * f * f;
     if (f > 0.08 && f < 0.97 && !frozen && dt > 0) {   // soft glowing motes drifting up off the body
@@ -204,7 +212,7 @@ export function bossReact(boss: any, sim: any, dt: number): BossReactOut {
     }
     st.h = hit; st.t += dt;
     const frozen = frozenNow(sim, st.t);
-    if (!frozen && dt > 0) { st.pt += dt; [st.a, st.av] = spring(st.a, st.av, 0, 120, 8, dt); }
+    if (!frozen && dt > 0) { st.pt += dt; { const r = spring(st.a, st.av, 0, 120, 8, dt); st.a = r.x; st.av = r.v; } }
     const a = boss.down > 0 ? 0 : Math.max(-0.12, Math.min(0.12, st.a));
     _ax.set(st.uz, 0, -st.ux); bout.q.setFromAxisAngle(_ax, a);
     const pop = st.pt < 0.4 ? Math.exp(-st.pt / (0.03 + 0.03 * st.w)) * (0.25 + 0.35 * st.w) : 0, glow = Math.min(1, hit / 0.3) * 0.18;
@@ -225,7 +233,7 @@ function reactV1(e: any, sim: any, dt: number, hold: number): ReactOut {
     }
     st.h = hit; st.t += dt;
     const frozen = frozenNow(sim, st.t);
-    if (!frozen) { st.pt += dt; [st.a, st.av] = spring(st.a, st.av, e.down > 0 ? 0 : hold, 260, 14, dt); [st.s, st.sv] = spring(st.s, st.sv, 0, 420, 16, dt); }
+    if (!frozen) { st.pt += dt; { const r = spring(st.a, st.av, e.down > 0 ? 0 : hold, 260, 14, dt); st.a = r.x; st.av = r.v; } { const r = spring(st.s, st.sv, 0, 420, 16, dt); st.s = r.x; st.sv = r.v; } }
     const a = Math.max(-0.9, Math.min(0.9, st.a)), s = Math.max(-0.3, Math.min(0.25, st.s));
     _ax.set(st.uz, 0, -st.ux); out.q.setFromAxisAngle(_ax, a);
     out.sy = 1 + s; out.sxz = 1 / Math.sqrt(out.sy); out.jy = 0;

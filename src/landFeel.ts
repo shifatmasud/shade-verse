@@ -50,7 +50,8 @@ const dip = { t: 9, a: 0, p: 0 };
 /** per frame, after the chase camera is placed: puffs for both heroes, dip for the player's camera */
 export function landFeel(camera: THREE.Camera, sim: any, ghost: any, dt: number, camOn: boolean) {
     if (off()) return;
-    for (const s of [sim, ghost]) {
+    for (let hi = 0; hi < 2; hi++) {   // both heroes, no per-frame array
+        const s = hi ? ghost : sim;
         if (!s || !s.pos) continue;
         const li = touchdown(s); if (!li) continue;
         const hard = (s.landHard || 0) > 0;

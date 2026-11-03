@@ -16,6 +16,7 @@ import { giftOpen } from './gift'
 import { Spring } from './spring'   // R6.91: the wall stickers' springs
 import { audio } from './env'
 import { stickerGL } from './stickerGL'   // R6.92b: the trail refracts the sticker (drawn by the hero pass)
+const DBG = !!(import.meta as any).env.VITE_DBG   // QA hooks only in instrumented builds (VITE_DBG=1), never in release
 
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
 
@@ -315,6 +316,6 @@ export function mountGiftSticker(btn: HTMLButtonElement) {
   // a click opens the gift unless it ended a drag or a peel (Enter / Space on the button arrive here as clicks too)
   const open = (e: Event) => { e.preventDefault(); if (suppressClick) { suppressClick = false; return } if (st.fly > 0) return; giftOpen(btn) }
   btn.addEventListener('click', open)
-  ;(window as any).__giftSticker = { set, state: () => ({ shown, points: pts.length, S, W, k, peel: +st.peel.value.toFixed(3), lift: +st.lift.value.toFixed(3), ox: +st.ox.value.toFixed(1), oy: +st.oy.value.toFixed(1), fly: st.fly }), at: (t: number) => { fixedT = t; if (raf) { cancelAnimationFrame(raf); raf = 0 } frame(0) }, live: () => { fixedT = -1 } }
+  if (DBG) (window as any).__giftSticker = { set, state: () => ({ shown, points: pts.length, S, W, k, peel: +st.peel.value.toFixed(3), lift: +st.lift.value.toFixed(3), ox: +st.ox.value.toFixed(1), oy: +st.oy.value.toFixed(1), fly: st.fly }), at: (t: number) => { fixedT = t; if (raf) { cancelAnimationFrame(raf); raf = 0 } frame(0) }, live: () => { fixedT = -1 } }
   return { set, still, destroy() { if (stickerGL.el === btn) { stickerGL.el = null; stickerGL.cv = null }; if (raf) cancelAnimationFrame(raf); if (iraf) cancelAnimationFrame(iraf); if (reborn) clearTimeout(reborn); btn.removeEventListener('click', open); window.removeEventListener('touchmove', onTouchMove, { capture: true } as EventListenerOptions); window.removeEventListener('blur', onBlur); cv.remove() } }
 }

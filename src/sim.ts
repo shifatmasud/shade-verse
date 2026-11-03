@@ -230,7 +230,7 @@ export interface Input { meleeHeld?: boolean; meleeAt?: number; slamHeld?: boole
 export interface Events { orb: () => void; fall: () => void; attach: () => void; release: () => void; jump: () => void; hit: () => void; hurt: () => void; ko: () => void; land: (hard: boolean) => void; blast?: (x: number, y: number, z: number) => void; shot?: (kind: 'charge' | 'bolt' | 'impact' | 'uniCharge' | 'uniStart' | 'uniMove' | 'uniStop', x: number, y: number, z: number) => void }
 
 export const input: Input = { rideQ: false, attackQ: false, dodgeQ: false, mx: 0, my: 0, swing: false, keys: {}, jumpQ: false, swingQ: false, glide: false };
-(globalThis as any).__svMainInput = input;
+if ((import.meta as any).env.VITE_DBG) (globalThis as any).__svMainInput = input;
 let companionSim: Sim | null = null;
 export function setCompanionSim(s: Sim | null) { companionSim = s; }
 export function getCompanionSim() { return companionSim; }
