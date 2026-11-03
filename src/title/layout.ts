@@ -13,8 +13,9 @@ export const ART = {
     w: 1920, h: 1080,
     box: [420, 20, 1600, 944] as [number, number, number, number],
     panels: [
-        { id: 'sunset', quad: [[563, 232], [973, 208], [963, 600], [543, 628]], from: [-170, -60, -8], delay: 0.15 },
+        // Shadow drawn last so it overlaps Ghost's frame at the seam (Shifat Nov 2 7:23 PM)
         { id: 'harbor', quad: [[985, 218], [1385, 248], [1370, 632], [970, 602]], from: [180, -40, 7], delay: 0.42 },
+        { id: 'sunset', quad: [[593, 232], [1003, 208], [993, 600], [573, 628]], from: [-170, -60, -8], delay: 0.15 },
     ] as Panel[],
     title: { cx: 962, cy: 750, size: 166, delay: 1.18 },
     // the caption box behind the title, in units of the title size around its baseline (w: width, top/bot: above/below the baseline)
