@@ -14,6 +14,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createTitleLogo, type TitleLogo } from './logo3d';
 import { paintReels, rollPositions, REEL } from './odometer';
 import { ControlMap } from './ControlMap';
+import { ComicTitle } from './ComicTitle';
 import './title.css';
 
 type Phase = 'title' | 'load' | 'lift' | 'gone';
@@ -30,9 +31,11 @@ export interface TitleProps {
     onReady: () => void;                // counter painted 100: gameplay begins as the curtain lifts
     extra?: React.ReactNode;            // game over: the orbs line
     desk?: boolean;                     // mouse/keyboard or gamepad: the control map shows in game after the curtain
+    muted: boolean;                     // master mute (the first screen's portfolio sound toggle)
+    onMute: () => void;
 }
 
-export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, extra, desk }: TitleProps) {
+export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, extra, desk, muted, onMute }: TitleProps) {
     const reduced = !!reducedMQ?.matches;
     const [phase, setPhase] = useState<Phase>(mode === 'play' ? 'gone' : 'title');
     const [shown, setShown] = useState(false);
@@ -40,7 +43,8 @@ export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, 
     const root = useRef<HTMLDivElement>(null), cv = useRef<HTMLCanvasElement>(null), count = useRef<HTMLDivElement>(null);
     const logo = useRef<TitleLogo | null>(null);
     const cb = useRef({ progress, ready, onReady }); cb.current = { progress, ready, onReady };
-    const dropNext = useRef(false), sawPlay = useRef(mode === 'play');
+    const dropNext = useRef(false), sawPlay = useRef(mode === 'play'), comicSeen = useRef(false);
+    useEffect(() => { if (phase !== 'title') comicSeen.current = true; }, [phase]);   // back from a game over: no second intro
     useLayoutEffect(() => {   // after a game over the panel comes back down from the top (the curtain, reversed)
         if (!dropNext.current || phase !== 'title') return; dropNext.current = false;
         if (root.current && !reduced) root.current.animate([{ transform: 'translateY(-100%)' }, { transform: 'translateY(0%)' }], { duration: 800, easing: EASE_INOUT });
@@ -62,9 +66,10 @@ export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, 
         return () => { live = false; };
     }, []);
 
-    // the 3D mark: alive on the title and through the load, disposed once the curtain is gone
+    // the 3D mark: made on Play (the first screen is the comic art), alive through the load, disposed once the curtain is gone
     useEffect(() => {
         if (phase === 'gone') { logo.current?.dispose(); logo.current = null; return; }
+        if (phase === 'title') return;
         if (!logo.current && cv.current) logo.current = createTitleLogo(cv.current, reduced);
         const r = () => logo.current?.resize();
         addEventListener('resize', r);
@@ -129,6 +134,7 @@ export function TitleScreen({ mode, loading, progress, ready, onStart, onReady, 
                 <span className="sv-pct">%</span>
             </div></div>
         </div>
+        {(phase === 'title' || phase === 'load') && <ComicTitle muted={muted} onMute={onMute} onStart={onStart} extra={phase === 'title' ? extra : undefined} leaving={phase !== 'title'} again={comicSeen.current && phase === 'title'} />}
         <div className="sv-br">
             {extra && <div className="sv-mask"><div className="sv-meta sv-extra">{extra}</div></div>}
             <div className="sv-mask"><div className="sv-meta">by Shifat Masud</div></div>

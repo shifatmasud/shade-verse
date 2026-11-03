@@ -242,6 +242,7 @@ export function App() {
         {/* Nov 2 (Shifat 2:59 PM 'See my portfolio preloader & follow that aesthetics to redesign our title screen. Use the 3d logo'): black, his 3D mark,
             Inter, masked-roll odometer on the real preload after Play, curtain lift into the game (src/title/) */}
         <TitleScreen mode={hud.mode} loading={load.on} progress={preloadProgress} ready={() => readyRef.current} onStart={start} onReady={begin} desk={desk}
+            muted={muted} onMute={() => { audio.unlock(); mutedRef.current = !mutedRef.current; setMuted(mutedRef.current); audio.setMuted(mutedRef.current); }}
             extra={hud.mode === 'over' ? <><IOrb /><Pips n={Math.min(10, hud.score)} /></> : null} />
     </div>;
 }
