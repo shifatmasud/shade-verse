@@ -15,7 +15,7 @@ type Drive = { L: number; D: number; lean: number; A: number; twist: number; hee
 const DRIVE: Record<number, Drive> = {
     1: { L: 0.2, D: 0.05, lean: 0.17, A: 0.45, twist: 0.2, heel: 0.35, lead: 0.16, hold: 0.03 },
     2: { L: 0.34, D: 0.1, lean: 0.26, A: 0.6, twist: -0.3, heel: 1, lead: 0.1, hold: 0.04 },
-    3: { L: 0.06, D: -0.07, lean: 0, A: 0.25, twist: 0, heel: 0, lead: 0, hold: 0.06 },
+    3: { L: 0.06, D: -0.03, lean: 0, A: 0.25, twist: 0, heel: 0, lead: 0, hold: 0.06 },
     4: { L: 0.1, D: -0.08, lean: -0.1, A: 0.7, twist: 0, heel: 0, lead: 0, hold: 0.05 },
     6: { L: 0.12, D: 0.04, lean: 0.12, A: 0.4, twist: 0, heel: 0.5, lead: 0.1, hold: 0.04 },
     7: { L: -0.12, D: 0.05, lean: -0.14, A: 0.4, twist: 0, heel: 0, lead: 0, hold: 0.06 },

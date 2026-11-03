@@ -58,6 +58,9 @@ if (scen === 'combo' || scen === 'slam' || scen === 'kick') {
     }
     await p.evaluate(() => { window.__ts = 0; const s = window.__game.sim, q = s.pos; const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
       window.__camOv = [q[0] + fz * 5.2 + fx * 2.2, q[1] + 1.0, q[2] - fx * 5.2 + fz * 2.2, q[0] + fx * 0.6, q[1] + 0.4, q[2] + fz * 0.6]; });
+    if (process.env.CAMV) await p.evaluate((cv) => { const s = window.__game.sim, q = s.pos; const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
+      const v = cv === 'side' ? [-fz, fx] : cv === 'front' ? [fx * 0.8 + fz * 0.6, fz * 0.8 - fx * 0.6] : [-fx, -fz];
+      window.__camOv = [q[0] + v[0] * 4.6, q[1] + (cv === 'front' ? 1.6 : 0.8), q[2] + v[1] * 4.6, q[0], q[1] + 0.6, q[2]]; }, process.env.CAMV);   // CAMV=side|front|behind overrides the 3/4 camera
     if (scen === 'kick' && i >= 2 && i <= 4) await p.evaluate((i) => { const s = window.__game.sim, q = s.pos; const fx = Math.sin(s.ang), fz = Math.cos(s.ang);
       const v = i === 2 ? [-fz, fx] : i === 3 ? [fx * 0.8 + fz * 0.6, fz * 0.8 - fx * 0.6] : [-fx, -fz];   // 2 = pure side (level), 3 = front (from the target's side, off its shoulder so the bot does not block), 4 = behind
       window.__camOv = [q[0] + v[0] * 4.6, q[1] + (i === 3 ? 1.6 : 0.8), q[2] + v[1] * 4.6, q[0], q[1] + 0.6, q[2]]; }, i);
