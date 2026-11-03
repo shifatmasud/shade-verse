@@ -13,7 +13,7 @@ export const ART = {
     w: 1920, h: 1080,
     box: [420, 20, 1600, 944] as [number, number, number, number],
     panels: [
-        { id: 'sunset', quad: [[545, 232], [955, 208], [945, 600], [525, 628]], from: [-170, -60, -8], delay: 0.15 },
+        { id: 'sunset', quad: [[563, 232], [973, 208], [963, 600], [543, 628]], from: [-170, -60, -8], delay: 0.15 },
         { id: 'harbor', quad: [[985, 218], [1385, 248], [1370, 632], [970, 602]], from: [180, -40, 7], delay: 0.42 },
     ] as Panel[],
     title: { cx: 962, cy: 750, size: 166, delay: 1.18 },
