@@ -29,21 +29,58 @@ const SOFT_DOT = (() => { const c = document.createElement('canvas'); c.width = 
     g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.85)'); g.addColorStop(0.7, 'rgba(255,255,255,0.25)'); g.addColorStop(1, 'rgba(255,255,255,0)');
     x.fillStyle = g; x.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 
+/* Ghost's heroine build (Shifat Nov 2 3:50 PM: "Ghosts body need to be feminine like our illustrations too"). Rest-pose vertex reshape only:
+   Shadow's mesh, UVs, skin weights and bones are reused untouched, so every animation, the ink outline (rebuilt normals) and the hitboxes
+   stay as they were. Torso: defined waist, fuller hips, narrower upper chest, a soft bust. Limbs: each vertex is slimmed radially around
+   the bone segments it is skinned to, blended by its own skin weights (smooth across joints): slimmer arms and hands, thighs slim toward
+   the knee (hips keep their width), slimmer calves. Shoulders: arm-skinned vertices sit 6 cm further in and the upper chest edge narrows,
+   so the shoulder flaps stay but scale with the frame. Head/hood a touch smaller. */
+const FEM_LIMB: Record<string, number> = { uarmL: 0.72, uarmR: 0.72, farmL: 0.75, farmR: 0.75, handL: 0.80, handR: 0.80, thighL: 0.84, thighR: 0.84, shinL: 0.80, shinR: 0.80, footL: 0.90, footR: 0.90, head: 0.90, neck: 0.88 };
+const FEM_ARMS = new Set(['uarmL', 'farmL', 'handL', 'uarmR', 'farmR', 'handR']);
 function feminineHeroData() {
     const d = JSON.parse(JSON.stringify(heroData)) as any;
-    const p: number[] = d.pos;
+    const p: number[] = d.pos, si: number[] = d.si, sw: number[] = d.sw, bones: { n: string; p: number; h: number[] }[] = d.bones;
     const gauss = (y: number, center: number, width: number) => Math.exp(-(((y - center) / width) ** 2));
-    for (let i = 0; i < p.length; i += 3) {
+    const sstep = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const child: number[] = bones.map(() => -1);
+    bones.forEach((b, i) => { if (b.p >= 0 && child[b.p] < 0) child[b.p] = i; });
+    const q = [0, 0, 0], r = [0, 0, 0];
+    for (let v = 0, i = 0; i < p.length; v++, i += 3) {
         const x = p[i], y = p[i + 1], z = p[i + 2];
-        // A small, smooth torso-only shape change: fuller hips, a defined waist,
-        // and narrower shoulders. The mesh, suit panels and bone hierarchy stay Shadow's.
+        // torso
         const torsoWeight = Math.max(0, 1 - Math.abs(x) / 0.34);
-        const hip = 1 + 0.13 * gauss(y, 0.92, 0.15);
-        const waist = 1 - 0.20 * gauss(y, 1.18, 0.15);
-        const chest = 1 - 0.07 * gauss(y, 1.52, 0.16);
+        const hip = 1 + 0.17 * gauss(y, 0.93, 0.15);
+        const waist = 1 - 0.27 * gauss(y, 1.18, 0.14);
+        const chest = 1 - 0.10 * gauss(y, 1.52, 0.16);
         const factor = 1 + ((y < 1.06 ? hip : y < 1.36 ? waist : chest) - 1) * torsoWeight;
-        p[i] = x * factor;
-        if (Math.abs(x) < 0.27 && z > 0) p[i + 2] += 0.025 * torsoWeight * gauss(y, 1.38, 0.17);
+        q[0] = x * factor; q[1] = y; q[2] = z + (Math.abs(x) < 0.27 && z > 0 ? 0.03 * torsoWeight * gauss(y, 1.42, 0.12) : 0);
+        // limbs, blended by skin weight
+        let ox = 0, oy = 0, oz = 0, wsum = 0, armW = 0;
+        for (let k = 0; k < 4; k++) {
+            const w = sw[v * 4 + k]; if (w <= 0) continue;
+            const bi = si[v * 4 + k], b = bones[bi], s = FEM_LIMB[b.n];
+            r[0] = q[0]; r[1] = q[1]; r[2] = q[2];
+            if (FEM_ARMS.has(b.n)) armW += w;
+            if (s !== undefined) {
+                const h0 = b.h, c = child[bi];
+                if (c >= 0 && b.n !== 'head' && b.n !== 'neck') {
+                    const h1 = bones[c].h, ax = h1[0] - h0[0], ay = h1[1] - h0[1], az = h1[2] - h0[2], L = Math.hypot(ax, ay, az);
+                    const ux = ax / L, uy = ay / L, uz = az / L, vx = q[0] - h0[0], vy = q[1] - h0[1], vz = q[2] - h0[2];
+                    const t = vx * ux + vy * uy + vz * uz;
+                    const ss = b.n.startsWith('thigh') ? 1 - (1 - s) * sstep(0, 0.55, t / L) : s;
+                    r[0] = h0[0] + ux * t + (vx - ux * t) * ss; r[1] = h0[1] + uy * t + (vy - uy * t) * ss; r[2] = h0[2] + uz * t + (vz - uz * t) * ss;
+                } else {
+                    const cx = b.n === 'head' || b.n === 'neck' ? 0 : h0[0], cy = b.n === 'head' || b.n === 'neck' ? 1.72 : h0[1], cz = b.n === 'head' || b.n === 'neck' ? 0 : h0[2];
+                    r[0] = cx + (q[0] - cx) * s; r[1] = cy + (q[1] - cy) * s; r[2] = cz + (q[2] - cz) * s;
+                }
+            }
+            ox += r[0] * w; oy += r[1] * w; oz += r[2] * w; wsum += w;
+        }
+        if (wsum > 0) { ox /= wsum; oy /= wsum; oz /= wsum; armW /= wsum; } else { ox = q[0]; oy = q[1]; oz = q[2]; }
+        // narrower shoulders
+        ox -= Math.sign(ox) * 0.06 * armW;
+        ox *= 1 - 0.20 * sstep(1.38, 1.55, oy) * (1 - armW) * sstep(0.10, 0.30, Math.abs(ox));
+        p[i] = ox; p[i + 1] = oy; p[i + 2] = oz;
     }
     d.rebuildNormals = true;
     return d;
