@@ -42,9 +42,9 @@ vec3 starsLite(vec3 dn){ if(dn.y<0.06) return vec3(0.0); vec2 sp=dn.xz/(abs(dn.y
 
 /* clouds shared by sky + sea */
 export const CLOUD_GLSL = `
+float cloudH(vec2 i){ return fract(sin(mod(dot(i,vec2(127.1,311.7)),6.2831853))*43758.5); }   /* same hash as before, but the sin argument is range-reduced first: Intel UHD's sin() loses precision at arguments in the 1e4 range and the noise lattice showed as blocks */
 float cloudN(vec2 p){vec2 i=floor(p),u=fract(p);u=u*u*(3.0-2.0*u);
- float a=fract(sin(dot(i,vec2(127.1,311.7)))*43758.5),b=fract(sin(dot(i+vec2(1,0),vec2(127.1,311.7)))*43758.5),
-       c2=fract(sin(dot(i+vec2(0,1),vec2(127.1,311.7)))*43758.5),d=fract(sin(dot(i+vec2(1,1),vec2(127.1,311.7)))*43758.5);
+ float a=cloudH(i),b=cloudH(i+vec2(1,0)),c2=cloudH(i+vec2(0,1)),d=cloudH(i+vec2(1,1));
  return mix(mix(a,b,u.x),mix(c2,d,u.x),u.y);}
 float cloudFbm(vec2 p){ p+=vec2(cloudN(p*0.5),cloudN(p*0.5+7.3))*0.9;   /* domain warp -> billowy cauliflower puffs */
  float f=0.0,a=0.55; for(int i=0;i<5;i++){ f+=a*cloudN(p); p=mat2(1.6,1.2,-1.2,1.6)*p+vec2(3.1,1.7); a*=0.48; } return f; }
@@ -58,10 +58,10 @@ vec4 cloudSky(vec3 dn, vec3 sun, float t, float warm, float rain, vec3 hor){
   float cl=smoothstep(0.25,0.75,cloudN(cp*0.32+11.0)); float f=cloudFbm(cp)+0.3*cl-0.12, f2=cloudFbm(cp+sd2)+0.3*cl-0.12;
   float cov=mix(0.56,0.44,rain);
   float er=(cloudN(cp*5.3+t*0.01)*0.6+cloudN(cp*11.0)*0.4)*0.16;   /* edge erosion -> cauliflower puff edges, soft */
-  float d=smoothstep(cov,cov+0.2,f-er), d2=smoothstep(cov,cov+0.2,f2-er);
+  float d=smoothstep(cov-0.035,cov+0.235,f-er), d2=smoothstep(cov-0.035,cov+0.235,f2-er);
   float hz=smoothstep(0.0,0.16,dn.y);
   if(d<=0.001) return vec4(0.0);
-  float d3=smoothstep(cov,cov+0.2,cloudFbm(cp*0.93)+0.3*cl-0.12-er);   /* cloud mass above this point (toward the zenith) -> we are in the lower part: darker, flatter grey base like real cumulus */
+  float d3=smoothstep(cov-0.035,cov+0.235,cloudFbm(cp*0.93)+0.3*cl-0.12-er);   /* cloud mass above this point (toward the zenith) -> we are in the lower part: darker, flatter grey base like real cumulus */
   float T=exp(-2.6*d2)*mix(1.0,0.55,d3*d), pw=1.0-exp(-3.0*d);
   float lit=clamp(T*mix(1.0,pw,0.6)*1.25,0.0,1.0);
   float ph=pow(g,6.0)*0.6+pow(g,40.0)*0.9;
