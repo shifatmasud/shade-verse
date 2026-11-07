@@ -25,11 +25,12 @@ export const WL_GLSL = `uniform vec4 uWL; uniform vec4 uWLq[7];
 float wlAt(int i){ vec4 v = uWLq[i / 4]; int c = i - (i / 4) * 4; return c == 0 ? v.x : (c == 1 ? v.y : (c == 2 ? v.z : v.w)); }
 float wlY(float x){ float f = clamp(x * 12.0 + 12.0, 0.0, 23.999); int i = int(f); float t = f - float(i);
   float p0 = wlAt(max(i - 1, 0)), p1 = wlAt(i), p2 = wlAt(i + 1), p3 = wlAt(min(i + 2, 24));
-  float a = atan(x * uWLq[6].z) + uWLq[6].y, T = uWL.x;   /* the column's world heading: the ripple stays put on the water when the camera turns */
-  return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)))   /* Catmull-Rom through the 25 solved columns */
-    + uWL.z * (0.020 * sin(a * 9.0 + T * 1.3) + 0.010 * sin(a * 23.0 - T * 2.1) + 0.004 * sin(a * 53.0 + T * 3.7)); }   /* meniscus ripple (the mesh carries no sub-metre waves): in the shared cut, so sea and tint still agree; full when the lens itself is in the water, faint when the line is the far horizon */
+  return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0))); }   /* Catmull-Rom through the 25 solved columns. The meniscus ripple is no longer added here in screen space (it slid with the camera heading): it is part of each column's world-space surface height, see wlRipple in updateWaterline (Shifat Nov 6 10:51 PM 'camera movements must not affect water line waves') */
 `;
 
+/** Meniscus ripple (the mesh carries no sub-metre waves) as a height in METRES at a world point: a function of world x, z and time only, so the
+ *  shape stays put on the water whatever the camera does. amp = WATERLINE.v.z (full with the lens in the water, faint at the far horizon). */
+const wlRipple = (x: number, z: number, t: number, amp: number) => amp * (0.020 * Math.sin(x * 5.1 + z * 3.6 + t * 1.3) + 0.010 * Math.sin(x * 9.8 - z * 6.2 - t * 2.1) + 0.004 * Math.sin(x * 12.0 + z * 8.0 + t * 3.7));
 const _o = [0, 0, 0], _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3();
 const SPK = OCEAN_WARP * OCEAN_HALF * 2 / OCEAN_N, SPE = (OCEAN_WARP - 1) / OCEAN_WARP;
 const sst = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -60,6 +61,7 @@ export function updateWaterline(camera: THREE.PerspectiveCamera, t: number, lake
     const sx = Math.round(camera.position.x / OCEAN_SNAP) * OCEAN_SNAP, sz = Math.round(camera.position.z / OCEAN_SNAP) * OCEAN_SNAP;
     camera.getWorldDirection(_f); _r.set(1, 0, 0).applyQuaternion(camera.quaternion); _u.set(0, 1, 0).applyQuaternion(camera.quaternion);
     const ty = Math.tan(camera.fov * Math.PI / 360), tx = ty * camera.aspect, c = camera.position, q = WATERLINE.q;
+    const rAmp = 1 - 0.8 * sst(-0.1, 0.4, dy);
     const reach = lakeY ? WL_D : WL_FAR * Math.pow(WL_D / WL_FAR, sst(0.35, 0.9, dy));
     /* Shifat Nov 2 8:06 PM 'water line is getting wavy distorted based on camera movements': every column is re-cut every frame against THIS
        frame's camera. Was: half the columns per frame (odd/even alternating) and the other half kept as last frame's ndc heights - fine for the
@@ -78,12 +80,12 @@ export function updateWaterline(camera: THREE.PerspectiveCamera, t: number, lake
             const d = TS[j], uy = d * ty * _u.y || 1e-4, near = d < NEAR;
             if (full && !lakeY && j > 0 && uy > 0 && !(DBG && (window as any).__wlNoSkip)) {   // exact skip: this depth's highest possible crest (all trains in phase) stays under the line already found
                 const px = c.x + d * (_f.x + nx * tx * _r.x + ny * ty * _u.x), pz = c.z + d * (_f.z + nx * tx * _r.z + ny * ty * _u.z);
-                const hb = WATER_Y + WAVE_HMAX * swellKJS(px, Math.min(pz, -222)) * 1.05 + 0.05 + WL_EPS;
+                const hb = WATER_Y + WAVE_HMAX * swellKJS(px, Math.min(pz, -222)) * 1.05 + 0.05 + WL_EPS + 0.034 * rAmp;
                 if ((hb - c.y - d * fy) / uy <= best) continue;
             }
             for (let it = 0, n = near ? 2 : 1; it < n; it++) {   // the point at view depth d under ndc (nx, ny): solve its height = surface height for ny (warm start from the previous depth)
                 const px = c.x + d * (_f.x + nx * tx * _r.x + ny * ty * _u.x), pz = c.z + d * (_f.z + nx * tx * _r.z + ny * ty * _u.z);
-                const h = (lakeY ? lakeY(px, pz) : seaMeshY(px, pz, t, sx, sz, near ? 1 : 0)) + WL_EPS; if (DBG) ev += near ? 2 : 1;
+                const h = (lakeY ? lakeY(px, pz) : seaMeshY(px, pz, t, sx, sz, near ? 1 : 0)) + WL_EPS + wlRipple(px, pz, t, rAmp); if (DBG) ev += near ? 2 : 1;
                 ny = Math.max(-3, Math.min(3, (h - c.y - d * fy) / uy));
             }
             if (ny > best) { best = ny; bj = j; }
@@ -92,7 +94,7 @@ export function updateWaterline(camera: THREE.PerspectiveCamera, t: number, lake
         (q[k >> 2] as any)[XYZW[k & 3]] = best;
     }
     q[6].y = Math.atan2(-_f.x, -_f.z); q[6].z = tx;
-    WATERLINE.v.set(t, reach, 1 - 0.8 * sst(-0.1, 0.4, dy), 1);
+    WATERLINE.v.set(t, reach, rAmp, 1);
     if (DBG) { const g = window as any, ms = performance.now() - t0; g.__wlMs = (g.__wlMs || 0) * 0.9 + ms * 0.1; g.__wlN = (g.__wlN || 0) + 1; g.__wlEv = ev; }
 }
 const XYZW = ['x', 'y', 'z', 'w'];
