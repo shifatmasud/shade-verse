@@ -1,3 +1,11 @@
+## Waterline camera-motion stability — provisional 83/100
+- Visuals: 18/20 (phone-landscape pan/tilt/dolly keeps the meniscus aligned to the current camera, with at most 0.001 NDC deviation from the held-camera reference; SwiftShader only; existing soft shadows unchanged)
+- Controls/behavior: 25/25 (only waterline solving changed; hero models, controls, HUD, regular melee, and landscape-only behavior remain untouched)
+- Performance (estimate): 14/20 (waterline solver averages 0.98 ms/update while held and 1.65 ms/update while moving on the 844×390 Chromium/SwiftShader viewport, with 3.17 ms peak; physical target FPS not measured)
+- Stability: 14/15 (production build and focused desktop/phone waterline pan, tilt, and dolly regressions pass without browser errors; full suite not run)
+- Device compatibility (estimate): 12/20 (physical Android 10/Adreno 506 and Windows 10/Intel UHD 600 appearance and performance remain untested)
+Evidence: `npm run build` and `test/waterline_cam.mjs` PASS in Chromium/WebGL2/ANGLE SwiftShader. Desktop pan and phone-landscape pan/tilt/dolly remain within 0.001 NDC of the held-camera line. Physical-device results are untested.
+
 ## Restored lake/city district, detailed foliage, and Shadow swim fix — provisional 83/100
 - Visuals: 17/20 (the 844×390 landscape capture clearly shows the lake and preserved bridge; underwater and Shadow-swim images are visibly rendered in SwiftShader, not physical-device output)
 - Controls/behavior: 25/25 (Shadow's swim lean is applied after clip sampling; lake buoyancy and drag work; Ghost source, controls, HUD, normal melee, city routes, bridge/ramp traversal, and rooftop arena remain unchanged)

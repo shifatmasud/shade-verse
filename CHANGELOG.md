@@ -2,6 +2,11 @@
 
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
+## Waterline camera-motion stability (Nov 9)
+- Camera position, orientation, FOV, or aspect changes trigger a fresh current-frame waterline solve for every screen column; a held camera keeps the alternating optimization. This prevents the cached camera depth from making the meniscus/ripples drift during fast motion, including phone-landscape dolly.
+- No shadow treatment, art styling, models, HUD, controls, melee choreography, or landscape-only behavior changed; the existing soft contact/static shadows remain as they were.
+- Verification: production build and desktop pan plus phone-landscape pan/tilt/dolly regressions pass; maximum line deviation from the held-camera reference is 0.001 NDC. Chromium/SwiftShader only; physical target devices are untested. Waterline update timing on the 844×390 SwiftShader viewport: 0.98 ms held, 1.65 ms moving, 3.17 ms peak; this measured tradeoff was approved by Shifat.
+
 ## Banter v2: caring, not romantic (Oct 29) — Shifat 6:27 PM: "Too romantic it seems. I wanted more caring bit. Not romance heavy", then "Keep love you one."
 - All Ghost & Shadow lines rewritten: 55 exchanges (119 lines: Ghost 62, Shadow 57). Still husband and wife, but the talk is caring partners: checking on each other ("You okay? That hit looked bad."), watching each other's back in fights, teamwork calls, encouragement, pride after wins, worry at low health, light teasing, sightseeing (island, Neon Harbor, bridge, night sky) and practical chat. No dates, flirting or "my husband/my wife". The one "Love you, Ghost." / "Love you more, Shadow." exchange is kept by request (its original clips reused); "partner" appears twice.
 - Every trigger still covered (idle 10, combat 7, KO 6, swing/dive 6, low health 4, hurt 4, boss 3, swim 3, island 3, harbor 3, bridge 3, night 3). Playback system unchanged (0.3 s reply gap, no overlap, music duck, captions, lazy loading). Clips regenerated with the same voices and recipe; the two unused old clips (cg_62, cg_63) deleted.

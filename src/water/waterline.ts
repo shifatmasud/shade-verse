@@ -55,6 +55,7 @@ export function seaMeshY(x: number, z: number, t: number, sx: number, sz: number
 const NEAR = 6, WL_FAR = 250;   // 250 m: past it the sea is drawn flat (Shifat Oct 31), so nothing further out rises over the line
 const colJ = new Int32Array(WL_N).fill(1 << 20), colNy = new Float64Array(WL_N);   // per column: the view depth that set the line last frame, and its height
 let wlFrame = 0, wlLastT = -1e9;
+let wlLastX = NaN, wlLastY = NaN, wlLastZ = NaN, wlLastQx = NaN, wlLastQy = NaN, wlLastQz = NaN, wlLastQw = NaN, wlLastFov = NaN, wlLastAspect = NaN;
 const TS: number[] = []; for (let d = WL_D; d < WL_FAR; d *= d < NEAR ? 1.38 : 1.2) TS.push(d); TS.push(WL_FAR);   // 6 depths inside 6 m (mesh-exact, chop), then every 20 % out to 250 m
 export function updateWaterline(camera: THREE.PerspectiveCamera, t: number, lakeY: ((x: number, z: number) => number) | null, dy: number) {
     const t0 = DBG ? performance.now() : 0; let ev = 0;
@@ -68,9 +69,12 @@ export function updateWaterline(camera: THREE.PerspectiveCamera, t: number, lake
        slow swell, but those heights belonged to last frame's camera, so any pan/tilt/move left every second column off by the camera's own motion
        and the spline through them swam as a wave with a two-column period (0.021 ndc mean, 0.035 max on a 2 deg/frame pan vs 0.0006 held still).
        Now half the columns get the full depth search (as before) and the other half re-solve, with this frame's camera, the view depth that set
-       their line last frame and its two neighbours; the full search skips depths whose highest possible crest can't beat the line found so far.
-       Fewer wave evaluations per frame than before. */
-    const fresh = !(Math.abs(t - wlLastT) < 0.25), par = wlFrame++ & 1; wlLastT = t;
+       their line last frame and its two neighbours. A camera position/orientation/projection change forces the full search for every column in
+       that frame, so a fast move cannot leave any column dependent on a previous camera; a held camera keeps the alternating optimization. The
+       full search skips depths whose highest possible crest can't beat the line found so far. */
+    const cameraChanged = camera.position.x !== wlLastX || camera.position.y !== wlLastY || camera.position.z !== wlLastZ || camera.quaternion.x !== wlLastQx || camera.quaternion.y !== wlLastQy || camera.quaternion.z !== wlLastQz || camera.quaternion.w !== wlLastQw || camera.fov !== wlLastFov || camera.aspect !== wlLastAspect;
+    wlLastX = camera.position.x; wlLastY = camera.position.y; wlLastZ = camera.position.z; wlLastQx = camera.quaternion.x; wlLastQy = camera.quaternion.y; wlLastQz = camera.quaternion.z; wlLastQw = camera.quaternion.w; wlLastFov = camera.fov; wlLastAspect = camera.aspect;
+    const fresh = cameraChanged || !(Math.abs(t - wlLastT) < 0.25), par = wlFrame++ & 1; wlLastT = t;
     let nj = 0; while (nj < TS.length && (nj === 0 || TS[nj] <= reach * 1.0001)) nj++;   // depths inside this frame's reach
     for (let k = 0; k < WL_N; k++) {
         const nx = -1 + k * 2 / (WL_N - 1), fy = _f.y + nx * tx * _r.y, full = fresh || (k & 1) === par || colJ[k] >= nj;
