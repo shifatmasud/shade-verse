@@ -1,17 +1,22 @@
 import { WATERLINE, UW } from '../world/env';
-import { HD, createHeroComposite, worldBufferSize, worldTarget } from '../heroHD';
+import { HD, HERO_WATER, createHeroComposite, worldBufferSize, worldTarget } from '../heroHD';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { FXAA_FS, FXAA_SHARP_FS, OUT_FS } from '../shaders/post';
 import { useEffect, useMemo } from 'react';
 import { waterMat } from '../water/oceanMaterial';
 import { noInk } from '../water/common';
+import { renderManualShadowMap } from '../world/shadowMap';
+import { updateTrueMeshShadow } from '../world/trueMeshShadow';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
 // Post-processing passes: FXAA + sharpen, the hero HD composite and the screen-space outline.
 // optional post AA (FXAA, one fullscreen pass): can be switched on/off at runtime from measured frame time, unlike MSAA which is fixed at context creation
 const _v0 = new THREE.Vector2(0, 0);
+const _heroShadowLightPos = new THREE.Vector3();
+const _heroShadowLightTarget = new THREE.Vector3();
+const _heroShadowLightDir = new THREE.Vector3(0, 1, 0);
 // env-iter3 near-field sharpen (Shifat Oct 29: "sharpen what's closer to view & keep same res what's not"). Same FXAA pass as above,
 // then a clamped unsharp mask on the world image (contrast-adaptive in the spirit of AMD FidelityFX CAS: limited to the local
 // min/max so it cannot halo, and backed off on hard geometric edges so FXAA's smoothing survives). Its strength comes from the
@@ -88,13 +93,25 @@ function sortLayers(scene: THREE.Scene, sp: ReturnType<typeof makeSeaPass>) {
 /** Sea surface resolution in device-pixel ratio (Shifat Nov 1 7:50 PM: 0.5). */
 export const SEA_DPR = 0.5;
 
+function directShadowBalance(scene: THREE.Scene) {
+    const lum = (c?: THREE.Color) => c ? 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b : 0;
+    const sun = scene.getObjectByName('sun1') as THREE.DirectionalLight | undefined;
+    const fill = scene.getObjectByName('sun2') as THREE.DirectionalLight | undefined;
+    const hemi = scene.getObjectByName('hemi') as THREE.HemisphereLight | undefined;
+    const direct = sun ? Math.max(0, sun.intensity) * lum(sun.color) : 0;
+    const secondary = fill ? Math.max(0, fill.intensity) * lum(fill.color) : 0;
+    const ambient = hemi ? Math.max(0, hemi.intensity) * (lum(hemi.color) + lum(hemi.groundColor)) * 0.5 : 0;
+    const ratio = direct / Math.max(1e-4, direct + secondary + ambient * 0.45);
+    return THREE.MathUtils.clamp(0.36 + 0.75 * ratio, 0.48, 0.82);
+}
+
 export function OutlinePass() {
     const { gl, scene, camera } = useThree();
     const st = useMemo(() => {
         const rt = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: true, samples: 0 }); (rt as any).isXRRenderTarget = true;   // makes three apply the renderer's tone mapping and output encoding inside the target, so colours match direct-to-screen rendering
         rt.depthTexture = new THREE.DepthTexture(4, 4); rt.depthTexture.type = THREE.UnsignedIntType;
         rt.texture.minFilter = rt.texture.magFilter = THREE.NearestFilter; rt.texture.colorSpace = THREE.SRGBColorSpace;
-        const mat = new THREE.ShaderMaterial({ uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture }, uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 700 }, uTh: { value: 1.0 }, uOn: { value: 1 }, uWL: { value: WATERLINE.v }, uWLq: { value: WATERLINE.q }, uUwC: { value: WATERLINE.col } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: OUT_FS, depthTest: false, depthWrite: false, toneMapped: false });
+        const mat = new THREE.ShaderMaterial({ uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture }, tShadowMap: { value: null }, tHeroTriangles: { value: null }, tHeroBvh: { value: null }, uShadowTexel: { value: new THREE.Vector2(1, 1) }, uHeroTriangleTexSize: { value: new THREE.Vector2(1, 1) }, uHeroBvhTexSize: { value: new THREE.Vector2(1, 1) }, uHeroBvhNodeCount: { value: 0 }, uHeroTraceOn: { value: 0 }, uHeroTraceStrength: { value: 0.68 }, uHeroTraceWaterStrength: { value: 0.14 }, uHeroTraceDebug: { value: 0 }, uHeroBoundsMin: { value: new THREE.Vector3() }, uHeroBoundsMax: { value: new THREE.Vector3() }, uHeroRayDir: { value: new THREE.Vector3(0, 1, 0) }, uShadowMatrix: { value: new THREE.Matrix4() }, uInvProjection: { value: new THREE.Matrix4() }, uInvView: { value: new THREE.Matrix4() }, uShadowOn: { value: 0 }, uShadowBias: { value: 0.00012 }, uShadowStrength: { value: 0.82 }, uShadowWaterStrength: { value: 0.34 }, uCineMood: { value: 0 }, uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 700 }, uTh: { value: 1.0 }, uOn: { value: 1 }, uWL: { value: WATERLINE.v }, uWLq: { value: WATERLINE.q }, uUwC: { value: WATERLINE.col } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: OUT_FS, depthTest: false, depthWrite: false, toneMapped: false });
         const qs = new THREE.Scene(), q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); q.frustumCulled = false; qs.add(q);
         const r2 = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: false, stencilBuffer: false, samples: 0, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.UnsignedByteType }); const ft = r2.texture;   /* outline result goes to its own target that FXAA reads (was: drawn to the frame, then the whole frame copied) */
         const fm = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: ft }, uRes: { value: new THREE.Vector2(4, 4) }, tDepth: { value: rt.depthTexture }, uNear: { value: 0.5 }, uFar: { value: 700 }, uSharp: { value: SHARPEN.amount } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: FXAA_SHARP_FS, depthTest: false, depthWrite: false, toneMapped: false });
@@ -106,6 +123,8 @@ export function OutlinePass() {
         /* Shifat 11:29 PM phone CPU: every gl.render() (world, sea split, glow, hero HD, probe) re-walked the whole scene graph to update
            world matrices. Now it is walked once per frame, here, before the first world render of the frame. */
         scene.updateMatrixWorld();
+        const trueShadow = updateTrueMeshShadow();
+        renderManualShadowMap(gl, scene);
         worldBufferSize(gl, st.sz);
         if (st.rt.width !== st.sz.x || st.rt.height !== st.sz.y) { st.rt.setSize(st.sz.x, st.sz.y); st.mat.uniforms.uRes.value.copy(st.sz); }
         const cam = camera as THREE.PerspectiveCamera; st.mat.uniforms.uNear.value = cam.near; st.mat.uniforms.uFar.value = cam.far; st.fm.uniforms.uNear.value = cam.near; st.fm.uniforms.uFar.value = cam.far; st.fm.uniforms.uSharp.value = DBG && (window as any).__sharp !== undefined ? (window as any).__sharp : SHARPEN.amount;
@@ -131,9 +150,47 @@ export function OutlinePass() {
         } else {
             camera.layers.mask = cam0 | (1 << SEA_LAYER) | (1 << LATE_LAYER); gl.render(scene, camera); camera.layers.mask = cam0;   // desktop at 1 dpr: one pass as before
         }
+        const sun = scene.getObjectByName('sun1') as THREE.DirectionalLight | undefined;
+        const shadowStrength = directShadowBalance(scene);
+        const cinematicMood = DBG ? THREE.MathUtils.clamp(Number((window as any).__cinematicMood) || 0, 0, 1) : 0;
+        st.mat.uniforms.uCineMood.value = cinematicMood; HERO_WATER.uHeroMood.value = cinematicMood;
+        if (sun) { sun.getWorldPosition(_heroShadowLightPos); sun.target.getWorldPosition(_heroShadowLightTarget); _heroShadowLightDir.subVectors(_heroShadowLightPos, _heroShadowLightTarget).normalize(); }
+        st.mat.uniforms.tHeroTriangles.value = trueShadow?.triangleTexture ?? null;
+        st.mat.uniforms.tHeroBvh.value = trueShadow?.bvhTexture ?? null;
+        st.mat.uniforms.uHeroTraceOn.value = trueShadow?.enabled ? 1 : 0;
+        st.mat.uniforms.uHeroBvhNodeCount.value = trueShadow?.nodeCount ?? 0;
+        st.mat.uniforms.uHeroRayDir.value.copy(_heroShadowLightDir);
+        st.mat.uniforms.uHeroTraceStrength.value = shadowStrength * 0.84;
+        st.mat.uniforms.uHeroTraceWaterStrength.value = shadowStrength * 0.18;
+        st.mat.uniforms.uHeroTraceDebug.value = DBG ? THREE.MathUtils.clamp(Number((window as any).__heroTraceDebug) || 0, 0, 1) : 0;
+        if (trueShadow) {
+            st.mat.uniforms.uHeroTriangleTexSize.value.copy(trueShadow.triangleTextureSize);
+            st.mat.uniforms.uHeroBvhTexSize.value.copy(trueShadow.bvhTextureSize);
+            st.mat.uniforms.uHeroBoundsMin.value.copy(trueShadow.boundsMin);
+            st.mat.uniforms.uHeroBoundsMax.value.copy(trueShadow.boundsMax);
+        }
+        if (DBG) (window as any).__heroShadowState = { method: 'posed-skinned-triangle-bvh-ray', enabled: !!trueShadow?.enabled, nodeCount: trueShadow?.nodeCount ?? 0, lightDir: _heroShadowLightDir.toArray() };
+        const shadow = sun?.shadow;
+        if (shadow?.map?.depthTexture) {
+            st.mat.uniforms.tShadowMap.value = shadow.map.depthTexture;
+            st.mat.uniforms.uShadowMatrix.value.copy(shadow.matrix);
+            st.mat.uniforms.uInvProjection.value.copy(camera.projectionMatrixInverse);
+            st.mat.uniforms.uInvView.value.copy(camera.matrixWorld);
+            st.mat.uniforms.uShadowTexel.value.set(1 / shadow.map.width, 1 / shadow.map.height);
+            st.mat.uniforms.uShadowOn.value = 1;
+            st.mat.uniforms.uShadowBias.value = 0.00004;
+            st.mat.uniforms.uShadowStrength.value = shadowStrength;
+            HERO_WATER.tHeroShadow.value = shadow.map.depthTexture;
+            HERO_WATER.uHeroShadowMatrix.value.copy(shadow.matrix);
+            HERO_WATER.uHeroShadowTexel.value.set(1 / shadow.map.width, 1 / shadow.map.height);
+            HERO_WATER.uHeroShadowBias.value = 0.00004;
+            HERO_WATER.uHeroShadowStrength.value = shadowStrength * 0.86;
+            HERO_WATER.uHeroShadowOn.value = 1;
+        } else {
+            st.mat.uniforms.uShadowOn.value = 0;
+            HERO_WATER.uHeroShadowOn.value = 0;
+        }
         gl.setRenderTarget(st.r2); gl.render(st.qs, st.qc); gl.setRenderTarget(out); gl.render(st.fs, st.qc);   /* Shifat 12:02 AM phone fps: no full-frame copy */
     }, 1);
     return null;
 }
-
-

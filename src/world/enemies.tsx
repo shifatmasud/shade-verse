@@ -11,6 +11,15 @@ import { SHOCK_SHADOW, tint } from '../combatFx';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
+function markNoShadowMaterial(material: THREE.Material) {
+    material.userData.noShadow = true; material.userData.noShadowReceive = true;
+}
+function markNoShadowFx(object: THREE.Object3D) {
+    object.userData.noShadow = true; object.userData.noShadowReceive = true;
+    const material = (object as THREE.Mesh | THREE.Points).material;
+    for (const m of (Array.isArray(material) ? material : [material])) if (m) markNoShadowMaterial(m);
+}
+
 // Enemies: heavily armoured robots, every sensor visor red (Polyfork free models, modified). 0 armoured trooper, 1 armoured walker, 2 hover drone, 3 armoured service drone.
 export const ENEMY_DEFS: any[] = [
     { model: 'robot', eye: EYE_RED, shell: [0.20, 0.21, 0.24], frame: [0.07, 0.07, 0.08], accent: [0.55, 0.07, 0.07], scale: 1.1, extras: armorRobot, dy: -0.85, spd: 5 },
@@ -62,8 +71,8 @@ export function PlasmaFx({ sim }: { sim: Sim }) {
     });
     return <>
         <group ref={ret} visible={false} frustumCulled={false}>
-            <mesh frustumCulled={false}><planeGeometry args={[1.5, 1.5]} /><meshBasicMaterial map={LOCK_TEX} color="#c99bff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
-            <mesh frustumCulled={false}><planeGeometry args={[0.36, 0.36]} /><meshBasicMaterial map={SOFT_TEX} color="#eadcff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+            <mesh frustumCulled={false} onUpdate={(o) => markNoShadowFx(o)}><planeGeometry args={[1.5, 1.5]} /><meshBasicMaterial map={LOCK_TEX} color="#c99bff" transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+            <mesh frustumCulled={false} onUpdate={(o) => markNoShadowFx(o)}><planeGeometry args={[0.36, 0.36]} /><meshBasicMaterial map={SOFT_TEX} color="#eadcff" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} /></mesh>
         </group>
     </>;
 }
@@ -111,8 +120,8 @@ export function EnemyDeathFx({ sim }: { sim: Sim }) {
     const fire = useRef<THREE.Points>(null!), smoke = useRef<THREE.Points>(null!);
     const assets = useMemo(() => {
         const u = { uScale: { value: 400 }, uT: { value: 0 } };
-        const fireMat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: KO_VS, fragmentShader: KO_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
-        const smokeMat = new THREE.ShaderMaterial({ uniforms: u, defines: { SMOKE: 1 }, vertexShader: KO_VS, fragmentShader: KO_FS, transparent: true, depthWrite: false, toneMapped: false });
+        const fireMat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: KO_VS, fragmentShader: KO_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }); markNoShadowMaterial(fireMat);
+        const smokeMat = new THREE.ShaderMaterial({ uniforms: u, defines: { SMOKE: 1 }, vertexShader: KO_VS, fragmentShader: KO_FS, transparent: true, depthWrite: false, toneMapped: false }); markNoShadowMaterial(smokeMat);
         return { u, fireGeo: koGeo(DEATH_FX_SLOTS * KO_FIRE_PTS), smokeGeo: koGeo(DEATH_FX_SLOTS * KO_SMOKE), fireMat, smokeMat };
     }, []);
     const vp = useMemo(() => new THREE.Vector4(), []), hero = useMemo(() => new THREE.Color(), []), c = useMemo(() => new THREE.Color(), []);
@@ -169,8 +178,8 @@ export function EnemyDeathFx({ sim }: { sim: Sim }) {
     });
     const setVp = (r: THREE.WebGLRenderer) => { r.getCurrentViewport(vp); assets.u.uScale.value = vp.w; };   // point sizes in world metres, whatever target (world DPR / bloom pass) is drawing
     return <>
-        <points ref={smoke} name="enemy-death-smoke" args={[assets.smokeGeo, assets.smokeMat]} visible={false} frustumCulled={false} renderOrder={1} onBeforeRender={setVp} />
-        <points ref={fire} name="enemy-death-core" args={[assets.fireGeo, assets.fireMat]} visible={false} frustumCulled={false} renderOrder={2} onBeforeRender={setVp} onUpdate={(o: THREE.Object3D) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} />
+        <points ref={smoke} name="enemy-death-smoke" args={[assets.smokeGeo, assets.smokeMat]} visible={false} frustumCulled={false} renderOrder={1} onBeforeRender={setVp} onUpdate={(o) => markNoShadowFx(o)} />
+        <points ref={fire} name="enemy-death-core" args={[assets.fireGeo, assets.fireMat]} visible={false} frustumCulled={false} renderOrder={2} onBeforeRender={setVp} onUpdate={(o) => { o.layers.enable(SELECTIVE_BLOOM_LAYER); markNoShadowFx(o); }} />
     </>;
 }
 
@@ -185,7 +194,7 @@ export function EnemyShotsFx({ sim }: { sim: Sim }) {
     const sGeo = useMemo(() => new THREE.SphereGeometry(1, 10, 8), []);
     const cGeo = useMemo(() => { const g = new THREE.CylinderGeometry(1, 1, 1, 12, 1, true); g.translate(0, 0.5, 0); return g; }, []);
     const st = useMemo(() => ({ o: new THREE.Object3D(), c: new THREE.Color(), d: new THREE.Vector3(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0) }), []);
-    useEffect(() => { for (const m of [glow.current, beam.current]) { m.layers.enable(SELECTIVE_BLOOM_LAYER); m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.setColorAt(0, st.c.set(0, 0, 0)); m.count = 0; } }, []);
+    useEffect(() => { for (const m of [glow.current, beam.current]) { m.layers.enable(SELECTIVE_BLOOM_LAYER); m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.setColorAt(0, st.c.set(0, 0, 0)); m.count = 0; markNoShadowFx(m); } }, []);
     useFrame(() => {
         const { o, c, d, q, Y } = st, g = glow.current, bm = beam.current; mat.uniforms.uT.value = sim.t; let n = 0, nb = 0;
         const put = (x: number, y: number, z: number, sx: number, sy: number, sz: number, r: number, gg: number, b: number) => { if (n >= ES_GLOW_N) return; o.position.set(x, y, z); o.scale.set(sx, sy, sz); o.updateMatrix(); g.setMatrixAt(n, o.matrix); g.setColorAt(n++, c.setRGB(r, gg, b)); };
@@ -224,8 +233,7 @@ export function EnemyShotsFx({ sim }: { sim: Sim }) {
         if (DBG) (window as any).__eshots = { bolts: (sim.eshots || []).length, glows: n, beams: nb };
     });
     return <group>
-        <instancedMesh ref={glow} args={[sGeo, mat, ES_GLOW_N]} frustumCulled={false} renderOrder={5} />
-        <instancedMesh ref={beam} args={[cGeo, mat, ES_BEAM_N]} frustumCulled={false} renderOrder={5} />
+        <instancedMesh ref={glow} args={[sGeo, mat, ES_GLOW_N]} frustumCulled={false} renderOrder={5} onUpdate={(o) => markNoShadowFx(o)} />
+        <instancedMesh ref={beam} args={[cGeo, mat, ES_BEAM_N]} frustumCulled={false} renderOrder={5} onUpdate={(o) => markNoShadowFx(o)} />
     </group>;
 }
-

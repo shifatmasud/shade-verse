@@ -1,6 +1,5 @@
 import { Lilies } from './world/lilies';
 import { hitFeelCamera, hitFeelFov } from './hitFeel';
-import { ContactShadows, StaticShadows } from './world/contactShadows';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -59,6 +58,8 @@ import { cullInstances, viewFrustum } from './render/instCull';
 export { SHARPEN, FXAA_STATE, OUTLINE_STATE } from './render/passes';
 import { City, TenementBlock, Sky } from './world/cityScenery';
 import { HD, applyRatio, registerHero, HERO_WATER } from './heroHD';
+import { ShadowMapSetup } from './world/shadowMap';
+import { registerTrueMeshShadow } from './world/trueMeshShadow';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 
@@ -632,6 +633,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         if (DBG) (window as any).__rig = r; return r;
     }, []);
     useEffect(() => registerHero(rig.root), [rig]);   // Shadow joins the hero HD pass
+    useEffect(() => registerTrueMeshShadow(rig.poseRoot.children[0] as THREE.SkinnedMesh), [rig]);   // Shadow's posed mesh is the only analytic character caster
     useEffect(() => registerFxHero(() => sim, rig, 0), [rig]);   // Shadow's limb trails + Slam fist glow (CombatFX)
     const clipSt = useRef(createHeroClipState()), poseSt = useRef(createCombatPoseState());
     const lastWall = useRef<{ n: number[]; b: number } | null>(null), wallCorr = useRef(0), groundCorr = useRef(0), groundMin = useRef({ key: '', v: 1e9 }), tp0 = useMemo(() => new THREE.Vector3(), []);
@@ -941,6 +943,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <directionalLight name="sun1" position={[-30, 60, 20]} intensity={1.8} color="#ffdcae" onUpdate={(o) => o.layers.enableAll()} />
         <directionalLight name="sun2" position={[20, 30, -40]} intensity={0.8} color="#a8caff" onUpdate={(o) => o.layers.enableAll()} />
         <DayNight />
+        <ShadowMapSetup sim={sim} />
         <Weather />
         <Mist />
         <DebugStats /><Bench />
@@ -974,7 +977,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false} renderOrder={5}><ringGeometry args={[0.55, 1.45, 48, 1]} /><primitive object={swimRingMat()} attach="material" /></mesh>)}</group>
         <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
         <OceanFollow waterRef={waterRef} /><OceanSlices waterRef={waterRef} geo={OCEAN_GEO} /><ReflectionIllusion sim={sim} />
-        <ContactShadows sim={sim} /><StaticShadows /><Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow /><Jellies /><Lilies sim={sim} />
+        <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow /><Jellies /><Lilies sim={sim} />
         <SouthSea sim={sim} kit={SOUTH_SEA_KIT} />
         {/* Shifat 9:33 AM 'No reflection. Lock it. Remove any second render.': OceanScreenSpace (scene copy) and the reflection probe are not mounted */}
         <mesh geometry={SEABED_GEO} frustumCulled={false}><primitive object={seabedMat} attach="material" /></mesh>

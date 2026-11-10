@@ -225,7 +225,11 @@ function updateMorphParticles(geometry: THREE.BufferGeometry, material: THREE.Po
 
 export function GhostCompanion({ sim }: { sim: Sim }) {
     const model = useMemo(makeGhostRig, []);
-    useEffect(() => registerHero(model.root), [model]);   // Ghost joins the hero HD pass
+    useEffect(() => {
+        model.root.userData.noShadow = true;
+        model.root.userData.noShadowReceive = true;
+        return registerHero(model.root);
+    }, [model]);   // Ghost joins the hero HD pass without shadow contributions
     const actorRef = useRef<Sim | null>(null);
     useEffect(() => registerFxHero(() => actorRef.current, model, 2, () => model.root.visible), [model]);   // Ghost's limb trails + Slam fist glow (CombatFX)
     const controls = useMemo(makeControls, []);
@@ -473,14 +477,14 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
 
     return <>
         <primitive object={model.root} dispose={null} />
-        <lineSegments ref={lineRef} geometry={lineGeo} frustumCulled={false} dispose={null}>
-            <lineBasicMaterial ref={lineMatRef} color="#d8f5ff" transparent opacity={0.92} depthTest={false} depthWrite={false} />
+        <lineSegments ref={lineRef} geometry={lineGeo} frustumCulled={false} dispose={null} onUpdate={(o) => { o.userData.noShadow = true; o.userData.noShadowReceive = true; }}>
+            <lineBasicMaterial ref={lineMatRef} color="#d8f5ff" transparent opacity={0.92} depthTest={false} depthWrite={false} onUpdate={(m) => { m.blendEquationAlpha = THREE.AddEquation; m.blendSrcAlpha = THREE.ZeroFactor; m.blendDstAlpha = THREE.ZeroFactor; }} />
         </lineSegments>
-        <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false} dispose={null}>
-            <lineBasicMaterial ref={shockMatRef} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} />
+        <lineSegments ref={shockRef} geometry={shockGeo} frustumCulled={false} dispose={null} onUpdate={(o) => { o.userData.noShadow = true; o.userData.noShadowReceive = true; }}>
+            <lineBasicMaterial ref={shockMatRef} color="#ffffff" transparent opacity={0.98} depthTest={false} depthWrite={false} onUpdate={(m) => { m.blendEquationAlpha = THREE.AddEquation; m.blendSrcAlpha = THREE.ZeroFactor; m.blendDstAlpha = THREE.ZeroFactor; }} />
         </lineSegments>
-        <points ref={morphRef} geometry={morphGeo} visible={false} frustumCulled={false} dispose={null}>
-            <pointsMaterial ref={morphMatRef} map={SOFT_DOT} alphaTest={0.01} color="#ffffff" vertexColors size={0.3} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <points ref={morphRef} geometry={morphGeo} visible={false} frustumCulled={false} dispose={null} onUpdate={(o) => { o.userData.noShadow = true; o.userData.noShadowReceive = true; }}>
+            <pointsMaterial ref={morphMatRef} map={SOFT_DOT} alphaTest={0.01} color="#ffffff" vertexColors size={0.3} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} onUpdate={(m) => { m.blendEquationAlpha = THREE.AddEquation; m.blendSrcAlpha = THREE.ZeroFactor; m.blendDstAlpha = THREE.ZeroFactor; }} />
         </points>
     </>;
 }

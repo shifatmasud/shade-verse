@@ -58,20 +58,29 @@ export function registerHero(root: THREE.Object3D) { HD.roots.add(root); return 
    light path (Beer-Lambert style, clear near the surface, deep teal further down) and (b) pulls its depth up to just in front of the water surface on the
    camera ray, so the surface no longer hides it while real rocks/walls in front still do. Only hero fragments pay for this (no change to the water or
    world shaders, no early-z loss there). Scene sets uWL (water surface under the hero, -1e4 when not in water) and uWC each frame. */
-export const HERO_WATER = { uMir: { value: 0 }, uWL: { value: -1e4 }, uWC: { value: new THREE.Color('#1a6f85') }, uPV: { value: new THREE.Matrix4() } };
+export const HERO_WATER = {
+    uMir: { value: 0 }, uWL: { value: -1e4 }, uWC: { value: new THREE.Color('#1a6f85') }, uPV: { value: new THREE.Matrix4() },
+    tHeroShadow: { value: null as THREE.Texture | null }, uHeroShadowMatrix: { value: new THREE.Matrix4() },
+    uHeroShadowTexel: { value: new THREE.Vector2(1, 1) }, uHeroShadowBias: { value: 0.00004 },
+    uHeroShadowStrength: { value: 0.70 }, uHeroShadowOn: { value: 0 }, uHeroMood: { value: 0 },
+};
 const patched = new WeakSet<THREE.Material>();
 const _R = new THREE.Matrix4();
 const mirCam = new THREE.PerspectiveCamera(); mirCam.matrixAutoUpdate = false; mirCam.matrixWorldAutoUpdate = false;
 const mirSaved: [THREE.Material, boolean, boolean, THREE.Side][] = [];
+const HERO_SHADOW_GLSL = `uniform sampler2D tHeroShadow; uniform mat4 uHeroShadowMatrix; uniform vec2 uHeroShadowTexel; uniform float uHeroShadowBias; uniform float uHeroShadowStrength; uniform float uHeroShadowOn; uniform float uHeroMood; uniform float uHeroShadowReceive;
+float heroShadowVisibility(vec3 wp){ vec4 q = uHeroShadowMatrix * vec4(wp, 1.0); if (q.w <= 0.0) return 1.0; vec3 p = q.xyz / q.w; if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0 || p.z > 1.0) return 1.0; float v = 0.0, total = 0.0; for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++){ float wx = x == 0 ? 2.0 : 1.0, wy = y == 0 ? 2.0 : 1.0, w = wx * wy; vec2 o = vec2(float(x), float(y)) * uHeroShadowTexel * 1.5; float d = texture2D(tHeroShadow, p.xy + o).x; v += step(p.z - uHeroShadowBias, d) * w; total += w; } return v / total; }`;
 function patchWater(m: THREE.Material) {
     if (patched.has(m)) return; patched.add(m);
     const prev = m.onBeforeCompile, prevKey = m.customProgramCacheKey.bind(m);
     m.onBeforeCompile = (sh, r) => {
         prev.call(m, sh, r);
         Object.assign(sh.uniforms, HERO_WATER);
+        sh.uniforms.uHeroShadowReceive = { value: 1 };
+        m.userData.__heroWaterUniforms = sh.uniforms;
         sh.vertexShader = 'varying vec3 vHwW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vHwW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
         const end = sh.fragmentShader.lastIndexOf('}');
-        sh.fragmentShader = 'varying vec3 vHwW; uniform float uWL; uniform vec3 uWC; uniform mat4 uPV; uniform float uMir;\n' + sh.fragmentShader.slice(0, end) + `
+        sh.fragmentShader = 'varying vec3 vHwW; uniform float uWL; uniform vec3 uWC; uniform mat4 uPV; uniform float uMir;\n' + HERO_SHADOW_GLSL + '\n' + sh.fragmentShader.slice(0, end) + `
   if (uMir > 0.5) {   /* #4 full-body reflection (Shifat 2:32 PM): this pass is drawn with the camera mirrored in the water plane; only the parts above
        the water reflect, laid just in front of the water surface on the real view ray (so land/objects in front still cover it), water-tinted, see-through */
     if (vHwW.y < uWL) discard;
@@ -92,11 +101,28 @@ function patchWater(m: THREE.Material) {
     gl_FragColor.rgb = mix(gl_FragColor.rgb, uWC, (1.0 - exp(-hwPath * 0.3)) * 0.8);
     if (hwAbove) { vec3 hwP = hwS + normalize(hwC - hwS) * (0.5 - 0.07 * min(length(vHwW - hwS), 6.0));   /* keeps the hero's own front/back order (farther parts land nearer the surface) so no z-fight speckle */ vec4 hwQ = uPV * vec4(hwP, 1.0); hwD = min(hwD, clamp((hwQ.z / hwQ.w) * 0.5 + 0.5, 0.0, 1.0)); }
   }
+  float heroVis = 1.0;
+  if (uHeroShadowOn > 0.5 && vHwW.y >= uWL && (uHeroShadowReceive > 0.5 || uHeroMood > 0.001)) heroVis = heroShadowVisibility(vHwW);
+  if (uHeroShadowOn > 0.5 && uHeroShadowReceive > 0.5 && vHwW.y >= uWL) { vec3 shade = mix(vec3(0.70, 0.75, 0.84), vec3(1.0), heroVis); gl_FragColor.rgb *= mix(vec3(1.0), shade, uHeroShadowStrength); }
+  if (uHeroMood > 0.001) { vec3 coolGrade = vec3(0.94, 0.98, 1.08), warmGrade = vec3(1.05, 1.025, 0.96); gl_FragColor.rgb *= mix(vec3(1.0), mix(coolGrade, warmGrade, heroVis), uHeroMood * 0.36); }
   gl_FragDepth = hwD;
 }`;
     };
     m.customProgramCacheKey = () => prevKey() + '|heroWater2';
     m.needsUpdate = true;
+}
+
+function installHeroReceiverHook(mesh: THREE.Mesh) {
+    if ((mesh.userData as any).__heroReceiverHook) return;
+    const previous = mesh.onBeforeRender;
+    mesh.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+        previous.call(mesh, renderer, scene, camera, geometry, material, group);
+        let receivesShadow = 1;
+        for (let node: THREE.Object3D | null = mesh; node; node = node.parent) if (node.userData?.noShadowReceive) { receivesShadow = 0; break; }
+        const uniforms = (material as THREE.Material).userData?.__heroWaterUniforms;
+        if (uniforms?.uHeroShadowReceive) uniforms.uHeroShadowReceive.value = receivesShadow;
+    };
+    (mesh.userData as any).__heroReceiverHook = true;
 }
 
 const COMP_FS = `uniform sampler2D tWorld; uniform sampler2D tDepth; varying vec2 vUv;
@@ -119,7 +145,7 @@ export function createHeroComposite() {
     const retag = (scene: THREE.Scene) => {
         lights.length = 0; scene.traverse((o) => { if ((o as THREE.Light).isLight) { o.layers.enable(HERO_LAYER); lights.push(o); } });
         heroMeshes.length = 0; mats.clear();
-        HD.roots.forEach((r) => r.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { o.layers.set(HERO_LAYER); heroMeshes.push(m); (Array.isArray(m.material) ? m.material : [m.material]).forEach(patchWater); }   /* Shifat 9:58 AM 'draw heroes HD only': hero meshes live ONLY on the hero layer, so the dpr-1 world pass skips them and they are drawn once, here */ }));
+        HD.roots.forEach((r) => r.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { o.layers.set(HERO_LAYER); heroMeshes.push(m); installHeroReceiverHook(m); (Array.isArray(m.material) ? m.material : [m.material]).forEach(patchWater); }   /* Shifat 9:58 AM 'draw heroes HD only': hero meshes live ONLY on the hero layer, so the dpr-1 world pass skips them and they are drawn once, here */ }));
     };
     function render(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
         if (!HD.on || !HD.rt || !HD.depth) return;

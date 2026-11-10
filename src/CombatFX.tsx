@@ -85,7 +85,7 @@ function makeSprites(n: number, fs: string, additive: boolean) {
     g.setAttribute('iA', mk()); g.setAttribute('iB', mk()); g.setAttribute('iC', mk()); g.setAttribute('iD', mk()); g.instanceCount = 0;
     const m = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: fs, transparent: true, depthWrite: false, depthTest: true, toneMapped: false, fog: false, side: THREE.DoubleSide });   // ground quads face either way
     if (additive) { m.blending = THREE.CustomBlending; m.blendEquation = THREE.AddEquation; m.blendSrc = THREE.OneFactor; m.blendDst = THREE.OneFactor; m.blendSrcAlpha = THREE.ZeroFactor; m.blendDstAlpha = THREE.OneFactor; }
-    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = additive ? 12 : 11;
+    const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = additive ? 12 : 11; mesh.userData.noShadow = true; mesh.userData.noShadowReceive = true;
     return mesh;
 }
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _c = new THREE.Color(), _cw = new THREE.Color(), _cx = new THREE.Color();
@@ -103,7 +103,7 @@ export function CombatFX({ sim }: { sim: Sim }) {
         rg.setIndex(idx); rg.setAttribute('position', pos); rg.setAttribute('aC', col); rg.setAttribute('aV', av); rg.setDrawRange(0, 0);
         const rm = new THREE.ShaderMaterial({ vertexShader: VS_RIB, fragmentShader: FS_RIB, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
         rm.blending = THREE.CustomBlending; rm.blendEquation = THREE.AddEquation; rm.blendSrc = THREE.OneFactor; rm.blendDst = THREE.OneFactor; rm.blendSrcAlpha = THREE.ZeroFactor; rm.blendDstAlpha = THREE.OneFactor;
-        const rib = new THREE.Mesh(rg, rm); rib.frustumCulled = false; rib.renderOrder = 12;
+        const rib = new THREE.Mesh(rg, rm); rib.frustumCulled = false; rib.renderOrder = 12; rib.userData.noShadow = true; rib.userData.noShadowReceive = true;
         const flash = document.createElement('div'); flash.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;visibility:hidden;pointer-events:none;z-index:5';
         return { add, alpha, rib, flash, frame: -1, tick: 0, boltSeed: 0 };
     }, []);
