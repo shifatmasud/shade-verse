@@ -1,8 +1,9 @@
-import { WATERLINE, UW } from '../world/env';
+import { WATERLINE, UW, WEATHER } from '../world/env';
 import { HD, HERO_WATER, createHeroComposite, worldBufferSize, worldTarget } from '../heroHD';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { FXAA_FS, FXAA_SHARP_FS, OUT_FS } from '../shaders/post';
+import { FXAA_FS, FXAA_SHARP_FS, OUT_FS, CLOUD_SHADOW_FS } from '../shaders/post';
+import { SKY_T } from '../shaders/skyFx';
 import { useEffect, useMemo } from 'react';
 import { waterMat } from '../water/oceanMaterial';
 import { noInk } from '../water/common';
@@ -17,6 +18,7 @@ const _v0 = new THREE.Vector2(0, 0);
 const _heroShadowLightPos = new THREE.Vector3();
 const _heroShadowLightTarget = new THREE.Vector3();
 const _heroShadowLightDir = new THREE.Vector3(0, 1, 0);
+const CLOUD_SHADOW_SIZE = 256, CLOUD_SHADOW_RANGE = 8.0;
 // env-iter3 near-field sharpen (Shifat Oct 29: "sharpen what's closer to view & keep same res what's not"). Same FXAA pass as above,
 // then a clamped unsharp mask on the world image (contrast-adaptive in the spirit of AMD FidelityFX CAS: limited to the local
 // min/max so it cannot halo, and backed off on hard geometric edges so FXAA's smoothing survives). Its strength comes from the
@@ -116,15 +118,23 @@ export function OutlinePass() {
         const r2 = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: false, stencilBuffer: false, samples: 0, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.UnsignedByteType }); const ft = r2.texture;   /* outline result goes to its own target that FXAA reads (was: drawn to the frame, then the whole frame copied) */
         const fm = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: ft }, uRes: { value: new THREE.Vector2(4, 4) }, tDepth: { value: rt.depthTexture }, uNear: { value: 0.5 }, uFar: { value: 700 }, uSharp: { value: SHARPEN.amount } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: FXAA_SHARP_FS, depthTest: false, depthWrite: false, toneMapped: false });
         const fs = new THREE.Scene(), fq = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), fm); fq.frustumCulled = false; fs.add(fq);
-        return { rt, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), sz: new THREE.Vector2(), r2, fm, fs, sea: makeSeaPass() };
+        const cloudRt = new THREE.WebGLRenderTarget(CLOUD_SHADOW_SIZE, CLOUD_SHADOW_SIZE, { depthBuffer: false, stencilBuffer: false, samples: 0, format: THREE.RGBAFormat, type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+        cloudRt.texture.colorSpace = THREE.NoColorSpace; cloudRt.texture.generateMipmaps = false;
+        const cloudMat = new THREE.ShaderMaterial({ uniforms: { uCloudTime: SKY_T, uCloudRain: WEATHER.rain, uCloudRange: { value: CLOUD_SHADOW_RANGE } }, vertexShader: FSQ_VS, fragmentShader: CLOUD_SHADOW_FS, depthTest: false, depthWrite: false, toneMapped: false });
+        const cloudScene = fsq(cloudMat);
+        Object.assign(mat.uniforms, { tCloudShadow: { value: cloudRt.texture }, uCloudStrength: { value: 1.0 }, uCloudAltitude: { value: 180 }, uCloudRange: { value: CLOUD_SHADOW_RANGE }, uCloudSunDir: { value: new THREE.Vector3(0, 1, 0) }, uCloudCamera: { value: new THREE.Vector3() } });
+        return { rt, mat, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), sz: new THREE.Vector2(), r2, fm, fs, sea: makeSeaPass(), cloudRt, cloudMat, cloudScene };
     }, []);
-    useEffect(() => { scene.matrixWorldAutoUpdate = false; return () => { scene.matrixWorldAutoUpdate = true; }; }, [scene]);
+    useEffect(() => { scene.matrixWorldAutoUpdate = false; return () => { scene.matrixWorldAutoUpdate = true; st.cloudRt.dispose(); st.cloudMat.dispose(); st.cloudScene.traverse((o: any) => { if (o.isMesh) o.geometry.dispose(); }); }; }, [scene, st]);
     useFrame(() => {
         /* Shifat 11:29 PM phone CPU: every gl.render() (world, sea split, glow, hero HD, probe) re-walked the whole scene graph to update
            world matrices. Now it is walked once per frame, here, before the first world render of the frame. */
         scene.updateMatrixWorld();
         const trueShadow = updateTrueMeshShadow();
         renderManualShadowMap(gl, scene);
+        const prevTarget = gl.getRenderTarget(), prevAutoClear = gl.autoClear;
+        try { gl.autoClear = true; gl.setRenderTarget(st.cloudRt); gl.render(st.cloudScene, st.qc); }
+        finally { gl.setRenderTarget(prevTarget); gl.autoClear = prevAutoClear; }
         worldBufferSize(gl, st.sz);
         if (st.rt.width !== st.sz.x || st.rt.height !== st.sz.y) { st.rt.setSize(st.sz.x, st.sz.y); st.mat.uniforms.uRes.value.copy(st.sz); }
         const cam = camera as THREE.PerspectiveCamera; st.mat.uniforms.uNear.value = cam.near; st.mat.uniforms.uFar.value = cam.far; st.fm.uniforms.uNear.value = cam.near; st.fm.uniforms.uFar.value = cam.far; st.fm.uniforms.uSharp.value = DBG && (window as any).__sharp !== undefined ? (window as any).__sharp : SHARPEN.amount;
@@ -155,6 +165,7 @@ export function OutlinePass() {
         const cinematicMood = DBG ? THREE.MathUtils.clamp(Number((window as any).__cinematicMood) || 0, 0, 1) : 0;
         st.mat.uniforms.uCineMood.value = cinematicMood; HERO_WATER.uHeroMood.value = cinematicMood;
         if (sun) { sun.getWorldPosition(_heroShadowLightPos); sun.target.getWorldPosition(_heroShadowLightTarget); _heroShadowLightDir.subVectors(_heroShadowLightPos, _heroShadowLightTarget).normalize(); }
+        st.mat.uniforms.uCloudSunDir.value.copy(_heroShadowLightDir); camera.updateMatrixWorld(); camera.getWorldPosition(st.mat.uniforms.uCloudCamera.value);
         st.mat.uniforms.tHeroTriangles.value = trueShadow?.triangleTexture ?? null;
         st.mat.uniforms.tHeroBvh.value = trueShadow?.bvhTexture ?? null;
         st.mat.uniforms.uHeroTraceOn.value = trueShadow?.enabled ? 1 : 0;

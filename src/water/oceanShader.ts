@@ -22,7 +22,7 @@ export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop
     ${WATER_COMMON_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
-    // Shifat 3:10 AM "analytic raytrace heroes for reflection": exact ray/capsule intersection of each reflected view ray with the heroes' bodies
+    // Hero capsule ray tests below are retained only for Snell refraction and water-surface visibility; capsule reflections are removed.
     float capHit(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
       float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0) return -1.0;
       float t = (-b - sqrt(h)) / a, y = baoa + t * bard; if (y > 0.0 && y < baba) return t; vec3 oc = (y <= 0.0) ? oa : ro - pb; b = dot(rd, oc); c = dot(oc, oc) - ra * ra; h = b * b - c; return h > 0.0 ? -b - sqrt(h) : -1.0; }
@@ -212,22 +212,6 @@ ${GRID_TRACE_GLSL}
         /* #3 (Shifat 2:53 PM): the real heroes now draw through the water from the hero pass (src/heroHD.ts HERO_WATER), so the analytic capsule stand-in is off */
         if (false) { vec3 Th = exp(-vec3(0.45, 0.07, 0.02) * rt * 1.6); body = mix(body, rc * mix(0.35, 1.0, uDay) * (0.55 + 0.45 * uDay) * Th + body * (1.0 - Th) * 0.6, 0.9); }
       }
-      float heroK = 0.0; vec3 heroC = vec3(0.0);
-      if (!below && camUp && r.y > 0.0) {
-        vec3 hc = vec3(0.0); float hk = 0.0, tA = -1.0, tB = -1.0;
-        if (uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA) tA = capH(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.25, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34, uHeroDA);   /* only the part above the surface reflects (Shifat 5:12) */
-        if (uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB) tB = capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.25, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3);
-        // Shifat 4:26 PM 'fix reflection of heroes on water, looks wrong': the solid hard-edged pill is now a soft, rippled, sea-tinted reflection that
-        // matches the subtle blurry city mirror - a second, fatter capsule gives a feathered edge, the colour leans to the water's blue, and it fades with distance.
-        float sA = (tA > 0.0) ? 1.0 : 0.0, sB = (tB > 0.0) ? 1.0 : 0.0;
-        if (uHeroA.w > 0.5 && sA < 0.5 && length(uHeroA.xz - vW.xz) < 40.0 && uHeroA.y + 1.55 > hwA && capH(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.15, hwA), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.55, uHeroDA) > 0.0) sA = 0.45;
-        if (uHeroB.w > 0.5 && sB < 0.5 && length(uHeroB.xz - vW.xz) < 40.0 && uHeroB.y + 1.5 > hwB && capHit(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.15, hwB), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.5) > 0.0) sB = 0.45;
-        sA = heroSoftK(tA, sA > 0.0 ? 1.0 : -1.0); sB = heroSoftK(tB, sB > 0.0 ? 1.0 : -1.0);
-        if (sA > 0.0) { hc = vec3(0.09, 0.11, 0.21); hk = sA; }   // Shadow's dark suit
-        if (sB > 0.0 && (sA < 0.5 || tB < tA)) { hc = vec3(0.78, 0.82, 0.92); hk = sB; }   // Ghost's pale suit
-        hc = heroReflCol(hc, refl, uDay); hk = heroReflW(hk, length(cameraPosition - vW));   /* shared water look (src/water/common.ts) */
-        refl = mix(refl, hc, hk); heroK = hk; heroC = hc;
-      }
       vec3 col = mix(body, refl, fr);
       col *= mix(vec3(1.0), mix(vec3(0.86, 0.95, 1.06), vec3(1.06, 1.05, 0.94), swPatch), smoothstep(40.0, 200.0, length(cameraPosition - vW)) * (below ? 0.0 : 1.0));   /* far-sea colour patches */
       { // boat wakes (Kelvin pattern, ref: Sea of Thieves / AC4 ship wakes): two foam arms at the 19.5 deg Kelvin angle + a churned centre trail and a bow wave,
@@ -245,7 +229,6 @@ ${GRID_TRACE_GLSL}
           n = normalize(n + vec3(texture2D(uCaus, vW.xz * 0.23 + 0.5).r - texture2D(uCaus, vW.xz * 0.23).r, 0.0, texture2D(uCaus, vW.xz * 0.37 + 0.3).b - texture2D(uCaus, vW.xz * 0.37 + 0.8).b) * smoothstep(0.01, 0.3, wk) * 0.4);   /* zero-mean bend that fades in with the foam: the old (lace - 0.75) tilted the whole Kelvin wedge one way, so its Fresnel / clarity flipped at the wk > 0.01 edge -> a hard-edged clear-water box behind boats (Shifat Nov 1 2:14 PM screenshot) */   /* churned wake water: the bent normal breaks the sun glitter into scattered sparkles along the arms and trail */
           col *= 1.0 - 0.07 * exp(-pow(abs(wk - 0.2) * 3.0, 2.0)); }   /* faint troughs just outside the foam give the wake relief */
       }
-      col = mix(col, heroC, heroK * (max(fr, 0.32) - fr) * 0.5);   /* the hero blocks the bright sky it would otherwise mirror: a readable silhouette even at low Fresnel (seen on real calm water) */
       if (uBench.y > 3.5 && uBench.y < 4.5) { gl_FragColor = vec4(col, 0.95); return; }   /* telemetry stage bench */
       col += max(nGlow - 0.22, 0.0) * vec3(0.5, 0.64, 0.9) * 1.6 * (1.0 - uDay) * (1.0 - fr);   /* Shifat 10:24 PM: night reflections get the same darker blue tint */
       col += nGW * vec3(0.55, 0.68, 0.95) * 1.55 * smoothstep(15.0, 60.0, length(cameraPosition.xz - vW.xz)) * (1.0 - uDay) * (1.0 - 0.5 * fr);   /* the city's night light, mirrored soft (coverage-weighted, no threshold: no hard edges) */

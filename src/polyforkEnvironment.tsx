@@ -8,7 +8,7 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { withMeshopt } from './meshopt';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { QUALITY, QK } from './quality';
-import { CAUSTIC_TEX, WATER_NRM, HERO_REFL } from './caustics';
+import { CAUSTIC_TEX, WATER_NRM } from './caustics';
 import {
     buildings, PARK, parkH, PARK_POND, PARK_POND_Y, PARK_BRIDGE,
     bridgeSurfaceAt, isLegacyCityCore, LAKE_SHORE, BEACH_DIR, type Sim,
@@ -410,7 +410,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
                 uTime: { value: 0 }, tScene: { value: copyTarget ? copyTarget.texture : null }, tDepth: { value: copyTarget ? copyTarget.depthTexture : null },
                 uUseScene: { value: 0 }, uSteps: { value: QK.lakeSteps }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() },
                 uPondCenter: { value: new THREE.Vector2(PARK_POND.cx, PARK_POND.cz) }, uRain: WEATHER.rain, uNrm: { value: WATER_NRM }, uPondR: { value: PARK_POND.rx }, uShore: { value: LAKE_SHORE },
-                uHero: { value: new THREE.Vector3(0, -999, 0) }, uHeroA: { value: HERO_REFL.shadow }, uGrid: { value: bakeGrid().tex }, uGBox: { value: bakeGrid().box }, uGB: { value: bakeGrid().b }, uGN: { value: bakeGrid().n }, uHeroB: { value: HERO_REFL.ghost }, uHor: { value: new THREE.Color('#bcd3df') }, uZen: { value: new THREE.Color('#5b8fc4') },
+                uHero: { value: new THREE.Vector3(0, -999, 0) }, uGrid: { value: bakeGrid().tex }, uGBox: { value: bakeGrid().box }, uGB: { value: bakeGrid().b }, uGN: { value: bakeGrid().n }, uHor: { value: new THREE.Color('#bcd3df') }, uZen: { value: new THREE.Color('#5b8fc4') },
                 uSun: { value: new THREE.Vector3(-0.36, 0.82, 0.44).normalize() }, uDay: { value: 1 },
             },
             side: THREE.DoubleSide, transparent: true, depthWrite: true, toneMapped: false,

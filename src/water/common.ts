@@ -1,6 +1,5 @@
 // Shared look for EVERY water body (Shifat 4:43 PM: 'All water bodies must have same visual properties'): the sea, the island lagoon + pools,
-// the rivers and the park pond all include this one GLSL chunk, so FFT ripple detail, the soft blue reflection tint and the hero reflection
-// style are defined once and can never drift apart. Needs `uniform sampler2D uNrm;` bound to WATER_NRM (the FFT tile).
+// the rivers and the park pond all include this one GLSL chunk, so FFT ripples, rain rings and water tint stay consistent. Needs `uniform sampler2D uNrm;` bound to WATER_NRM (the FFT tile).
 export const WATER_COMMON_GLSL = `
 // FFT ripple detail (public/waterfft.png: RG = slopes at t0, BA = 1.9 s later, cross-faded with the variance kept), ~22 m tile; returns the slope in [-1,1]
 // frame-by-frame sim (Shifat 5:05 AM): one 22 m tile read as a repeating diagonal pattern at 30-150 m. A 2nd read, rotated ~41 deg at an
@@ -22,10 +21,6 @@ vec2 rainRing(vec2 xz, float t, float cs, float sp){ vec2 q = xz / cs, id = floo
   float ring = sin(x * 13.0) * exp(-x * x * 45.0) * (1.0 - age) * (1.0 - age); return l / max(d, 1e-3) * ring; }
 vec2 rainSlope(vec2 xz, float t){ float px = length(fwidth(xz)); return (rainRing(xz, t, 1.3, 1.3) + rainRing(xz + 3.7, t, 1.9, 1.05)) * 1.0 * (1.0 - smoothstep(0.05, 0.16, px)); }   /* Nov 2 (real ref 'Reeds and Rain'): rings bolder and kept to a coarser pixel footprint so they read from game camera height */   /* rings thinner than a pixel alias into dark specks: faded out by pixel footprint */
 vec3 reflTint(vec3 c, vec3 base){ return mix(c, dot(c, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + base * 0.25, 0.7); }
-// hero reflections (Shifat 4:26 PM): feathered (inner hit 1, outer fatter hit 0.45), sea-tinted, faded with distance - never a hard dark pill
-float heroSoftK(float inner, float outer){ return inner > 0.0 ? 1.0 : (outer > 0.0 ? 0.45 : 0.0); }
-vec3 heroReflCol(vec3 hc, vec3 base, float day){ return mix(hc * mix(0.35, 1.0, day), base * vec3(0.55, 0.7, 0.85), 0.45); }
-float heroReflW(float k, float dist){ return 0.0; }   /* Shifat 9:33 AM: no hero reflections - LOCKED */
 // ray vs capsule (hero bodies), shared by every water body
 float capHitP(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
   float a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - ra * ra * baba, h = b * b - a * c; if (h < 0.0 || baba < 1e-4) return -1.0;

@@ -51,7 +51,7 @@ export function rampGeometry(sign: -1 | 1) {
 }
 
 // env-iter1 lake (Shifat's direction, Oct 29): hybrid reflections/refraction.
-// - Hero: analytic ray trace of a 3-sphere proxy against the reflected and refracted view rays (no extra pass).
+// - Hero reflection: active path unchanged; inactive capsule-based reflection branch removed.
 // - Everything else: short screen-space reflection march + one distorted screen-space refraction sample, read from a low-res
 //   opaque scene copy (colour + depth) that is only re-rendered while the lake is on screen. Quarter-res / 7 steps on auto,
 //   half-res / 16 steps on high, none on ?q=low or when the adaptive scaler is struggling (then: analytic sky reflection +
@@ -66,7 +66,7 @@ vec2 g=vec2(0.0099*cos(a1)+0.00735*cos(a2),0.0072*cos(a1)-0.0056*cos(a2));w.y+=h
 vec4 mv=viewMatrix*w;vView=mv.xyz;vScreen=projectionMatrix*mv;gl_Position=vScreen;}`;
 export const LAKE_FS = `#include <packing>
 uniform float uTime; uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene; uniform float uSteps; uniform float uNear; uniform float uFar;
-uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay; uniform sampler2D uNrm; uniform vec4 uHeroA; uniform vec4 uHeroB; 
+uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay; uniform sampler2D uNrm;
 ${WATER_COMMON_GLSL}
 ${GRID_UNIFORMS_GLSL}
 ${GRID_TRACE_GLSL}
@@ -112,13 +112,6 @@ void main(){
   float tw=gcv;vec3 gcol=gcv>0.01?gac/gcv:vec3(0.0);
   vec3 rc=mix(refl,reflTint(gcol*mix(0.3,0.9,uDay),refl),tw*0.7);rc=mix(rc,mix(bankC,treeC,smoothstep(0.4,1.4,hy)),tc*0.6);
   refl=rc;F=max(F,tc*0.35);}
- if(!below&&cameraPosition.y>vWorld.y){/* Shifat 6:06 PM: both heroes reflect in the pond (flying one too), same soft capsule style as the sea/pools/river; only the part above the surface */
-  float wy=vWorld.y;bool nA=uHeroA.w>0.5&&length(uHeroA.xz-vWorld.xz)<40.0&&uHeroA.y+1.55>wy,nB=uHeroB.w>0.5&&length(uHeroB.xz-vWorld.xz)<40.0&&uHeroB.y+1.5>wy;
-  float qA=nA?capHitP(vWorld,R,vec3(uHeroA.x,max(uHeroA.y+0.25,wy),uHeroA.z),uHeroA.xyz+vec3(0.0,1.55,0.0),0.34):-1.0,oA=nA&&qA<0.0?capHitP(vWorld,R,vec3(uHeroA.x,max(uHeroA.y+0.15,wy),uHeroA.z),uHeroA.xyz+vec3(0.0,1.7,0.0),0.55):-1.0;
-  float qB=nB?capHitP(vWorld,R,vec3(uHeroB.x,max(uHeroB.y+0.25,wy),uHeroB.z),uHeroB.xyz+vec3(0.0,1.5,0.0),0.3):-1.0,oB=nB&&qB<0.0?capHitP(vWorld,R,vec3(uHeroB.x,max(uHeroB.y+0.15,wy),uHeroB.z),uHeroB.xyz+vec3(0.0,1.65,0.0),0.5):-1.0;
-  float kA=heroSoftK(qA,oA),kB=heroSoftK(qB,oB);vec3 hc=vec3(0.0);float hk=0.0;
-  if(kA>0.0&&kA>=kB){hk=kA;hc=vec3(0.09,0.11,0.21);}else if(kB>0.0){hk=kB;hc=vec3(0.78,0.82,0.92);}
-  if(hk>0.0){refl=mix(refl,heroReflCol(hc,refl,uDay),heroReflW(hk,dist)*1.6);F=max(F,heroReflW(hk,dist)*0.5);}}
  // refraction / transmission
  vec3 deepCol=mix(vec3(0.010,0.07,0.13),vec3(0.03,0.20,0.22),shallow)*mix(0.25,1.0,uDay);vec3 absorb=vec3(0.46,0.12,0.075);/* same Beer-Lambert water as the sea (slightly richer), so the bed + caustics read through like the island shallows */
  vec3 trans;float alpha=1.0;

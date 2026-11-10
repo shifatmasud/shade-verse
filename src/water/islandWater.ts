@@ -46,10 +46,10 @@ export const FOAM_MAT = new THREE.ShaderMaterial({
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
 export const RIVER_MAT = noInk(new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost } },
+    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM } },
     vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `${CAUSTIC_GLSL}
-    varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky; uniform sampler2D uNrm; uniform vec4 uHeroA, uHeroB;
+    varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky; uniform sampler2D uNrm;
     ${WATER_COMMON_GLSL}
     float n2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
     float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(n2(i), n2(i + vec2(1, 0)), f.x), mix(n2(i + vec2(0, 1)), n2(i + vec2(1, 1)), f.x), f.y); }
@@ -87,18 +87,7 @@ export const RIVER_MAT = noInk(new THREE.ShaderMaterial({
         body = mix(body, seen, 0.95 * (1.0 - sea));   /* toward the mouth the sea's own refraction takes over (no colour seam) */
       }
       white *= 1.0 - 0.95 * vCalm; body = mix(body, vec3(0.16, 0.62, 0.66), vCalm);   /* mouth: foam dies down and the colour turns to the shallow sea's, so river and ocean read as one surface */
-      /* hero reflections on the river: same soft feathered, tinted style as the sea, pools and pond (src/water/common.ts) */
-      vec3 rr = reflect(-V, Nr); float hk = 0.0; vec3 hc = vec3(0.0); float dv = length(cameraPosition - vW);
-      if (dv < 40.0 && cameraPosition.y > vW.y) {
-        bool nA = uHeroA.w > 0.5 && length(uHeroA.xz - vW.xz) < 25.0 && uHeroA.y + 1.55 > vW.y, nB = uHeroB.w > 0.5 && length(uHeroB.xz - vW.xz) < 25.0 && uHeroB.y + 1.5 > vW.y;
-        float qA = nA ? capHitP(vW, rr, vec3(uHeroA.x, max(uHeroA.y + 0.25, vW.y), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.55, 0.0), 0.34) : -1.0;
-        float oA = nA && qA < 0.0 ? capHitP(vW, rr, vec3(uHeroA.x, max(uHeroA.y + 0.15, vW.y), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.55) : -1.0;
-        float qB = nB ? capHitP(vW, rr, vec3(uHeroB.x, max(uHeroB.y + 0.25, vW.y), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3) : -1.0;
-        float oB = nB && qB < 0.0 ? capHitP(vW, rr, vec3(uHeroB.x, max(uHeroB.y + 0.15, vW.y), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.5) : -1.0;
-        float kA = heroSoftK(qA, oA), kB = heroSoftK(qB, oB);
-        if (kA > 0.0 && kA >= kB) { hk = kA; hc = vec3(0.09, 0.11, 0.21); } else if (kB > 0.0) { hk = kB; hc = vec3(0.78, 0.82, 0.92); }
-        hc = heroReflCol(hc, uSky, uDay); hk = heroReflW(hk, dv);
-      }
+      vec3 c = mix(mix(body, uSky, max(fr * 0.6, 0.0)), vec3(0.95, 0.99, 1.0), white) * mix(0.3, 1.0, uDay);
       vec3 c = mix(mix(body, mix(uSky, hc, hk), max(fr * 0.6, hk * 0.32)), vec3(0.95, 0.99, 1.0), white) * mix(0.3, 1.0, uDay);
       float soft = smoothstep(0.0, 0.24, min(vUv.x, 1.0 - vUv.x));   // soft banks, no hard edge on the sand
       float sea2 = max(vCalm, 1.0 - smoothstep(-0.6, 1.2, vW.y)); float a = (mix(0.93, 0.0, smoothstep(0.0, 0.85, sea2)) + 0.5 * white) * soft * vFade;   /* Shifat 2:34 AM seam: the mouth fades to clear so only the flowing foam remains over the sea */ if (a < 0.03) discard;   /* traced bed drawn here, so the strip is near-opaque */
@@ -151,24 +140,16 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
             vec3 seen = alb * (0.74 + cs * 0.55 / (1.0 + cs * 0.55)) * Tb + scat * (1.0 - Tb);   /* soft-compressed: bright shallow sand no longer blows out into white blotches */
             traced = 1.0 - og * 0.6; body = mix(body, seen, traced); caus *= 1.0 - traced;
           }
-          // Shifat 5:12 AM hero rule in the island pools: below the surface refracts and shows through, above it reflects (flying = reflection only)
-          float see = 0.0; vec3 r = reflect(-v, n); float hk = 0.0; vec3 hc = vec3(0.0); float wy = uBB.w;
+          // Island-pool heroes use the existing Snell refraction tests; inactive capsule-based hero reflections are removed.
+          float see = 0.0; vec3 r = reflect(-v, n); float wy = uBB.w;
           if (!below && cameraPosition.y > vW.y) {
             vec3 tdh = refract(-v, n, 1.0 / 1.333);
             float rA = uHeroA.w > 0.5 && uHeroA.y + 0.25 < wy && length(uHeroA.xz - vW.xz) < 25.0 ? heroA(vW, tdh, uHeroA.y + 0.25, min(uHeroA.y + 1.55, wy)) : -1.0;
             float rB = uHeroB.w > 0.5 && uHeroB.y + 0.25 < wy && length(uHeroB.xz - vW.xz) < 25.0 ? capHitP(vW, tdh, uHeroB.xyz + vec3(0.0, 0.25, 0.0), vec3(uHeroB.x, min(uHeroB.y + 1.5, wy), uHeroB.z), 0.3) : -1.0;
             float rt = rA > 0.0 && (rB < 0.0 || rA < rB) ? rA : rB; if (rt > 0.0 && rt < 12.0) see = exp(-rt * 0.15);
-            float qA = uHeroA.w > 0.5 && uHeroA.y + 1.55 > wy && length(uHeroA.xz - vW.xz) < 25.0 ? heroA(vW, r, max(uHeroA.y + 0.25, wy), uHeroA.y + 1.55) : -1.0;
-            float qB = uHeroB.w > 0.5 && uHeroB.y + 1.5 > wy && length(uHeroB.xz - vW.xz) < 25.0 ? capHitP(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.25, wy), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.5, 0.0), 0.3) : -1.0;
-            /* shared soft hero reflection (same as the sea): fatter outer capsule feathers the edge */
-            float oA = qA > 0.0 || !(uHeroA.w > 0.5 && uHeroA.y + 1.55 > wy && length(uHeroA.xz - vW.xz) < 25.0) ? -1.0 : capHitP(vW, r, vec3(uHeroA.x, max(uHeroA.y + 0.15, wy), uHeroA.z), uHeroA.xyz + vec3(0.0, 1.7, 0.0), 0.55);
-            float oB = qB > 0.0 || !(uHeroB.w > 0.5 && uHeroB.y + 1.5 > wy && length(uHeroB.xz - vW.xz) < 25.0) ? -1.0 : capHitP(vW, r, vec3(uHeroB.x, max(uHeroB.y + 0.15, wy), uHeroB.z), uHeroB.xyz + vec3(0.0, 1.65, 0.0), 0.5);
-            float kA = heroSoftK(qA, oA), kB = heroSoftK(qB, oB);
-            if (kA > 0.0 && (kB < 0.5 || qA < qB || qB < 0.0)) { hk = kA; hc = vec3(0.09, 0.11, 0.21); } else if (kB > 0.0) { hk = kB; hc = vec3(0.78, 0.82, 0.92); }
-            hc = heroReflCol(hc, uSky, uDay); hk = heroReflW(hk, length(cameraPosition - vW));
           }
-          float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay * (1.0 - hk);
-          vec3 col = mix(body + caus, mix(uSky, hc, hk), below ? 0.1 : max(fr * 0.75, hk * 0.32)) + sp;
+          float sp = pow(max(dot(r, uSun), 0.0), 120.0) * 1.4 * uDay;
+          vec3 col = mix(body + caus, uSky, below ? 0.1 : fr * 0.75) + sp;
           float lz = texture2D(uCaus, q * 0.21 + vec2(uT * 0.012, -uT * 0.02)).r + 0.6 * texture2D(uCaus, q * 0.53 - uT * 0.03).g;   /* lacy swash, same language as the island shore */
           float ph = fract(uT * 0.16 + 0.4 * sin(atan(vW.z - uC.y, vW.x - uC.x) * 3.0) + 0.15 * lz), run = smoothstep(0.0, 0.15, ph) * (1.0 - smoothstep(0.15, 0.9, ph));
           float edgeFoam = smoothstep(0.84 - 0.06 * run, 0.97, rr) * smoothstep(0.45, 0.9, lz * (0.55 + run) + 0.25 * smoothstep(0.95, 0.99, rr)) * 0.75 * (1.0 - og);
