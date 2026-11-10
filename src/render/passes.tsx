@@ -9,6 +9,7 @@ import { waterMat } from '../water/oceanMaterial';
 import { noInk } from '../water/common';
 import { renderManualShadowMap } from '../world/shadowMap';
 import { updateTrueMeshShadow } from '../world/trueMeshShadow';
+import { TOD } from '../world/env';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
@@ -163,6 +164,7 @@ export function OutlinePass() {
         const sun = scene.getObjectByName('sun1') as THREE.DirectionalLight | undefined;
         const shadowStrength = directShadowBalance(scene);
         const cinematicMood = DBG ? THREE.MathUtils.clamp(Number((window as any).__cinematicMood) || 0, 0, 1) : 0;
+        st.mat.uniforms.uGradeDay = TOD.day; st.mat.uniforms.uGradeWarm = TOD.warm;
         st.mat.uniforms.uCineMood.value = cinematicMood; HERO_WATER.uHeroMood.value = cinematicMood;
         if (sun) { sun.getWorldPosition(_heroShadowLightPos); sun.target.getWorldPosition(_heroShadowLightTarget); _heroShadowLightDir.subVectors(_heroShadowLightPos, _heroShadowLightTarget).normalize(); }
         st.mat.uniforms.uCloudSunDir.value.copy(_heroShadowLightDir); camera.updateMatrixWorld(); camera.getWorldPosition(st.mat.uniforms.uCloudCamera.value);

@@ -92,6 +92,6 @@ void main(){
 
 const OUT_FS_FILM = OUT_FS.replace(
     '  gl_FragColor = vec4(c, 1.0);',
-    '  c = applyShadeFilmGrade(c, step(uFar * 0.95, z));\n  gl_FragColor = vec4(c, 1.0);',
+    '  c = applyShadeFilmGrade(c, step(uFar * 0.95, z), lightMask * (1.0 - waterReceiver));\n  gl_FragColor = vec4(c, 1.0);',
 );
 export const FILM_GRADED_OUT_FS = `${FILM_GRADE_GLSL}\n${OUT_FS_FILM}`;

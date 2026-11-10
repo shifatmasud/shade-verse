@@ -6,6 +6,7 @@
 // Opt-out for A/B: ?hd=0.
 import * as THREE from 'three';
 import { FILM_GRADE_GLSL } from './shaders/filmGrade';
+import { TOD } from './world/env';
 
 export const HERO_LAYER = 2;
 const OFF = typeof location !== 'undefined' && /[?&]hd=0\b/.test(location.search);
@@ -64,6 +65,7 @@ export const HERO_WATER = {
     tHeroShadow: { value: null as THREE.Texture | null }, uHeroShadowMatrix: { value: new THREE.Matrix4() },
     uHeroShadowTexel: { value: new THREE.Vector2(1, 1) }, uHeroShadowBias: { value: 0.00004 },
     uHeroShadowStrength: { value: 0.70 }, uHeroShadowOn: { value: 0 }, uHeroMood: { value: 0 },
+    uGradeDay: TOD.day, uGradeWarm: TOD.warm,
 };
 const patched = new WeakSet<THREE.Material>();
 const _R = new THREE.Matrix4();
@@ -92,7 +94,7 @@ function patchWater(m: THREE.Material) {
     vec4 hwQ2 = uPV * vec4(hwP2, 1.0);
     float hwH = vHwW.y - uWL;
     gl_FragColor = vec4(mix(gl_FragColor.rgb * 0.85, uWC, 0.3), 0.45 * exp(-hwH * 0.06));
-    gl_FragColor.rgb = applyShadeFilmGrade(gl_FragColor.rgb, 0.0);
+    gl_FragColor.rgb = applyShadeFilmGrade(gl_FragColor.rgb, 0.0, 0.0);
     gl_FragDepth = clamp((hwQ2.z / hwQ2.w) * 0.5 + 0.5, 0.0, 1.0);
     return;
   }
@@ -108,7 +110,7 @@ function patchWater(m: THREE.Material) {
   if (uHeroShadowOn > 0.5 && vHwW.y >= uWL && (uHeroShadowReceive > 0.5 || uHeroMood > 0.001)) heroVis = heroShadowVisibility(vHwW);
   if (uHeroShadowOn > 0.5 && uHeroShadowReceive > 0.5 && vHwW.y >= uWL) { vec3 shade = mix(vec3(0.70, 0.75, 0.84), vec3(1.0), heroVis); gl_FragColor.rgb *= mix(vec3(1.0), shade, uHeroShadowStrength); }
   if (uHeroMood > 0.001) { vec3 coolGrade = vec3(0.94, 0.98, 1.08), warmGrade = vec3(1.05, 1.025, 0.96); gl_FragColor.rgb *= mix(vec3(1.0), mix(coolGrade, warmGrade, heroVis), uHeroMood * 0.36); }
-  gl_FragColor.rgb = applyShadeFilmGrade(gl_FragColor.rgb, 0.0);
+  gl_FragColor.rgb = applyShadeFilmGrade(gl_FragColor.rgb, 0.0, 0.0);
   gl_FragDepth = hwD;
 }`;
     };
