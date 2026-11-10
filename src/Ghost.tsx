@@ -7,7 +7,7 @@ import baseTexUrl from './basetex';
 import { paintTrim, GHOST_TRIM } from './heroTrim';
 import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type Input, type Sim } from './sim';
 import { registerFxHero } from './CombatFX';
-import { animateHeroBones, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
+import { animateHeroBones, applyCapeWind, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
 import { BOSS_BODY_OFFSET } from './bossConfig';
 import { HERO_REFL } from './caustics';
 
@@ -173,6 +173,7 @@ function animateHuman(actor: Sim, rig: ReturnType<typeof buildRig>, dt: number, 
     if (shadowPoseState) { state.pose.w = shadowPoseState.w; state.pose.c.set(shadowPoseState.c); state.pose.t.set(shadowPoseState.t); }
     const animation = animateHeroBones(driver, rig, dt, { clipState: state.anim as HeroClipState, poseState: state.pose as CombatPoseState, sourceClipState: shadowClipState, poseDt: shadowClipState ? 0 : dt, glideBlend: rootPose.glideBlend, publishState: driver === actor });
     if (animation.clipKey === 'idle' && animation.weight > 0.01) uprightHead(rig, animation.weight);   // she stands tall in idle: the shared idle clip hangs the head forward
+    applyCapeWind(driver, rig, dt);
     root.updateMatrixWorld(true);
     rig.skel.update();
     return { ...animation, source: driver === actor ? 'ghost' : 'shadow' };

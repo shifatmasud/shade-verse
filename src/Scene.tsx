@@ -311,17 +311,32 @@ export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: 
 const _wv = new THREE.Vector3(), _wv2 = new THREE.Vector3();
 export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLambertMaterial) {
     const d: any = data;
-    if (!d._capeRig && !(DBG && (window as any).__noCapeRig)) {   // user-approved (9:53) hidden cape rig: 3 extra bones + re-weighted cape vertices only. Rest pose is unchanged (new bones sit at identity under chest), mesh/UV/texture untouched.
+    if (!d._capeRig && !(DBG && (window as any).__noCapeRig)) {   // cape weights blend from torso to cloth so the lower-back panel stays on the body.
         d._capeRig = true;
         const base = d.bones.length; d.bones.push({ n: 'cape1', p: 2, h: [0, 1.58, -0.13] }, { n: 'cape2', p: base, h: [0, 1.4, -0.15] }, { n: 'cape3', p: base + 1, h: [0, 1.27, -0.17] });
-        const ids = [2, base, base + 1, base + 2], P = d.pos; let cnt = 0;
-        for (let i = 0; i < P.length / 3; i++) {
-            const y = P[i * 3 + 1], z = P[i * 3 + 2]; if (!(z < -0.12 && y > 1.15 && y < 1.7)) continue;
+        const ids = [2, base, base + 1, base + 2], P = d.pos, n = P.length / 3;
+        const srcSi = Array.from(d.si) as number[], srcSw = Array.from(d.sw) as number[];
+        const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+        let cnt = 0, lowerBackCore = 0, lowerBackBlend = 0;
+        for (let i = 0; i < n; i++) {
+            const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2]; if (!(z < -0.12 && y > 1.15 && y < 1.7)) continue;
             const u = Math.max(0, Math.min(2.999, (1.58 - y) / 0.38 * 3)), k = Math.floor(u), f = u - k;
-            d.si[i * 4] = ids[k]; d.si[i * 4 + 1] = ids[k + 1]; d.si[i * 4 + 2] = 0; d.si[i * 4 + 3] = 0;
-            d.sw[i * 4] = 1 - f; d.sw[i * 4 + 1] = f; d.sw[i * 4 + 2] = 0; d.sw[i * 4 + 3] = 0; cnt++;
+            // Keep the rear waist on its original hip/spine/chest weights; feather the panel boundary into the cape.
+            // The existing body and outline stay one continuous mesh, including all mixed boundary triangles.
+            const panelKeep = (1 - smooth(1.28, 1.40, y)) * (1 - smooth(0.24, 0.36, Math.abs(x)));
+            const capeKeep = 1 - panelKeep, mixed = new Map<number, number>();
+            for (let j = 0; j < 4; j++) {
+                const w = srcSw[i * 4 + j] * panelKeep, index = srcSi[i * 4 + j];
+                if (w > 0.0001) mixed.set(index, (mixed.get(index) || 0) + w);
+            }
+            mixed.set(ids[k], (mixed.get(ids[k]) || 0) + (1 - f) * capeKeep);
+            mixed.set(ids[k + 1], (mixed.get(ids[k + 1]) || 0) + f * capeKeep);
+            const ranked = [...mixed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4), total = ranked.reduce((sum, item) => sum + item[1], 0);
+            for (let j = 0; j < 4; j++) { d.si[i * 4 + j] = ranked[j]?.[0] ?? ids[k]; d.sw[i * 4 + j] = ranked[j] ? ranked[j][1] / total : 0; }
+            if (panelKeep > 0.99) lowerBackCore++; else if (panelKeep > 0.001) lowerBackBlend++;
+            cnt++;
         }
-        if (DBG) (window as any).__capeVerts = cnt;
+        if (DBG) { (window as any).__capeVerts = cnt; (window as any).__capeLowerBackCoreVerts = lowerBackCore; (window as any).__capeLowerBackBlendVerts = lowerBackBlend; }
     }
     const legH: Record<number, number[]> = {};
     {   // knee / ankle pivots onto the leg mesh (Shifat Nov 2 4:40 PM on the kick's support leg: "Its rig bones problem"). The leg mesh stands in a slight A-stance (knee centre ~0.20 out from the midline, ankle ~0.245) but the knee and ankle bones sat in a vertical line under the hip (0.14 / 0.13 out): the knee hinged about a point on the INNER surface of the knee and the ankle 11 cm inside the foot, so any knee bend or leg twist swung the shin around the wrong axis (the support leg's backward kink). Each joint is moved to the middle of its own mesh cross-section (measured here from the vertices, so Ghost's own body gets her own pivots; only the skeleton built here moves, the shared mesh data is not touched, so Ghost's body shaping reads the same bone lines as before); the hip pivot is unchanged. Rest pose unchanged (bind matrices follow the bones); rotations keep their meaning
@@ -428,6 +443,21 @@ export function buildRig(data: any = heroData, materialOverride?: THREE.MeshLamb
     return { root, poseRoot, b: byName, bones, hull, skel, hipsY: byName.hips.position.y };
 }
 
+
+export function applyCapeWind(sim: any, rig: any, dt: number) {
+    const c1 = rig.b.cape1, c2 = rig.b.cape2, c3 = rig.b.cape3;
+    if (!c1) return;
+    const speed = Math.hypot(sim.vel[0], sim.vel[2]), sp = Math.min(1, speed / 30), gl = sim.glideOn ? 1 : 0, ph = sim.t * (gl ? 9 : 6);
+    const tx = gl ? 0 : sp * 0.35, fl = gl ? 0.12 : 0.04 * sp, lerp = Math.min(1, dt * 8);
+    const cs2: number[] = (rig as any).__capeState || ((rig as any).__capeState = [0, 0, 0, 0, 0]);
+    const lc = (rig as any).__tv?.lc || 0;
+    cs2[0] += (tx + lc + Math.sin(ph) * fl - cs2[0]) * lerp;
+    cs2[1] += (tx * 0.9 + lc * 0.5 + Math.sin(ph - 0.9) * fl * 1.3 - cs2[1]) * lerp;
+    cs2[2] += (tx * 0.7 + Math.sin(ph - 1.8) * fl * 1.6 - cs2[2]) * lerp;
+    cs2[3] += (Math.sin(ph * 0.7) * (gl ? 0.2 : 0.05 * sp) - cs2[3]) * lerp;
+    cs2[4] += (Math.sin(ph * 0.7 - 1) * (gl ? 0.3 : 0.07 * sp) - cs2[4]) * lerp;
+    c1.rotation.x = cs2[0]; c2.rotation.x = cs2[1]; c3.rotation.x = cs2[2]; c2.rotation.z = cs2[3]; c3.rotation.z = cs2[4];
+}
 
 // Mixamo-derived clips, retargeted offline (tools/fbx2clip.mjs) onto the generated rig
 export type Clip = { fps: number; n: number; bones: string[]; q: number[]; hy: number[] };
