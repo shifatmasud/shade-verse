@@ -1,16 +1,25 @@
 import { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
+import { ORB_BLOOM_ALPHA_TAG, SELECTIVE_BLOOM_LAYER } from './renderLayers';
 import { worldBufferSize, worldTarget } from './heroHD';
 
 const BLOOM_FS = `uniform sampler2D tBase; uniform sampler2D tGlow; uniform vec2 uBloomRes; varying vec2 vUv;
+float orbGain(float alpha){
+  float tag=${ORB_BLOOM_ALPHA_TAG.toFixed(6)};
+  float isOrb=1.0-smoothstep(0.008,0.025,abs(alpha-tag));
+  return 1.0+1.5*isOrb;
+}
+vec3 bloomTap(vec2 uv,float weight){
+  vec4 sampleColor=texture2D(tGlow,uv);
+  return sampleColor.rgb*(weight*orbGain(sampleColor.a));
+}
 void main(){
   vec2 p=1.0/uBloomRes;
-  vec3 b=texture2D(tGlow,vUv).rgb*0.20;
-  b+=(texture2D(tGlow,vUv+vec2(p.x,0.0)).rgb+texture2D(tGlow,vUv-vec2(p.x,0.0)).rgb+texture2D(tGlow,vUv+vec2(0.0,p.y)).rgb+texture2D(tGlow,vUv-vec2(0.0,p.y)).rgb)*0.10;
-  b+=(texture2D(tGlow,vUv+vec2(p.x,p.y)).rgb+texture2D(tGlow,vUv+vec2(-p.x,p.y)).rgb+texture2D(tGlow,vUv+vec2(p.x,-p.y)).rgb+texture2D(tGlow,vUv-vec2(p.x,p.y)).rgb)*0.05;
-  b+=(texture2D(tGlow,vUv+vec2(p.x*2.0,0.0)).rgb+texture2D(tGlow,vUv-vec2(p.x*2.0,0.0)).rgb+texture2D(tGlow,vUv+vec2(0.0,p.y*2.0)).rgb+texture2D(tGlow,vUv-vec2(0.0,p.y*2.0)).rgb)*0.025;
+  vec3 b=bloomTap(vUv,0.20);
+  b+=bloomTap(vUv+vec2(p.x,0.0),0.10)+bloomTap(vUv-vec2(p.x,0.0),0.10)+bloomTap(vUv+vec2(0.0,p.y),0.10)+bloomTap(vUv-vec2(0.0,p.y),0.10);
+  b+=bloomTap(vUv+vec2(p.x,p.y),0.05)+bloomTap(vUv+vec2(-p.x,p.y),0.05)+bloomTap(vUv+vec2(p.x,-p.y),0.05)+bloomTap(vUv-vec2(p.x,p.y),0.05);
+  b+=bloomTap(vUv+vec2(p.x*2.0,0.0),0.025)+bloomTap(vUv-vec2(p.x*2.0,0.0),0.025)+bloomTap(vUv+vec2(0.0,p.y*2.0),0.025)+bloomTap(vUv-vec2(0.0,p.y*2.0),0.025);
   gl_FragColor=vec4(b*0.32,0.0);   /* added onto the frame by the blend unit (ONE, ONE): same result as base+b, without copying the whole frame first */
 }`;
 

@@ -5,6 +5,7 @@
 // heroes (Shadow + Ghost) at native resolution on top, depth-tested against the world so trees/buildings still hide them.
 // Opt-out for A/B: ?hd=0.
 import * as THREE from 'three';
+import { FILM_GRADE_GLSL } from './shaders/filmGrade';
 
 export const HERO_LAYER = 2;
 const OFF = typeof location !== 'undefined' && /[?&]hd=0\b/.test(location.search);
@@ -69,6 +70,7 @@ const _R = new THREE.Matrix4();
 const mirCam = new THREE.PerspectiveCamera(); mirCam.matrixAutoUpdate = false; mirCam.matrixWorldAutoUpdate = false;
 const mirSaved: [THREE.Material, boolean, boolean, THREE.Side][] = [];
 const HERO_SHADOW_GLSL = `uniform sampler2D tHeroShadow; uniform mat4 uHeroShadowMatrix; uniform vec2 uHeroShadowTexel; uniform float uHeroShadowBias; uniform float uHeroShadowStrength; uniform float uHeroShadowOn; uniform float uHeroMood; uniform float uHeroShadowReceive;
+${FILM_GRADE_GLSL}
 float heroShadowVisibility(vec3 wp){ vec4 q = uHeroShadowMatrix * vec4(wp, 1.0); if (q.w <= 0.0) return 1.0; vec3 p = q.xyz / q.w; if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0 || p.z > 1.0) return 1.0; float v = 0.0, total = 0.0; for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++){ float wx = x == 0 ? 2.0 : 1.0, wy = y == 0 ? 2.0 : 1.0, w = wx * wy; vec2 o = vec2(float(x), float(y)) * uHeroShadowTexel * 1.5; float d = texture2D(tHeroShadow, p.xy + o).x; v += step(p.z - uHeroShadowBias, d) * w; total += w; } return v / total; }`;
 function patchWater(m: THREE.Material) {
     if (patched.has(m)) return; patched.add(m);
@@ -90,6 +92,7 @@ function patchWater(m: THREE.Material) {
     vec4 hwQ2 = uPV * vec4(hwP2, 1.0);
     float hwH = vHwW.y - uWL;
     gl_FragColor = vec4(mix(gl_FragColor.rgb * 0.85, uWC, 0.3), 0.45 * exp(-hwH * 0.06));
+    gl_FragColor.rgb = applyShadeFilmGrade(gl_FragColor.rgb, 0.0);
     gl_FragDepth = clamp((hwQ2.z / hwQ2.w) * 0.5 + 0.5, 0.0, 1.0);
     return;
   }
@@ -105,6 +108,7 @@ function patchWater(m: THREE.Material) {
   if (uHeroShadowOn > 0.5 && vHwW.y >= uWL && (uHeroShadowReceive > 0.5 || uHeroMood > 0.001)) heroVis = heroShadowVisibility(vHwW);
   if (uHeroShadowOn > 0.5 && uHeroShadowReceive > 0.5 && vHwW.y >= uWL) { vec3 shade = mix(vec3(0.70, 0.75, 0.84), vec3(1.0), heroVis); gl_FragColor.rgb *= mix(vec3(1.0), shade, uHeroShadowStrength); }
   if (uHeroMood > 0.001) { vec3 coolGrade = vec3(0.94, 0.98, 1.08), warmGrade = vec3(1.05, 1.025, 0.96); gl_FragColor.rgb *= mix(vec3(1.0), mix(coolGrade, warmGrade, heroVis), uHeroMood * 0.36); }
+  gl_FragColor.rgb = applyShadeFilmGrade(gl_FragColor.rgb, 0.0);
   gl_FragDepth = hwD;
 }`;
     };

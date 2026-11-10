@@ -4,16 +4,17 @@ import * as THREE from 'three';
 import { useRef } from 'react';
 import { TOD, UW, UWF } from './env';
 import { waterMat } from '../water/oceanMaterial';
-import { FOG } from '../sim';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
 // Day/night cycle: drives the shared TOD uniforms (sun, fog, warmth) and the sea's colours over a 5-minute loop.
 const DN_DUR = 1200 /* Shifat Nov 2 10:17 PM 'night & day time must be longer': 20-min loop, ~10 min day / ~10 min night (was 300) */, DN_PH0 = Math.asin(0.22 / 0.95);
-const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _cn = new THREE.Color(0.035, 0.055, 0.13), _cnoon = new THREE.Color(0.6, 0.77, 0.94) /* Shifat Nov 1 4:29 PM 'distance haze must be based on sky colour, not white': the noon horizon/haze is the sky's own low blue (was a pale near-white 0.76,0.84,0.93) */, _cwarm = new THREE.Color(FOG[0], FOG[1], FOG[2]);
+const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _cn = new THREE.Color(0.035, 0.055, 0.13);
+const _cnoon = new THREE.Color(0.44, 0.77, 0.90);   // cool cyan sky and distance haze
+const _cwarm = new THREE.Color(0.55, 0.74, 0.82);   // retain a soft teal horizon through the low-sun phase
 const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const _uwDay = new THREE.Color();
-const _moodKey = new THREE.Color('#ffc58d'), _moodFill = new THREE.Color('#798bc9'), _moodHemi = new THREE.Color('#a9bee8');
+const _moodKey = new THREE.Color('#ffbd78'), _moodFill = new THREE.Color('#7782d3'), _moodHemi = new THREE.Color('#a5b7ec');
 export function DayNight() {
     const { scene } = useThree();
     const ls = useRef<{ h: THREE.HemisphereLight; a: THREE.DirectionalLight; b: THREE.DirectionalLight } | null>(null);
@@ -33,11 +34,12 @@ export function DayNight() {
         a.position.set(TOD.sun.x * 70 * (up ? 1 : -1), Math.abs(TOD.sun.y) * 70 + 8, TOD.sun.z * 70 * (up ? 1 : -1));
         a.color.set('#fff6ea').lerp(_c2.set('#ffd2a0'), warm).lerp(_c2.set('#ff9a5a'), sstep(0.0, 0.2, 0.2 - sy) * day * 0.7).lerp(_c2.set('#8fb0ff'), 1 - day); a.intensity = (0.5 + 1.3 * day * (1 - 0.4 * TOD.noon.value)) * (1 - 0.55 * WEATHER.rain.value);   /* overcast in rain: the sun goes soft */
         b.color.set('#a8caff'); b.intensity = 0.25 + 0.55 * day;
-        const mood = DBG ? Math.max(0, Math.min(1, Number((window as any).__cinematicMood) || 0)) : 0;
+        const debugMood = DBG ? ((window as any).__cinematicLightingMood ?? (window as any).__cinematicMood) : undefined;
+        const mood = debugMood !== undefined ? Math.max(0, Math.min(1, Number(debugMood) || 0)) : 0.78 * day;
         if (mood > 0) {
-            a.color.lerp(_moodKey, mood * 0.22);
-            b.color.lerp(_moodFill, mood * 0.28); b.intensity *= 1 - mood * 0.16;
-            h.color.lerp(_moodHemi, mood * 0.12); h.intensity *= 1 - mood * 0.08;
+            a.color.lerp(_moodKey, mood * 0.32); a.intensity *= 1 + mood * 0.04;
+            b.color.lerp(_moodFill, mood * 0.38); b.intensity *= 1 - mood * 0.18;
+            h.color.lerp(_moodHemi, mood * 0.18); h.intensity *= 1 - mood * 0.07;
         }
         if (DBG) (window as any).__cinematicLighting = { mood, key: a.color.toArray(), keyIntensity: a.intensity, fill: b.color.toArray(), fillIntensity: b.intensity, hemi: h.color.toArray(), hemiIntensity: h.intensity };
     });

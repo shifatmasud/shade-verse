@@ -2,7 +2,7 @@ import { WATERLINE, UW, WEATHER } from '../world/env';
 import { HD, HERO_WATER, createHeroComposite, worldBufferSize, worldTarget } from '../heroHD';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { FXAA_FS, FXAA_SHARP_FS, OUT_FS, CLOUD_SHADOW_FS } from '../shaders/post';
+import { FXAA_FS, FXAA_SHARP_FS, FILM_GRADED_OUT_FS as OUT_FS, CLOUD_SHADOW_FS } from '../shaders/post';
 import { SKY_T } from '../shaders/skyFx';
 import { useEffect, useMemo } from 'react';
 import { waterMat } from '../water/oceanMaterial';

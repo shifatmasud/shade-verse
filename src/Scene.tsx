@@ -60,7 +60,7 @@ import { City, TenementBlock, Sky } from './world/cityScenery';
 import { HD, applyRatio, registerHero, HERO_WATER } from './heroHD';
 import { ShadowMapSetup } from './world/shadowMap';
 import { registerTrueMeshShadow } from './world/trueMeshShadow';
-import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
+import { ORB_BLOOM_ALPHA_TAG, SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 
 
@@ -612,7 +612,7 @@ const _camTgt = new THREE.Vector3();   /* per-frame scratch (no garbage each fra
 function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
-    const web = useRef<THREE.Mesh>(null!), webB = useRef<THREE.Mesh>(null!), arrow = useRef<THREE.Mesh>(null!), cores = useRef<THREE.InstancedMesh>(null!), glows = useRef<THREE.InstancedMesh>(null!);
+    const web = useRef<THREE.Mesh>(null!), webB = useRef<THREE.Mesh>(null!), arrow = useRef<THREE.Mesh>(null!), cores = useRef<THREE.InstancedMesh>(null!);
     const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(perf.scale), hyst = useRef({ s: 0, n: 0, down: -99 });
     const bv = useMemo(() => new THREE.Vector3(), []);
     const bv2 = useMemo(() => new THREE.Vector3(), []);
@@ -920,10 +920,9 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             const o = sim.orbs[i], by = o[1] + Math.sin(t * 2 + o[0]) * 0.6;
             tmp.position.set(o[0], by, o[2]); tmp.rotation.set(t * 1.2, t * 1.5, 0); tmp.scale.setScalar(1); tmp.updateMatrix();
             cores.current.setMatrixAt(i, tmp.matrix);
-            tmp.rotation.set(0, 0, 0); tmp.scale.setScalar(1 + 0.12 * Math.sin(t * 5 + i)); tmp.updateMatrix(); glows.current.setMatrixAt(i, tmp.matrix);
             const d = Math.hypot(o[0] - p[0], o[1] - p[1], o[2] - p[2]); if (d < nd) { nd = d; nb = i; }
         }
-        cores.current.instanceMatrix.needsUpdate = true; glows.current.instanceMatrix.needsUpdate = true;
+        cores.current.instanceMatrix.needsUpdate = true;
         arrow.current.visible = false;   // user 10:01 "Remove navigator arrows"
         if (nb >= 0) {
             const o = sim.orbs[nb], a = Math.atan2(o[0] - p[0], o[2] - p[2]);
@@ -985,8 +984,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         {/* the 200 m wall extensions past the city run along open sea: top kept 0.4 m under the still-water line (at 0 m it read as a dark line on the horizon from the island) */}
         {[-1, 1].map((s) => <mesh key={s} position={[s * (HALF + 100), (SEABED + WATER_Y - 0.4) / 2, WATER_Z - 0.3]}><boxGeometry args={[200, WATER_Y - 0.4 - SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>)}
         {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
-        <instancedMesh ref={cores} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#ffd23f" transparent opacity={0.5} blending={THREE.NoBlending} /></instancedMesh>
-        <instancedMesh ref={glows} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><sphereGeometry args={[3.0, 10, 8]} /><meshBasicMaterial color="#ffb347" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} /></instancedMesh>
+        <instancedMesh ref={cores} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#fff4a6" transparent opacity={ORB_BLOOM_ALPHA_TAG} blending={THREE.NoBlending} toneMapped={false} /></instancedMesh>
     </>;
 }
 export { gsap, resetSim };

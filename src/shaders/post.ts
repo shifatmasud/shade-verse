@@ -1,6 +1,7 @@
 // Post-processing: FXAA (plus sharpened variant) and the ink outline pass. Moved verbatim from Scene.tsx.
 import { WL_GLSL } from '../water/waterline';
 import { CLOUD_GLSL } from './skyFx';
+import { FILM_GRADE_GLSL } from './filmGrade';
 export const CLOUD_SHADOW_FS = `uniform float uCloudTime; uniform float uCloudRain; uniform float uCloudRange; varying vec2 vUv;
 ${CLOUD_GLSL}
 float cloudDensity(vec2 p){ float cl=smoothstep(0.25,0.75,cloudN(p*0.32+11.0)); float f=cloudFbm(p)+0.3*cl-0.12; float er=(cloudN(p*5.3+uCloudTime*0.01)*0.6+cloudN(p*11.0)*0.4)*0.16; float cov=mix(0.56,0.44,uCloudRain); return smoothstep(cov-0.14,cov+0.34,f-er); }
@@ -87,3 +88,10 @@ void main(){
   }
   gl_FragColor = vec4(c, 1.0);
 }`;
+
+
+const OUT_FS_FILM = OUT_FS.replace(
+    '  gl_FragColor = vec4(c, 1.0);',
+    '  c = applyShadeFilmGrade(c, step(uFar * 0.95, z));\n  gl_FragColor = vec4(c, 1.0);',
+);
+export const FILM_GRADED_OUT_FS = `${FILM_GRADE_GLSL}\n${OUT_FS_FILM}`;

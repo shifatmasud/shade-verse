@@ -5,7 +5,7 @@ export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 
 float svh2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} float svn2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(svh2(i),svh2(i+vec2(1,0)),f.x),mix(svh2(i+vec2(0,1)),svh2(i+vec2(1,1)),f.x),f.y);}
 void main(){
  float t=clamp(vDir.y*1.6,0.0,1.0);
- vec3 top=mix(vec3(0.16,0.42,0.9),vec3(0.24,0.5,0.86),uWarm);vec3 mid=mix(vec3(0.6,0.8,0.96),vec3(0.96,0.72,0.68),uWarm);
+ vec3 top=mix(vec3(0.10,0.42,0.78),vec3(0.14,0.50,0.78),uWarm);vec3 mid=mix(vec3(0.52,0.82,0.93),vec3(0.72,0.80,0.91),uWarm);
  vec3 c=mix(uHor,mid,smoothstep(0.0,0.25,t));c=mix(c,top,smoothstep(0.2,0.9,t));
  vec3 sun=uSunV;float g=max(dot(normalize(vDir),sun),0.0);
  c+=mix(vec3(1.0,0.95,0.85),vec3(1.0,0.78,0.5),uWarm)*(pow(g,24.0)*0.45+pow(g,220.0)*0.9);
@@ -14,7 +14,7 @@ void main(){
     float sa=acos(clamp(g,-1.0,1.0))/0.05; float sd=1.0-smoothstep(0.8,1.12,sa); float mu=sqrt(max(1.0-sa*sa,0.0)); float limb=0.82+0.18*mu;
     vec3 core=mix(vec3(1.0,0.98,0.94)*3.2,vec3(1.0,0.72,0.4)*2.4,uWarm*uWarm); vec3 rim=mix(vec3(1.0,0.9,0.7)*1.6,vec3(1.0,0.48,0.18)*1.3,uWarm*uWarm);
     c=mix(c,mix(rim,core,limb)*limb*1.15,sd); c+=mix(vec3(1.0,0.9,0.75),vec3(1.0,0.55,0.25),uWarm)*exp(-max(sa-1.0,0.0)*1.6)*0.55; }
- c+=vec3(1.0,0.7,0.45)*0.28*uWarm*exp(-abs(vDir.y)*9.0)*(0.4+0.6*max(dot(normalize(vec3(vDir.x,0.0,vDir.z)),normalize(vec3(sun.x,0.0,sun.z))),0.0));
+ c+=vec3(1.0,0.76,0.57)*0.20*uWarm*exp(-abs(vDir.y)*9.0)*(0.4+0.6*max(dot(normalize(vec3(vDir.x,0.0,vDir.z)),normalize(vec3(sun.x,0.0,sun.z))),0.0));
  {float ci=sin(vDir.x/(vDir.y+0.25)*3.0+uT*0.01)*0.5+0.5;c=mix(c,vec3(1.0,0.75,0.7),smoothstep(0.55,0.8,t)*smoothstep(0.7,1.0,ci)*0.18);}
  {vec2 st=floor(vDir.xz/(abs(vDir.y)+0.2)*90.0);float r=fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5);
  c+=vec3(1.0)*step(0.9965,r)*smoothstep(0.55,0.9,t)*0.5*(1.0-uDay);}   /* no stars in a daylight sky */
