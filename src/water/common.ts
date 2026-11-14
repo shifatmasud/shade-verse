@@ -15,11 +15,15 @@ uniform float uBow;
 uniform float uAur;   // aurora on/off per night (WEATHER.aur, src/world/weather.tsx)   // rainbow envelope (WEATHER.bow, src/world/weather.tsx)
 uniform float uFlash;
 uniform vec3 uFd;
-float rainHash(vec2 c){ return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
+float waterHash21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float rainHash(vec2 c){ return waterHash21(c); }
 vec2 rainRing(vec2 xz, float t, float cs, float sp){ vec2 q = xz / cs, id = floor(q); float h = rainHash(id), h2 = rainHash(id + 17.3);
   vec2 l = fract(q) - 0.5 - (vec2(h, h2) - 0.5) * 0.5; float age = fract(t * sp + h * 7.0), r = age * 0.42, d = length(l), x = d - r;
   float ring = sin(x * 13.0) * exp(-x * x * 45.0) * (1.0 - age) * (1.0 - age); return l / max(d, 1e-3) * ring; }
 vec2 rainSlope(vec2 xz, float t){ float px = length(fwidth(xz)); return (rainRing(xz, t, 1.3, 1.3) + rainRing(xz + 3.7, t, 1.9, 1.05)) * 1.0 * (1.0 - smoothstep(0.05, 0.16, px)); }   /* Nov 2 (real ref 'Reeds and Rain'): rings bolder and kept to a coarser pixel footprint so they read from game camera height */   /* rings thinner than a pixel alias into dark specks: faded out by pixel footprint */
+// Shared optical terms: dielectric water Fresnel (n=1.333) and a restrained forward-scattering lobe.
+float waterFresnel(float cosTheta){ float f0=0.02037; float x=1.0-clamp(cosTheta,0.0,1.0); return f0+(1.0-f0)*x*x*x*x*x; }
+vec3 waterSSS(vec3 V, vec3 N, vec3 sunDir, float crest, float dayK){ float forward=pow(clamp(dot(V,normalize(-sunDir+N*0.45)),0.0,1.0),3.5); return vec3(0.035,0.30,0.27)*forward*clamp(crest,0.0,1.0)*dayK; }
 vec3 reflTint(vec3 c, vec3 base){ return mix(c, dot(c, vec3(0.3, 0.5, 0.2)) * vec3(0.6, 0.8, 1.05) + base * 0.25, 0.7); }
 // ray vs capsule (hero bodies), shared by every water body
 float capHitP(vec3 ro, vec3 rd, vec3 pa, vec3 pb, float ra){ vec3 ba = pb - pa, oa = ro - pa; float baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);

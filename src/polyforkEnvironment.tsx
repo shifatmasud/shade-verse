@@ -15,6 +15,7 @@ import {
 } from './sim';
 import { bakeGrid } from './water/gridRefl';
 import { noInk } from './water/common';
+import { RIPPLE_UNIFORMS } from './water/ripples';
 import { CONTACT_FS, CONTACT_VS, FOAM_FS, FOAM_VS, LAKE_CAUSTICS_FS, LAKE_CAUSTICS_VS, LAKE_FS, LAKE_VS, rampGeometry, shorelineFoamGeometry } from './world/park/lake';
 export { LAKE_VS, LAKE_FS } from './world/park/lake';
 
@@ -408,7 +409,7 @@ export function PolyforkLakeBridge({ sim, perf, tod }: { sim: Sim; perf?: { scal
             vertexShader: LAKE_VS, fragmentShader: LAKE_FS,
             uniforms: {
                 uTime: { value: 0 }, tScene: { value: copyTarget ? copyTarget.texture : null }, tDepth: { value: copyTarget ? copyTarget.depthTexture : null },
-                uUseScene: { value: 0 }, uSteps: { value: QK.lakeSteps }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() },
+                uUseScene: { value: 0 }, uSteps: { value: QK.lakeSteps }, uNear: { value: 0.1 }, uFar: { value: 1000 }, uProj: { value: new THREE.Matrix4() }, uRip: RIPPLE_UNIFORMS,
                 uPondCenter: { value: new THREE.Vector2(PARK_POND.cx, PARK_POND.cz) }, uRain: WEATHER.rain, uNrm: { value: WATER_NRM }, uPondR: { value: PARK_POND.rx }, uShore: { value: LAKE_SHORE },
                 uHero: { value: new THREE.Vector3(0, -999, 0) }, uGrid: { value: bakeGrid().tex }, uGBox: { value: bakeGrid().box }, uGB: { value: bakeGrid().b }, uGN: { value: bakeGrid().n }, uHor: { value: new THREE.Color('#bcd3df') }, uZen: { value: new THREE.Color('#5b8fc4') },
                 uSun: { value: new THREE.Vector3(-0.36, 0.82, 0.44).normalize() }, uDay: { value: 1 },

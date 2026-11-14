@@ -52,7 +52,7 @@ const rayMat = new THREE.ShaderMaterial({
     vertexShader: 'varying vec2 vU; varying float vY; varying vec4 vS; void main(){ vU = uv; vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0); vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; vS = gl_Position; }',
     fragmentShader: `varying vec2 vU; varying float vY; varying vec4 vS; uniform float uTime, uSurf, uDay;
       ${WL_GLSL}
-      float h(float x){ return fract(sin(x * 127.1) * 43758.5453); }
+      float h(float x){ float q=fract(x*0.1031); q*=q+33.33; q*=q+q; return fract(q); }
       void main(){
         if (uWL.w > 0.5 && vS.y / vS.w > wlY(vS.x / vS.w)) discard;   /* half-underwater lens: shafts start at the flat sea level, so in a trough their tops stood in the air half - never above the line */
         float x = vU.x, t = uTime;
@@ -90,7 +90,7 @@ export function Underwater({ sim }: { sim: Sim }) {
     const kc = useMemo(() => ({ cx: 1e9, cz: 1e9 }), []), ko = useMemo(() => new THREE.Object3D(), []);
     const placeKelp = (px: number, pz: number) => {
         const C = 8, R = 10, gx = Math.floor(px / C), gz = Math.floor(pz / C); if (gx === kc.cx && gz === kc.cz) return; kc.cx = gx; kc.cz = gz;
-        let n = 0; const hz = (a: number, b: number, s: number) => { const v = Math.sin(a * 127.1 + b * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
+        let n = 0; const hz = (a: number, b: number, s: number) => { let v = Math.imul((a | 0) ^ Math.imul(b | 0, 0x45d9f3b) ^ Math.imul(Math.floor(s * 4096), 0x27d4eb2d), 0x85ebca6b); v ^= v >>> 16; v = Math.imul(v, 0xc2b2ae35); v ^= v >>> 16; return (v >>> 0) / 4294967296; };
         for (let ix = -R; ix < R; ix++) for (let iz = -R; iz < R; iz++) {
             const cx = gx + ix, cz = gz + iz; const clump = hz(Math.floor(cx / 3), Math.floor(cz / 3), 9.1); if (clump < 0.35) continue;   // forests come in clumps with open sand between
             const m = 1 + Math.floor(hz(cx, cz, 1.3) * 4);
@@ -126,7 +126,7 @@ export function Underwater({ sim }: { sim: Sim }) {
             while (B.acc >= 1) { B.acc -= 1; const a = Math.random() * 6.283, rr = 1.5 + Math.sqrt(Math.random()) * 11.5, x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr, burst = Math.random() < 0.18 ? 2 + Math.floor(Math.random() * 4) : 1; for (let q = 0; q < burst; q++) spawn(x + (Math.random() - 0.5) * 0.3, floor + Math.random() * 0.4, z + (Math.random() - 0.5) * 0.3, burst > 1); }
             /* vent columns (real ref: Wikimedia 'Eifuku chimneys bubbles' - round silvery bubbles of mixed sizes streaming up from fixed spots on the floor):
                fixed vents hashed on a 10 m grid around the camera (about 1 in 4 cells), each a steady stream */
-            { const VC = 10, gx0 = Math.floor(cx / VC), gz0 = Math.floor(cz / VC), hh = (a: number, b: number, s: number) => { const v = Math.sin(a * 127.1 + b * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
+            { const VC = 10, gx0 = Math.floor(cx / VC), gz0 = Math.floor(cz / VC), hh = (a: number, b: number, s: number) => { let v = Math.imul((a | 0) ^ Math.imul(b | 0, 0x45d9f3b) ^ Math.imul(Math.floor(s * 4096), 0x27d4eb2d), 0x85ebca6b); v ^= v >>> 16; v = Math.imul(v, 0xc2b2ae35); v ^= v >>> 16; return (v >>> 0) / 4294967296; };
               for (let ix = -2; ix <= 2; ix++) for (let iz = -2; iz <= 2; iz++) { const gx = gx0 + ix, gz = gz0 + iz; if (hh(gx, gz, 3.3) > 0.27) continue;
                 const vx = (gx + hh(gx, gz, 1.1)) * VC, vz = (gz + hh(gx, gz, 2.2)) * VC; if (vz > WATER_Z - 4) continue; const vb = inLake ? floor : seabedAt(vx, vz); if (vb > -2) continue;
                 if (Math.random() < dt * (1.4 + hh(gx, gz, 4.4) * 1.6)) spawn(vx + (Math.random() - 0.5) * 0.25, vb + 0.15, vz + (Math.random() - 0.5) * 0.25, false); } }

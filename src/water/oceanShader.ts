@@ -5,6 +5,7 @@ import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from './gridRefl';
 // CPU waveH() in Scene.tsx (swimming + boats), so the two cannot drift apart.
 import { CAUSTIC_GLSL } from '../caustics';
 import { WAVES_GLSL, GERSTNER_GLSL, WAVES_V_GLSL, WAVES_VDJ_GLSL, WGHJ_GLSL } from './waves';
+import { WATER_RIPPLES_GLSL } from './ripples';
 import { OCEAN_N, OCEAN_WARP, OCEAN_HALF } from './seabed';
 import { WATER_COMMON_GLSL } from './common';
 import { WL_GLSL, WL_D } from './waterline';
@@ -19,7 +20,7 @@ export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES 
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; uniform float uSkyT; ${SKYFX_GLSL}${SKYFX2_GLSL}${CLOUD_GLSL} varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
     ${CAUSTIC_GLSL}
     uniform sampler2D uNrm; uniform float uDet2; uniform samplerCube tProbe; uniform float uUseRefl; ${GRID_UNIFORMS_GLSL} uniform sampler2D tMir; uniform mat4 uMirM; uniform float uMir; uniform vec2 uMirPx; uniform sampler2D uHf; uniform vec4 uHfB; uniform float uHF; uniform vec4 uArMin[24]; uniform vec4 uArMax[24]; uniform vec3 uArCol[24]; uniform vec4 uArIsle[3]; uniform sampler2D tImp0; uniform sampler2D tImp1; uniform sampler2D tImp2; uniform vec4 uImpP[3]; uniform vec2 uSceneTx; uniform float uFogK;
-    ${WATER_COMMON_GLSL}
+    ${WATER_COMMON_GLSL}${WATER_RIPPLES_GLSL}
     #define WATER_LVL -1.0
     uniform vec4 uBoat[5]; uniform vec4 uHeroA, uHeroB, uHeroDA;
     // Hero capsule ray tests below are retained only for Snell refraction and water-surface visibility; capsule reflections are removed.
@@ -106,7 +107,7 @@ ${GRID_TRACE_GLSL}
       /* Shifat 5:32 PM 'breaking up the far sea': a second, much larger scale from the SAME fetch (the tile's other channel, domain-warped by the
          first) - slow colour patches over hundreds of metres (deeper blue vs. greener, like current lines / cloud shade on real ocean). */
       float swPatch = smoothstep(0.3, 0.7, texture2D(uCaus, vW.xz * 0.00042 + (gq.rg - 0.5) * 0.08 - vec2(0.0011, 0.0006) * uTime).g);
-      float rainK = 0.0; if (uRain > 0.01) { vec2 rsl = rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 110.0, length(cameraPosition - vW))); g += rsl * 3.0; rainK = length(rsl); }   /* raindrop impact rings */
+      g += waterRippleSlope(vW.xz, uTime);\n      float rainK = 0.0; if (uRain > 0.01) { vec2 rsl = rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 110.0, length(cameraPosition - vW))); g += rsl * 3.0; rainK = length(rsl); }   /* raindrop impact rings */
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       if (uBench.y > 1.5 && uBench.y < 2.5) { gl_FragColor = vec4(n * 0.5 + 0.5, 0.95); return; }   /* telemetry stage bench */
@@ -212,7 +213,7 @@ ${GRID_TRACE_GLSL}
         /* #3 (Shifat 2:53 PM): the real heroes now draw through the water from the hero pass (src/heroHD.ts HERO_WATER), so the analytic capsule stand-in is off */
         if (false) { vec3 Th = exp(-vec3(0.45, 0.07, 0.02) * rt * 1.6); body = mix(body, rc * mix(0.35, 1.0, uDay) * (0.55 + 0.45 * uDay) * Th + body * (1.0 - Th) * 0.6, 0.9); }
       }
-      vec3 col = mix(body, refl, fr);
+      vec3 col = mix(body, refl, fr);\n      col += waterSSS(v, n, normalize(uSun), clamp(max(hW0, 0.0) * 0.25, 0.0, 0.24), uDay) * (below ? 0.0 : 1.0 - fr);
       col *= mix(vec3(1.0), mix(vec3(0.86, 0.95, 1.06), vec3(1.06, 1.05, 0.94), swPatch), smoothstep(40.0, 200.0, length(cameraPosition - vW)) * (below ? 0.0 : 1.0));   /* far-sea colour patches */
       { // boat wakes (Kelvin pattern, ref: Sea of Thieves / AC4 ship wakes): two foam arms at the 19.5 deg Kelvin angle + a churned centre trail and a bow wave,
         // laced by the caustic-cell network so it breaks up like real wake foam; fades over ~70 m. Up to 5 boats, early-out by distance.

@@ -1,5 +1,6 @@
 import { fxMelee, fxShot, fxShock, fxSlam, fxDischarge } from './combatFx';
 import { capHitStop } from './hitFeel';
+import { waveSumJS } from './water/waves';
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
 import { SEA_BLDS, SEA_ANCHORS, BRIDGE, BRIDGE_L, bridgeDeckU, HARBOR, HBOSS, inHarbor, harborVoid, seaSurface, seaLift, poolAt, islandH, inCalmZone, FARM, ICE } from './seaWorld';
@@ -401,11 +402,22 @@ export const BOATS = [
     { cx: -330, cz: -640, r: 90, w: 0.022, ph: 3.3, kind: 0 },   // South Sea: kept clear of the island { cx: 60, cz: -880, r: 120, w: -0.02, ph: 5.0, kind: 1 },
 ];
 export const BOAT_HX = 2.3, BOAT_HZ = 6.2, BOAT_DECK = 1.5, BOAT_MAST = 11;
+function boatWave(x: number, z: number, t: number) {
+    const d = Math.hypot(x + 160, z + 820);
+    const offshore = 1 + 1.3 * sm(-300, -750, z);
+    const islandCalm = 0.22 + 0.78 * sm(105, 215, d);
+    return WATER_Y + waveSumJS(x, z, t) * offshore * islandCalm;
+}
 export function boatAt(i: number, t: number) {
     if (PILOT.i === 100 + i) return { x: PILOT.x, z: PILOT.z, y: WATER_Y + Math.sin(t * 0.9 + i * 1.7) * 0.25, vx: PILOT.vx, vz: PILOT.vz, yaw: PILOT.yaw, roll: Math.sin(t * 0.7 + i) * 0.05 - Math.max(-0.12, Math.min(0.12, PILOT.turn * 0.12)) };
     const b = BOATS[i], a = b.ph + t * b.w, x = b.cx + Math.cos(a) * b.r, z = b.cz + Math.sin(a) * b.r;
     const sp = b.w * b.r, vx = -Math.sin(a) * sp, vz = Math.cos(a) * sp, yaw = Math.atan2(vx, vz);
-    return { x, z, y: WATER_Y + Math.sin(t * 0.9 + i * 1.7) * 0.25, vx, vz, yaw, roll: Math.sin(t * 0.7 + i) * 0.05 };
+    const fx = Math.sin(yaw), fz = Math.cos(yaw), sx = fz, sz = -fx;
+    const bow = boatWave(x + fx * BOAT_HZ * 0.65, z + fz * BOAT_HZ * 0.65, t), stern = boatWave(x - fx * BOAT_HZ * 0.65, z - fz * BOAT_HZ * 0.65, t);
+    const port = boatWave(x - sx * BOAT_HX * 0.7, z - sz * BOAT_HX * 0.7, t), starboard = boatWave(x + sx * BOAT_HX * 0.7, z + sz * BOAT_HX * 0.7, t);
+    const y = (bow + stern + port + starboard) * 0.25;
+    const pitch = Math.atan2(bow - stern, BOAT_HZ * 1.3), waveRoll = Math.atan2(port - starboard, BOAT_HX * 1.4);
+    return { x, z, y, vx, vz, yaw, pitch, roll: waveRoll + Math.sin(t * 0.7 + i) * 0.018 };
 }
 function collideBoats(s: Sim, prevY: number, dt: number) {
     const p = s.pos, v = s.vel, hw = 0.5, hh = 1.0;
@@ -701,12 +713,16 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     // Manual pitch is retained on walls; no forced leveling.
     if (s.swim) {
         const inLake = isLakeWater(p[0], p[2]), surface = waterSurfaceAt(p[0], p[2], s.t);
+        // Holding the swing input converts a fast surface swim into a short hydroplane skim.
+        // Releasing it leaves the established swim controller untouched.
+        const skim = !!(input as any).swing && !s.dive && Math.hypot(v[0], v[2]) > 5.5;
+        (s as any).surf = skim;
         const lakeDepth = inLake ? Math.max(1.2, surface - lakeFloorAt(p[0], p[2]) - 1.05) : 5;
-        const sp = s.dive ? (inLake ? 5.8 : 7) : (inLake ? 7.2 : 9.5), a = Math.min(1, dt * (inLake ? 3.2 : 4));
+        const sp = s.dive ? (inLake ? 5.8 : 7) : skim ? (inLake ? 12 : 15) : (inLake ? 7.2 : 9.5), a = Math.min(1, dt * (inLake ? 3.2 : 4));
         const cur = s.dive ? Math.sin(s.t * 0.3) * 0.9 : 0;   // underwater current: gentle sideways drift while diving (same phase as the bubble drift)
         v[0] += (wx * sp + cur - v[0]) * a; v[2] += (wz * sp - v[2]) * a;
         if (inLake && p[2] < WATER_Z) { const pl = poolAt(p[0], p[2]); if (pl && pl.fx !== undefined) { p[0] += pl.fx * 2.4 * dt; p[2] += (pl.fz as number) * 2.4 * dt; } }   // South Sea 2b: the island river carries you downstream
-        const target = s.dive ? (inLake ? Math.max(lakeFloorAt(p[0], p[2]) + 1.05, surface - lakeDepth) : -5) : surface + 0.25;
+        const target = s.dive ? (inLake ? Math.max(lakeFloorAt(p[0], p[2]) + 1.05, surface - lakeDepth) : -5) : surface + (skim ? 0.42 : 0.25);
         v[1] += ((target - p[1]) * 3 - v[1]) * Math.min(1, dt * (inLake ? 5.5 : 5));
         s.runPhase += Math.hypot(v[0], v[2]) * dt * 0.8;
         if (p[2] > WATER_Z - 1.2 && wz > 0.3 && p[1] > WATER_Y - 2.5) { p[1] = 1; p[2] = WATER_Z + 1.3; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; }
@@ -715,6 +731,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
             if (sf !== null && sf > surface + 0.15 && sf < surface + 10.5 && !poolAt(ax, az)) { p[0] = ax; p[1] = sf + 1; p[2] = az; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; (s as any).leapT = 0.4; }
         }
     } else if (s.wall && !s.web) {
+        (s as any).surf = false;
         const n = s.wall, tx = -n[1], tz = n[0];
         const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
         if (push < -0.3) { s.wall = null; s.wallT = 0.2; v[0] = n[0] * 3; v[2] = n[1] * 3; v[1] = 0; }
@@ -726,8 +743,12 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     } else if (s.ground && !s.web) {
         const a = Math.min(1, dt * 13); v[0] += (wx * WALK_V - v[0]) * a; v[2] += (wz * WALK_V - v[2]) * a; v[1] = 0;   // 10:19 PM 'make walk faster': 15 -> 22 m/s, quicker pickup
     } else {
+        const hsTow = Math.hypot(v[0], v[2]), waterZone = p[2] < WATER_Z || isLakeWater(p[0], p[2]), towSurface = s.web && input.swing && waterZone && hsTow > 5.5 && Math.abs(p[1] - waterSurfaceAt(p[0], p[2], s.t)) < 2.0;
+        (s as any).surf = towSurface;
+        if (towSurface) { const surfY = waterSurfaceAt(p[0], p[2], s.t) + 0.42; v[1] += ((surfY - p[1]) * 7 - v[1]) * Math.min(1, dt * 7); }
         // Glide lift balances gravity during descent; keep ordinary gravity through the rising launch.
-        if (s.glideOn && (s as any).flightBoost) v[1] += (12 - v[1]) * (1 - Math.exp(-3.5 * dt));   // flight climbs faster (was 8)
+        if (towSurface) { /* web tension carries the skier along the water plane */ }
+        else if (s.glideOn && (s as any).flightBoost) v[1] += (12 - v[1]) * (1 - Math.exp(-3.5 * dt));   // flight climbs faster (was 8)
         else if (s.glideOn && v[1] <= 0) v[1] += (-4.2 - v[1]) * (1 - Math.exp(-6 * dt));
         else v[1] -= (s.web ? G_WEB : v[1] > 0 ? G : G_FALL) * dt;
         const air = s.web ? 12 : 7; v[0] += wx * air * dt; v[2] += wz * air * dt;
@@ -1098,7 +1119,8 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
     const fa = s.ang, fx = Math.sin(fa), fz = Math.cos(fa);
     if (input.dodgeQ) {
         input.dodgeQ = false;
-        if (s.dodgeT <= 0 && !s.web) { s.dodgeT = 0.38; const mx = input.mx + ((input.keys['d'] ? 1 : 0) - (input.keys['a'] ? 1 : 0)), my = input.my + ((input.keys['w'] ? 1 : 0) - (input.keys['s'] ? 1 : 0)); const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw); let dx = yx * my - yz * mx, dz = yz * my + yx * mx; const dl = Math.hypot(dx, dz); if (dl < 0.1) { dx = -fx; dz = -fz; } else { dx /= dl; dz /= dl; } v[0] = dx * 18; v[2] = dz * 18;
+        if (s.swim) { s.dive = !s.dive; }
+        else if (s.dodgeT <= 0 && !s.web) { s.dodgeT = 0.38; const mx = input.mx + ((input.keys['d'] ? 1 : 0) - (input.keys['a'] ? 1 : 0)), my = input.my + ((input.keys['w'] ? 1 : 0) - (input.keys['s'] ? 1 : 0)); const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw); let dx = yx * my - yz * mx, dz = yz * my + yx * mx; const dl = Math.hypot(dx, dz); if (dl < 0.1) { dx = -fx; dz = -fz; } else { dx /= dl; dz /= dl; } v[0] = dx * 18; v[2] = dz * 18;
             { const sa = s as any, fw = dx * fx + dz * fz, sd = dx * fz - dz * fx; sa.mv = null; sa.mvQ = false; sa.flip = { t: 0, dur: 0.5, ax: Math.abs(fw) > 0.55 ? 'x' : 'z', dir: Math.abs(fw) > 0.55 ? (fw < 0 ? -1 : 1) : (sd > 0 ? 1 : -1) }; if (s.ground) { v[1] = 7.5; s.ground = false; } } }
     }
       if ((s as any).slam) { input.attackQ = false; input.shotQ = false; input.meleeQ = false; input.specialQ = false; }   // one action at a time while the Slam runs

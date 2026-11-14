@@ -73,7 +73,7 @@ Total requests extracted from project history: 71.
 
 ## Group 2: Still Queued / In Progress (4 items)
 65. Detailed flying cars with collision pass and web anchor towing - queued
-66. Water surfing (hold swing on water surface, wake spray, web-tow surfing) - queued
+66. Water surfing (hold swing on water surface, wake spray, web-tow surfing) - in progress (fast surface-swim skim prototype; wake spray and tow integration remain)
 67. Building destruction (three-bvh-csg mesh subtraction, breakable sections, debris) - queued
 68. Armored military vehicles (tanks and hunter helicopters as rare heavy threats) - queued
 

@@ -60,6 +60,7 @@ export function bakeGrid() {
    Needs GRID_UNIFORMS_GLSL. Used by the sea (reflection + underwater Snell window) and the park pond. */
 export const GRID_UNIFORMS_GLSL = 'uniform highp sampler2D uGrid; uniform highp sampler2D uGBox; uniform vec4 uGB; uniform vec2 uGN;';
 export const GRID_TRACE_GLSL = `
+    float gridHash(vec2 p){ vec3 q=fract(vec3(p.xyx)*0.1031); q+=dot(q,q.yzx+33.33); return fract((q.x+q.y)*q.z); }
     vec3 gGlow;   // night: the lit-window / neon light of the cells the trace passed through, soft-coverage weighted like acc
     void gridTrace(vec3 ro, vec3 hd, inout float tb, inout vec3 nb, inout vec3 acc, inout float cov) {
           vec3 ih = 1.0 / hd; gGlow = vec3(0.0); float gCv = 0.0;
@@ -81,10 +82,10 @@ export const GRID_TRACE_GLSL = `
                 float sfH = sf * 1.6;   /* wider side fade: neighbouring blocks melt into one skyline instead of columns */
                 vec3 t0 = (bm - vec3(sfH, 0.0, sfH) - ro) * ih, t1 = (bx + vec3(sfH, sf, sfH) - ro) * ih, tn = min(t0, t1), tf = max(t0, t1);
                 float a = max(max(tn.x, tn.y), tn.z), b = min(min(tf.x, tf.y), tf.z);
-                if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float hsT = fract(sin(dot(vec2(c), vec2(39.3468, 11.135))) * 24634.6345); float topY = bx.y * (0.72 + 0.28 * hsT); float sfT = sf * 2.2 + topY * 0.18;   /* soft, uneven skyline: no flat slab tops (Nov 1 9:14 PM) */
+                if (a < b && b > 0.5) { float pen = (b - max(a, 0.5)) / (2.0 * sf * max(length(ih.xz) * 0.0 + 1.0, 1.0)); float hsT = gridHash(vec2(c)); float topY = bx.y * (0.72 + 0.28 * hsT); float sfT = sf * 2.2 + topY * 0.18;   /* soft, uneven skyline: no flat slab tops (Nov 1 9:14 PM) */
                   float k = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(topY + sfT, topY - sfT, hd.y * max(a, 0.5));
                   if (tb > 9e4) { tb = max(a, 0.5); nb = a == tn.x ? vec3(-sign(hd.x), 0.0, 0.0) : a == tn.z ? vec3(0.0, 0.0, -sign(hd.z)) : vec3(0.0, -1.0, 0.0); }
-                  vec2 cw = uGB.xy + (vec2(c) + 0.5) * uGB.z; float hs = fract(sin(dot(vec2(c), vec2(12.9898, 78.233))) * 43758.5453);
+                  vec2 cw = uGB.xy + (vec2(c) + 0.5) * uGB.z; float hs = gridHash(vec2(c)+vec2(17.0,31.0));
                   /* Shifat Nov 1 7:50 PM 'nighttime glow reflections are missing': each block's light at night - warm windows across the city, magenta/cyan neon in Neon Harbor */
                   vec3 gc = (cw.x > -40.0 && cw.y < -760.0) ? mix(vec3(1.0, 0.3, 0.85), vec3(0.25, 0.8, 1.0), step(0.5, hs)) : vec3(1.0, 0.72, 0.42) * (0.45 + 0.55 * hs);
                   float kg = clamp(pen * 0.6, 0.0, 1.0) * smoothstep(bx.y + sf * 6.0, bx.y - sf * 3.0, hd.y * max(a, 0.5) * 2.4);   // true mirror height (the trace ray climbs squashed): light sits under each building, like a real night mirror

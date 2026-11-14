@@ -175,3 +175,10 @@ Evidence: `test/boss-flight.mjs` verifies takeoff, hover, roof-bounded propulsio
 - Stability: 14/15 (type-check, production build, boss, arena, and Ghost animation/morph regressions pass; full suite not run)
 - Device compatibility (estimate): 12/20 (physical Android and Windows remain untested)
 Evidence: `test/boss.mjs` PASS at desktop 1365×768 and phone-landscape 844×390; verifies all 50 red armor meshes are attached to the existing bones, required helmet-to-boot coverage, the open eye aperture, original red lens texture and two red highlights, exact 3× scale, and unchanged combat checks. `test/boss-arena.mjs` plus Ghost animation, morph, and traversal tests PASS. Captures: `art/boss/shot-after-red-armor-mobile-landscape.png` and `art/boss/shot-after-boss-arena-mobile-landscape.png`; physical-device and target-GPU frame-rate results are UNTESTED.
+
+
+## Water rendering iteration — provisional, not scored (2026-11-14)
+
+- Changes now include the river shader compile repair; sin-free polynomial hashes for rain, river, waterfalls, seabed, kelp, and reflected-grid variation; shared dielectric Fresnel/crest-scattering terms; no-ink plunge-pool foam; 16-slot interactive ripple packets shared across ocean, park lake, island river, lagoon, and plunge pool; swing-held hydroplane skimming with a wider wake (including low web-tow passes); wave-sampled sailboat heave/pitch/roll; and lily-pad tilt/dip near a swimmer.
+- Validation so far: `npm run typecheck`, `npm run build`, and `git diff --check` pass. Chromium smoke-check found no page or console errors during title/load; it did not yet reach the water scene. The instrumented swim/dive/shore-exit regression is running after adjusting it to wait for asset preload and actual gameplay start.
+- Before captures are title/loading screens and are not a visual A/B. No performance score or target-device claim is made. Full on-water scene screenshots, shader stage compilation evidence, and Android/Intel GPU measurements remain pending.

@@ -1,5 +1,19 @@
 # Changelog
 
+## Water rendering maintenance (2026-11-14)
+
+- Fixed the Jungle Island river fragment shader's duplicate local declaration and undefined `hc`/`hk` references, which prevented the material from compiling.
+- Replaced coordinate sine hashes in rain, river, waterfall, seabed, underwater kelp placement, and reflected-grid variation with sin-free polynomial/integer hashes to reduce precision artifacts on mobile GPUs.
+- Applied the existing water alpha-stamp convention to plunge-pool foam so it does not receive the ink outline.
+- Added shared dielectric Fresnel and restrained forward-scattering helpers, used for river and island-pool water shading.
+- Added a fast-surface-swim skim response when swing is held; ordinary swimming without swing is unchanged. This remains a controller prototype; wake foam and low web-tow skimming are wired in, while dedicated spray and broader balance/takeoff polish remain outstanding.
+- Added a shared fixed-size wave-packet ring buffer for moving surface swimmers/surfers, wired into the ocean, park lake, island river, lagoon, and plunge-pool surface slopes. Surfing strengthens and widens the existing two-arm swimmer wake.
+- Sailboats now sample ocean wave height at bow, stern, port, and starboard for heave, pitch, and roll; the existing pilot-controlled boat path is unchanged.
+- Lily pads now inherit local surface slope and dip/tilt gently around a surface swimmer.
+
+Verification: `npm run typecheck` and `npm run build` pass. Before captures are menu/loading screens, not water gameplay; no visual water A/B or physical-device performance result is claimed. Regression verification uses the VITE_DBG instrumented preview and waits for gameplay preload to finish.
+
+
 All notable changes to the Web Swinger 3D project ("Shadow: The Soul of Darkness") are documented in this file.
 
 ## Waterline camera-motion stability (Nov 9)

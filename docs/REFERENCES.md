@@ -91,3 +91,10 @@ Implementation direction: retain the multi-target web gather and short hold, the
 - Relevant implementation reading: [three.js Reflector](https://threejs.org/docs/pages/Reflector.html), [three.js ocean shader example](https://threejs.org/examples/webgl_shaders_ocean.html), [three.js GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html), and [three.js InstancedMesh](https://threejs.org/docs/pages/InstancedMesh.html). The project uses its own screen-space refraction, wave, caustics, and foliage code; no third-party shader or game asset code was copied.
 - Polyfork model source and license details remain as recorded in the earlier Polyfork section. The current 27-model scene is integrated through the connected Polyfork catalog in Upsy and is not exposed as a separate asset pack.
 - Shadow's swim orientation is a renderer-only post-clip rig tilt. Ghost's implementation remains identical to the starting mirror commit; the diagnostic regression asserts this directly. Physical-device appearance and performance remain untested.
+
+
+## Water optical update (2026-11-14)
+
+- [Schlick, “An Inexpensive BRDF Model for Physically-Based Rendering” (1994)](https://doi.org/10.1111/1467-8659.1330233): dielectric Fresnel approximation; this patch uses water's air-interface F0 (about 0.0204) for island river/pool shading.
+- [Jerlov, *Marine Optics* (1976)](https://www.elsevier.com/books/marine-optics/jerlov/978-0-444-41490-2): qualitative basis for water-column absorption and forward scattering. The implemented scattering lobe is deliberately restrained and is not a full radiative-transfer model.
+- [Cox & Munk, “Measurement of the Roughness of the Sea Surface from Photographs of the Sun’s Glitter” (1954)](https://doi.org/10.1364/JOSA.44.000838): reference for future microfacet sun-glitter work; not claimed as implemented by this patch.

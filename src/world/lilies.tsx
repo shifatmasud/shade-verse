@@ -95,8 +95,10 @@ function LiliesInner({ sim }: { sim: Sim }) {
            near patches are packed into the first slots and the instance count is cut to them; colours follow their patch */
         d.ps.forEach((p, i) => {
             const dd = Math.hypot(p.x - camera.position.x, p.z - camera.position.z); if (dd > 420) return;
-            const y = waterRenderY(p.x, p.z, t) + 0.03, yaw = p.yaw + Math.sin(t * 0.25 + p.yaw * 3.0) * 0.06;
-            e.set(0, yaw, 0); q.setFromEuler(e); s.setScalar(p.s); v.set(p.x, y, p.z); m.compose(v, q, s);
+            const dx = p.x - sim.pos[0], dz = p.z - sim.pos[2], near = Math.exp(-(dx * dx + dz * dz) / 10.0) * (sim.swim && !sim.dive ? 1 : 0);
+            const h = waterRenderY(p.x, p.z, t), slopeX = waterRenderY(p.x + 0.7, p.z, t) - waterRenderY(p.x - 0.7, p.z, t), slopeZ = waterRenderY(p.x, p.z + 0.7, t) - waterRenderY(p.x, p.z - 0.7, t);
+            const y = h + 0.03 - 0.14 * near, yaw = p.yaw + Math.sin(t * 0.25 + p.yaw * 3.0) * 0.06;
+            e.set(-slopeZ * 0.32 + dz * near * 0.11, yaw, slopeX * 0.32 - dx * near * 0.11); q.setFromEuler(e); s.setScalar(p.s); v.set(p.x, y, p.z); m.compose(v, q, s);
             if (dd > LILY_LOD) { d.padsFar.setMatrixAt(nf, m); if (d.slotF[nf] !== i) { d.slotF[nf] = i; d.cc.set(BLOOM_COLS[p.c]); d.padsFar.setColorAt(nf, d.cc); d.colDirty = true; } nf++; } else { d.pads.setMatrixAt(np, m); if (d.slot[np] !== i) { d.slot[np] = i; d.cc.set(BLOOM_COLS[p.c]); d.pads.setColorAt(np, d.cc); d.colDirty = true; } np++; }
             if (d.slotH[n] !== i) { d.slotH[n] = i; for (let k = 0; k < d.blooms.length; k++) d.halo.setColorAt(n * d.blooms.length + k, d.cc); d.colDirty = true; }
             const cy = Math.cos(yaw), sy = Math.sin(yaw);

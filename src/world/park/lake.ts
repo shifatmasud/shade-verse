@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PARK_BRIDGE, bridgeSurfaceAt, parkH } from '../../sim';
 import { CAUSTIC_GLSL } from '../../caustics';
 import { WATER_COMMON_GLSL } from '../../water/common';
+import { WATER_RIPPLES_GLSL } from '../../water/ripples';
 import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from '../../water/gridRefl';
 
 // Park lake: shoreline foam + bridge ramp geometry, and the lake / caustics / foam / contact shaders.
@@ -67,7 +68,7 @@ vec4 mv=viewMatrix*w;vView=mv.xyz;vScreen=projectionMatrix*mv;gl_Position=vScree
 export const LAKE_FS = `#include <packing>
 uniform float uTime; uniform sampler2D tScene; uniform sampler2D tDepth; uniform float uUseScene; uniform float uSteps; uniform float uNear; uniform float uFar;
 uniform mat4 uProj; uniform vec2 uPondCenter; uniform float uPondR; uniform float uShore; uniform vec3 uHero; uniform vec3 uHor; uniform vec3 uZen; uniform vec3 uSun; uniform float uDay; uniform sampler2D uNrm;
-${WATER_COMMON_GLSL}
+${WATER_COMMON_GLSL}${WATER_RIPPLES_GLSL}
 ${GRID_UNIFORMS_GLSL}
 ${GRID_TRACE_GLSL}
 varying vec3 vWorld; varying vec3 vNormal; varying float vHeight; varying vec4 vScreen; varying vec3 vView;
@@ -79,12 +80,12 @@ vec3 heroCol(vec3 n){return vec3(0.025,0.022,0.04)+vec3(0.10,0.09,0.16)*max(n.y,
 vec3 sky(vec3 R){float h=max(R.y,0.0);vec3 c=mix(uHor,uZen,pow(h,0.5));c=mix(c,vec3(0.06,0.11,0.07)*(0.2+0.8*uDay),(1.0-smoothstep(0.02,0.16,h))*0.85);float s=max(dot(R,uSun),0.0);return c+vec3(1.0,0.88,0.66)*(pow(s,600.0)*3.5+pow(s,10.0)*0.12)*uDay;}
 vec2 rip(vec2 p,vec2 d,float f,float sp,float a){float ph=dot(p,d)*f+uTime*sp;return d*(cos(ph)*a*f);}
 void main(){
- vec3 V=normalize(cameraPosition-vWorld);bool below=abs(cameraPosition.y-vWorld.y)>0.3?cameraPosition.y<vWorld.y:!gl_FrontFacing;float dist=length(cameraPosition-vWorld);
+ vec3 V=normalize(cameraPosition-vWorld);bool below=cameraPosition.y<vWorld.y;float dist=length(cameraPosition-vWorld);
  float rf=1.0-smoothstep(22.0,75.0,dist);vec2 p=vWorld.xz;
- vec2 g=rip(p,vec2(0.80,0.60),1.9,1.35,0.020)+rip(p,vec2(-0.55,0.83),2.7,-1.7,0.013)+rip(p,vec2(0.97,-0.24),4.3,2.3,0.006)+rip(p,vec2(-0.2,-0.98),6.1,-2.9,0.0035);
+ vec2 g=rip(p,vec2(0.80,0.60),1.9,1.35,0.020)+rip(p,vec2(-0.55,0.83),2.7,-1.7,0.013)+rip(p,vec2(0.97,-0.24),4.3,2.3,0.006)+rip(p,vec2(-0.2,-0.98),6.1,-2.9,0.0035);\n g+=waterRippleSlope(p,uTime);
  g+=fftSlope(p,uTime)*WATER_FFT_K*(1.0-smoothstep(30.0,220.0,dist)); if(uRain>0.01) g+=rainSlope(p,uTime)*uRain*(1.0-smoothstep(15.0,90.0,dist));/* same FFT ripple detail as the sea (src/water/common.ts) */
  vec3 N=normalize(vNormal+vec3(-g.x,0.0,-g.y)*rf);if(below)N=-N;
- float ci=clamp(dot(N,V),0.0,1.0);float F=0.02+0.98*pow(1.0-ci,5.0);
+ float ci=clamp(dot(N,V),0.0,1.0);float F=waterFresnel(ci);
  vec3 R=reflect(-V,N);vec3 Td=refract(-V,N,below?1.33:1.0/1.33);
  float radial=length(vWorld.xz-uPondCenter)/uPondR;float bedDepth=3.25*(1.0-smoothstep(uShore-0.32,uShore,radial))+0.02*(1.0-smoothstep(uShore-0.04,uShore,radial));
  float shallow=1.0-smoothstep(0.15,2.2,bedDepth);
@@ -120,7 +121,7 @@ void main(){
   vec3 behind=texture2D(tScene,uv2).rgb;vec3 hn2;float th2=1e5;/* #3: the real diving heroes draw through the water now (src/heroHD.ts), the analytic stand-in (Shifat 2:53 PM 'weird blue thingy') is off */if(th2<th+0.5&&(vWorld+Td*th2).y<vWorld.y)behind=mix(behind,heroCol(hn2),0.85);trans=behind*T+deepCol*(1.0-T);trans=trans*vec3(0.78,1.0,0.97)+vec3(0.0,0.025,0.03)*uDay;}/* clear-pond green-turquoise cast even in the shallows (was reading grey) */
  else{float th=bedDepth/max(abs(Td.y),0.25);vec3 T=exp(-absorb*th);float Ts=clamp(dot(T,vec3(0.2,0.4,0.4)),0.0,1.0);
   vec3 hn2;float th2=1e5;/* #3: the real diving heroes draw through the water now (src/heroHD.ts), the analytic stand-in (Shifat 2:53 PM 'weird blue thingy') is off */float hk=(th2<th+0.5&&(vWorld+Td*th2).y<vWorld.y)?0.85:0.0;/* only the submerged part refracts */trans=mix(deepCol*(1.0-T)/max(1.0-Ts,0.05),heroCol(hn2),hk);alpha=max(1.0-Ts*(1.0-hk),0.42);}/* keep the turquoise body tint when looking straight down (was going grey) */
- float f=below?max(F,0.12):F;vec3 col=mix(trans,refl,f);
+ float f=below?max(F,0.12):F;vec3 col=mix(trans,refl,f); col += waterSSS(V,N,normalize(uSun),clamp(length(g)*2.0,0.0,1.0),uDay)*(below?0.0:1.0-f);
  if(alpha<1.0){col=(refl*f+trans*(1.0-f)*alpha)/max(f+(1.0-f)*alpha,0.001);alpha=f+(1.0-f)*alpha;}
  if(gHw>0.0){col=mix(col,refl,0.8*gHw);alpha=max(alpha,0.9*gHw);}/* trees-only SSR hit: the canopy reflection is opaque, not washed by the see-through blend */
  if(below){float haze=1.0-exp(-dist*0.045);col=mix(col,vec3(0.035,0.23,0.30),haze*0.72);alpha=1.0;}

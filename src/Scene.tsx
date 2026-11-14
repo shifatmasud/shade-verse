@@ -38,6 +38,7 @@ import { islandH } from './seaWorld'
 import { TOD, UWF, UW } from './world/env';
 import { seabedMat, wallMat, oceanGeo, seabedGeo } from './water/seabed';
 import { waterMat } from './water/oceanMaterial';
+import { spawnWaterRipple } from './water/ripples';
 import { OceanFollow, ReflectionIllusion, OceanSlices } from './water/OceanPasses';
 import { Boats, Gulls, Fish, MarineSnow, Whale } from './world/sealife';
 import { Jellies } from './world/jellies';
@@ -619,6 +620,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const waterRef = useRef<THREE.Mesh>(null!), ringRef = useRef<THREE.Mesh>(null!);
     const wakeRef = useRef<THREE.Mesh>(null!); const ringFlow = useRef(0);
     const wakeTrail = useRef<{x:number,z:number,t:number}[]>([]); const wakeStrength = useRef(0); const wakeBorn = useRef(0);
+    const rippleEmit = useRef(-1);
     const wakeGeo = useMemo(() => { const g = new THREE.BufferGeometry(), pa = new Float32Array(2 * 25 * 2 * 3), uv = new Float32Array(2 * 25 * 2 * 2), ix: number[] = []; for (let side = 0; side < 2; side++) for (let j = 0; j <= 24; j++) { const n = side * 50 + j * 2; uv[n*2] = uv[(n+1)*2] = j/24; uv[n*2+1] = 0; uv[(n+1)*2+1] = 1; if (j < 24) ix.push(n,n+1,n+2,n+1,n+3,n+2); } g.setAttribute('position', new THREE.BufferAttribute(pa, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(ix); return g; }, []);
     const wakeMat = useMemo(() => new THREE.ShaderMaterial({transparent:true, depthWrite:false, side:THREE.DoubleSide, uniforms:{uA:{value:0}}, vertexShader:'varying vec2 vU; void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'varying vec2 vU; uniform float uA; void main(){float soft=sin(vU.y*3.14159);float trail=pow(1.0-vU.x,1.5)*smoothstep(0.0,0.12,vU.x); gl_FragColor=vec4(0.82,0.96,1.0,soft*trail*uA);}' }), []);
  const splashRef = useRef<THREE.Group>(null!), splashSt = useRef({ prev: false, t0: -9 });
@@ -778,11 +780,18 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         // hero
         const h = hero.current;
+        // Emit low-cost shared wave packets for surface motion; no emitters run while diving or idle.
+        if ((sim as any).surf || (sim.swim && !sim.dive && Math.hypot(v[0], v[2]) > 2.5)) {
+            if (sim.t - rippleEmit.current > ((sim as any).surf ? 0.24 : 0.48)) {
+                spawnWaterRipple(p[0], p[2], sim.t, (sim as any).surf ? 1.35 : 0.7);
+                rippleEmit.current = sim.t;
+            }
+        }
         const wl = !!sim.wall;
         { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > waterSurfaceAt(p[0], p[2], sim.t) - 2.0) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
         { // original curved two-arm wake: short position history keeps the trail behind a turning swimmer
-            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surfaceY = waterSurfaceAt(p[0],p[2],sim.t), surface = sim.swim && !sim.dive && p[1] > surfaceY - 1.1;
-            const target = surface && sp>0.6 ? Math.min(0.58,sp*0.10) : 0;
+            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surfaceY = waterSurfaceAt(p[0],p[2],sim.t), surfing = !!(sim as any).surf, surface = (sim.swim || surfing) && !sim.dive && p[1] > surfaceY - 1.1;
+            const target = surface && sp>0.6 ? Math.min(surfing ? 0.9 : 0.58,sp*(surfing?0.14:0.10)) : 0;
             wakeStrength.current += (target-wakeStrength.current)*Math.min(1,dt*(target>0?6:3));
             const trail = wakeTrail.current;
             if(!surface || trail.length && Math.hypot(p[0]-trail[0].x,p[2]-trail[0].z)>12) trail.length=0;
@@ -793,7 +802,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             if(m){m.visible=surface && wakeStrength.current>0.015 && trail.length>2;if(m.visible){const pa=wakeGeo.attributes.position as THREE.BufferAttribute;
                 for(let side=0;side<2;side++)for(let j=0;j<=24;j++){const t=j/24,sgn=side?1:-1,fi=t*(trail.length-1),ii=Math.floor(fi),ff=fi-ii,a=trail[ii],b=trail[Math.min(ii+1,trail.length-1)],prev=trail[Math.max(0,ii-1)],next=trail[Math.min(trail.length-1,ii+1)];
                     let dx=prev.x-next.x,dz=prev.z-next.z;const ln=Math.hypot(dx,dz);if(ln>0.02){dx/=ln;dz/=ln;}else{dx=Math.sin(sim.ang);dz=Math.cos(sim.ang);}
-                    const cx=a.x+(b.x-a.x)*ff-dx*0.8,cz=a.z+(b.z-a.z)*ff-dz*0.8,spread=0.55+t*1.7,width=0.06+t*0.16;
+                    const cx=a.x+(b.x-a.x)*ff-dx*0.8,cz=a.z+(b.z-a.z)*ff-dz*0.8,spread=0.55+t*(surfing?2.8:1.7),width=0.06+t*(surfing?0.24:0.16);
                     for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,waterRenderY(x,z,sim.t)+0.055,z);}}
                 pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current*THREE.MathUtils.smoothstep(sim.t-wakeBorn.current,0.1,0.65);}}
         }
