@@ -274,7 +274,7 @@ ${GRID_TRACE_GLSL}
           aOut = mix(aOut, 0.62, (1.0 - smoothstep(0.9, 1.08, irr)) * (1.0 - fo) * (1.0 - bedA));
         }
       }
-      vec3 uWaterDisplay=mix(uUWF,linearToOutputTexel(vec4(uUWF,1.0)).rgb,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y)));
+      vec3 uWaterDisplay=mix(uUWF,linearToOutputTexel(vec4(uUWF,1.0)).rgb,0.65*(gSplit ? (gAir ? 0.0 : 1.0) : 1.0-smoothstep(-2.0,-1.0,cameraPosition.y)));   /* Nov 15 8:06 PM: the split's under half takes the dive's underside colour */
       if (below) {
         // Snell's window: refract view ray water -> air with a slightly different index per colour channel (dispersion); beyond the critical angle (48.6 deg) total internal reflection shows the water, not the sky
         vec3 under = mix(uDeep, uShallow, 0.35 + 0.4 * pow(max(dot(-n, v), 0.0), 2.0));

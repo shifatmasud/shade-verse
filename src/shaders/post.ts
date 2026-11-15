@@ -1,6 +1,6 @@
 // Post-processing: FXAA (plus sharpened variant) and the ink outline pass. Moved verbatim from Scene.tsx.
 import { WL_GLSL } from '../water/waterline';
-import { UW_ABS } from '../world/env';
+import { UW_ABS, UW_FIELD_GLSL } from '../world/env';
 import { CLOUD_GLSL } from './skyFx';
 import { FILM_GRADE_GLSL } from './filmGrade';
 export const CLOUD_SHADOW_FS = `uniform float uCloudTime; uniform float uCloudRain; uniform float uCloudRange; varying vec2 vUv;
@@ -39,7 +39,8 @@ export const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2
 export const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tShadowMap; uniform sampler2D tHeroTriangles; uniform sampler2D tHeroBvh; uniform vec2 uRes; uniform vec2 uShadowTexel; uniform vec2 uHeroTriangleTexSize; uniform vec2 uHeroBvhTexSize; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; uniform float uShadowOn; uniform float uShadowBias; uniform float uShadowStrength; uniform float uShadowWaterStrength; uniform float uHeroBvhNodeCount; uniform float uHeroTraceOn; uniform float uHeroTraceStrength; uniform float uHeroTraceWaterStrength; uniform float uCineMood; uniform float uHeroTraceDebug; uniform mat4 uShadowMatrix; uniform mat4 uInvProjection; uniform mat4 uInvView; uniform vec3 uUwC; uniform vec3 uHeroBoundsMin; uniform vec3 uHeroBoundsMax; uniform vec3 uHeroRayDir; varying vec2 vUv;
 ${WL_GLSL}   /* the same line the sea is cut on (src/water/waterline.ts): solved on the drawn waves incl. chop, no fake ripples - the tint can't drift off the cut */
 uniform sampler2D tCloudShadow; uniform float uCloudStrength; uniform float uCloudAltitude; uniform float uCloudRange; uniform vec3 uCloudSunDir; uniform vec3 uCloudCamera;
-uniform vec4 uUwP; uniform sampler2D uCaus; uniform float uUwT; uniform float uUwDay; uniform float uUwSteps;
+uniform vec4 uUwP; uniform sampler2D uCaus; uniform float uUwT; uniform float uUwDay; uniform float uUwSteps; uniform vec3 uSunV;
+${UW_FIELD_GLSL}vec3 uwSrgb(vec3 c){ c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 /* Shifat Nov 15 7:06 PM 'screen to world space' + 7:15 PM 'screen space godrays too? can they live in worldspace?'. Refs: Pope & Fry 1997
    (absorption), Jerlov water types (blue-green haze), Hoobler 'Fast underwater light shafts' / Frostbite & UE volumetric fog (march the view
    ray, ask how much sun reaches each sample through the moving surface). Every water pixel is now measured in metres, not screen rows. */
@@ -95,7 +96,7 @@ void main(){
   if (uwIn > 0.0) {
     float dd = texture2D(tDepth, vUv).x; vec3 cam = uCloudCamera, rd = normalize(worldAt(vUv, 0.5) - cam);
     float dist = dd < 0.99999 ? length(worldAt(vUv, dd) - cam) : 1000.0;   /* metres of water this pixel's ray crosses from the lens */
-    if (uUwP.x < 0.5) c = mix(c, uwMedium(c, dist, uUwC, uUwP.z, uUwP.w), uwIn);   /* split lens: the under half gets exactly the dive's medium (was: a tint ramped by screen distance below the line) */
+    if (uUwP.x < 0.5 && dd >= 0.99999) c = mix(c, uwSrgb(uwField(rd, uUwC, uSunV, uUwDay)), uwIn);   /* Shifat Nov 15 8:06 PM 'dive must look same from the split water line': every surface in the under half is now lit and fogged by its own material exactly as in the dive (src/water/lens.ts, the fog chunk in src/world/env.ts) - the post pass only fills the open water with the dive's light field (same function as the dive's sky dome) */
     float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));   /* interleaved gradient noise: 10 samples read as a smooth beam */
     c += uwRays(cam, rd, dist, jit) * uwIn;
   }
