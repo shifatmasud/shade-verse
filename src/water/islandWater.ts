@@ -47,7 +47,7 @@ export const FOAM_MAT = noInk(new THREE.ShaderMaterial({
 // surface meeting the bank instead of inking the carved channel's depth steps through the water (the dark lines in Shifat's shots).
 // A small polygon offset keeps the river just behind the pools and the sea where they overlap, so those draw over it with no z-fight.
 export const RIVER_MAT = noInk(new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, uRip: RIPPLE_UNIFORMS },
+    transparent: true, depthWrite: false,   /* writing depth made the outline pass ink a black line along the strip's soft edge (sand + river mouth); the bed below already has depth */ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 2, side: THREE.DoubleSide, uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uCaus: { value: CAUSTIC_TEX }, uNrm: { value: WATER_NRM }, ...RIPPLE_UNIFORMS },
     vertexShader: `attribute float aSlope; attribute float aFade; attribute float aCalm; attribute vec4 aAcr; varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; void main(){ vAcr = aAcr; vUv = uv; vSl = aSlope; vFade = aFade; vCalm = aCalm; vec4 w = modelMatrix * vec4(position, 1.0); w.y += 0.04 * sin(uv.y * 1.3 - 0.0) ; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `${CAUSTIC_GLSL}
     varying vec4 vAcr; varying float vCalm; varying float vFade; varying vec2 vUv; varying float vSl; varying vec3 vW; uniform float uT; uniform float uDay; uniform vec3 uSky; uniform sampler2D uNrm;
@@ -110,7 +110,7 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
     const bedTex = new THREE.DataTexture(bd, BN, BN, THREE.RGBAFormat); bedTex.magFilter = bedTex.minFilter = THREE.LinearFilter; bedTex.wrapS = bedTex.wrapT = THREE.ClampToEdgeWrapping; bedTex.needsUpdate = true;
     return noInk(new THREE.ShaderMaterial({
         transparent: true, depthWrite: false /* the outline pass inked a dark arc where the pool surface met other water in depth */, side: THREE.DoubleSide,
-        uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost }, uHeroDA: { value: HERO_REFL.shadowDir }, uNrm: { value: WATER_NRM }, uRip: RIPPLE_UNIFORMS },
+        uniforms: { uRain: WEATHER.rain, uT: { value: 0 }, uDay: { value: 1 }, uSky: { value: new THREE.Color('#bcd3df') }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uC: { value: new THREE.Vector2(p.cx, p.cz) }, uR: { value: p.r * p.rim }, uOut: { value: outs.slice(0, 3) }, uBed: { value: bedTex }, uCaus: { value: CAUSTIC_TEX }, uBB: { value: new THREE.Vector4(p.cx, p.cz, bh, p.y) }, uHeroA: { value: HERO_REFL.shadow }, uHeroB: { value: HERO_REFL.ghost }, uHeroDA: { value: HERO_REFL.shadowDir }, uNrm: { value: WATER_NRM }, ...RIPPLE_UNIFORMS },
         vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
         fragmentShader: `varying vec3 vW; uniform float uT, uDay, uR; uniform vec3 uSky, uSun; uniform vec2 uC; uniform vec3 uOut[3]; uniform sampler2D uBed; uniform vec4 uBB; uniform vec4 uHeroA, uHeroB, uHeroDA; uniform sampler2D uNrm;
         ${CAUSTIC_GLSL}
@@ -162,6 +162,7 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
           a = mix(a, 0.97 * (1.0 - smoothstep(0.93, 1.0, rr)) + fr * 0.03, traced * (1.0 - og * 0.5));   /* traced floor drawn here; only the rim fades to the real bank */
           a = min(a, mix(1.0, 0.6, see));   /* the submerged body shows through, mild */
           a = clamp(below ? 0.7 : a, 0.0, 1.0); if (a < 0.03) discard;
+          { float fo = ixFoam(vW.xz); col = mix(col, vec3(0.80, 0.88, 0.90) * mix(0.28, 1.0, uDay), clamp(fo * 0.5, 0.0, 0.45)); }   /* interactive churn (src/water/interaction.ts) */
           gl_FragColor = vec4(col, a); }`,
     }));
 }

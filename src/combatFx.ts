@@ -5,6 +5,7 @@
 // Recipe numbers: /home/user/tab/files/combat_reference.md section D.
 
 import { QK } from './quality';
+import { queueWaterHit } from './water/splash';   // Nov 15 2026: hits that land on water also splash it (src/water/WaterFX.tsx keeps only the ones at a water surface)
 
 // additive shapes
 // Nov 2 2026 (Shifat: "No more solid rings. Only particle burst, vfx explosion, glow, electric shock"): ring / ground-ring / dashed
@@ -81,7 +82,7 @@ export const screenFlash = { frames: 0, a: 0 };
  *  white -> orange, gravity, drag, bounce), a soft ember cloud that drifts and lingers briefly, and a soft dark-to-warm smoke puff
  *  (alpha-blended, not additive) behind it so the burst still reads on bright roofs. Every shape is a soft falloff, no edge.
  *  Nov 2 (Shifat: "Comic hit star must be replaced by particle burst"): ~2x sparks and size vs ca27334, life 250-380 ms. */
-export function fxMelee(x: number, y: number, z: number, col: number, lvl: number, grounded = true, dx = 0, dz = 0) {
+export function fxMelee(x: number, y: number, z: number, col: number, lvl: number, grounded = true, dx = 0, dz = 0) { queueWaterHit(x, y, z, 0.45 + 0.25 * lvl);
     const sc = lvl >= 3 ? 1.5 : lvl === 2 ? 1.15 : 1, floor = grounded ? y - 1.0 : -1e9;
     const dl = Math.hypot(dx, dz), bx = dl > 1e-3 ? dx / dl : 0, bz = dl > 1e-3 ? dz / dl : 0;
     // soft dark-to-warm smoke puff first (alpha pool, drawn under the additive light): contrast on bright backgrounds
@@ -111,7 +112,7 @@ export function fxMelee(x: number, y: number, z: number, col: number, lvl: numbe
  *  bloom, a wide faint wash (the blast reach), velocity-stretched sparks scattered in a hemisphere around the surface normal (n = toward
  *  the shooter, lifted a little so ground hits spray up), slow glowing motes that drift off the normal and fade, and the pale web mist.
  *  Replaces the old flash sprite + 12 round points (enemies.tsx PlasmaFx): same pooled instanced draw as every other hit. */
-export function fxShot(x: number, y: number, z: number, col: number, nx = 0, ny = 1, nz = 0) {
+export function fxShot(x: number, y: number, z: number, col: number, nx = 0, ny = 1, nz = 0) { queueWaterHit(x, y, z, 0.6);
     let ux = nx, uy = ny + 0.35, uz = nz; const ul = Math.hypot(ux, uy, uz) || 1; ux /= ul; uy /= ul; uz /= ul;
     const hot = tint(col, 0.72);
     emit(SH_CORE, x, y, z, 0, 0, 0, 0.05, 0.45, 0.85, tint(col, 0.85), 1.25);                       // white-hot core, ~3 frames
@@ -174,7 +175,7 @@ function bolt(ax: number, ay: number, az: number, bx: number, by: number, bz: nu
 export const bolts: { ax: number; ay: number; az: number; bx: number; by: number; bz: number; t: number; life: number; col: number }[] = [];
 /** Charged Slam impact on the ground at (x,gy,z), blast radius R. No ring mesh: a ground-hugging particle shockwave (soft light smears
  *  racing outward to R), radial dust, sparks + hot embers that bounce, white-hot core and a heat glow. */
-export function fxSlam(x: number, gy: number, z: number, R: number, col: number) {
+export function fxSlam(x: number, gy: number, z: number, R: number, col: number) { queueWaterHit(x, gy, z, Math.min(2.2, 0.8 + R * 0.12));
     screenFlash.frames = 2; screenFlash.a = 0.35;
     const y = gy + 0.05;
     emit(SH_CORE, x, gy + 0.8, z, 0, 0, 0, 0.07, 1.6, 2.6, 0xffffff, 1);
@@ -205,7 +206,7 @@ export function fxChargeTick(hx: number, hy: number, hz: number, c: number, col:
 }
 /** Shock discharge around the caster: lightning arcs racing out along the ground to the hit range, ground-hugging light burst,
  *  caster-coloured spark burst, core flash, glow (no ring) */
-export function fxDischarge(x: number, gy: number, z: number, R: number, col: number) {
+export function fxDischarge(x: number, gy: number, z: number, R: number, col: number) { queueWaterHit(x, gy, z, 1.2);
     const y = gy + 0.08, hot = tint(col, 0.72), mid = tint(col, 0.35);
     emit(SH_CORE, x, gy + 1.2, z, 0, 0, 0, 0.06, 1.2, 2.0, hot, 1);
     emit(SH_GLOW, x, gy + 1.2, z, 0, 0, 0, 0.3, 2.4, 3.0, col, 0.9, 0, 0, 0.12, 2);
