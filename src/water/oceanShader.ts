@@ -278,7 +278,7 @@ ${GRID_TRACE_GLSL}
       if (below) {
         // Snell's window: refract view ray water -> air with a slightly different index per colour channel (dispersion); beyond the critical angle (48.6 deg) total internal reflection shows the water, not the sky
         vec3 under = mix(uDeep, uShallow, 0.35 + 0.4 * pow(max(dot(-n, v), 0.0), 2.0));
-        { float rl = clamp(0.5 + (n.x - n.z) * 2.2, 0.0, 1.0);   /* Shifat 8:57 PM 'surface from below has caustic patterns': the underside shimmer now comes from the real wave normals (was 2 caustic-cell texture reads) */
+        { float rl = clamp(0.5 + (n.x - n.z) * 1.2, 0.0, 1.0);   /* 8:44 PM: x2.2 drew ripple rings as contour lines */   /* Shifat 8:57 PM 'surface from below has caustic patterns': the underside shimmer now comes from the real wave normals (was 2 caustic-cell texture reads) */
           under *= 1.0 + (rl * 0.5 - 0.25) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW))); }
         vec3 tr = refract(-v, n, 1.3310), tg = refract(-v, n, 1.3330), tb = refract(-v, n, 1.3375);
         bool tir = dot(tg, tg) < 0.0001;
@@ -300,14 +300,14 @@ ${GRID_TRACE_GLSL}
           aw2 += vec3(1.0, 0.95, 0.82) * (pow(max(dot(td, uSun), 0.0), 60.0) * 0.9 + pow(max(dot(td, uSun), 0.0), 8.0) * 0.2) * uDay;
           /* outside Snell's window: total internal reflection mirrors the underwater world (real refs /tmp/uwr: the pool floor/lane lines seen mirrored in the
              surface beyond the bright disc) - reflected ray traced down to the seabed, sand + caustic pattern, fogged by the path length, wobbling with the waves, soft */
-          vec3 mrr = reflect(-v, normalize(mix(vec3(0.0, -1.0, 0.0), n, 0.6))); mrr.y = min(mrr.y, -0.08);
+          vec3 mrr = reflect(-v, normalize(mix(vec3(0.0, -1.0, 0.0), n, 0.6))); mrr.y = min(mrr.y, -0.18);   /* Shifat Nov 15 8:44 PM 'surface from underwater has weird artifacts' RCA: at -0.08 the grazing mirror ray ran 12x the depth, stretching the caustic tile into vertical curtain streaks */
           float mbd = max(vW.y - bedY(vW.xz), 0.5), mt = mbd / -mrr.y; vec2 mh = vW.xz + mrr.xz * mt;
           float mtd = max(vW.y - bedY(mh), 0.5); mt = mtd / -mrr.y; mh = vW.xz + mrr.xz * mt;
-          float mca = texture2D(uCaus, mh * 0.09 + uTime * 0.01).r * 0.6 + texture2D(uCaus, mh * 0.21 - uTime * 0.013).g * 0.4;
+          float mca = texture2D(uCaus, mh * 0.09 + uTime * 0.01).r * 0.6 + texture2D(uCaus, mh * 0.21 - uTime * 0.013).g * 0.4; mca = mix(0.5, mca, exp(-mt * 0.07));   /* 8:44 PM: far mirrored caustics minify to moire/marble swirls - fade them to their mean with the mirror path */
           vec3 mfl = vec3(0.62, 0.6, 0.46) * mix(0.1, 1.0, uDay) * (0.75 + 0.6 * mca * uDay);
-          vec3 mirr = mix(mfl * vec3(0.6, 0.9, 0.95) * 1.3, under, 1.0 - exp(-(mt + mtd) * 0.022));
+          vec3 mirr = mix(mfl * vec3(0.6, 0.9, 0.95) * 1.3, under, 1.0 - exp(-(mt + mtd) * 0.04));   /* 8:44 PM: mirror path fogs like the dive medium (was 0.022, bed showed through as hard swirls) */
           vec3 outside = mix(under * 0.9, mirr, 0.95);
-          col = mix(mix(aw2, under, 0.22 + 0.5 * clamp(fr, 0.0, 1.0)), outside, crit2);
+          col = mix(mix(aw2, under, 0.22 + 0.5 * smoothstep(0.55, 1.1, s2)), outside, crit2);   /* 8:44 PM RCA: exact Fresnel jumps to 1 at the critical angle - that step drew a hard straight rim across Snell's window; rough-surface smooth ramp instead */
           aOut = mix(0.6, 0.86, crit2); }
       }
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the
