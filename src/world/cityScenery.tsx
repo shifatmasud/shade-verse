@@ -38,9 +38,11 @@ export function TenementBlock(){
 
 export function Sky() {
     const ref = useRef<THREE.Mesh>(null!);
-    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: SKY_T, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm, uRain: WEATHER.rain, uBow: WEATHER.bow, uAur: WEATHER.aur, uFlash: WEATHER.flash, uFd: WEATHER.fdir, uMoon: { value: MOON_TEX } } }), []);
+    const mat = useMemo(() => new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: { uHor: { value: TOD.fog }, uT: SKY_T, uSunV: TOD.sunU, uDay: TOD.day, uWarm: TOD.warm, uRain: WEATHER.rain, uBow: WEATHER.bow, uAur: WEATHER.aur, uFlash: WEATHER.flash, uFd: WEATHER.fdir, uMoon: { value: MOON_TEX }, uUnder: { value: 0 }, uUwC: { value: new THREE.Color() } } }), []);
     useFrame((st) => { SKY_T.value = st.clock.elapsedTime; });
-    useFrame(({ camera }) => { ref.current.position.copy(camera.position); ref.current.visible = !UW.on; });
+    /* Shifat Nov 15 6:01 PM 'underwater feels like a new world instead of the same scene': the dome no longer switches off under water - it draws
+       the water's own light field (bright toward the surface and the sun, the fog colour at the horizon, dark below), so a dive keeps the world's orientation */
+    useFrame(({ camera, scene }) => { ref.current.position.copy(camera.position); const u = mat.uniforms; u.uUnder.value = UW.on ? 1 : 0; if (UW.on && scene.fog) u.uUwC.value.copy((scene.fog as THREE.Fog).color); });
     return <mesh ref={ref} material={mat} renderOrder={-10} frustumCulled={false}><sphereGeometry args={[400, 24, 12]} /></mesh>;
 }
 
