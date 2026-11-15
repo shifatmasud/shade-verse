@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { waveDispJS, waveMeshHJS, swellKJS, WAVE_HMAX } from './waves';
 const DBG = !!(import.meta as any).env.VITE_DBG;
-import { OCEAN_HALF, OCEAN_N, OCEAN_SNAP, OCEAN_WARP } from './seabed';
+import { OCEAN_SNAP, oceanSpacingAt } from './seabed';
 import { WATER_Y } from '../sim';
 import { WATERLINE } from '../world/env';
 
@@ -32,18 +32,17 @@ float wlY(float x){ float f = clamp(x * 12.0 + 12.0, 0.0, 23.999); int i = int(f
  *  shape stays put on the water whatever the camera does. amp = WATERLINE.v.z (full with the lens in the water, faint at the far horizon). */
 const wlRipple = (x: number, z: number, t: number, amp: number) => amp * (0.020 * Math.sin(x * 5.1 + z * 3.6 + t * 1.3) + 0.010 * Math.sin(x * 9.8 - z * 6.2 - t * 2.1) + 0.004 * Math.sin(x * 12.0 + z * 8.0 + t * 3.7));
 const _o = [0, 0, 0], _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3();
-const SPK = OCEAN_WARP * OCEAN_HALF * 2 / OCEAN_N, SPE = (OCEAN_WARP - 1) / OCEAN_WARP;
 const sst = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 /** Height of the sea mesh as drawn at world (x, z): the sheet follows the camera in OCEAN_SNAP steps, each vertex is pushed sideways by the
  *  Gerstner term, so the undisplaced point is found by fixed-point iteration, then the vertex height is evaluated there at its grid spacing. */
 export function seaMeshY(x: number, z: number, t: number, sx: number, sz: number, iters = 3) {
     let px = x, pz = z;
     for (let i = 0; i < iters; i++) {
-        const lx = Math.abs(px - sx) / OCEAN_HALF, lz = Math.abs(pz - sz) / OCEAN_HALF, sp = SPK * Math.pow(Math.max(lx, lz, 1e-4), SPE);
+        const sp = oceanSpacingAt(Math.max(Math.abs(px - sx), Math.abs(pz - sz)));   /* same spacing law as the sheet (seabed.ts oceanWarp) */
         const qz = Math.min(pz, -222); waveDispJS(px, qz, t, sp, _o); const k = sst(-222, -232, qz);
         px = x - _o[1] * k; pz = z - _o[2] * k;
     }
-    const lx = Math.abs(px - sx) / OCEAN_HALF, lz = Math.abs(pz - sz) / OCEAN_HALF, sp = SPK * Math.pow(Math.max(lx, lz, 1e-4), SPE);
+    const sp = oceanSpacingAt(Math.max(Math.abs(px - sx), Math.abs(pz - sz)));   /* same spacing law as the sheet (seabed.ts oceanWarp) */
     return WATER_Y + waveMeshHJS(px, Math.min(pz, -222), t, sp);   // perf: push-only / height-only halves of waveMeshJS, bit-identical, ~40% fewer trig calls
 }
 

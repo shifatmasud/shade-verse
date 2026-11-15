@@ -30,11 +30,27 @@ export const seabedMat = mkSea(false), wallMat = mkSea(true);
 // draw calls). The vertex shader folds anything north of the shoreline onto it, so the sheet never covers land.
 export const OCEAN_HALF = 1500, OCEAN_SNAP = 8;   // South Sea 3: 900 -> 1500 so the sheet reaches past the raised far plane (no seabed band at the horizon)
 export const OCEAN_N = 170, OCEAN_WARP = 2.1;
+/* Nov 15 2026 (interactive water: real displaced ripples / wake round the hero): the grid used to be x = HALF * u^2.1, which is already ~2.4 m per
+   cell 8 m from the camera - far too coarse to carry a 0.6-2 m ripple, so near-field interaction could only ever be faked in the normals. The
+   sheet is now x = LIN * u + (HALF - LIN) * u^POW: a uniform ~0.47 m core round the camera (ripples and wake displace for real), ~1.2 m at 8 m,
+   ~3.3 m at 30 m (was 4.8), ~8 m at 100 m (was 9), and only coarser than before past ~120 m where the sea is drawn calm and flat anyway.
+   Same vertex count (170 x 170), same snap. */
+export const OCEAN_LIN = 40, OCEAN_POW = 3.2;
+/** Sheet position (m, signed) of grid coordinate u in [-1, 1]. */
+export function oceanWarp(u: number) { const a = Math.abs(u); return Math.sign(u) * (OCEAN_LIN * a + (OCEAN_HALF - OCEAN_LIN) * Math.pow(a, OCEAN_POW)); }
+/** Local grid spacing (m) at grid coordinate u. */
+export function oceanSpacingU(u: number) { return (OCEAN_LIN + OCEAN_POW * (OCEAN_HALF - OCEAN_LIN) * Math.pow(Math.abs(u), OCEAN_POW - 1)) * 2 / OCEAN_N; }
+/** Local grid spacing (m) at sheet distance d (m) from the sheet centre along one axis (Newton inverse of oceanWarp, 4 steps). */
+export function oceanSpacingAt(d: number) { d = Math.min(Math.abs(d), OCEAN_HALF); let u = Math.min(1, d / OCEAN_LIN * 0.9 + Math.pow(d / OCEAN_HALF, 1 / OCEAN_POW) * 0.1);
+    for (let i = 0; i < 4; i++) { const f = oceanWarp(u) - d, df = OCEAN_LIN + OCEAN_POW * (OCEAN_HALF - OCEAN_LIN) * Math.pow(u, OCEAN_POW - 1); u = Math.max(0, Math.min(1, u - f / df)); }
+    return oceanSpacingU(u); }
+/** GLSL: local grid spacing from the sheet's uv attribute (= grid coordinate u per axis, in [-1, 1]). */
+export const OCEAN_SP_GLSL = `vec2 la = abs(uv * 2.0 - 1.0); vec2 sa = (${OCEAN_LIN.toFixed(1)} + ${(OCEAN_POW * (OCEAN_HALF - OCEAN_LIN)).toFixed(1)} * pow(max(la, vec2(1e-4)), vec2(${(OCEAN_POW - 1).toFixed(2)}))) * ${(2 / OCEAN_N).toFixed(6)}; float sp = max(sa.x, sa.y);`;
 export const OCEAN_BINS = 180, OCEAN_INNER_R = 60;
 export function oceanGeo() {
     const n = OCEAN_N, pos: number[] = [];   /* keep 170: 124 made the camera-follow snap visibly shift the coarser wave mesh (Shifat 4:40 AM 'sea is glitching') */
-    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), OCEAN_WARP) * OCEAN_HALF;
-    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(warp(i / n * 2 - 1), 0, warp(j / n * 2 - 1));
+    const uvs: number[] = [];
+    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { pos.push(oceanWarp(i / n * 2 - 1), 0, oceanWarp(j / n * 2 - 1)); uvs.push(i / n, j / n); }
     /* Shifat 11:44 PM 'sea wave math is the cause' (no sea = 2x fps on his phone): the sheet is a full 360 deg disc round the camera and every vertex
        runs the wave math, including the ~60% behind the camera that is never seen. Triangles are stored as: the inner disc (always drawn), then the
        rest sorted by angle round the centre in OCEAN_BINS slices, so OceanSlices can draw only the slices inside the view. Same triangles, same look. */
@@ -54,7 +70,7 @@ export function oceanGeo() {
     const idx = inner.slice(), binStart = new Int32Array(OCEAN_BINS + 1); let bi = 0;
     outer.forEach((o, k) => { const b = (o as any).b; while (bi <= b) binStart[bi++] = inner.length + k * 3; idx.push(...o.t); });
     while (bi <= OCEAN_BINS) binStart[bi++] = idx.length;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setIndex(idx);
     g.userData = { inner: inner.length, binStart };
     return g;
 }
