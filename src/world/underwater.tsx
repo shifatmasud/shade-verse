@@ -65,17 +65,20 @@ const rayMat = new THREE.ShaderMaterial({
       }`,
 });
 // Shifat Oct 29 "water bubble must be randomized particle emission": round glints with a per-particle size (aSize) and rgba fade.
-const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.42,sizeAttenuation:true,transparent:true,opacity:0.9,depthWrite:false,vertexColors:true});
+/* Shifat Nov 15 5:41 PM 'see the bubbles? They are too big & ugly': world size 0.42 -> 0.014 (real bubbles are mm to ~1 cm); far / small ones
+   draw as a 1 px glint with alpha by coverage instead of a big hollow ring, and there are ~8x more of them. */
+const bubbleMat = new THREE.PointsMaterial({color:'#dff8ff',size:0.014,sizeAttenuation:true,transparent:true,opacity:0.9,depthWrite:false,vertexColors:true});
 bubbleMat.onBeforeCompile = (shader) => {
-    shader.vertexShader = 'attribute float aSize;\n' + shader.vertexShader.replace('gl_PointSize = size;', 'gl_PointSize = size * aSize;');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', '/* real vent bubbles (Eifuku ref): clear centre, bright silvery rim, small specular highlight up-left, soft edge */ float hl=1.0-smoothstep(0.0,0.12,length(gl_PointCoord-vec2(0.36,0.32))); diffuseColor.rgb+=hl*0.6; diffuseColor.a*=(1.0-smoothstep(0.36,0.5,br))*(0.22+0.78*smoothstep(0.24,0.42,br))+hl*0.7;\n#include <opaque_fragment>');
+    shader.vertexShader = 'attribute float aSize;\nvarying float vPs;\n' + shader.vertexShader.replace('gl_PointSize = size;', 'gl_PointSize = size * aSize;').replace('#include <fog_vertex>', 'vPs = gl_PointSize; gl_PointSize = clamp(gl_PointSize, 1.0, 6.0);\n#include <fog_vertex>');
+    shader.fragmentShader = 'varying float vPs;\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat br=length(gl_PointCoord-0.5);if(br>0.5)discard;').replace('#include <opaque_fragment>', '/* real vent bubbles (Eifuku ref): clear centre, bright silvery rim, small specular highlight up-left, soft edge */ float hl=1.0-smoothstep(0.0,0.12,length(gl_PointCoord-vec2(0.36,0.32))); diffuseColor.rgb+=hl*0.6; diffuseColor.a*=vPs<3.0?clamp(vPs,0.2,1.0)*0.85:(1.0-smoothstep(0.36,0.5,br))*(0.22+0.78*smoothstep(0.24,0.42,br))+hl*0.7;\n#include <opaque_fragment>');
 };
-bubbleMat.customProgramCacheKey = () => 'round-bubble-emitter-v4';
+bubbleMat.customProgramCacheKey = () => 'round-bubble-emitter-v5';
 // Pooled randomized bubble emitter: one Points draw, fixed typed arrays, no per-frame allocation. Each particle gets a random
 // size, rise speed, wobble (amplitude/frequency/phase), sideways drift and lifetime; it fades in, rises (speeding up slightly as it
 // grows, like a real bubble), and pops/fades just under the real wave-displaced surface at its own x/z. Emitters: seabed vents at
 // random spots around the camera, plus a stream off the hero while moving/diving (rate scales with speed).
-const BUB_N = QUALITY.coarse || QUALITY.weakGpu ? 260 : 520;
+const BUB_N = QUALITY.coarse || QUALITY.weakGpu ? 2400 : 4800;   /* 5:41 PM: tiny & many (was 260 / 520) */
 export function Underwater({ sim }: { sim: Sim }) {
     const kelp = useRef<THREE.InstancedMesh>(null!), bub = useRef<THREE.Points>(null!), rays = useRef<THREE.Group>(null!), rayInst = useRef<THREE.InstancedMesh>(null!);
     const rayGeo = useMemo(() => { const g = new THREE.PlaneGeometry(1, RAY_LEN, 1, 1); g.translate(0, -RAY_LEN / 2, 0); return g; }, []);
@@ -118,7 +121,7 @@ export function Underwater({ sim }: { sim: Sim }) {
                 const r = Math.random();
                 B.x[k] = x; B.y[k] = y; B.z[k] = z; B.age[k] = 0; B.life[k] = small ? 2.5 + Math.random() * 5.5 : 45;   /* real bubbles rise all the way and pop at the surface */
                 B.sz[k] = small ? 0.35 + r * 0.6 : 0.45 + r * r * 1.6; B.v[k] = 0.35 + B.sz[k] * 0.45 + Math.random() * 0.35;
-                B.wa[k] = 0.03 + Math.random() * 0.12; B.wf[k] = 2 + Math.random() * 5; B.wp[k] = Math.random() * 6.283;
+                B.wa[k] = 0.008 + Math.random() * 0.04; B.wf[k] = 2 + Math.random() * 5; B.wp[k] = Math.random() * 6.283;
                 B.dx[k] = (Math.random() - 0.5) * 0.25; B.dz[k] = (Math.random() - 0.5) * 0.25;
             };
             // seabed vents: Poisson-ish random emission in a 13 m disc around the camera, sometimes in little bursts
@@ -129,10 +132,10 @@ export function Underwater({ sim }: { sim: Sim }) {
             { const VC = 10, gx0 = Math.floor(cx / VC), gz0 = Math.floor(cz / VC), hh = (a: number, b: number, s: number) => { let v = Math.imul((a | 0) ^ Math.imul(b | 0, 0x45d9f3b) ^ Math.imul(Math.floor(s * 4096), 0x27d4eb2d), 0x85ebca6b); v ^= v >>> 16; v = Math.imul(v, 0xc2b2ae35); v ^= v >>> 16; return (v >>> 0) / 4294967296; };
               for (let ix = -2; ix <= 2; ix++) for (let iz = -2; iz <= 2; iz++) { const gx = gx0 + ix, gz = gz0 + iz; if (hh(gx, gz, 3.3) > 0.27) continue;
                 const vx = (gx + hh(gx, gz, 1.1)) * VC, vz = (gz + hh(gx, gz, 2.2)) * VC; if (vz > WATER_Z - 4) continue; const vb = inLake ? floor : seabedAt(vx, vz); if (vb > -2) continue;
-                if (Math.random() < dt * (1.4 + hh(gx, gz, 4.4) * 1.6)) spawn(vx + (Math.random() - 0.5) * 0.25, vb + 0.15, vz + (Math.random() - 0.5) * 0.25, false); } }
+                for (let q = 0; q < 6; q++) if (Math.random() < dt * (1.4 + hh(gx, gz, 4.4) * 1.6)) spawn(vx + (Math.random() - 0.5) * 0.25, vb + 0.15, vz + (Math.random() - 0.5) * 0.25, false); } }
             // hero stream: more bubbles the faster you swim, extra on a dive
             const hv = Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]);
-            if (hy < surfaceY - 0.3) { B.heroAcc += dt * (hv * 2.2 + (sim.dive ? 10 : 0) + 0.6); while (B.heroAcc >= 1) { B.heroAcc -= 1; spawn(hx + (Math.random() - 0.5) * 0.6, hy + 0.6 + Math.random() * 0.8, hz + (Math.random() - 0.5) * 0.6, true); } }
+            if (hy < surfaceY - 0.3) { B.heroAcc += dt * (hv * 14 + (sim.dive ? 60 : 0) + 4); while (B.heroAcc >= 1) { B.heroAcc -= 1; spawn(hx + (Math.random() - 0.5) * 0.6, hy + 0.6 + Math.random() * 0.8, hz + (Math.random() - 0.5) * 0.6, true); } }
             for (let i = 0; i < BUB_N; i++) {
                 if (B.age[i] >= B.life[i]) { pa.setXYZ(i, 0, -9999, 0); ca.setW(i, 0); continue; }
                 B.age[i] += dt; B.v[i] = Math.min(B.v[i] + dt * 0.08, 1.6); B.y[i] += B.v[i] * dt; B.x[i] += (B.dx[i] + cur) * dt; B.z[i] += B.dz[i] * dt;
