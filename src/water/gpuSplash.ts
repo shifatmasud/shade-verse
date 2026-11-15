@@ -89,8 +89,14 @@ const DRAW_VS = IX_GLSL + `uniform sampler2D tP, tM; uniform float uScale; attri
 void main(){ vec4 P = texture2D(tP, aRef), M = texture2D(tM, aRef);
   if (P.w >= M.x) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vA = 0.0; return; }
   vec3 p = P.xyz; float k = M.z; if (k > 6.5 && k < 7.5) p.y += ixHeight(p.xz) + 0.004;
-  vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
-  float ps = 2.0 * M.y * uScale / max(0.2, -mv.z), age = P.w / M.x;
+  vec4 mv = modelViewMatrix * vec4(p, 1.0); float zr = -mv.z;
+  /* Shifat 7:03 PM 'rain drops, crowns are under some layers of the water surface - RCA': the drops are depth-tested against the drawn sea, whose
+     surface carries GPU-only height (FFT chop, interaction rings, 0.5-dpr sea depth on phones) that the CPU wave height they launch from lacks, so any
+     drop within a few cm of the water was hidden. Above-water particles are now pulled toward the lens by up to 0.35 m (8% of range) for the depth test
+     only, so they always sit on top of the water layers while islands, hulls and the hero still hide them. Bubbles keep their true depth. */
+  if (k < 5.5 || k > 6.5) mv.xyz *= 1.0 - min(0.35, 0.08 * length(mv.xyz)) / max(length(mv.xyz), 0.05);
+  gl_Position = projectionMatrix * mv;
+  float ps = 2.0 * M.y * uScale / max(0.2, zr), age = P.w / M.x;
   gl_PointSize = clamp(ps, 1.0, k > 5.5 && k < 6.5 ? 1.5 : 18.0); vR = ps;
   float cov = clamp(ps * 1.4, 0.3, 1.0);   /* sub-pixel: keep a 1 px dot, alpha ~ its size (fine shimmer, not big balls) */
   float fade = k > 1.5 && k < 2.5 ? sin(min(1.0, age * 4.0) * 1.5708) * (1.0 - age) : k > 6.5 && k < 7.5 ? (1.0 - age) * smoothstep(0.0, 0.08, age) : k > 7.5 ? 1.0 - age : 1.0 - age * age;

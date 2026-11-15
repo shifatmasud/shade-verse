@@ -72,17 +72,18 @@ export function WaterFX({ sim }: { sim: Sim }) {
             let depth: number, rad = 0.45, foam = 0;
             if (surfing) { depth = 0.2; rad = 0.6; foam = THREE.MathUtils.smoothstep(sp, 3, 9) * 0.9; }
             else if (sp < 0.6) depth = 0.14 + 0.055 * Math.sin(t * Math.PI * 2 * 0.85) + 0.018 * Math.sin(t * Math.PI * 2 * 2.3 + 1.1);   // treading water: soft rings
-            else { const hz = 0.75 + 0.22 * sp; S.stroke += dt * hz; depth = 0.14 + 0.04 * Math.sin(S.stroke * Math.PI * 2); foam = THREE.MathUtils.smoothstep(sp, 2.2, 6) * 0.55; }
+            else { const hz = 0.75 + 0.22 * sp; S.stroke += dt * hz; depth = 0.2 + 0.06 * Math.min(1, sp / 4); /* Shifat 7:03 PM 'ring ripple on swim shows, rings only when floating; wake takes too long to form': a steady, deeper hull (no stroke bob = no rings); its motion alone makes the V */ foam = THREE.MathUtils.smoothstep(sp, 2.2, 6) * 0.55; }
             // body centre a little ahead of the hips (head + shoulders lead), elongated swimmers approximated by a second smaller footprint behind
             ixBody(0, true, p[0] + fx * 0.25, p[2] + fz * 0.25, depth * sub, rad, foam);
-            if (sp > 0.6 && !surfing) ixBody(1, true, p[0] - fx * 0.55, p[2] - fz * 0.55, depth * 0.5 * sub, 0.32, foam * 0.6); else ixBody(1, false);
+            if (sp > 0.6 && !surfing) { ixBody(1, true, p[0] - fx * 0.6, p[2] - fz * 0.6, depth * 0.75 * sub, 0.34, foam * 0.6); ixBody(2, true, p[0] + fx * 0.8, p[2] + fz * 0.8, depth * 0.8 * sub, 0.26, foam * 0.4); ixBody(3, true, p[0] - fx * 1.15, p[2] - fz * 1.15, depth * 0.4 * sub, 0.3, foam * 0.5); }   /* head, chest, hips, kicking legs: a 2 m hull throws a full V at once */
+            else { ixBody(1, false); ixBody(2, false); ixBody(3, false); }
             if (!surfing && sp > 0.6) { S.foamAcc += dt * sp * 180; if (S.foamAcc >= 30) { const n = Math.floor(S.foamAcc); S.foamAcc -= n; splBurst(SK.FOAM, p[0] - fx * 0.5, surf!, p[2] - fz * 0.5, n, 0.3, 0.3, v[0] * 0.3, v[2] * 0.3, surf!); } }   /* churned bubbles strung along the wake */
             // stroke spray: each arm entry throws a handful of drops forward / up and dimples the surface
             if (!surfing && sp > 0.8) {
                 const half = Math.floor(S.stroke * 2);
                 if (half !== S.half) {   /* a new half-cycle = the other arm enters the water */
                     S.half = half; S.side = -S.side; const hx = p[0] + fx * 0.65 - fz * 0.32 * S.side, hzp = p[2] + fz * 0.65 + fx * 0.32 * S.side, k = Math.min(1.4, sp / 4);
-                    ixImpulse(hx, hzp, -0.035 * k, 0.22);
+                    /* 7:03 PM: arm entries no longer dimple the height-field (each dimple was a ring); the spray particles carry the stroke */
                     splBurst(SK.STROKE, hx, surf!, hzp, 320 + 560 * k, k, 0.4, fx, fz, surf!); splBurst(SK.FOAM, hx, surf!, hzp, 140 + 220 * k, 0.5, 0.25, v[0], v[2], surf!);
                 }
             }
@@ -91,7 +92,7 @@ export function WaterFX({ sim }: { sim: Sim }) {
                 S.sprayAcc += dt * Math.min(4800, sp * 520);   /* ~3500 tiny drops a second at surf speed */
                 if (S.sprayAcc >= 60) { const n = Math.floor(S.sprayAcc); S.sprayAcc -= n; splBurst(SK.SHEET, p[0], surf!, p[2], n, Math.min(1.4, sp / 6), 0.5, v[0], v[2], surf!); splBurst(SK.MIST, p[0], surf!, p[2], n * 0.25, 0.6, 0.6, 0, 0, surf!); splBurst(SK.FOAM, p[0] - fx * 0.6, surf!, p[2] - fz * 0.6, n * 0.4, 0.4, 0.4, 0, 0, surf!); }
             }
-        } else { ixBody(0, false); ixBody(1, false); }
+        } else { ixBody(0, false); ixBody(1, false); ixBody(2, false); ixBody(3, false); }
         // drips for ~0.7 s after leaving the water
         if (t - S.dripT < 0.7) { S.dripAcc += dt * 700; if (S.dripAcc >= 20) { const n = Math.floor(S.dripAcc); S.dripAcc -= n; splBurst(SK.DRIP, p[0], p[1], p[2], n, 1, 0.5, v[0], v[2], waterAt(p[0], p[2], t) ?? p[1] - 4); } }
         // under water (diving / deep swim): a thin stream of bubbles off the body
