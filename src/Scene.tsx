@@ -35,7 +35,7 @@ import { QK, HQ, AA_FXAA } from './quality';
 import { SelectiveBloomPass } from './SelectiveBloomPass';
 import { SouthSea } from './SouthSea';
 import { islandH } from './seaWorld'
-import { TOD, UWF, UW } from './world/env';
+import { TOD, UWF, UW, UWP } from './world/env';
 import { seabedMat, wallMat, oceanGeo, seabedGeo } from './water/seabed';
 import { waterMat } from './water/oceanMaterial';
 import { WaterFX } from './water/WaterFX';
@@ -748,7 +748,9 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             UW.on = under; if (under) (state.scene.background as THREE.Color).copy(UWF.value); if (DBG) (window as any).__scene = state.scene;
             // Shifat Oct 29: "fog should only be visible at great distance, not close" -> linear fog: clear water near you, fog only far off.
             if (!(state.scene.fog instanceof THREE.Fog)) state.scene.fog = new THREE.Fog(UWF.value.getHex(), 1e4, 2e4);   // kept for the whole session (pushed out of reach above water) so entering water causes no shader recompiles
-            { const fg = state.scene.fog as THREE.Fog; if (under) { const deep = Math.min(1, Math.max(0, -dy / 30)), ti = THREE.MathUtils.smoothstep(-dy, 0.6, 4.0);   /* Shifat Nov 1: one world, not a camera switch -> the water closes in gradually over the first metres of the dive */ fg.color.copy(UWF.value).multiplyScalar(1 - 0.3 * deep); fg.near = 8 - 4 * deep; fg.far = 150 - 40 * deep;   /* Shifat Nov 1 11:27 'underwater land looks bad, smooth it out': water haze now starts a few metres out (was 55 m), so submerged slopes melt into the blue instead of standing crisp and white */ void ti; (state.scene.background as THREE.Color).copy(fg.color); } else { fg.near = 1e4; fg.far = 2e4; } }
+            { const fg = state.scene.fog as THREE.Fog; if (under) { const deep = Math.min(1, Math.max(0, -dy / 30)), ti = THREE.MathUtils.smoothstep(-dy, 0.6, 4.0);   /* Shifat Nov 1: one world, not a camera switch -> the water closes in gradually over the first metres of the dive */ fg.color.copy(UWF.value).multiplyScalar(1 - 0.3 * deep); fg.near = 8 - 4 * deep; fg.far = 150 - 40 * deep;   /* Shifat Nov 1 11:27 'underwater land looks bad, smooth it out': water haze now starts a few metres out (was 55 m), so submerged slopes melt into the blue instead of standing crisp and white */ void ti; (state.scene.background as THREE.Color).copy(fg.color); } else { fg.near = 1e4; fg.far = 2e4; }
+                /* Shifat Nov 15 7:06 PM 'screen to world space': the post pass reads the same medium (src/world/env.ts UWP): full dive, or the split lens at the dive's first-metre law */
+                if (under) UWP.v.set(1, surfaceY, fg.near, fg.far); else UWP.v.set(0, split ? surfaceY : -1e4, 8, 150); }
             {   // Shifat Oct 31 12:27 'air water split view': the lens straddles the surface. The post pass gives everything below the wave line the
                 // underwater look (same fog colour as diving). Line = the silhouette of the drawn waves from the lens plane out (src/water/waterline.ts).
                 WATERLINE.v.w = 0;
