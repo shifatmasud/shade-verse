@@ -7,13 +7,14 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { waterRenderY } from '../water/waveHeight';
 import { WL_GLSL } from '../water/waterline';
+import { LENS_GLSL, lensU } from '../water/lens';
 const DBG = !!(import.meta as any).env.VITE_DBG;   // QA hooks only in instrumented builds
 
 // Underwater life (user must-haves 10:29): kelp forest, jellyfish, tiny bubbles, god rays, current drift. Reference cues (viewed underwater shots): cyan light band near the surface, light shafts, sandy floor, haze to teal. All procedural approximations, small instance counts.
 const UW_FOG = 'vec3(0.09, 0.43, 0.55)';
-const kelpMat = new THREE.ShaderMaterial({   /* Shifat Nov 1 10:53 AM 'kelps should look like my portfolio ones': the portfolio's giant kelp - a thin stipe with long
+export const kelpMat = new THREE.ShaderMaterial({   /* Shifat Nov 1 10:53 AM 'kelps should look like my portfolio ones': the portfolio's giant kelp - a thin stipe with long
     leaves alternating up it (cut in the fragment from one ribbon strip), twisting so they catch the light, olive-amber, glowing gold-green when the sun is behind them */
-    uniforms: { uTime: { value: 0 }, uDay: TOD.day, uSun: TOD.sunU },
+    uniforms: { uTime: { value: 0 }, uDay: TOD.day, uSun: TOD.sunU, ...lensU() },
     vertexShader: `uniform float uTime; varying vec3 vW; varying float vH; varying vec2 vUv; varying float vHt; varying vec3 vN; varying float vWd;
     void main(){ vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0); float sy = length(instanceMatrix[1].xyz), sx = length(instanceMatrix[0].xyz);
       float y = clamp(position.y / 6.0, 0.0, 1.0), H = 6.0 * sy, h = y * H, ph = ip.x * 0.37 + ip.z * 0.21;
@@ -24,6 +25,7 @@ const kelpMat = new THREE.ShaderMaterial({   /* Shifat Nov 1 10:53 AM 'kelps sho
       vec4 w = modelMatrix * vec4(ip.xyz + p, 1.0); vW = w.xyz; vH = y; vUv = vec2(position.x / 0.8, y); vHt = H; vWd = sx * 1.6; vN = normalize(cross(side, vec3(0.0, 1.0, 0.0)));
       gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `varying vec3 vW; varying float vH; varying vec2 vUv; varying float vHt; varying vec3 vN; varying float vWd; uniform float uDay; uniform vec3 uSun;
+    ${LENS_GLSL}
     void main(){ float y = vUv.y, x = vUv.x, h = y * vHt, W = vWd * 0.5; vec2 pw = vec2(x * W, h); float aa = fwidth(pw.x) * 1.3 + 1e-3;
       float st = 0.03 * (1.0 - y * 0.5) + aa * 0.5; float a = smoothstep(st + aa, st, abs(pw.x)) * (1.0 - smoothstep(0.93, 1.0, y)); float leaf = 0.85;
       float sp = 0.34, Lf = 0.78, k0 = floor(h / sp);
@@ -38,7 +40,7 @@ const kelpMat = new THREE.ShaderMaterial({   /* Shifat Nov 1 10:53 AM 'kelps sho
       float dep = max(-1.0 - vW.y, 0.0); vec3 sunAt = exp(-vec3(0.45, 0.07, 0.02) * dep * 0.12); float ndl = abs(dot(N, toSun));
       float back = pow(max(dot(V, toSun), 0.0), 2.0), rimK = 1.0 - leaf; vec3 glowC = vec3(0.66, 0.80, 0.34);
       vec3 col = alb * (sunAt * ndl * 0.8 + 0.35) * (0.75 + 0.25 * rimK) + sunAt * glowC * (back * (0.5 + 0.9 * rimK) + 0.05) * mix(alb * 2.0, glowC, 0.45) + pow(1.0 - abs(dot(N, V)), 2.5) * sunAt * glowC * 0.22 * (0.3 + back);
-      float d = length(vW - cameraPosition); float kA = smoothstep(-3.0, -1.2, cameraPosition.y); float wf = mix(1.0, clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.01), 0.0, 1.0), kA); float dw = d * wf, k = mix(1.0, 3.5, kA);   /* seen from above: only the underwater part of the sight line absorbs, and more strongly (light goes down and back up) */
+      float d = length(vW - cameraPosition); float kA = lensAir(vW);   /* per pixel: the split's under half sees kelp exactly as the dive does */ float wf = mix(1.0, clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.01), 0.0, 1.0), kA); float dw = d * wf, k = mix(1.0, 3.5, kA);   /* seen from above: only the underwater part of the sight line absorbs, and more strongly (light goes down and back up) */
       col = col * exp(-vec3(0.45, 0.07, 0.02) * dw * 0.12 * k) + ${UW_FOG} * 0.75 * (1.0 - exp(-dw * 0.028 * k)); col *= mix(0.12, 1.0, uDay) * mix(1.0, mix(1.0, 0.62, vH), kA); gl_FragColor = vec4(col, 1.0); }`,
     side: THREE.DoubleSide,
 });

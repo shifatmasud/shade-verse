@@ -12,7 +12,7 @@ export function beachShader(sh: any) {
     sh.uniforms.uBT = BEACH_T; sh.uniforms.uCaus = { value: CAUSTIC_TEX };
     sh.fragmentShader = 'uniform float uBT;\n' + CAUSTIC_GLSL + '\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
     /* Shifat 3:43 AM: seen from underwater, the island's submerged sand carries the SAME simulated caustics as the refracted view from above */
-    if (cameraPosition.y < -0.4 && vHzW.y < -1.0) diffuseColor.rgb *= mix(0.74 + causRGB(vHzW.xz * 0.5, uBT * 0.8) * 3.4 * exp(-(-1.0 - vHzW.y) * 0.10) * smoothstep(-1.0, -1.6, vHzW.y), vec3(1.0), smoothstep(-3.0, -1.2, cameraPosition.y));
+    if (lensAir(vHzW) < 0.5 && vHzW.y < -1.0) diffuseColor.rgb *= mix(0.74 + causRGB(vHzW.xz * 0.5, uBT * 0.8) * 3.4 * exp(-(-1.0 - vHzW.y) * 0.10) * smoothstep(-1.0, -1.6, vHzW.y), vec3(1.0), lensAir(vHzW));
     { vec2 bxz = vHzW.xz; float yb = vHzW.y;
       float sandM = smoothstep(0.5, 0.62, diffuseColor.r) * smoothstep(0.02, 0.08, diffuseColor.r - diffuseColor.b) * smoothstep(-2.4, -1.4, yb) * (1.0 - smoothstep(1.6, 2.4, yb));
       float wash = -0.85 + 0.32 * sin(uBT * 0.55 + bxz.x * 0.045 + bxz.y * 0.03) + 0.08 * sin(uBT * 1.3 + bxz.y * 0.21);
@@ -24,7 +24,7 @@ export function beachShader(sh: any) {
       sc = mix(sc, vec3(1.0), clamp(foam, 0.0, 1.0) * 0.75);
       diffuseColor.rgb = mix(diffuseColor.rgb, sc, sandM); }
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.11, 0.17), max(smoothstep(-9.0, -14.0, vHzW.y), 0.55 * smoothstep(-2.5, -10.0, vHzW.y)));   /* + deeper sand gradually takes the seabed tone (smooth falloff, no pale shelf) */
-    { float uwA = 1.0 - smoothstep(-3.0, -1.2, cameraPosition.y); if (uwA > 0.0 && vHzW.y < -0.6) {   /* Shifat Nov 1 11:27 'underwater parts of land look bad': seen from under the water, submerged ground now loses red then green with depth + distance (Beer-Lambert, same as the kelp/fish), so slopes read as soft teal forms, not bright white facets */
+    { float uwA = 1.0 - lensAir(vHzW);   /* Nov 15 8:06 PM: per pixel (src/water/lens.ts), same in the split's under half as in the dive */ if (uwA > 0.0 && vHzW.y < -0.6) {   /* Shifat Nov 1 11:27 'underwater parts of land look bad': seen from under the water, submerged ground now loses red then green with depth + distance (Beer-Lambert, same as the kelp/fish), so slopes read as soft teal forms, not bright white facets */
         float dep = max(-1.0 - vHzW.y, 0.0), dd = length(vHzW - cameraPosition), path = dep * 0.6 + dd * 0.35;
         vec3 ab = exp(-vec3(0.45, 0.07, 0.02) * path * 0.35); diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * ab + vec3(0.04, 0.2, 0.26) * (1.0 - ab.g) * 0.8, uwA * smoothstep(-0.6, -1.4, vHzW.y)); } }   /* deep shelf fades to the open-seabed tone: the terrain mesh ends at -14 m and its edge no longer draws a sawtooth through clear water */`);
 }

@@ -21,12 +21,7 @@ export const WL_N = 25, WL_D = 1.2;
 const WL_EPS = 0.02;   // the line sits 2 cm above the analytic surface: the drawn triangles cut the curve up to ~2 cm high in troughs, and a line under the mesh would open a sliver of sky above it
 
 /** GLSL shared by the sea and the post pass: uWL.w = 1 while the lens straddles the surface; wlY(ndc x) = ndc height of the line. */
-export const WL_GLSL = `uniform vec4 uWL; uniform vec4 uWLq[7];
-float wlAt(int i){ vec4 v = uWLq[i / 4]; int c = i - (i / 4) * 4; return c == 0 ? v.x : (c == 1 ? v.y : (c == 2 ? v.z : v.w)); }
-float wlY(float x){ float f = clamp(x * 12.0 + 12.0, 0.0, 23.999); int i = int(f); float t = f - float(i);
-  float p0 = wlAt(max(i - 1, 0)), p1 = wlAt(i), p2 = wlAt(i + 1), p3 = wlAt(min(i + 2, 24));
-  return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0))); }   /* Catmull-Rom through the 25 solved columns. The meniscus ripple is no longer added here in screen space (it slid with the camera heading): it is part of each column's world-space surface height, see wlRipple in updateWaterline (Shifat Nov 6 10:51 PM 'camera movements must not affect water line waves') */
-`;
+export { WL_GLSL } from './lens';   /* moved to src/water/lens.ts (no import cycle with seabed.ts) */
 
 /** Meniscus ripple (the mesh carries no sub-metre waves) as a height in METRES at a world point: a function of world x, z and time only, so the
  *  shape stays put on the water whatever the camera does. amp = WATERLINE.v.z (full with the lens in the water, faint at the far horizon). */

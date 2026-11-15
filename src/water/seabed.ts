@@ -3,22 +3,24 @@ import { ISLAND } from '../seaWorld';
 import { SEA, WATER_Z, HALF, seabedAt } from '../sim';
 import { CAUSTIC_TEX, CAUSTIC_GLSL } from '../caustics';
 import { TOD, UWF } from '../world/env';
+import { LENS_GLSL, lensU } from './lens';
 
 // seabed: sand with animated caustic light lines, fading into teal haze with distance (reference: two underwater game shots - sandy floor with web-like caustic lines, cyan fading to deeper teal)
 const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uFog: UWF, uCaus: { value: CAUSTIC_TEX }, uDayC: TOD.day },
+    uniforms: { uTime: { value: 0 }, uFog: UWF, uCaus: { value: CAUSTIC_TEX }, uDayC: TOD.day, ...lensU() },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `varying vec3 vW; uniform float uTime; uniform vec3 uFog;
+    ${LENS_GLSL}
     // Shifat 3:43 AM 'refracted caustic patterns are best, use them underwater too': the SAME simulated ray-splat caustic tile + causRGB the
     // ocean's refracted view uses (same scale, speed, gain), so the seabed looks identical from above and below. Also far cheaper than the old 24-call warp.
     ${CAUSTIC_GLSL}
     uniform float uDayC;
     vec3 cau3(vec2 p){ return causRGB(p * 0.5 / 0.9, uTime * 0.8) * 2.6; }
     float h(vec2 p){ vec3 q=fract(vec3(p.xyx)*0.1031); q+=dot(q,q.yzx+33.33); return fract((q.x+q.y)*q.z); }
-    void main(){ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y))); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float depthK = mix(1.0, 0.3, smoothstep(-10.0, -48.0, vW.y)); vec3 c3 = cau3(p) * exp(-max(-1.0 - vW.y, 0.0) * 0.05) * 1.45 * uDayC * (1.0 - smoothstep(-3.0, -1.2, cameraPosition.y));   /* sunlight only, and only seen from below (from above the ocean shader draws them) */ float c = dot(c3, vec3(0.333));
+    void main(){ float lA = lensAir(vW);   /* Nov 15 8:06 PM: seen from air or from water decided per pixel (src/water/lens.ts), so the split's under half IS the dive */ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-lA)); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float depthK = mix(1.0, 0.3, smoothstep(-10.0, -48.0, vW.y)); vec3 c3 = cau3(p) * exp(-max(-1.0 - vW.y, 0.0) * 0.05) * 1.45 * uDayC * (1.0 - lA);   /* sunlight only, and only seen from below (from above the ocean shader draws them) */ float c = dot(c3, vec3(0.333));
       vec3 sand = mix(vec3(0.46, 0.62, 0.58), vec3(0.58, 0.70, 0.62), h(floor(${xy ? 'vW.xy' : 'vW.xz'} * 3.0)) * 0.6);
       vec3 col = sand * 0.7 * (0.82 + c3);   /* same light model as the refracted bed: albedo * (0.82 + caustics) */
-      float d = length(vW - cameraPosition); float sbA = smoothstep(-3.0, -1.2, cameraPosition.y); d = mix(d, min(d * clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.001), 0.0, 1.0), 14.0), sbA);   /* blends over the first metres of a dive, no switch */   /* Shifat 1:55 AM 'when swimming the real sea gets visible & blue layer hides': from above, only the part of the ray under the surface is water - the air part was fogging the bed into a flat blue sheet */ vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.12); col = col * Tb; float fg = smoothstep(45.0, 190.0, d);   /* far-only underwater fog (Shifat Oct 29) */ ${xy ? 'fg = fg * 0.8;' : ''} fg *= 1.0 - sbA;   /* from above the sea surface already carries the water colour: the bed only gets its own (short) water path */ col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
+      float d = length(vW - cameraPosition); float sbA = lA; d = mix(d, min(d * clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.001), 0.0, 1.0), 14.0), sbA);   /* blends over the first metres of a dive, no switch */   /* Shifat 1:55 AM 'when swimming the real sea gets visible & blue layer hides': from above, only the part of the ray under the surface is water - the air part was fogging the bed into a flat blue sheet */ vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.12); col = col * Tb; float fg = smoothstep(45.0, 190.0, d);   /* far-only underwater fog (Shifat Oct 29) */ ${xy ? 'fg = fg * 0.8;' : ''} fg *= 1.0 - sbA;   /* from above the sea surface already carries the water colour: the bed only gets its own (short) water path */ col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
       ${xy ? `// Match grazing rays at the wall/surface junction without changing the deeper sand wall.
       vec3 ray=normalize(cameraPosition-vW);vec3 junction=fogUsed*(1.0+0.9*pow(1.0-clamp(abs(ray.y),0.0,1.0),2.5));
       col=mix(col,junction,smoothstep(-5.0,-0.6,vW.y));` : ''}

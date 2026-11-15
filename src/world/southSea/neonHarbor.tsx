@@ -6,6 +6,7 @@ import { useMemo, useRef } from 'react';
 import { SELECTIVE_BLOOM_LAYER } from '../../renderLayers';
 import { useFrame } from '@react-three/fiber';
 import { type SouthSeaKit, PHONE, HAZE_K, hazeShader, colorize, merged, rnd, setSeed } from './common';
+import { LENS_GLSL, lensU } from '../../water/lens';
 
 // Neon Harbor: tower blocks, platforms, neon trim, signs, stilts, lamps, the far-city impostor and the lamp light shafts.
 // ---------------------------------------------------------------- STEP 4: Neon Harbor
@@ -26,12 +27,13 @@ function harborTowerGeo() {
     });
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('aColD', new THREE.Float32BufferAttribute(dcol, 3)); g.setAttribute('aNeon', new THREE.Float32BufferAttribute(neon, 3)); g.setAttribute('aMisc', new THREE.Float32BufferAttribute(misc, 2)); return g;
 }
-function harborTowerMat(tod: SouthSeaKit['tod']) {
+export function harborTowerMat(tod: SouthSeaKit['tod']) {
     return new THREE.ShaderMaterial({
-        uniforms: { uFog: { value: tod.fog }, uSun: { value: tod.sun }, uDay: tod.day, uT: { value: 0 }, uHazeK: HAZE_K },
+        uniforms: { uFog: { value: tod.fog }, uSun: { value: tod.sun }, uDay: tod.day, uT: { value: 0 }, uHazeK: HAZE_K, ...lensU() },
         vertexShader: `attribute vec3 aCol; attribute vec3 aColD; attribute vec3 aNeon; attribute vec2 aMisc; varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vColD; varying vec3 vNeon; varying vec2 vMisc;
         void main(){ vP = position; vN = normal; vCol = aCol; vColD = aColD; vNeon = aNeon; vMisc = aMisc; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying vec3 vP; varying vec3 vN; varying vec3 vCol; varying vec3 vColD; varying vec3 vNeon; varying vec2 vMisc; uniform vec3 uFog; uniform vec3 uSun; uniform float uDay; uniform float uT; uniform float uHazeK;
+        ${LENS_GLSL}
         float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
         void main(){
           vec3 n = normalize(vN); float night = 1.0 - uDay; vec3 L = normalize(uSun + vec3(0.0, 0.3, 0.0)); float dif = max(dot(n, L), 0.0);
@@ -54,7 +56,7 @@ function harborTowerMat(tod: SouthSeaKit['tod']) {
             col *= 1.0 - 0.18 * (1.0 - smoothstep(8.0, 12.0, vP.y));   // darker street level
             stripe *= 0.0;
           } else { col = mix(vec3(0.24, 0.22, 0.3), vec3(0.5, 0.48, 0.55), uDay); }
-          float d = length(vP - cameraPosition); float hz = smoothstep(-3.0, -1.2, cameraPosition.y) * min(mix(0.92, 0.55, uDay), 1.0 - exp(-d * uHazeK * mix(3.5, 0.55, uDay)));
+          float d = length(vP - cameraPosition); float hz = lensAir(vP) * min(mix(0.92, 0.55, uDay), 1.0 - exp(-d * uHazeK * mix(3.5, 0.55, uDay)));
           gl_FragColor = vec4(mix(col, mix(vec3(0.022, 0.03, 0.075), uFog, uDay), hz), 1.0);   /* Shifat 4:37 PM 'whitewashed': at night far towers sink into a darker haze, neon keeps reading */
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
