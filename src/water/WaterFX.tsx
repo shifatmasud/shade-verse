@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Sim } from '../sim';
-import { WATER_Z, WATER_Y, isLakeWater, waterSurfaceAt, seabedAt } from '../sim';
+import { WATER_Z, isLakeWater, waterSurfaceAt, seabedAt } from '../sim';
 import { waterRenderY } from './waveHeight';
 import { WaterInteraction, ixImpulse, ixBody } from './interaction';
-import { spl, splPool, splEmit, SPL_MAX, SF, waterHits } from './splash';
+import { splBurst, SK, waterHits } from './splash';
+import { GpuSplash } from './gpuSplash';
 import { TOD } from '../world/env';
 
 /* Nov 15 2026 (Shifat: fake floating ring -> real displacement rings, swimming -> wake trail, impacts -> realistic particle splash).
@@ -23,9 +24,6 @@ function waterAt(x: number, z: number, t: number): number | null {
     return null;
 }
 
-const MAX_RING_DROPS = 8;   // drop-landing rings per frame (each is one impulse slot)
-let ringBudget = 0;
-
 /** A body or object hitting the water at (x, y, z): speed (m/s, downward), size (m, ~0.5 for a person). */
 export function waterImpact(x: number, y: number, z: number, speed: number, size = 0.5) {
     const e = Math.min(1.8, Math.max(0.15, speed / 7)) * Math.min(1.6, Math.max(0.3, size / 0.5));
@@ -34,45 +32,28 @@ export function waterImpact(x: number, y: number, z: number, speed: number, size
     ixImpulse(x, z, -Math.min(0.42, 0.16 * e), R);
     ixImpulse(x, z, Math.min(0.26, 0.09 * e), R * 0.55, 0.2);
     ixImpulse(x, z, -Math.min(0.12, 0.04 * e), R * 0.45, 0.42);
-    // crown: a sheet torn into drops thrown up and out on ballistic arcs
-    const n = Math.round(16 + 46 * e), r0 = size * 0.45, up = 1.6 + 2.4 * e;
-    for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + rnd(-0.12, 0.12), rr = r0 * rnd(0.8, 1.2), out = rnd(0.9, 2.4) * Math.sqrt(e);
-        splEmit(x + Math.cos(a) * rr, y + 0.04, z + Math.sin(a) * rr, Math.cos(a) * out, up * rnd(0.6, 1.15), Math.sin(a) * out, rnd(1.0, 1.8), rnd(0.035, 0.085) * (0.8 + 0.4 * e));
-    }
-    // Worthington jet: a column rising from the centre a moment later (emitted now with a short upward burst + higher speed, centred)
-    const nj = Math.round(5 + 14 * e);
-    for (let i = 0; i < nj; i++) splEmit(x + rnd(-0.08, 0.08), y + 0.02, z + rnd(-0.08, 0.08), rnd(-0.35, 0.35), (2.4 + 3.6 * e) * rnd(0.75, 1.05), rnd(-0.35, 0.35), rnd(1.1, 1.9), rnd(0.05, 0.11));
-    // mist: fine spray that hangs and drifts
-    const nm = Math.round(3 + 8 * e);
-    for (let i = 0; i < nm; i++) { const a = rnd(0, Math.PI * 2), o = rnd(0.1, 0.6) * size; splEmit(x + Math.cos(a) * o, y + rnd(0.1, 0.5), z + Math.sin(a) * o, Math.cos(a) * rnd(0.3, 1.0), rnd(0.5, 1.4) * e, Math.sin(a) * rnd(0.3, 1.0), rnd(0.8, 1.5), rnd(0.5, 1.1) * (0.7 + 0.5 * e), 1); }
+    // GPU particles (Shifat 4:38 PM 'super tiny & many'): thousands of millimetre drops instead of ~60 big balls
+    splBurst(SK.CROWN, x, y, z, 700 + 1500 * e, e, size, 0, 0, y);
+    splBurst(SK.JET, x, y, z, 160 + 480 * e, e, size, 0, 0, y);
+    splBurst(SK.MIST, x, y, z, 300 + 700 * e, e, size, 0, 0, y);
+    splBurst(SK.BUBBLE, x, y, z, 250 + 650 * e, e, size, 0, 0, y);
+    splBurst(SK.FOAM, x, y, z, 500 + 900 * e, e, size, 0, 0, y);
+    // falling drops pock the surface: a scatter of tiny rings where the crown comes down (ballistic landing radius / time)
+    const up = 1.4 + 2.6 * e;
+    for (let i = 0; i < 10; i++) { const a = rnd(0, Math.PI * 2), tf = 2 * up * rnd(0.45, 1.1) / 9.81, rr = size * 0.45 + rnd(0.5, 2.6) * Math.sqrt(e) * tf * 0.8;
+        ixImpulse(x + Math.cos(a) * rr, z + Math.sin(a) * rr, -rnd(0.006, 0.016) * Math.min(1.3, e), rnd(0.12, 0.2), tf); }
 }
-
-const VS = `uniform float uScale; attribute vec4 aD; varying float vA; varying float vK; varying float vS;
-void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; float ps = aD.x * uScale / max(0.3, -mv.z); gl_PointSize = clamp(ps, 1.0, 96.0); vA = aD.y * clamp(ps / 1.5, 0.2, 1.0); vK = aD.z; vS = ps; }`;
-const FS = `uniform float uDay; uniform vec3 uSky; varying float vA; varying float vK; varying float vS;
-void main(){ vec2 q = gl_PointCoord * 2.0 - 1.0; float r = dot(q, q); if (r > 1.0) discard;
-  vec3 lit = mix(vec3(0.30, 0.40, 0.46), vec3(0.96, 0.99, 1.0), 0.55 + 0.45 * uDay);
-  if (vK < 0.5) {   /* droplet: clear water lens - sky-tinted body, bright rim and a small specular glint */
-    float rim = smoothstep(0.45, 0.95, r), glint = smoothstep(0.18, 0.0, length(q - vec2(-0.32, 0.36)));
-    vec3 c = mix(uSky * 0.75 + vec3(0.05, 0.10, 0.12), lit, 0.35 + 0.45 * rim) + glint * 0.6 * uDay;
-    gl_FragColor = vec4(c, vA * (1.0 - smoothstep(0.75, 1.0, r)) * (0.55 + 0.35 * rim)); }
-  else { float a = (1.0 - r); a *= a; gl_FragColor = vec4(lit * 0.95, a * vA * 0.28); } }`;
 
 export function WaterFX({ sim }: { sim: Sim }) {
     const { gl, size, camera } = useThree();
     const ix = useMemo(() => new WaterInteraction(gl), [gl]);
     useEffect(() => () => ix.dispose(), [ix]);
-    const geo = useMemo(() => { const g = new THREE.BufferGeometry();
-        g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SPL_MAX * 3), 3).setUsage(THREE.DynamicDrawUsage));
-        g.setAttribute('aD', new THREE.BufferAttribute(new Float32Array(SPL_MAX * 4), 4).setUsage(THREE.DynamicDrawUsage)); g.setDrawRange(0, 0); return g; }, []);
-    const mat = useMemo(() => new THREE.ShaderMaterial({ uniforms: { uScale: { value: 400 }, uDay: TOD.day, uSky: { value: new THREE.Color('#9fc4d8') } }, vertexShader: VS, fragmentShader: FS,
-        transparent: true, depthWrite: false, toneMapped: false }), []);
-    const st = useRef({ prevSwim: false, prevDive: false, prevVy: 0, stroke: 0, half: 0, side: 1, dripT: -9, sprayAcc: 0, enemyY: new WeakMap<object, number>() });
+    const gs = useMemo(() => new GpuSplash(gl, TOD.day), [gl]);
+    useEffect(() => () => gs.dispose(), [gs]);
+    const st = useRef({ prevSwim: false, prevDive: false, prevVy: 0, stroke: 0, half: 0, side: 1, dripT: -9, sprayAcc: 0, foamAcc: 0, dripAcc: 0, bubAcc: 0, enemyY: new WeakMap<object, number>() });
 
     useFrame((_, dtRaw) => {
         const s = sim as any, p = sim.pos, v = sim.vel, t = sim.t, dt = Math.min(0.05, Math.max(0, dtRaw)), S = st.current;
-        ringBudget = MAX_RING_DROPS;
         const surf = waterAt(p[0], p[2], t), sp = Math.hypot(v[0], v[2]), surfing = !!s.surf, fx = Math.sin(sim.ang), fz = Math.cos(sim.ang);
         // ---- hero: entry splash (jump / dive / fall in), scaled by the speed it hit the water with
         if (sim.swim && !S.prevSwim && surf !== null && p[1] > surf - 2.5) waterImpact(p[0], surf, p[2], Math.max(1.2, -S.prevVy, sp * 0.35), 0.55);
@@ -89,24 +70,26 @@ export function WaterFX({ sim }: { sim: Sim }) {
             // body centre a little ahead of the hips (head + shoulders lead), elongated swimmers approximated by a second smaller footprint behind
             ixBody(0, true, p[0] + fx * 0.25, p[2] + fz * 0.25, depth * sub, rad, foam);
             if (sp > 0.6 && !surfing) ixBody(1, true, p[0] - fx * 0.55, p[2] - fz * 0.55, depth * 0.5 * sub, 0.32, foam * 0.6); else ixBody(1, false);
+            if (!surfing && sp > 0.6) { S.foamAcc += dt * sp * 60; if (S.foamAcc >= 12) { const n = Math.floor(S.foamAcc); S.foamAcc -= n; splBurst(SK.FOAM, p[0] - fx * 0.5, surf!, p[2] - fz * 0.5, n, 0.3, 0.3, v[0] * 0.3, v[2] * 0.3, surf!); } }   /* churned bubbles strung along the wake */
             // stroke spray: each arm entry throws a handful of drops forward / up and dimples the surface
             if (!surfing && sp > 0.8) {
                 const half = Math.floor(S.stroke * 2);
                 if (half !== S.half) {   /* a new half-cycle = the other arm enters the water */
                     S.half = half; S.side = -S.side; const hx = p[0] + fx * 0.65 - fz * 0.32 * S.side, hzp = p[2] + fz * 0.65 + fx * 0.32 * S.side, k = Math.min(1.4, sp / 4);
                     ixImpulse(hx, hzp, -0.035 * k, 0.22);
-                    for (let i = 0; i < 6 + Math.round(8 * k); i++) splEmit(hx + rnd(-0.1, 0.1), surf! + 0.03, hzp + rnd(-0.1, 0.1), fx * rnd(0.3, 1.6) * k + rnd(-0.4, 0.4), rnd(0.8, 2.2) * k, fz * rnd(0.3, 1.6) * k + rnd(-0.4, 0.4), rnd(0.6, 1.1), rnd(0.03, 0.06));
+                    splBurst(SK.STROKE, hx, surf!, hzp, 90 + 160 * k, k, 0.4, fx, fz, surf!); splBurst(SK.FOAM, hx, surf!, hzp, 40 + 60 * k, 0.5, 0.25, v[0], v[2], surf!);
                 }
             }
             // surf / fast tow: continuous spray sheets peeling off both sides
             if (surfing || sp > 6) {
-                S.sprayAcc += dt * Math.min(80, sp * 9);
-                while (S.sprayAcc >= 1) { S.sprayAcc -= 1; const sd = Math.random() < 0.5 ? -1 : 1, o = rnd(0.35, 0.6);
-                    splEmit(p[0] - fz * o * sd + fx * rnd(-0.2, 0.4), surf! + 0.05, p[2] + fx * o * sd + fz * rnd(-0.2, 0.4), -fz * sd * rnd(1.2, 3.2) + v[0] * 0.35, rnd(1.2, 3.0), fx * sd * rnd(1.2, 3.2) + v[2] * 0.35, rnd(0.7, 1.3), rnd(0.035, 0.07), Math.random() < 0.12 ? 1 : 0); }
+                S.sprayAcc += dt * Math.min(1400, sp * 160);   /* ~1000 tiny drops a second at surf speed */
+                if (S.sprayAcc >= 24) { const n = Math.floor(S.sprayAcc); S.sprayAcc -= n; splBurst(SK.SHEET, p[0], surf!, p[2], n, Math.min(1.4, sp / 6), 0.5, v[0], v[2], surf!); splBurst(SK.MIST, p[0], surf!, p[2], n * 0.25, 0.6, 0.6, 0, 0, surf!); splBurst(SK.FOAM, p[0] - fx * 0.6, surf!, p[2] - fz * 0.6, n * 0.4, 0.4, 0.4, 0, 0, surf!); }
             }
         } else { ixBody(0, false); ixBody(1, false); }
         // drips for ~0.7 s after leaving the water
-        if (t - S.dripT < 0.7 && Math.random() < 0.6) splEmit(p[0] + rnd(-0.25, 0.25), p[1] + rnd(-0.6, 0.4), p[2] + rnd(-0.25, 0.25), v[0] * 0.6, v[1] * 0.4 - 0.5, v[2] * 0.6, 1.4, rnd(0.03, 0.05));
+        if (t - S.dripT < 0.7) { S.dripAcc += dt * 260; if (S.dripAcc >= 8) { const n = Math.floor(S.dripAcc); S.dripAcc -= n; splBurst(SK.DRIP, p[0], p[1], p[2], n, 1, 0.5, v[0], v[2], waterAt(p[0], p[2], t) ?? p[1] - 4); } }
+        // under water (diving / deep swim): a thin stream of bubbles off the body
+        if (surf !== null && p[1] < surf - 0.5) { S.bubAcc += dt * (25 + sp * 30); if (S.bubAcc >= 6) { const n = Math.floor(S.bubAcc); S.bubAcc -= n; splBurst(SK.BUBBLE, p[0], p[1] + 0.9, p[2], n, 0.15, 0.35, 0, 0, surf); } }
         S.prevSwim = sim.swim; S.prevDive = !!sim.dive; S.prevVy = v[1];
         // ---- enemies / objects falling into the water
         for (const e of sim.enemies) {
@@ -123,31 +106,10 @@ export function WaterFX({ sim }: { sim: Sim }) {
         waterHits.length = 0;
         // ---- step the height-field round the hero
         ix.update(dt, t, p[0], p[2]);
-        // ---- particles: gravity + air drag; drops that fall back into the water die there and raise a small ring
-        const pa = geo.attributes.position as THREE.BufferAttribute, da = geo.attributes.aD as THREE.BufferAttribute, P = pa.array as Float32Array, D = da.array as Float32Array;
-        let n = splPool.n;
-        for (let i = 0; i < n; i++) {
-            const o = i * SF; spl[o + 6] += dt;
-            let dead = spl[o + 6] >= spl[o + 7];
-            if (!dead) {
-                const mist = spl[o + 9] > 0.5, dr = Math.exp(-(mist ? 2.6 : 0.35) * dt);
-                spl[o + 3] *= dr; spl[o + 5] *= dr; spl[o + 4] = spl[o + 4] * dr - (mist ? 0.35 : 9.81) * dt;
-                spl[o] += spl[o + 3] * dt; spl[o + 1] += spl[o + 4] * dt; spl[o + 2] += spl[o + 5] * dt;
-                if (!mist && spl[o + 4] < 0 && spl[o + 1] < WATER_Y + 3.5) {
-                    const w = waterAt(spl[o], spl[o + 2], t);
-                    if (w !== null && spl[o + 1] <= w) { dead = true; if (spl[o + 8] > 0.055 && ringBudget > 0) { ringBudget--; ixImpulse(spl[o], spl[o + 2], -0.012 - spl[o + 8] * 0.08, 0.2); } }
-                }
-            }
-            if (dead) { n--; if (i !== n) spl.copyWithin(o, n * SF, n * SF + SF); i--; continue; }
-            const age = spl[o + 6] / spl[o + 7];
-            P[i * 3] = spl[o]; P[i * 3 + 1] = spl[o + 1]; P[i * 3 + 2] = spl[o + 2];
-            D[i * 4] = spl[o + 8]; D[i * 4 + 1] = spl[o + 9] > 0.5 ? Math.sin(Math.min(1, age * 4) * Math.PI * 0.5) * (1 - age) : 1 - age * age; D[i * 4 + 2] = spl[o + 9]; D[i * 4 + 3] = 0;
-        }
-        splPool.n = n; geo.setDrawRange(0, n);
-        if (n) { pa.needsUpdate = true; da.needsUpdate = true; }
+        // ---- particles: all on the GPU (./gpuSplash.ts)
         const pc = camera as THREE.PerspectiveCamera;
-        mat.uniforms.uScale.value = size.height * gl.getPixelRatio() * 0.5 / Math.tan((pc.fov || 60) * Math.PI / 360);
+        gs.update(dt, t, size.height * gl.getPixelRatio() * 0.5 / Math.tan((pc.fov || 60) * Math.PI / 360));
     }, -1);
 
-    return <points geometry={geo} material={mat} frustumCulled={false} renderOrder={6} />;
+    return <primitive object={gs.points} />;
 }
