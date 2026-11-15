@@ -126,7 +126,7 @@ void main(){
  if(gHw>0.0){col=mix(col,refl,0.8*gHw);alpha=max(alpha,0.9*gHw);}/* trees-only SSR hit: the canopy reflection is opaque, not washed by the see-through blend */
  if(below){float haze=1.0-exp(-dist*0.045);col=mix(col,vec3(0.035,0.23,0.30),haze*0.72);alpha=1.0;}
  col=mix(col,vec3(0.86,0.96,0.92),smoothstep(0.12,0.18,vHeight)*0.10);
- if(!below){float fo=ixFoam(vWorld.xz);col=mix(col,vec3(0.80,0.88,0.90)*mix(0.28,1.0,uDay),clamp(fo*0.5,0.0,0.45));alpha=max(alpha,fo*0.5);}/* interactive churn (src/water/interaction.ts) */
+ if(!below){col*=ixShade(vWorld.xz,cameraPosition);float fo=ixFoam(vWorld.xz);col=mix(col,vec3(0.80,0.88,0.90)*mix(0.28,1.0,uDay),clamp(fo*0.5,0.0,0.45));alpha=max(alpha,fo*0.5);}/* interactive churn (src/water/interaction.ts) */
  gl_FragColor=vec4(col,alpha);
 #include <tonemapping_fragment>
 #include <colorspace_fragment>

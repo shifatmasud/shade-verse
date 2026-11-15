@@ -54,7 +54,7 @@ void main(){
       p += vec3((h1 - 0.5) * 0.5, -0.6 + h2, (h3 - 0.5) * 0.5); v = vec3(C.x * 0.6, -0.5 - 0.5 * h4, C.y * 0.6); life = 1.2 + 0.4 * h5; r = 0.0008 + 0.0025 * big;
     } else if (k < 6.5) {   /* air bubbles dragged under by the entry / a diver: rise, wobble, pop at the surface */
       float a = h1 * TAU, o = sz * 0.5 * sqrt(h2); p += vec3(cos(a) * o, -0.15 - (0.3 + 1.2 * e) * h3 * sz * 2.0, sin(a) * o);
-      v = vec3(cos(a) * 0.3 * h4, 0.1 + 0.4 * h5, sin(a) * 0.3 * h4); life = 1.6 + 1.8 * h6; r = 0.00012 + 0.0006 * big;   /* Shifat 4:56 PM 'underwater bubbles should be tiny too': 0.1-0.7 mm */
+      v = vec3(cos(a) * 0.3 * h4, 0.1 + 0.4 * h5, sin(a) * 0.3 * h4); life = 1.6 + 1.8 * h6; r = 0.00005 + 0.00025 * big;   /* Shifat 4:56 PM 'tiny', 5:26 PM 'soo much little & tiny': 0.05-0.3 mm specks */
     } else {   /* surface foam: millimetre bubbles left floating on the churned water, drifting out and popping */
       float a = h1 * TAU, o = sz * (0.3 + 1.1 * sqrt(h2)); p += vec3(cos(a) * o, 0.0, sin(a) * o); v = vec3(cos(a), 0.0, sin(a)) * (0.05 + 0.5 * h3 * e) + vec3(C.x, 0.0, C.y) * 0.15;
       life = 0.9 + 2.2 * h4; r = 0.0004 + 0.0016 * big;
@@ -86,7 +86,7 @@ void main(){ vec4 P = texture2D(tP, aRef), M = texture2D(tM, aRef);
   vec3 p = P.xyz; float k = M.z; if (k > 6.5) p.y += ixHeight(p.xz) + 0.004;
   vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
   float ps = 2.0 * M.y * uScale / max(0.2, -mv.z), age = P.w / M.x;
-  gl_PointSize = clamp(ps, 1.0, k > 5.5 && k < 6.5 ? 3.0 : 18.0); vR = ps;
+  gl_PointSize = clamp(ps, 1.0, k > 5.5 && k < 6.5 ? 1.5 : 18.0); vR = ps;
   float cov = clamp(ps * 1.4, 0.3, 1.0);   /* sub-pixel: keep a 1 px dot, alpha ~ its size (fine shimmer, not big balls) */
   float fade = k > 1.5 && k < 2.5 ? sin(min(1.0, age * 4.0) * 1.5708) * (1.0 - age) : k > 6.5 ? (1.0 - age) * smoothstep(0.0, 0.08, age) : 1.0 - age * age;
   vA = fade * cov; vK = k; }`;
@@ -95,7 +95,7 @@ void main(){ if (vA < 0.004) discard; vec2 q = gl_PointCoord * 2.0 - 1.0; float 
   vec3 lit = mix(vec3(0.30, 0.40, 0.46), vec3(0.96, 0.99, 1.0), 0.55 + 0.45 * uDay);
   float soft = vR < 2.5 ? 1.0 : 1.0 - smoothstep(0.6, 1.0, r);   /* tiny points: full dot; bigger: round edge */
   if (vK > 1.5 && vK < 2.5) { gl_FragColor = vec4(lit, vA * 0.35 * soft); return; }                        /* mist */
-  if (vK > 5.5 && vK < 6.5) { float rim = vR < 3.0 ? 0.7 : smoothstep(0.35, 0.85, r); gl_FragColor = vec4(mix(uSky * 0.6, lit, 0.6) + 0.25, vA * (0.25 + 0.6 * rim) * soft); return; }   /* air bubble under water: bright rim */
+  if (vK > 5.5 && vK < 6.5) { float rim = vR < 3.0 ? 0.7 : smoothstep(0.35, 0.85, r); gl_FragColor = vec4(mix(uSky * 0.6, lit, 0.6) + 0.25, vA * 0.45 * soft); return; }   /* air bubble under water: bright rim */
   if (vK > 6.5) { gl_FragColor = vec4(lit * 0.97, vA * 0.75 * soft); return; }                                /* surface foam bubble */
   float rim = vR < 3.0 ? 0.6 : smoothstep(0.4, 0.95, r), glint = vR < 3.0 ? 0.0 : smoothstep(0.2, 0.0, length(q - vec2(-0.3, 0.35)));
   vec3 c = mix(uSky * 0.8 + vec3(0.06, 0.1, 0.12), lit, 0.45 + 0.4 * rim) + glint * 0.6 * uDay;   /* water drop: sky-tinted lens, bright rim, glint */

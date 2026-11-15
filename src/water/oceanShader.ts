@@ -366,6 +366,7 @@ ${GRID_TRACE_GLSL}
       if (!below && rainK > 0.0) col = mix(col * mix(1.0, 0.82, uRain), vec3(0.75, 0.82, 0.9) * mix(0.25, 1.0, uDay), clamp(rainK * 0.6, 0.0, 0.22));   /* rain: darker glassy water, ring crests catch the grey sky */
       if (!below && uFlash > 0.002) { vec3 rm3 = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.6))); rm3.y = abs(rm3.y); col += lightningSky(rm3, uFd, uFlash) * mix(0.15, 0.4, fr) + vec3(0.6, 0.66, 0.8) * uFlash * 0.03; }   /* lightning glows in the sea, soft */
       if (!below && uBow > 0.02 && uDay > 0.05) { vec3 rm2 = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.45))); rm2.y = abs(rm2.y); col += rainbowSky(rm2, uSun, uBow, uDay) * mix(0.35, 0.8, fr); }   /* rainbow mirrored too */
+      if (!below) col *= ixShade(vW.xz, cameraPosition);   /* interactive rings + wake catch the sky (src/water/interaction.ts ixShade) */
       if (!below && uIxOn > 0.5) { float fo = ixFoam(vW.xz); if (fo > 0.003) { float lace = smoothstep(0.25, 0.75, texture2D(uCaus, vW.xz * 0.31 + vec2(0.013, 0.009) * uTime).r + fo * 0.35);
         col = mix(col, vec3(0.80, 0.88, 0.90) * mix(0.28, 1.0, uDay), clamp(fo * (0.25 + 0.6 * lace), 0.0, 0.6)); } }   /* churned water round a swimmer / splash: lacy, thin, fades in ~1 s (no flat white decal) */
       gl_FragColor = vec4(col, below ? aOut : aAbove);

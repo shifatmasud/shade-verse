@@ -65,8 +65,8 @@ export function WaterFX({ sim }: { sim: Sim }) {
             const sub = THREE.MathUtils.smoothstep(p[1], surf! - 1.6, surf! - 0.6) * (1 - THREE.MathUtils.smoothstep(p[1], surf! + 0.4, surf! + 1.2));
             let depth: number, rad = 0.45, foam = 0;
             if (surfing) { depth = 0.2; rad = 0.6; foam = THREE.MathUtils.smoothstep(sp, 3, 9) * 0.9; }
-            else if (sp < 0.6) depth = 0.13 + 0.035 * Math.sin(t * Math.PI * 2 * 0.85) + 0.012 * Math.sin(t * Math.PI * 2 * 2.3 + 1.1);   // treading water: soft rings
-            else { const hz = 0.75 + 0.22 * sp; S.stroke += dt * hz; depth = 0.11 + 0.025 * Math.sin(S.stroke * Math.PI * 2); foam = THREE.MathUtils.smoothstep(sp, 2.2, 6) * 0.55; }
+            else if (sp < 0.6) depth = 0.14 + 0.055 * Math.sin(t * Math.PI * 2 * 0.85) + 0.018 * Math.sin(t * Math.PI * 2 * 2.3 + 1.1);   // treading water: soft rings
+            else { const hz = 0.75 + 0.22 * sp; S.stroke += dt * hz; depth = 0.14 + 0.04 * Math.sin(S.stroke * Math.PI * 2); foam = THREE.MathUtils.smoothstep(sp, 2.2, 6) * 0.55; }
             // body centre a little ahead of the hips (head + shoulders lead), elongated swimmers approximated by a second smaller footprint behind
             ixBody(0, true, p[0] + fx * 0.25, p[2] + fz * 0.25, depth * sub, rad, foam);
             if (sp > 0.6 && !surfing) ixBody(1, true, p[0] - fx * 0.55, p[2] - fz * 0.55, depth * 0.5 * sub, 0.32, foam * 0.6); else ixBody(1, false);

@@ -162,7 +162,7 @@ export function poolWaterMat(p: { cx: number; cz: number; r: number; rim: number
           a = mix(a, 0.97 * (1.0 - smoothstep(0.93, 1.0, rr)) + fr * 0.03, traced * (1.0 - og * 0.5));   /* traced floor drawn here; only the rim fades to the real bank */
           a = min(a, mix(1.0, 0.6, see));   /* the submerged body shows through, mild */
           a = clamp(below ? 0.7 : a, 0.0, 1.0); if (a < 0.03) discard;
-          { float fo = ixFoam(vW.xz); col = mix(col, vec3(0.80, 0.88, 0.90) * mix(0.28, 1.0, uDay), clamp(fo * 0.5, 0.0, 0.45)); }   /* interactive churn (src/water/interaction.ts) */
+          { col *= ixShade(vW.xz, cameraPosition); float fo = ixFoam(vW.xz); col = mix(col, vec3(0.80, 0.88, 0.90) * mix(0.28, 1.0, uDay), clamp(fo * 0.5, 0.0, 0.45)); }   /* interactive churn (src/water/interaction.ts) */
           gl_FragColor = vec4(col, a); }`,
     }));
 }

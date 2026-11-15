@@ -18,7 +18,7 @@ const C2 = Math.pow(RIPPLE_SPEED * STEP / IX_TEXEL, 2), DAMP = 0.993, FOAM_DECAY
 /** Shared uniforms: spread into every water material (same objects, so one update reaches them all). */
 /** Shifat 4:38 PM 'Wake trail & ring ripples waves must be visible in normals of water surface. Now not visible.' Real 1-3 cm ripples are
  *  drowned by the FFT chop + gust roughness in the lighting, so the height-field's slope is lit at this gain (geometry keeps the true height). */
-export const IX_NORMAL_GAIN = 3.2;
+export const IX_NORMAL_GAIN = 5.0;   /* 5:26 PM 'still not visible, checked on phone': 3.2 -> 5 */
 export const IX_UNIFORMS = { uIxTex: { value: null as THREE.Texture | null }, uIxB: { value: new THREE.Vector4(0, 0, IX_SIZE, IX_TEXEL) }, uIxOn: { value: 0 }, uIxGain: { value: IX_NORMAL_GAIN } };
 
 /** GLSL (vertex + fragment): ixHeight (m), ixSlope (gradient dh/dx, dh/dz like wg/fftSlope), ixFoam (0..1). All exactly 0 outside the sim square. */
@@ -30,6 +30,10 @@ float ixHeight(vec2 xz){ vec2 uv = ixUV(xz); float m = ixEdge(uv); return m > 0.
 vec2 ixSlope(vec2 xz){ vec2 uv = ixUV(xz); float m = ixEdge(uv); if (m <= 0.0) return vec2(0.0); float e = uIxB.w / uIxB.z;
   float hx = texture2D(uIxTex, uv + vec2(e, 0.0)).r - texture2D(uIxTex, uv - vec2(e, 0.0)).r, hz = texture2D(uIxTex, uv + vec2(0.0, e)).r - texture2D(uIxTex, uv - vec2(0.0, e)).r;
   return vec2(hx, hz) * (m * uIxGain / (2.0 * uIxB.w)); }
+/* Ripple shading (5:26 PM): faces tilted toward the camera mirror the brighter sky, faces tilted away the deep water - the same thing Fresnel does,
+   pushed so 1-3 cm rings and the wake read on a small phone screen at play distance. Returns a colour multiplier (1 = untouched). */
+float ixShade(vec2 xz, vec3 cam){ if (uIxOn < 0.5) return 1.0; vec2 g = ixSlope(xz); vec2 d = cam.xz - xz; float l = length(d); if (l < 1e-3) return 1.0;
+  float k = dot(g, d / l) * (1.0 - smoothstep(18.0, 40.0, l)); return 1.0 + clamp(k * 1.8, -0.32, 0.55); }
 float ixFoam(vec2 xz){ vec2 uv = ixUV(xz); float m = ixEdge(uv); return m > 0.0 ? texture2D(uIxTex, uv).b * m : 0.0; }
 `;
 
