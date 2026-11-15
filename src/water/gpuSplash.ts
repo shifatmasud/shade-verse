@@ -55,6 +55,11 @@ void main(){
     } else if (k < 6.5) {   /* air bubbles dragged under by the entry / a diver: rise, wobble, pop at the surface */
       float a = h1 * TAU, o = sz * 0.5 * sqrt(h2); p += vec3(cos(a) * o, -0.15 - (0.3 + 1.2 * e) * h3 * sz * 2.0, sin(a) * o);
       v = vec3(cos(a) * 0.3 * h4, 0.1 + 0.4 * h5, sin(a) * 0.3 * h4); life = 1.6 + 1.8 * h6; r = 0.00005 + 0.00025 * big;   /* Shifat 4:56 PM 'tiny', 5:26 PM 'soo much little & tiny': 0.05-0.3 mm specks */
+    } else if (k > 7.5) {   /* rain (6:00 PM, Worthington refs): each slot is its own drop impact scattered over a disc of radius sz: 85% crown beads
+         (0.15-0.8 mm, thrown 1-8 cm up and a few cm out), 15% the stalk's top drop (straight up, 3-6 cm) */
+      float a = h1 * TAU, o = sz * sqrt(h2), jet = step(0.85, h3); p += vec3(cos(a) * o, 0.005, sin(a) * o); float b = h4 * TAU;
+      v = jet > 0.5 ? vec3(cos(b) * 0.05, 0.8 + 0.3 * h5, sin(b) * 0.05) : vec3(cos(b), 0.0, sin(b)) * (0.15 + 0.45 * h5) + vec3(0.0, 0.45 + 0.8 * h5, 0.0);
+      life = 0.45; r = 0.00015 + 0.00065 * big;
     } else {   /* surface foam: millimetre bubbles left floating on the churned water, drifting out and popping */
       float a = h1 * TAU, o = sz * (0.3 + 1.1 * sqrt(h2)); p += vec3(cos(a) * o, 0.0, sin(a) * o); v = vec3(cos(a), 0.0, sin(a)) * (0.05 + 0.5 * h3 * e) + vec3(C.x, 0.0, C.y) * 0.15;
       life = 0.9 + 2.2 * h4; r = 0.0004 + 0.0016 * big;
@@ -67,7 +72,7 @@ void main(){
     if (k > 5.5 && k < 6.5) {   /* bubble: buoyancy against heavy drag, terminal ~0.25-0.35 m/s, helical wobble */
       v.y += (2.6 - 6.0 * v.y) * dt; v.xz *= exp(-3.0 * dt); float ph = uT * 9.0 + float(ic.x) * 1.7; v.xz += vec2(cos(ph), sin(ph)) * 0.35 * dt * 6.0;
       p += v * dt; if (p.y > wy - 0.02) P.w = M.x;
-    } else if (k > 6.5) {   /* surface foam rides the surface (render adds the live height) */
+    } else if (k > 6.5 && k < 7.5) {   /* surface foam rides the surface (render adds the live height) */
       v *= exp(-1.6 * dt); p.xz += v.xz * dt; p.y = wy;
     } else if (k > 1.5 && k < 2.5) {   /* mist: almost weightless, strong drag */
       v *= exp(-2.6 * dt); v.y -= 0.35 * dt; p += v * dt;
@@ -83,12 +88,12 @@ void main(){
 const DRAW_VS = IX_GLSL + `uniform sampler2D tP, tM; uniform float uScale; attribute vec2 aRef; varying float vA; varying float vK; varying float vR;
 void main(){ vec4 P = texture2D(tP, aRef), M = texture2D(tM, aRef);
   if (P.w >= M.x) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vA = 0.0; return; }
-  vec3 p = P.xyz; float k = M.z; if (k > 6.5) p.y += ixHeight(p.xz) + 0.004;
+  vec3 p = P.xyz; float k = M.z; if (k > 6.5 && k < 7.5) p.y += ixHeight(p.xz) + 0.004;
   vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
   float ps = 2.0 * M.y * uScale / max(0.2, -mv.z), age = P.w / M.x;
   gl_PointSize = clamp(ps, 1.0, k > 5.5 && k < 6.5 ? 1.5 : 18.0); vR = ps;
   float cov = clamp(ps * 1.4, 0.3, 1.0);   /* sub-pixel: keep a 1 px dot, alpha ~ its size (fine shimmer, not big balls) */
-  float fade = k > 1.5 && k < 2.5 ? sin(min(1.0, age * 4.0) * 1.5708) * (1.0 - age) : k > 6.5 ? (1.0 - age) * smoothstep(0.0, 0.08, age) : 1.0 - age * age;
+  float fade = k > 1.5 && k < 2.5 ? sin(min(1.0, age * 4.0) * 1.5708) * (1.0 - age) : k > 6.5 && k < 7.5 ? (1.0 - age) * smoothstep(0.0, 0.08, age) : k > 7.5 ? 1.0 - age : 1.0 - age * age;
   vA = fade * cov; vK = k; }`;
 const DRAW_FS = `uniform float uDay; uniform vec3 uSky; varying float vA; varying float vK; varying float vR;
 void main(){ if (vA < 0.004) discard; vec2 q = gl_PointCoord * 2.0 - 1.0; float r = dot(q, q); if (r > 1.0) discard;
@@ -96,7 +101,7 @@ void main(){ if (vA < 0.004) discard; vec2 q = gl_PointCoord * 2.0 - 1.0; float 
   float soft = vR < 2.5 ? 1.0 : 1.0 - smoothstep(0.6, 1.0, r);   /* tiny points: full dot; bigger: round edge */
   if (vK > 1.5 && vK < 2.5) { gl_FragColor = vec4(lit, vA * 0.35 * soft); return; }                        /* mist */
   if (vK > 5.5 && vK < 6.5) { float rim = vR < 3.0 ? 0.7 : smoothstep(0.35, 0.85, r); gl_FragColor = vec4(mix(uSky * 0.6, lit, 0.6) + 0.25, vA * 0.45 * soft); return; }   /* air bubble under water: bright rim */
-  if (vK > 6.5) { gl_FragColor = vec4(lit * 0.97, vA * 0.75 * soft); return; }                                /* surface foam bubble */
+  if (vK > 6.5 && vK < 7.5) { gl_FragColor = vec4(lit * 0.97, vA * 0.75 * soft); return; }                                /* surface foam bubble */
   float rim = vR < 3.0 ? 0.6 : smoothstep(0.4, 0.95, r), glint = vR < 3.0 ? 0.0 : smoothstep(0.2, 0.0, length(q - vec2(-0.3, 0.35)));
   vec3 c = mix(uSky * 0.8 + vec3(0.06, 0.1, 0.12), lit, 0.45 + 0.4 * rim) + glint * 0.6 * uDay;   /* water drop: sky-tinted lens, bright rim, glint */
   gl_FragColor = vec4(c, vA * (0.7 + 0.3 * rim) * soft); }`;
@@ -131,7 +136,7 @@ export class GpuSplash {
             const b = bursts.shift()!, n = Math.min(b.n, GS_N >> 1);
             (u.uA.value[k] as THREE.Vector4).set(b.x, b.y, b.z, b.k); (u.uB.value[k] as THREE.Vector4).set(this.cursor, n, b.e, b.s); (u.uC.value[k] as THREE.Vector4).set(b.dx, b.dz, b.wy, this.seed++ & 0xffffff);
             this.cursor = (this.cursor + n) % GS_N; k++;
-            this.liveUntil = Math.max(this.liveUntil, t + (b.k === SK.BUBBLE || b.k === SK.FOAM ? 4 : 2.2));
+            this.liveUntil = Math.max(this.liveUntil, t + (b.k === SK.BUBBLE || b.k === SK.FOAM ? 4 : b.k === SK.RAIN ? 0.6 : 2.2));
         }
         for (; k < SLOTS; k++) (u.uB.value[k] as THREE.Vector4).set(0, 0, 0, 0);
         const live = t < this.liveUntil; this.points.visible = live; if (!live) return;   /* nothing alive: no pass, no draw */

@@ -108,7 +108,7 @@ ${GRID_TRACE_GLSL}
       /* Shifat 5:32 PM 'breaking up the far sea': a second, much larger scale from the SAME fetch (the tile's other channel, domain-warped by the
          first) - slow colour patches over hundreds of metres (deeper blue vs. greener, like current lines / cloud shade on real ocean). */
       float swPatch = smoothstep(0.3, 0.7, texture2D(uCaus, vW.xz * 0.00042 + (gq.rg - 0.5) * 0.08 - vec2(0.0011, 0.0006) * uTime).g);
-      { vec2 ixg = waterRippleSlope(vW.xz, uTime); g = g * (1.0 - 0.6 * smoothstep(0.02, 0.16, length(ixg))) + ixg; }   /* Shifat 4:38 PM: rings + wake must read in the normals - the chop calms where the interactive ripples run, so they own the lighting there */\n      float rainK = 0.0; if (uRain > 0.01) { vec2 rsl = rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 110.0, length(cameraPosition - vW))); g += rsl * 3.0; rainK = length(rsl); }   /* raindrop impact rings */
+      { vec2 ixg = waterRippleSlope(vW.xz, uTime); g = g * (1.0 - 0.6 * smoothstep(0.02, 0.16, length(ixg))) + ixg; }   /* Shifat 4:38 PM: rings + wake must read in the normals - the chop calms where the interactive ripples run, so they own the lighting there */\n      float rainK = 0.0; if (uRain > 0.01) { vec2 rsl = rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 110.0, length(cameraPosition - vW))); g += rsl * 1.6; rainK = length(rsl); }   /* raindrop impact rings */
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       if (uBench.y > 1.5 && uBench.y < 2.5) { gl_FragColor = vec4(n * 0.5 + 0.5, 0.95); return; }   /* telemetry stage bench */

@@ -7,7 +7,8 @@ import { waterRenderY } from './waveHeight';
 import { WaterInteraction, ixImpulse, ixBody } from './interaction';
 import { splBurst, SK, waterHits } from './splash';
 import { GpuSplash } from './gpuSplash';
-import { TOD } from '../world/env';
+import { QUALITY } from '../quality';
+import { TOD, WEATHER } from '../world/env';
 
 /* Nov 15 2026 (Shifat: fake floating ring -> real displacement rings, swimming -> wake trail, impacts -> realistic particle splash).
    Replaces the hero's three flat foam-ring decals, the white two-arm wake ribbon and the cone-shard entry crown in Scene.tsx. Drives:
@@ -50,10 +51,15 @@ export function WaterFX({ sim }: { sim: Sim }) {
     useEffect(() => () => ix.dispose(), [ix]);
     const gs = useMemo(() => new GpuSplash(gl, TOD.day), [gl]);
     useEffect(() => () => gs.dispose(), [gs]);
-    const st = useRef({ prevSwim: false, prevDive: false, prevVy: 0, stroke: 0, half: 0, side: 1, dripT: -9, sprayAcc: 0, foamAcc: 0, dripAcc: 0, bubAcc: 0, enemyY: new WeakMap<object, number>() });
+    const st = useRef({ prevSwim: false, prevDive: false, prevVy: 0, stroke: 0, half: 0, side: 1, dripT: -9, sprayAcc: 0, foamAcc: 0, dripAcc: 0, bubAcc: 0, rainAcc: 0, enemyY: new WeakMap<object, number>() });
 
     useFrame((_, dtRaw) => {
         const s = sim as any, p = sim.pos, v = sim.vel, t = sim.t, dt = Math.min(0.05, Math.max(0, dtRaw)), S = st.current;
+        // ---- rain spray (Shifat 6:00 PM 'they should spray too'): random impacts in 4 discs around the camera, each its own water level
+        const rn = WEATHER.rain.value; if (rn > 0.02 && gs.ok) { const cx = camera.position.x, cz = camera.position.z, cw = waterAt(cx, cz, t);
+            if (cw !== null && camera.position.y > cw - 0.2) { S.rainAcc += dt * rn * (QUALITY.coarse ? 5000 : 10000);
+                for (let i = 0; i < 4 && S.rainAcc >= 40; i++) { const a = Math.random() * 6.283, rr = 1 + Math.sqrt(Math.random()) * 9, x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr, wy = waterAt(x, z, t);
+                    const n = Math.floor(S.rainAcc / (4 - i)); S.rainAcc -= n; if (wy !== null) splBurst(SK.RAIN, x, wy, z, n, 1, 2.4, 0, 0, wy); } } }
         const surf = waterAt(p[0], p[2], t), sp = Math.hypot(v[0], v[2]), surfing = !!s.surf, fx = Math.sin(sim.ang), fz = Math.cos(sim.ang);
         // ---- hero: entry splash (jump / dive / fall in), scaled by the speed it hit the water with
         if (sim.swim && !S.prevSwim && surf !== null && p[1] > surf - 2.5) waterImpact(p[0], surf, p[2], Math.max(1.2, -S.prevVy, sp * 0.35), 0.55);
