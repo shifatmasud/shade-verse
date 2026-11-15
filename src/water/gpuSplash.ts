@@ -55,6 +55,10 @@ void main(){
     } else if (k < 6.5) {   /* air bubbles dragged under by the entry / a diver: rise, wobble, pop at the surface */
       float a = h1 * TAU, o = sz * 0.5 * sqrt(h2); p += vec3(cos(a) * o, -0.15 - (0.3 + 1.2 * e) * h3 * sz * 2.0, sin(a) * o);
       v = vec3(cos(a) * 0.3 * h4, 0.1 + 0.4 * h5, sin(a) * 0.3 * h4); life = 1.6 + 1.8 * h6; r = 0.00005 + 0.00025 * big;   /* Shifat 4:56 PM 'tiny', 5:26 PM 'soo much little & tiny': 0.05-0.3 mm specks */
+    } else if (k > 8.5) {   /* waterfall plunge spray (Nov 15 9:38 PM, refs Gullfoss / Seljalandsfoss / Akaka Falls): billions of sub-mm drops read as a
+         rolling white cloud, not as dots, so each slot is a soft puff 0.3-1 m across thrown out of the plunge line (dir = downstream) and up, growing as it rises */
+      float a = h1 * TAU; p += vec3(cos(a) * 0.6 * h2, 0.2 + 0.8 * h3, sin(a) * 0.6 * h2);
+      v = vec3(C.x, 0.0, C.y) * (0.6 + 2.2 * h4) * e + vec3(cos(a), 0.0, sin(a)) * (0.4 + 1.2 * h5) + vec3(0.0, (1.2 + 3.2 * h6) * e, 0.0); life = 2.4 + 2.2 * h3; r = 0.15 + 0.35 * h5;
     } else if (k > 7.5) {   /* rain (6:00 PM, Worthington refs): each slot is its own drop impact scattered over a disc of radius sz: 85% crown beads
          (0.15-0.8 mm, thrown 1-8 cm up and a few cm out), 15% the stalk's top drop (straight up, 3-6 cm) */
       float a = h1 * TAU, o = sz * sqrt(h2), jet = step(0.85, h3); p += vec3(cos(a) * o, 0.005, sin(a) * o); float b = h4 * TAU;
@@ -74,6 +78,8 @@ void main(){
       p += v * dt; if (p.y > wy - 0.02) P.w = M.x;
     } else if (k > 6.5 && k < 7.5) {   /* surface foam rides the surface (render adds the live height) */
       v *= exp(-1.6 * dt); p.xz += v.xz * dt; p.y = wy;
+    } else if (k > 8.5) {   /* plunge spray cloud: carried by the air the falls drag down and push out, slowing, barely settling */
+      v *= exp(-0.85 * dt); v.y -= 0.25 * dt; p += v * dt; p.y = max(p.y, wy + 0.1);
     } else if (k > 1.5 && k < 2.5) {   /* mist: almost weightless, strong drag */
       v *= exp(-2.6 * dt); v.y -= 0.35 * dt; p += v * dt;
     } else {   /* drops: gravity + quadratic-ish air drag that grows as the drop shrinks */
@@ -97,14 +103,16 @@ void main(){ vec4 P = texture2D(tP, aRef), M = texture2D(tM, aRef);
   if (k < 5.5 || k > 6.5) mv.xyz *= 1.0 - min(0.35, 0.08 * length(mv.xyz)) / max(length(mv.xyz), 0.05);
   gl_Position = projectionMatrix * mv;
   float ps = 2.0 * M.y * uScale / max(0.2, zr), age = P.w / M.x;
-  gl_PointSize = clamp(ps, 1.0, k > 5.5 && k < 6.5 ? 1.5 : 18.0); vR = ps;
+  if (k > 8.5) ps *= 1.0 + 1.6 * age;   /* spray puffs swell as they rise and thin */
+  gl_PointSize = clamp(ps, 1.0, k > 8.5 ? 72.0 : k > 5.5 && k < 6.5 ? 1.5 : 18.0); vR = ps;
   float cov = clamp(ps * 1.4, 0.3, 1.0);   /* sub-pixel: keep a 1 px dot, alpha ~ its size (fine shimmer, not big balls) */
-  float fade = k > 1.5 && k < 2.5 ? sin(min(1.0, age * 4.0) * 1.5708) * (1.0 - age) : k > 6.5 && k < 7.5 ? (1.0 - age) * smoothstep(0.0, 0.08, age) : k > 7.5 ? 1.0 - age : 1.0 - age * age;
+  float fade = k > 1.5 && k < 2.5 ? sin(min(1.0, age * 4.0) * 1.5708) * (1.0 - age) : k > 6.5 && k < 7.5 ? (1.0 - age) * smoothstep(0.0, 0.08, age) : k > 8.5 ? smoothstep(0.0, 0.15, age) * (1.0 - age) * (1.0 - age) : k > 7.5 ? 1.0 - age : 1.0 - age * age;
   vA = fade * cov; vK = k; }`;
 const DRAW_FS = `uniform float uDay; uniform vec3 uSky; varying float vA; varying float vK; varying float vR;
 void main(){ if (vA < 0.004) discard; vec2 q = gl_PointCoord * 2.0 - 1.0; float r = dot(q, q); if (r > 1.0) discard;
   vec3 lit = mix(vec3(0.30, 0.40, 0.46), vec3(0.96, 0.99, 1.0), 0.55 + 0.45 * uDay);
   float soft = vR < 2.5 ? 1.0 : 1.0 - smoothstep(0.6, 1.0, r);   /* tiny points: full dot; bigger: round edge */
+  if (vK > 8.5) { gl_FragColor = vec4(lit, vA * 0.16 * exp(-3.2 * r)); return; }                          /* plunge spray cloud: soft gaussian puff */
   if (vK > 1.5 && vK < 2.5) { gl_FragColor = vec4(lit, vA * 0.35 * soft); return; }                        /* mist */
   if (vK > 5.5 && vK < 6.5) { float rim = vR < 3.0 ? 0.7 : smoothstep(0.35, 0.85, r); gl_FragColor = vec4(mix(uSky * 0.6, lit, 0.6) + 0.25, vA * 0.45 * soft); return; }   /* air bubble under water: bright rim */
   if (vK > 6.5 && vK < 7.5) { gl_FragColor = vec4(lit * 0.97, vA * 0.75 * soft); return; }                                /* surface foam bubble */

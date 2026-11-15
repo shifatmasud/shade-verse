@@ -5,7 +5,7 @@
 // for the cost of one 128x128 pass.
 
 /** Particle kinds (the GPU spawn + physics + look switch on these). */
-export const SK = { CROWN: 0, JET: 1, MIST: 2, STROKE: 3, SHEET: 4, DRIP: 5, BUBBLE: 6, FOAM: 7, RAIN: 8 } as const;
+export const SK = { CROWN: 0, JET: 1, MIST: 2, STROKE: 3, SHEET: 4, DRIP: 5, BUBBLE: 6, FOAM: 7, RAIN: 8, SPRAY: 9 } as const;
 export type Burst = { k: number; x: number; y: number; z: number; n: number; e: number; s: number; dx: number; dz: number; wy: number };
 export const bursts: Burst[] = [];
 /** Queue a burst: kind, position, count, energy (0.15..1.8), body size (m), direction / carried velocity (dx, dz), water level there (wy). */

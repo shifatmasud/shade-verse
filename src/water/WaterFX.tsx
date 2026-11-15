@@ -9,6 +9,7 @@ import { splBurst, SK, waterHits } from './splash';
 import { GpuSplash } from './gpuSplash';
 import { QUALITY } from '../quality';
 import { TOD, WEATHER } from '../world/env';
+import { FALLS, POOL, FALL_WALL } from '../seaWorld';
 
 /* Nov 15 2026 (Shifat: fake floating ring -> real displacement rings, swimming -> wake trail, impacts -> realistic particle splash).
    Replaces the hero's three flat foam-ring decals, the white two-arm wake ribbon and the cone-shard entry crown in Scene.tsx. Drives:
@@ -51,7 +52,7 @@ export function WaterFX({ sim }: { sim: Sim }) {
     useEffect(() => () => ix.dispose(), [ix]);
     const gs = useMemo(() => new GpuSplash(gl, TOD.day), [gl]);
     useEffect(() => () => gs.dispose(), [gs]);
-    const st = useRef({ prevSwim: false, prevDive: false, prevVy: 0, stroke: 0, half: 0, side: 1, dripT: -9, sprayAcc: 0, foamAcc: 0, dripAcc: 0, bubAcc: 0, rainAcc: 0, enemyY: new WeakMap<object, number>() });
+    const st = useRef({ prevSwim: false, prevDive: false, prevVy: 0, stroke: 0, half: 0, side: 1, dripT: -9, sprayAcc: 0, foamAcc: 0, dripAcc: 0, bubAcc: 0, rainAcc: 0, fallAcc: 0, enemyY: new WeakMap<object, number>() });
 
     useFrame((_, dtRaw) => {
         const s = sim as any, p = sim.pos, v = sim.vel, t = sim.t, dt = Math.min(0.05, Math.max(0, dtRaw)), S = st.current;
@@ -60,6 +61,14 @@ export function WaterFX({ sim }: { sim: Sim }) {
             if (cw !== null && camera.position.y > cw - 0.2) { S.rainAcc += dt * rn * (QUALITY.coarse ? 5000 : 10000);
                 for (let i = 0; i < 4 && S.rainAcc >= 40; i++) { const a = Math.random() * 6.283, rr = 1 + Math.sqrt(Math.random()) * 9, x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr, wy = waterAt(x, z, t);
                     const n = Math.floor(S.rainAcc / (4 - i)); S.rainAcc -= n; if (wy !== null) splBurst(SK.RAIN, x, wy, z, n, 1, 2.4, 0, 0, wy); } } }
+        // ---- island waterfall (Shifat Nov 15 9:36 PM 'waterfall in island should have our splash sprays too'). Refs: plunge-pool photos (Wikimedia
+        //      'Gullfoss', 'Seljalandsfoss', Hawaii 'Akaka Falls'): a churning white base, droplets thrown out and up 1-3 m, a drifting mist cloud that
+        //      rises past the falls, foam rafts sliding off across the pool, bubbles curtained under the plunge. Same GPU particles as the hero's splash.
+        if (gs.ok) { const ux = -FALLS.dx, uz = -FALLS.dz, bx = POOL.cx + ux * (FALL_WALL - 2.2), bz = POOL.cz + uz * (FALL_WALL - 2.2), dc = Math.hypot(camera.position.x - bx, camera.position.z - bz);
+            if (dc < 110) { S.fallAcc += dt * (QUALITY.coarse ? 2600 : 6000) * (1 - Math.max(0, dc - 60) / 50);
+                while (S.fallAcc >= 60) { const n = 60, w = (Math.random() - 0.5) * FALLS.w * 0.85, x = bx - uz * w, z = bz + ux * w, ox = FALLS.dx * 1.6, oz = FALLS.dz * 1.6, k = Math.random();
+                    S.fallAcc -= n; if (k < 0.35) splBurst(SK.CROWN, x, POOL.y, z, n, rnd(1.1, 1.8), 0.9, ox, oz, POOL.y); else if (k < 0.5) splBurst(SK.SPRAY, x, POOL.y, z, 18, rnd(0.8, 1.3), 1, FALLS.dx, FALLS.dz, POOL.y); else if (k < 0.7) splBurst(SK.MIST, x, POOL.y + 0.3, z, n, rnd(0.8, 1.4), 1.6, ox * 0.5, oz * 0.5, POOL.y);
+                    else if (k < 0.88) splBurst(SK.FOAM, x + FALLS.dx * 1.2, POOL.y, z + FALLS.dz * 1.2, n, 0.6, 1.2, ox, oz, POOL.y); else splBurst(SK.BUBBLE, x, POOL.y, z, n, 1.0, 1.0, ox * 0.3, oz * 0.3, POOL.y); } } }
         const surf = waterAt(p[0], p[2], t), sp = Math.hypot(v[0], v[2]), surfing = !!s.surf, fx = Math.sin(sim.ang), fz = Math.cos(sim.ang);
         // ---- hero: entry splash (jump / dive / fall in), scaled by the speed it hit the water with
         if (sim.swim && !S.prevSwim && surf !== null && p[1] > surf - 2.5) waterImpact(p[0], surf, p[2], Math.max(1.2, -S.prevVy, sp * 0.35), 0.55);
