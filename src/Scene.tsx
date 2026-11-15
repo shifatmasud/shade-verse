@@ -38,7 +38,7 @@ import { islandH } from './seaWorld'
 import { TOD, UWF, UW } from './world/env';
 import { seabedMat, wallMat, oceanGeo, seabedGeo } from './water/seabed';
 import { waterMat } from './water/oceanMaterial';
-import { spawnWaterRipple } from './water/ripples';
+import { WaterFX } from './water/WaterFX';
 import { OceanFollow, ReflectionIllusion, OceanSlices } from './water/OceanPasses';
 import { Boats, Gulls, Fish, MarineSnow, Whale } from './world/sealife';
 import { Jellies } from './world/jellies';
@@ -569,16 +569,6 @@ function DebugStats() {
 
 /* Shifat 11:13 PM phone perf: the App HUD updates 10x a second (fps text, beacon distance); without memo every HUD tick re-rendered this whole
    3D tree through React (thousands of prop diffs on a slow phone CPU). Props here are stable refs, so the 3D tree now renders once. */
-/* Shifat Nov 1 2:14 PM 'heroes ring ripple is harsh, study real images': a swimmer's ripples on real water are not thin white lines but broad, low-contrast
-   swells - a soft bright crest catching the sky with a faint darker trough inside it, both feathered to nothing, widening and fading as they spread. */
-function swimRingMat() {
-    return new THREE.ShaderMaterial({
-        uniforms: { opacity: { value: 0 } }, transparent: true, depthWrite: false,
-        vertexShader: 'varying float vR; void main(){ vR = length(position.xy); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: 'uniform float opacity; varying float vR; void main(){ float t = (vR - 0.55) / 0.9; float c0 = (t - 0.62) / 0.17, t0 = (t - 0.3) / 0.14; float crest = exp(-c0 * c0), trough = exp(-t0 * t0); float a = (crest * 0.55 + trough * 0.22) * opacity * smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.88, 1.0, t)); gl_FragColor = vec4(mix(vec3(0.05, 0.16, 0.24), vec3(0.93, 0.98, 1.0), crest / max(crest + trough, 1e-3)), a); }',
-    });
-}
-
 export const Scene = React.memo(SceneImpl);
 /* Shifat's phone (Adreno 506) froze each time a new area came into view: three builds a shader program the first time an object is drawn,
    and a big program costs that GPU hundreds of ms on the main thread. Every program is built up front instead - hidden objects are made
@@ -617,13 +607,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(perf.scale), hyst = useRef({ s: 0, n: 0, down: -99 });
     const bv = useMemo(() => new THREE.Vector3(), []);
     const bv2 = useMemo(() => new THREE.Vector3(), []);
-    const waterRef = useRef<THREE.Mesh>(null!), ringRef = useRef<THREE.Mesh>(null!);
-    const wakeRef = useRef<THREE.Mesh>(null!); const ringFlow = useRef(0);
-    const wakeTrail = useRef<{x:number,z:number,t:number}[]>([]); const wakeStrength = useRef(0); const wakeBorn = useRef(0);
-    const rippleEmit = useRef(-1);
-    const wakeGeo = useMemo(() => { const g = new THREE.BufferGeometry(), pa = new Float32Array(2 * 25 * 2 * 3), uv = new Float32Array(2 * 25 * 2 * 2), ix: number[] = []; for (let side = 0; side < 2; side++) for (let j = 0; j <= 24; j++) { const n = side * 50 + j * 2; uv[n*2] = uv[(n+1)*2] = j/24; uv[n*2+1] = 0; uv[(n+1)*2+1] = 1; if (j < 24) ix.push(n,n+1,n+2,n+1,n+3,n+2); } g.setAttribute('position', new THREE.BufferAttribute(pa, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(ix); return g; }, []);
-    const wakeMat = useMemo(() => new THREE.ShaderMaterial({transparent:true, depthWrite:false, side:THREE.DoubleSide, uniforms:{uA:{value:0}}, vertexShader:'varying vec2 vU; void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'varying vec2 vU; uniform float uA; void main(){float soft=sin(vU.y*3.14159);float trail=pow(1.0-vU.x,1.5)*smoothstep(0.0,0.12,vU.x); gl_FragColor=vec4(0.82,0.96,1.0,soft*trail*uA);}' }), []);
- const splashRef = useRef<THREE.Group>(null!), splashSt = useRef({ prev: false, t0: -9 });
+    const waterRef = useRef<THREE.Mesh>(null!);
     const rig = useMemo(() => {
         const r = buildRig();
         const redM = new THREE.MeshLambertMaterial({ color: '#d4162e', side: THREE.DoubleSide });
@@ -780,33 +764,8 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         }
         // hero
         const h = hero.current;
-        // Emit low-cost shared wave packets for surface motion; no emitters run while diving or idle.
-        if ((sim as any).surf || (sim.swim && !sim.dive && Math.hypot(v[0], v[2]) > 2.5)) {
-            if (sim.t - rippleEmit.current > ((sim as any).surf ? 0.24 : 0.48)) {
-                spawnWaterRipple(p[0], p[2], sim.t, (sim as any).surf ? 1.35 : 0.7);
-                rippleEmit.current = sim.t;
-            }
-        }
         const wl = !!sim.wall;
-        { const sg = splashRef.current, st2 = splashSt.current; if (sg) { if (sim.swim && !st2.prev && p[1] > waterSurfaceAt(p[0], p[2], sim.t) - 2.0) st2.t0 = sim.t; st2.prev = sim.swim; const age = sim.t - st2.t0, on = age >= 0 && age < 0.8; sg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t), k = age / 0.8, rise = Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5); sg.position.set(p[0], wy, p[2]); sg.children.forEach((c, i) => { const m = c as THREE.Mesh, a2 = (i / 9) * 6.283, tilt = 0.25 + 0.2 * ((i * 7) % 3), h = (0.9 + 0.5 * ((i * 5) % 4) / 3) * rise * (1 - 0.35 * k); m.position.set(Math.cos(a2) * 0.35 * (1 + k), h * 0.5, Math.sin(a2) * 0.35 * (1 + k)); m.rotation.set(Math.sin(a2) * tilt, 0, -Math.cos(a2) * tilt); m.scale.set(1 - 0.5 * k, Math.max(0.01, h), 1 - 0.5 * k); (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k * k); }); } } }   // entry splash: crown of white shards on water entry (ref: stylized splash, spiky white crown over a foam skirt)
-        { // original curved two-arm wake: short position history keeps the trail behind a turning swimmer
-            const m = wakeRef.current, sp = Math.hypot(v[0],v[2]), surfaceY = waterSurfaceAt(p[0],p[2],sim.t), surfing = !!(sim as any).surf, surface = (sim.swim || surfing) && !sim.dive && p[1] > surfaceY - 1.1;
-            const target = surface && sp>0.6 ? Math.min(surfing ? 0.9 : 0.58,sp*(surfing?0.14:0.10)) : 0;
-            wakeStrength.current += (target-wakeStrength.current)*Math.min(1,dt*(target>0?6:3));
-            const trail = wakeTrail.current;
-            if(!surface || trail.length && Math.hypot(p[0]-trail[0].x,p[2]-trail[0].z)>12) trail.length=0;
-            if(surface && (!trail.length || sim.t-trail[0].t>0.07)){
-                // A hard reversal must start a new ribbon rather than join opposing arms across a cusp.
-                if(trail.length>3){const a=trail[0],b=trail[3],ox=a.x-b.x,oz=a.z-b.z,ol=Math.hypot(ox,oz);if(ol>0.15&&sp>1.0&&(v[0]*ox+v[2]*oz)/(sp*ol)<0.20){trail.length=0;wakeStrength.current*=0.35;}}
-                if(!trail.length)wakeBorn.current=sim.t;trail.unshift({x:p[0],z:p[2],t:sim.t});if(trail.length>28)trail.pop();}
-            if(m){m.visible=surface && wakeStrength.current>0.015 && trail.length>2;if(m.visible){const pa=wakeGeo.attributes.position as THREE.BufferAttribute;
-                for(let side=0;side<2;side++)for(let j=0;j<=24;j++){const t=j/24,sgn=side?1:-1,fi=t*(trail.length-1),ii=Math.floor(fi),ff=fi-ii,a=trail[ii],b=trail[Math.min(ii+1,trail.length-1)],prev=trail[Math.max(0,ii-1)],next=trail[Math.min(trail.length-1,ii+1)];
-                    let dx=prev.x-next.x,dz=prev.z-next.z;const ln=Math.hypot(dx,dz);if(ln>0.02){dx/=ln;dz/=ln;}else{dx=Math.sin(sim.ang);dz=Math.cos(sim.ang);}
-                    const cx=a.x+(b.x-a.x)*ff-dx*0.8,cz=a.z+(b.z-a.z)*ff-dz*0.8,spread=0.55+t*(surfing?2.8:1.7),width=0.06+t*(surfing?0.24:0.16);
-                    for(let k=0;k<2;k++){const off=sgn*(spread+(k?width:-width)),x=cx-dz*off,z=cz+dx*off;pa.setXYZ(side*50+j*2+k,x,waterRenderY(x,z,sim.t)+0.055,z);}}
-                pa.needsUpdate=true;wakeMat.uniforms.uA.value=wakeStrength.current*THREE.MathUtils.smoothstep(sim.t-wakeBorn.current,0.1,0.65);}}
-        }
-        { const sp=Math.hypot(v[0],v[2]); ringFlow.current+=(THREE.MathUtils.smoothstep(sp,0.5,3.5)-ringFlow.current)*Math.min(1,dt*4); const rg = ringRef.current as unknown as THREE.Group; if (DBG) (window as any).__ring = rg; if (rg) { const surfaceY=waterSurfaceAt(p[0],p[2],sim.t), on = (sim.swim || (DBG && (window as any).__ringForce)) && p[1] > surfaceY - 1.6; rg.visible = on; if (on) { const wy = waterRenderY(p[0], p[2], sim.t); rg.position.set(p[0] - Math.sin(sim.ang) * 0.9, wy + 0.04, p[2] - Math.cos(sim.ang) * 0.9); rg.children.forEach((c, i) => { const ph = (sim.t * 0.7 + i / 3) % 1, m = c as THREE.Mesh; m.scale.setScalar(1.0 + ph * 5.5); ((m.material as THREE.ShaderMaterial).uniforms.opacity.value) = 0.6 * (1 - 0.70 * ringFlow.current) * (1 - ph) * (1 - ph); }); } } }   // waterline cue: expanding foam ring where the body cuts the surface
+        /* Nov 15 2026: the hero's water FX (flat foam-ring decals, white wake ribbon, cone-shard entry crown) moved to <WaterFX>: real height-field rings / wake + particle splash (src/water/WaterFX.tsx) */
         const sa0 = sim as any;
         const rootPose = applyHeroRootPose(sim, rig, dt, sa0, p, HERO_SC);
         const lean = rootPose.lean, shadowBody = rig.poseRoot.children[0] as THREE.Object3D;
@@ -980,9 +939,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh ref={web} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={webB} visible={false}><cylinderGeometry args={[0.035, 0.035, 1, 5]} /><meshBasicMaterial color="#f4f4ff" /></mesh>
         <mesh ref={arrow}><coneGeometry args={[0.35, 1.1, 8]} /><meshBasicMaterial color="#ffd54a" /></mesh>
-        <mesh ref={wakeRef} geometry={wakeGeo} material={wakeMat} visible={false} frustumCulled={false} />
-        <group ref={splashRef} visible={false}>{[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => <mesh key={i} frustumCulled={false}><coneGeometry args={[0.13, 1, 5]} /><meshBasicMaterial color="#f4fdff" transparent opacity={0.9} depthWrite={false} /></mesh>)}</group>
-        <group ref={ringRef as any} visible={false}>{[0, 1, 2].map((i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false} renderOrder={5}><ringGeometry args={[0.55, 1.45, 48, 1]} /><primitive object={swimRingMat()} attach="material" /></mesh>)}</group>
+        <WaterFX sim={sim} />
         <mesh position={[0, WATER_Y, WATER_Z - 400]} ref={waterRef} material={waterMat} frustumCulled={false} geometry={OCEAN_GEO} />
         <OceanFollow waterRef={waterRef} /><OceanSlices waterRef={waterRef} geo={OCEAN_GEO} /><ReflectionIllusion sim={sim} />
         <Boats sim={sim} /><Gulls sim={sim} /><Fish sim={sim} /><Whale sim={sim} /><MarineSnow /><Jellies /><Lilies sim={sim} />
