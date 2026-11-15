@@ -308,7 +308,7 @@ ${GRID_TRACE_GLSL}
           vec3 mirr = mix(mfl * vec3(0.6, 0.9, 0.95) * 1.3, under, 1.0 - exp(-(mt + mtd) * 0.04));   /* 8:44 PM: mirror path fogs like the dive medium (was 0.022, bed showed through as hard swirls) */
           vec3 outside = mix(under * 0.9, mirr, 0.95);
           col = mix(mix(aw2, under, 0.22 + 0.5 * smoothstep(0.55, 1.1, s2)), outside, crit2);   /* 8:44 PM RCA: exact Fresnel jumps to 1 at the critical angle - that step drew a hard straight rim across Snell's window; rough-surface smooth ramp instead */
-          aOut = mix(0.6, 0.86, crit2); }
+          aOut = mix(0.6, 1.0, crit2); }   /* Shifat Nov 15 9:01 PM phone 'hard artifacts on water surface' RCA: outside Snell's window the underside was still 14% see-through, so the raw (unrefracted, unfogged-by-air) city towers, bridge and island hills above the sea ghosted through it as hard flat shapes. Physically total internal reflection lets no air light through there: opaque. Inside the window the air still shows (airTrace + 60% alpha) */
       }
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the
       // horizon edge of big water bodies (and lets the far shading/mirror work stop early). Phones fog a little closer.
