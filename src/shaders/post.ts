@@ -1,5 +1,6 @@
 // Post-processing: FXAA (plus sharpened variant) and the ink outline pass. Moved verbatim from Scene.tsx.
 import { WL_GLSL } from '../water/waterline';
+import { UW_ABS, UW_FIELD_GLSL } from '../world/env';
 import { CLOUD_GLSL } from './skyFx';
 import { FILM_GRADE_GLSL } from './filmGrade';
 export const CLOUD_SHADOW_FS = `uniform float uCloudTime; uniform float uCloudRain; uniform float uCloudRange; varying vec2 vUv;
@@ -38,6 +39,27 @@ export const FXAA_SHARP_FS = FXAA_FS.replace('uniform vec2 uRes;', 'uniform vec2
 export const OUT_FS = `uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tShadowMap; uniform sampler2D tHeroTriangles; uniform sampler2D tHeroBvh; uniform vec2 uRes; uniform vec2 uShadowTexel; uniform vec2 uHeroTriangleTexSize; uniform vec2 uHeroBvhTexSize; uniform float uNear; uniform float uFar; uniform float uTh; uniform float uOn; uniform float uShadowOn; uniform float uShadowBias; uniform float uShadowStrength; uniform float uShadowWaterStrength; uniform float uHeroBvhNodeCount; uniform float uHeroTraceOn; uniform float uHeroTraceStrength; uniform float uHeroTraceWaterStrength; uniform float uCineMood; uniform float uHeroTraceDebug; uniform mat4 uShadowMatrix; uniform mat4 uInvProjection; uniform mat4 uInvView; uniform vec3 uUwC; uniform vec3 uHeroBoundsMin; uniform vec3 uHeroBoundsMax; uniform vec3 uHeroRayDir; varying vec2 vUv;
 ${WL_GLSL}   /* the same line the sea is cut on (src/water/waterline.ts): solved on the drawn waves incl. chop, no fake ripples - the tint can't drift off the cut */
 uniform sampler2D tCloudShadow; uniform float uCloudStrength; uniform float uCloudAltitude; uniform float uCloudRange; uniform vec3 uCloudSunDir; uniform vec3 uCloudCamera;
+uniform vec4 uUwP; uniform sampler2D uCaus; uniform float uUwT; uniform float uUwDay; uniform float uUwSteps; uniform vec3 uSunV;
+${UW_FIELD_GLSL}vec3 uwSrgb(vec3 c){ c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+/* Shifat Nov 15 7:06 PM 'screen to world space' + 7:15 PM 'screen space godrays too? can they live in worldspace?'. Refs: Pope & Fry 1997
+   (absorption), Jerlov water types (blue-green haze), Hoobler 'Fast underwater light shafts' / Frostbite & UE volumetric fog (march the view
+   ray, ask how much sun reaches each sample through the moving surface). Every water pixel is now measured in metres, not screen rows. */
+vec3 uwMedium(vec3 c, float d, vec3 fc, float fn, float fx){ return mix(c * exp(-${UW_ABS} * d), fc, smoothstep(fn, fx, d)); }   /* identical to the scene-fog chunk the dive uses (src/world/env.ts) */
+float uwFocus(vec2 xz){ float t = uUwT * 0.8;   /* beams = the big, slow focusing of the swell (cells of a few metres), from the same physically made caustic tile and clock as the seabed (src/caustics.ts), read ~4x coarser and blurred: fine caustic lines light the floor, the coarse focus lights the water */
+  vec2 a = xz * 0.024 + vec2(0.023, 0.011) * t * 0.35, b = mat2(0.81, -0.59, 0.59, 0.81) * xz * 0.031 + vec2(-0.017, 0.021) * t * 0.35;
+  float f = 0.5 * (texture2D(uCaus, a, 2.0).r + texture2D(uCaus, b, 2.0).r); return smoothstep(0.2, 0.4, f); }
+vec3 uwRays(vec3 ro, vec3 rd, float L, float jit){
+  vec3 sd = normalize(vec3(uCloudSunDir.x, max(abs(uCloudSunDir.y), 0.25), uCloudSunDir.z));   /* sun by day, the key light (moon) by night */
+  vec3 r = refract(-sd, vec3(0.0, 1.0, 0.0), 0.7502);   /* Snell at the surface (n 1.333): shafts are steeper than the sun */
+  if (rd.y > 0.001) L = min(L, (uUwP.y - ro.y) / rd.y);   /* looking up from under: the ray leaves the water at the surface */
+  L = clamp(L, 0.0, 30.0); float dt = L / max(uUwSteps, 1.0), acc = 0.0;
+  for (int i = 0; i < 16; i++) { if (float(i) >= uUwSteps) break;
+    float t = (float(i) + jit) * dt; vec3 p = ro + rd * t; float dp = uUwP.y - p.y;
+    if (dp > 0.0) { vec3 s = p - r * (dp / -r.y);   /* where this sample's sunlight came through the surface */
+      float f = uwFocus(s.xz);
+      acc += f * exp(-dp * 0.055 - t * 0.028) * smoothstep(0.0, 1.2, dp); } }
+  float ph = 0.5 + 0.8 * pow(max(dot(rd, -r), 0.0), 5.0);   /* forward scattering: brightest looking up toward the light */
+  return mix(vec3(0.55, 0.7, 1.0), vec3(0.62, 0.93, 1.0), uUwDay) * acc * dt * ph * mix(0.6, 1.0, uUwDay * uUwDay) * 0.06; }
 float vz(vec2 uv){ float d = texture2D(tDepth, uv).x; float zn = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - zn * (uFar - uNear)); }
 vec3 worldAt(vec2 uv, float d){ vec4 q = uInvProjection * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); q /= q.w; q = uInvView * q; return q.xyz / q.w; }
 float shadowVisibility(vec3 wp){ vec4 q = uShadowMatrix * vec4(wp, 1.0); if (q.w <= 0.0) return 1.0; vec3 p = q.xyz / q.w; if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0 || p.z > 1.0) return 1.0; float v = 0.0, total = 0.0; for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++){ float wx = x == 0 ? 2.0 : 1.0, wy = y == 0 ? 2.0 : 1.0, w = wx * wy; vec2 o = vec2(float(x), float(y)) * uShadowTexel * 1.5; float d = texture2D(tShadowMap, p.xy + o).x; v += step(p.z - uShadowBias, d) * w; total += w; } return v / total; }
@@ -69,17 +91,16 @@ void main(){
   if (uShadowOn > 0.5 && shadowReceiver > 0.5) { float d = texture2D(tDepth, vUv).x; if (d < 0.99999) { vec3 wp = worldAt(vUv, d); float cloud = cloudShadowAt(wp); float vis = shadowVisibility(wp) * (1.0 - cloud * uCloudStrength); vec3 shade = mix(vec3(0.62, 0.68, 0.82), vec3(1.0), vis); float strength = mix(uShadowStrength, uShadowStrength * uShadowWaterStrength, waterReceiver); c *= mix(vec3(1.0), shade, strength); float hit = analyticHeroShadow(wp); heroHit = hit; float heroStrength = uHeroTraceStrength * lightMask + uHeroTraceWaterStrength * waterReceiver; c *= mix(vec3(1.0), vec3(0.56, 0.63, 0.80), hit * heroStrength); moodLit = clamp(vis - hit * 0.75, 0.0, 1.0); } }
   if (uHeroTraceDebug > 0.001 && lightMask > 0.5) c = mix(c, vec3(0.0, 1.0, 1.0), clamp(heroHit * uHeroTraceDebug, 0.0, 1.0));
   if (uCineMood > 0.001 && lightMask > 0.5) { vec3 coolGrade = vec3(0.90, 0.95, 1.12), warmGrade = vec3(1.07, 1.025, 0.94); vec3 grade = mix(coolGrade, warmGrade, moodLit); c *= mix(vec3(1.0), grade, uCineMood * 0.42); }
-  if (uWL.w > 0.5) {   // Shifat Oct 31 12:27: half-in/half-out lens. Below the wave line the frame gets the same underwater look as diving (fog colour toward the line, teal light falloff below), with a thin meniscus on the line.
-    vec2 sn = vUv * 2.0 - 1.0; float wd = sn.y - wlY(sn.x);
-    float un = smoothstep(0.004, -0.004, wd);
-    if (un > 0.0) {
-      float below = clamp(-wd, 0.0, 2.0);
-      // true underworld (the sea surface discards below the line): same linear fog as diving (55 -> 190 m) plus the dive light wash
-      vec3 fogc = uUwC * vec3(0.85, 1.38, 1.18) * mix(1.2, 0.85, smoothstep(0.0, 1.6, below));
-      vec3 cu = mix(c, c * vec3(0.55, 0.88, 0.95) + fogc * 0.18, 0.35 + 0.4 * smoothstep(0.0, 1.2, below));   /* Shifat Nov 1 'one world': just under the line it looks like the first metre of a dive, deeper down like the dive itself */
-      cu = mix(cu, fogc, smoothstep(55.0, 190.0, z));   /* same fog law as diving (was 12 -> 150 m: the split half read murkier than the dive) */
-      c = mix(c, cu, un);
-    }
+  float uwIn = uUwP.x, wd = 1.0;
+  if (uWL.w > 0.5) { vec2 sn = vUv * 2.0 - 1.0; wd = sn.y - wlY(sn.x); uwIn = smoothstep(0.004, -0.004, wd); }   /* the line is solved on the drawn 3D waves (src/water/waterline.ts) */
+  if (uwIn > 0.0) {
+    float dd = texture2D(tDepth, vUv).x; vec3 cam = uCloudCamera, rd = normalize(worldAt(vUv, 0.5) - cam);
+    float dist = dd < 0.99999 ? length(worldAt(vUv, dd) - cam) : 1000.0;   /* metres of water this pixel's ray crosses from the lens */
+    if (uUwP.x < 0.5 && dd >= 0.99999) c = mix(c, uwSrgb(uwField(rd, uUwC, uSunV, uUwDay)), uwIn);   /* Shifat Nov 15 8:06 PM 'dive must look same from the split water line': every surface in the under half is now lit and fogged by its own material exactly as in the dive (src/water/lens.ts, the fog chunk in src/world/env.ts) - the post pass only fills the open water with the dive's light field (same function as the dive's sky dome) */
+    float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));   /* interleaved gradient noise: 10 samples read as a smooth beam */
+    c += uwRays(cam, rd, dist, jit) * uwIn;
+  }
+  if (uWL.w > 0.5) {
     /* Shifat 10:51 PM: white blurry wavy intersection line (ref: Wikimedia 'Blacktip reef sharks at Moorea 2025' split shot - a soft bright
        white-cyan meniscus right on the line, a faint glow just above it, and a darker blue band just below where the underside mirrors the deep) */
     float lb = max(dot(uUwC, vec3(0.3, 0.5, 0.2)) * 3.0, 0.25);   // follows day/night through the underwater colour

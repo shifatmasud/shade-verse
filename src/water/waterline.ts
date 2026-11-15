@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { waveDispJS, waveMeshHJS, swellKJS, WAVE_HMAX } from './waves';
 const DBG = !!(import.meta as any).env.VITE_DBG;
-import { OCEAN_HALF, OCEAN_N, OCEAN_SNAP, OCEAN_WARP } from './seabed';
+import { OCEAN_SNAP, oceanSpacingAt } from './seabed';
 import { WATER_Y } from '../sim';
 import { WATERLINE } from '../world/env';
 
@@ -21,29 +21,23 @@ export const WL_N = 25, WL_D = 1.2;
 const WL_EPS = 0.02;   // the line sits 2 cm above the analytic surface: the drawn triangles cut the curve up to ~2 cm high in troughs, and a line under the mesh would open a sliver of sky above it
 
 /** GLSL shared by the sea and the post pass: uWL.w = 1 while the lens straddles the surface; wlY(ndc x) = ndc height of the line. */
-export const WL_GLSL = `uniform vec4 uWL; uniform vec4 uWLq[7];
-float wlAt(int i){ vec4 v = uWLq[i / 4]; int c = i - (i / 4) * 4; return c == 0 ? v.x : (c == 1 ? v.y : (c == 2 ? v.z : v.w)); }
-float wlY(float x){ float f = clamp(x * 12.0 + 12.0, 0.0, 23.999); int i = int(f); float t = f - float(i);
-  float p0 = wlAt(max(i - 1, 0)), p1 = wlAt(i), p2 = wlAt(i + 1), p3 = wlAt(min(i + 2, 24));
-  return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0))); }   /* Catmull-Rom through the 25 solved columns. The meniscus ripple is no longer added here in screen space (it slid with the camera heading): it is part of each column's world-space surface height, see wlRipple in updateWaterline (Shifat Nov 6 10:51 PM 'camera movements must not affect water line waves') */
-`;
+export { WL_GLSL } from './lens';   /* moved to src/water/lens.ts (no import cycle with seabed.ts) */
 
 /** Meniscus ripple (the mesh carries no sub-metre waves) as a height in METRES at a world point: a function of world x, z and time only, so the
  *  shape stays put on the water whatever the camera does. amp = WATERLINE.v.z (full with the lens in the water, faint at the far horizon). */
 const wlRipple = (x: number, z: number, t: number, amp: number) => amp * (0.020 * Math.sin(x * 5.1 + z * 3.6 + t * 1.3) + 0.010 * Math.sin(x * 9.8 - z * 6.2 - t * 2.1) + 0.004 * Math.sin(x * 12.0 + z * 8.0 + t * 3.7));
 const _o = [0, 0, 0], _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3();
-const SPK = OCEAN_WARP * OCEAN_HALF * 2 / OCEAN_N, SPE = (OCEAN_WARP - 1) / OCEAN_WARP;
 const sst = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 /** Height of the sea mesh as drawn at world (x, z): the sheet follows the camera in OCEAN_SNAP steps, each vertex is pushed sideways by the
  *  Gerstner term, so the undisplaced point is found by fixed-point iteration, then the vertex height is evaluated there at its grid spacing. */
 export function seaMeshY(x: number, z: number, t: number, sx: number, sz: number, iters = 3) {
     let px = x, pz = z;
     for (let i = 0; i < iters; i++) {
-        const lx = Math.abs(px - sx) / OCEAN_HALF, lz = Math.abs(pz - sz) / OCEAN_HALF, sp = SPK * Math.pow(Math.max(lx, lz, 1e-4), SPE);
+        const sp = oceanSpacingAt(Math.max(Math.abs(px - sx), Math.abs(pz - sz)));   /* same spacing law as the sheet (seabed.ts oceanWarp) */
         const qz = Math.min(pz, -222); waveDispJS(px, qz, t, sp, _o); const k = sst(-222, -232, qz);
         px = x - _o[1] * k; pz = z - _o[2] * k;
     }
-    const lx = Math.abs(px - sx) / OCEAN_HALF, lz = Math.abs(pz - sz) / OCEAN_HALF, sp = SPK * Math.pow(Math.max(lx, lz, 1e-4), SPE);
+    const sp = oceanSpacingAt(Math.max(Math.abs(px - sx), Math.abs(pz - sz)));   /* same spacing law as the sheet (seabed.ts oceanWarp) */
     return WATER_Y + waveMeshHJS(px, Math.min(pz, -222), t, sp);   // perf: push-only / height-only halves of waveMeshJS, bit-identical, ~40% fewer trig calls
 }
 

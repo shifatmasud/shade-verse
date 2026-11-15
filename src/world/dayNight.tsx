@@ -26,7 +26,7 @@ export function DayNight() {
         if (DBG) (window as any).__tod = { sy, day, warm, fog: TOD.fog.toArray() }; TOD.day.value = day; TOD.warm.value = warm; TOD.noon.value = sstep(0.3, 0.95, sy);
         _c1.copy(_cnoon).lerp(_cwarm, warm).lerp(_cn, 1 - day); if (WEATHER.rain.value > 0.001) _c1.lerp(_c2.setRGB(0.4, 0.44, 0.5).multiplyScalar(0.3 + 0.7 * day), WEATHER.rain.value * 0.7); TOD.fog.copy(_c1); TOD.sky.copy(_c1).lerp(_c2.set('#9cc6ee'), 0.3 * day);
         if (!UW.on) (scene.background as THREE.Color).copy(_c1);
-        UWF.value.set('#0e3a5e').lerp(_uwDay.set('#1a7f9c'), day);   /* Shifat 2:31 PM 'dive too dark, colourless': moonlit deep blue at night (was 20% of the day teal = near black), clearer turquoise by day */
+        UWF.value.set('#0e3a5e').lerp(_uwDay.set('#1c8bab'), day);   /* Nov 15: day colour = the sea's own body colour (mix of uShallow #2fa8c4 / uDeep #0a6f92), so from above and below it is the same water */   /* Shifat 2:31 PM 'dive too dark, colourless': moonlit deep blue at night (was 20% of the day teal = near black), clearer turquoise by day */
         { const wu = waterMat.uniforms, k = 0.16 + 0.84 * day; wu.uDeep.value.set('#0a6f92').multiplyScalar(k); wu.uShallow.value.set('#2fa8c4').multiplyScalar(k); }   // water body colour follows the light level (sky reflection already follows TOD.sky)
         const { h, a, b } = ls.current;
         h.color.set('#d4e4ff').lerp(_c2.set('#3a4c8c'), 1 - day); h.intensity = 0.5 + 0.75 * day;

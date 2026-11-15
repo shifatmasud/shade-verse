@@ -6,7 +6,8 @@ import { GRID_TRACE_GLSL, GRID_UNIFORMS_GLSL } from './gridRefl';
 import { CAUSTIC_GLSL } from '../caustics';
 import { WAVES_GLSL, GERSTNER_GLSL, WAVES_V_GLSL, WAVES_VDJ_GLSL, WGHJ_GLSL } from './waves';
 import { WATER_RIPPLES_GLSL } from './ripples';
-import { OCEAN_N, OCEAN_WARP, OCEAN_HALF } from './seabed';
+import { OCEAN_SP_GLSL } from './seabed';
+import { IX_GLSL } from './interaction';
 import { WATER_COMMON_GLSL } from './common';
 import { WL_GLSL, WL_D } from './waterline';
 
@@ -14,7 +15,7 @@ import { WL_GLSL, WL_D } from './waterline';
 export const WAVES = WAVES_GLSL;
 
 /** Ocean vertex shader: camera-following warped grid displaced by the wave field. */
-export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WAVES_V_GLSL + WAVES_VDJ_GLSL + `varying vec4 vGj; uniform float uTime; uniform vec4 uHeroA, uHeroB; uniform vec3 uHw; uniform vec2 uBench; varying vec2 vP0; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw; void main(){ vHw = uHw;   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); ${'vec2 la = abs(position.xz) / ' + OCEAN_HALF.toFixed(1) + '; vec2 sa = ' + (OCEAN_WARP * OCEAN_HALF * 2 / OCEAN_N).toFixed(4) + ' * pow(max(la, vec2(1e-4)), vec2(' + ((OCEAN_WARP - 1) / OCEAN_WARP).toFixed(4) + ')); float sp = max(sa.x, sa.y);'}   /* local grid spacing (m) of the warped sheet: waves shorter than ~2 cells fade (see whV) */ w.z = min(w.z, -222.0); gChop = sp < 2.5; vec3 gj; float hh; vec3 hd = whdgjV(w.xz, uTime, sp, gj, hh); if (uBench.x > 0.5) hd = vec3(0.0); float h = hd.x; w.y += h; vP0 = w.xz; vGj = vec4(gj, hh);   /* perf item 10: one pass for whdV + wghj (same values, ~half the vertex trig) */   /* Nov 1 phone data: the sea's per-pixel shading is ~95% of its cost on the phone - the wave gradient / Jacobian / height (13 wave trains of trig) now run per vertex (~30k) and are interpolated, not per pixel (~200k+) */ w.xz += hd.yz * smoothstep(-222.0, -232.0, w.z);   /* one pass: height + sideways push share each train's trig */   /* Gerstner: sideways toward the crests (none right at the sea wall) */ vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);');
+export const OCEAN_VERT = '#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WAVES_V_GLSL + WAVES_VDJ_GLSL + IX_GLSL + `varying vec4 vGj; uniform float uTime; uniform vec4 uHeroA, uHeroB; uniform vec3 uHw; uniform vec2 uBench; varying vec2 vP0; varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw; void main(){ vHw = uHw;   /* the wave height at each hero is the same for every pixel: evaluated per vertex (~30k) instead of per pixel (~1M on phone) */ vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0); ${OCEAN_SP_GLSL}   /* local grid spacing (m) of the warped sheet: waves shorter than ~2 cells fade (see whV) */ w.z = min(w.z, -222.0); gChop = sp < 2.5; vec3 gj; float hh; vec3 hd = whdgjV(w.xz, uTime, sp, gj, hh); if (uBench.x > 0.5) hd = vec3(0.0); float h = hd.x; w.y += h; if (uIxOn > 0.5) w.y += ixHeight(w.xz) * smoothstep(1.1, 0.5, sp);   /* interactive ripples / wake / impact craters (./interaction.ts): real displacement where the grid can carry them (~0.47 m core round the camera), normals everywhere */ vP0 = w.xz; vGj = vec4(gj, hh);   /* perf item 10: one pass for whdV + wghj (same values, ~half the vertex trig) */   /* Nov 1 phone data: the sea's per-pixel shading is ~95% of its cost on the phone - the wave gradient / Jacobian / height (13 wave trains of trig) now run per vertex (~30k) and are interpolated, not per pixel (~200k+) */ w.xz += hd.yz * smoothstep(-222.0, -232.0, w.z);   /* one pass: height + sideways push share each train's trig */   /* Gerstner: sideways toward the crests (none right at the sea wall) */ vW = w.xyz; vec4 vv = viewMatrix * w; vView = vv.xyz; gl_Position = projectionMatrix * vv; vScreen = gl_Position; }`.replace('vec3 p = position; vec4 w = modelMatrix * vec4(p, 1.0);', 'vec4 w = modelMatrix * vec4(position, 1.0);');
 
 /** Ocean fragment shader: refraction + Beer-Lambert, mirror/SSR reflection, caustics, foam, glitter, haze, Snell window. */
 export const OCEAN_FRAG = '#include <packing>\n#define WG_CHOP gChop\nbool gChop = true;\n' + WAVES + GERSTNER_GLSL + WGHJ_GLSL + `varying vec2 vP0; varying vec4 vGj; uniform vec2 uBench; uniform float uDay; uniform float uTime; uniform vec3 uSun, uSky, uDeep, uShallow, uUWF; uniform float uSkyT; ${SKYFX_GLSL}${SKYFX2_GLSL}${CLOUD_GLSL} varying vec3 vW; varying vec3 vView; varying vec4 vScreen; varying vec3 vHw;
@@ -107,7 +108,7 @@ ${GRID_TRACE_GLSL}
       /* Shifat 5:32 PM 'breaking up the far sea': a second, much larger scale from the SAME fetch (the tile's other channel, domain-warped by the
          first) - slow colour patches over hundreds of metres (deeper blue vs. greener, like current lines / cloud shade on real ocean). */
       float swPatch = smoothstep(0.3, 0.7, texture2D(uCaus, vW.xz * 0.00042 + (gq.rg - 0.5) * 0.08 - vec2(0.0011, 0.0006) * uTime).g);
-      g += waterRippleSlope(vW.xz, uTime);\n      float rainK = 0.0; if (uRain > 0.01) { vec2 rsl = rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 110.0, length(cameraPosition - vW))); g += rsl * 3.0; rainK = length(rsl); }   /* raindrop impact rings */
+      { vec2 ixg = waterRippleSlope(vW.xz, uTime); g = g * (1.0 - 0.3 * smoothstep(0.02, 0.16, length(ixg))) + ixg; }   /* Shifat 4:38 PM: rings + wake must read in the normals - the chop calms where the interactive ripples run, so they own the lighting there */\n      float rainK = 0.0; if (uRain > 0.01) { vec2 rsl = rainSlope(vW.xz, uTime) * uRain * (1.0 - smoothstep(15.0, 110.0, length(cameraPosition - vW))); g += rsl * 1.6; rainK = length(rsl); }   /* raindrop impact rings */
       vec3 n = normalize(vec3(-g.x, 1.0 - gj.z, -g.y));
       vec3 v = normalize(cameraPosition - vW);
       if (uBench.y > 1.5 && uBench.y < 2.5) { gl_FragColor = vec4(n * 0.5 + 0.5, 0.95); return; }   /* telemetry stage bench */
@@ -273,11 +274,11 @@ ${GRID_TRACE_GLSL}
           aOut = mix(aOut, 0.62, (1.0 - smoothstep(0.9, 1.08, irr)) * (1.0 - fo) * (1.0 - bedA));
         }
       }
-      vec3 uWaterDisplay=mix(uUWF,linearToOutputTexel(vec4(uUWF,1.0)).rgb,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y)));
+      vec3 uWaterDisplay=mix(uUWF,linearToOutputTexel(vec4(uUWF,1.0)).rgb,0.65*(gSplit ? (gAir ? 0.0 : 1.0) : 1.0-smoothstep(-2.0,-1.0,cameraPosition.y)));   /* Nov 15 8:06 PM: the split's under half takes the dive's underside colour */
       if (below) {
         // Snell's window: refract view ray water -> air with a slightly different index per colour channel (dispersion); beyond the critical angle (48.6 deg) total internal reflection shows the water, not the sky
         vec3 under = mix(uDeep, uShallow, 0.35 + 0.4 * pow(max(dot(-n, v), 0.0), 2.0));
-        { float rl = clamp(0.5 + (n.x - n.z) * 2.2, 0.0, 1.0);   /* Shifat 8:57 PM 'surface from below has caustic patterns': the underside shimmer now comes from the real wave normals (was 2 caustic-cell texture reads) */
+        { float rl = clamp(0.5 + (n.x - n.z) * 1.2, 0.0, 1.0);   /* 8:44 PM: x2.2 drew ripple rings as contour lines */   /* Shifat 8:57 PM 'surface from below has caustic patterns': the underside shimmer now comes from the real wave normals (was 2 caustic-cell texture reads) */
           under *= 1.0 + (rl * 0.5 - 0.25) * uDay * (1.0 - smoothstep(25.0, 90.0, length(cameraPosition - vW))); }
         vec3 tr = refract(-v, n, 1.3310), tg = refract(-v, n, 1.3330), tb = refract(-v, n, 1.3375);
         bool tir = dot(tg, tg) < 0.0001;
@@ -299,15 +300,15 @@ ${GRID_TRACE_GLSL}
           aw2 += vec3(1.0, 0.95, 0.82) * (pow(max(dot(td, uSun), 0.0), 60.0) * 0.9 + pow(max(dot(td, uSun), 0.0), 8.0) * 0.2) * uDay;
           /* outside Snell's window: total internal reflection mirrors the underwater world (real refs /tmp/uwr: the pool floor/lane lines seen mirrored in the
              surface beyond the bright disc) - reflected ray traced down to the seabed, sand + caustic pattern, fogged by the path length, wobbling with the waves, soft */
-          vec3 mrr = reflect(-v, normalize(mix(vec3(0.0, -1.0, 0.0), n, 0.6))); mrr.y = min(mrr.y, -0.08);
+          vec3 mrr = reflect(-v, normalize(mix(vec3(0.0, -1.0, 0.0), n, 0.6))); mrr.y = min(mrr.y, -0.18);   /* Shifat Nov 15 8:44 PM 'surface from underwater has weird artifacts' RCA: at -0.08 the grazing mirror ray ran 12x the depth, stretching the caustic tile into vertical curtain streaks */
           float mbd = max(vW.y - bedY(vW.xz), 0.5), mt = mbd / -mrr.y; vec2 mh = vW.xz + mrr.xz * mt;
           float mtd = max(vW.y - bedY(mh), 0.5); mt = mtd / -mrr.y; mh = vW.xz + mrr.xz * mt;
-          float mca = texture2D(uCaus, mh * 0.09 + uTime * 0.01).r * 0.6 + texture2D(uCaus, mh * 0.21 - uTime * 0.013).g * 0.4;
+          float mca = texture2D(uCaus, mh * 0.09 + uTime * 0.01).r * 0.6 + texture2D(uCaus, mh * 0.21 - uTime * 0.013).g * 0.4; mca = mix(0.5, mca, exp(-mt * 0.07));   /* 8:44 PM: far mirrored caustics minify to moire/marble swirls - fade them to their mean with the mirror path */
           vec3 mfl = vec3(0.62, 0.6, 0.46) * mix(0.1, 1.0, uDay) * (0.75 + 0.6 * mca * uDay);
-          vec3 mirr = mix(mfl * vec3(0.6, 0.9, 0.95) * 1.3, under, 1.0 - exp(-(mt + mtd) * 0.022));
+          vec3 mirr = mix(mfl * vec3(0.6, 0.9, 0.95) * 1.3, under, 1.0 - exp(-(mt + mtd) * 0.04));   /* 8:44 PM: mirror path fogs like the dive medium (was 0.022, bed showed through as hard swirls) */
           vec3 outside = mix(under * 0.9, mirr, 0.95);
-          col = mix(mix(aw2, under, 0.22 + 0.5 * clamp(fr, 0.0, 1.0)), outside, crit2);
-          aOut = mix(0.6, 0.86, crit2); }
+          col = mix(mix(aw2, under, 0.22 + 0.5 * smoothstep(0.55, 1.1, s2)), outside, crit2);   /* 8:44 PM RCA: exact Fresnel jumps to 1 at the critical angle - that step drew a hard straight rim across Snell's window; rough-surface smooth ramp instead */
+          aOut = mix(0.6, 0.93, crit2); }   /* 9:16 PM "surface must be see-through a bit": 7% outside the window (was 14% = hard ghosts, then 0%) */ /* Shifat Nov 15 9:01 PM phone 'hard artifacts on water surface' RCA: outside Snell's window the underside was still 14% see-through, so the raw (unrefracted, unfogged-by-air) city towers, bridge and island hills above the sea ghosted through it as hard flat shapes. Physically total internal reflection lets no air light through there: opaque. Inside the window the air still shows (airTrace + 60% alpha) */
       }
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the
       // horizon edge of big water bodies (and lets the far shading/mirror work stop early). Phones fog a little closer.
@@ -365,5 +366,8 @@ ${GRID_TRACE_GLSL}
       if (!below && rainK > 0.0) col = mix(col * mix(1.0, 0.82, uRain), vec3(0.75, 0.82, 0.9) * mix(0.25, 1.0, uDay), clamp(rainK * 0.6, 0.0, 0.22));   /* rain: darker glassy water, ring crests catch the grey sky */
       if (!below && uFlash > 0.002) { vec3 rm3 = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.6))); rm3.y = abs(rm3.y); col += lightningSky(rm3, uFd, uFlash) * mix(0.15, 0.4, fr) + vec3(0.6, 0.66, 0.8) * uFlash * 0.03; }   /* lightning glows in the sea, soft */
       if (!below && uBow > 0.02 && uDay > 0.05) { vec3 rm2 = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.45))); rm2.y = abs(rm2.y); col += rainbowSky(rm2, uSun, uBow, uDay) * mix(0.35, 0.8, fr); }   /* rainbow mirrored too */
+      if (!below) col *= ixShade(vW.xz, cameraPosition);   /* interactive rings + wake catch the sky (src/water/interaction.ts ixShade) */
+      if (!below && uIxOn > 0.5) { float fo = ixFoam(vW.xz); if (fo > 0.003) { float lace = smoothstep(0.25, 0.75, texture2D(uCaus, vW.xz * 0.31 + vec2(0.013, 0.009) * uTime).r + fo * 0.35);
+        col = mix(col, vec3(0.80, 0.88, 0.90) * mix(0.28, 1.0, uDay), clamp(fo * (0.25 + 0.6 * lace), 0.0, 0.6)); } }   /* churned water round a swimmer / splash: lacy, thin, fades in ~1 s (no flat white decal) */
       gl_FragColor = vec4(col, below ? aOut : aAbove);
     }`;

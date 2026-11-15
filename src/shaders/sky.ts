@@ -1,9 +1,11 @@
 import { SKYFX_GLSL, CLOUD_GLSL } from './skyFx';
+import { UW_FIELD_GLSL } from '../world/env';
 // Sky dome shader (gradient, sun disc, clouds). Moved verbatim from Scene.tsx.
 export const SKY_VS = `varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
-export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform float uBow;uniform float uAur;uniform float uFlash;uniform vec3 uFd;uniform sampler2D uMoon;
+export const SKY_FS = `varying vec3 vDir;${SKYFX_GLSL}${CLOUD_GLSL}uniform vec3 uHor;uniform float uT;uniform vec3 uSunV;uniform float uDay;uniform float uWarm;uniform float uRain;uniform float uBow;uniform float uAur;uniform float uFlash;uniform vec3 uFd;uniform sampler2D uMoon;uniform float uUnder;uniform vec3 uUwC;
 float svh2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);} float svn2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(svh2(i),svh2(i+vec2(1,0)),f.x),mix(svh2(i+vec2(0,1)),svh2(i+vec2(1,1)),f.x),f.y);}
-void main(){
+${UW_FIELD_GLSL}void main(){
+ if(uUnder>0.5){ gl_FragColor=linearToOutputTexel(vec4(uwField(normalize(vDir),uUwC,uSunV,uDay),1.0)); return; }   /* underwater light field (Nov 15 6:01 PM, refs: open-water dive photos), shared with the split lens's empty under half (src/world/env.ts UW_FIELD_GLSL) */
  float t=clamp(vDir.y*1.6,0.0,1.0);
  vec3 top=mix(vec3(0.10,0.42,0.78),vec3(0.14,0.50,0.78),uWarm);vec3 mid=mix(vec3(0.52,0.82,0.93),vec3(0.72,0.80,0.91),uWarm);
  vec3 c=mix(uHor,mid,smoothstep(0.0,0.25,t));c=mix(c,top,smoothstep(0.2,0.9,t));

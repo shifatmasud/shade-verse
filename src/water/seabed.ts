@@ -3,22 +3,24 @@ import { ISLAND } from '../seaWorld';
 import { SEA, WATER_Z, HALF, seabedAt } from '../sim';
 import { CAUSTIC_TEX, CAUSTIC_GLSL } from '../caustics';
 import { TOD, UWF } from '../world/env';
+import { LENS_GLSL, lensU } from './lens';
 
 // seabed: sand with animated caustic light lines, fading into teal haze with distance (reference: two underwater game shots - sandy floor with web-like caustic lines, cyan fading to deeper teal)
 const mkSea = (xy: boolean) => new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uFog: UWF, uCaus: { value: CAUSTIC_TEX }, uDayC: TOD.day },
+    uniforms: { uTime: { value: 0 }, uFog: UWF, uCaus: { value: CAUSTIC_TEX }, uDayC: TOD.day, ...lensU() },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `varying vec3 vW; uniform float uTime; uniform vec3 uFog;
+    ${LENS_GLSL}
     // Shifat 3:43 AM 'refracted caustic patterns are best, use them underwater too': the SAME simulated ray-splat caustic tile + causRGB the
     // ocean's refracted view uses (same scale, speed, gain), so the seabed looks identical from above and below. Also far cheaper than the old 24-call warp.
     ${CAUSTIC_GLSL}
     uniform float uDayC;
     vec3 cau3(vec2 p){ return causRGB(p * 0.5 / 0.9, uTime * 0.8) * 2.6; }
     float h(vec2 p){ vec3 q=fract(vec3(p.xyx)*0.1031); q+=dot(q,q.yzx+33.33); return fract((q.x+q.y)*q.z); }
-    void main(){ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-smoothstep(-2.0,-1.0,cameraPosition.y))); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float depthK = mix(1.0, 0.3, smoothstep(-10.0, -48.0, vW.y)); vec3 c3 = cau3(p) * exp(-max(-1.0 - vW.y, 0.0) * 0.05) * 1.45 * uDayC * (1.0 - smoothstep(-3.0, -1.2, cameraPosition.y));   /* sunlight only, and only seen from below (from above the ocean shader draws them) */ float c = dot(c3, vec3(0.333));
+    void main(){ float lA = lensAir(vW);   /* Nov 15 8:06 PM: seen from air or from water decided per pixel (src/water/lens.ts), so the split's under half IS the dive */ vec3 fogDisplay=linearToOutputTexel(vec4(uFog,1.0)).rgb; vec3 fogUsed=mix(uFog,fogDisplay,0.65*(1.0-lA)); vec2 p = ${xy ? 'vW.xy' : 'vW.xz'} * 0.9; float depthK = mix(1.0, 0.3, smoothstep(-10.0, -48.0, vW.y)); vec3 c3 = cau3(p) * exp(-max(-1.0 - vW.y, 0.0) * 0.05) * 1.45 * uDayC * (1.0 - lA);   /* sunlight only, and only seen from below (from above the ocean shader draws them) */ float c = dot(c3, vec3(0.333));
       vec3 sand = mix(vec3(0.46, 0.62, 0.58), vec3(0.58, 0.70, 0.62), h(floor(${xy ? 'vW.xy' : 'vW.xz'} * 3.0)) * 0.6);
       vec3 col = sand * 0.7 * (0.82 + c3);   /* same light model as the refracted bed: albedo * (0.82 + caustics) */
-      float d = length(vW - cameraPosition); float sbA = smoothstep(-3.0, -1.2, cameraPosition.y); d = mix(d, min(d * clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.001), 0.0, 1.0), 14.0), sbA);   /* blends over the first metres of a dive, no switch */   /* Shifat 1:55 AM 'when swimming the real sea gets visible & blue layer hides': from above, only the part of the ray under the surface is water - the air part was fogging the bed into a flat blue sheet */ vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.12); col = col * Tb; float fg = smoothstep(45.0, 190.0, d);   /* far-only underwater fog (Shifat Oct 29) */ ${xy ? 'fg = fg * 0.8;' : ''} fg *= 1.0 - sbA;   /* from above the sea surface already carries the water colour: the bed only gets its own (short) water path */ col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
+      float d = length(vW - cameraPosition); float sbA = lA; d = mix(d, min(d * clamp((-1.0 - vW.y) / max(cameraPosition.y - vW.y, 0.001), 0.0, 1.0), 14.0), sbA);   /* blends over the first metres of a dive, no switch */   /* Shifat 1:55 AM 'when swimming the real sea gets visible & blue layer hides': from above, only the part of the ray under the surface is water - the air part was fogging the bed into a flat blue sheet */ vec3 Tb = exp(-vec3(0.45, 0.07, 0.02) * d * 0.12); col = col * Tb; float fg = smoothstep(45.0, 190.0, d);   /* far-only underwater fog (Shifat Oct 29) */ ${xy ? 'fg = fg * 0.8;' : ''} fg *= 1.0 - sbA;   /* from above the sea surface already carries the water colour: the bed only gets its own (short) water path */ col = col * (1.0 - 0.4 * fg) + fogUsed * fg * 0.9; ${xy ? 'col = mix(col, fogUsed, smoothstep(-6.0, -0.6, vW.y));' : ''}
       ${xy ? `// Match grazing rays at the wall/surface junction without changing the deeper sand wall.
       vec3 ray=normalize(cameraPosition-vW);vec3 junction=fogUsed*(1.0+0.9*pow(1.0-clamp(abs(ray.y),0.0,1.0),2.5));
       col=mix(col,junction,smoothstep(-5.0,-0.6,vW.y));` : ''}
@@ -30,11 +32,27 @@ export const seabedMat = mkSea(false), wallMat = mkSea(true);
 // draw calls). The vertex shader folds anything north of the shoreline onto it, so the sheet never covers land.
 export const OCEAN_HALF = 1500, OCEAN_SNAP = 8;   // South Sea 3: 900 -> 1500 so the sheet reaches past the raised far plane (no seabed band at the horizon)
 export const OCEAN_N = 170, OCEAN_WARP = 2.1;
+/* Nov 15 2026 (interactive water: real displaced ripples / wake round the hero): the grid used to be x = HALF * u^2.1, which is already ~2.4 m per
+   cell 8 m from the camera - far too coarse to carry a 0.6-2 m ripple, so near-field interaction could only ever be faked in the normals. The
+   sheet is now x = LIN * u + (HALF - LIN) * u^POW: a uniform ~0.47 m core round the camera (ripples and wake displace for real), ~1.2 m at 8 m,
+   ~3.3 m at 30 m (was 4.8), ~8 m at 100 m (was 9), and only coarser than before past ~120 m where the sea is drawn calm and flat anyway.
+   Same vertex count (170 x 170), same snap. */
+export const OCEAN_LIN = 40, OCEAN_POW = 3.2;
+/** Sheet position (m, signed) of grid coordinate u in [-1, 1]. */
+export function oceanWarp(u: number) { const a = Math.abs(u); return Math.sign(u) * (OCEAN_LIN * a + (OCEAN_HALF - OCEAN_LIN) * Math.pow(a, OCEAN_POW)); }
+/** Local grid spacing (m) at grid coordinate u. */
+export function oceanSpacingU(u: number) { return (OCEAN_LIN + OCEAN_POW * (OCEAN_HALF - OCEAN_LIN) * Math.pow(Math.abs(u), OCEAN_POW - 1)) * 2 / OCEAN_N; }
+/** Local grid spacing (m) at sheet distance d (m) from the sheet centre along one axis (Newton inverse of oceanWarp, 4 steps). */
+export function oceanSpacingAt(d: number) { d = Math.min(Math.abs(d), OCEAN_HALF); let u = Math.min(1, d / OCEAN_LIN * 0.9 + Math.pow(d / OCEAN_HALF, 1 / OCEAN_POW) * 0.1);
+    for (let i = 0; i < 4; i++) { const f = oceanWarp(u) - d, df = OCEAN_LIN + OCEAN_POW * (OCEAN_HALF - OCEAN_LIN) * Math.pow(u, OCEAN_POW - 1); u = Math.max(0, Math.min(1, u - f / df)); }
+    return oceanSpacingU(u); }
+/** GLSL: local grid spacing from the sheet's uv attribute (= grid coordinate u per axis, in [-1, 1]). */
+export const OCEAN_SP_GLSL = `vec2 la = abs(uv * 2.0 - 1.0); vec2 sa = (${OCEAN_LIN.toFixed(1)} + ${(OCEAN_POW * (OCEAN_HALF - OCEAN_LIN)).toFixed(1)} * pow(max(la, vec2(1e-4)), vec2(${(OCEAN_POW - 1).toFixed(2)}))) * ${(2 / OCEAN_N).toFixed(6)}; float sp = max(sa.x, sa.y);`;
 export const OCEAN_BINS = 180, OCEAN_INNER_R = 60;
 export function oceanGeo() {
     const n = OCEAN_N, pos: number[] = [];   /* keep 170: 124 made the camera-follow snap visibly shift the coarser wave mesh (Shifat 4:40 AM 'sea is glitching') */
-    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), OCEAN_WARP) * OCEAN_HALF;
-    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(warp(i / n * 2 - 1), 0, warp(j / n * 2 - 1));
+    const uvs: number[] = [];
+    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { pos.push(oceanWarp(i / n * 2 - 1), 0, oceanWarp(j / n * 2 - 1)); uvs.push(i / n, j / n); }
     /* Shifat 11:44 PM 'sea wave math is the cause' (no sea = 2x fps on his phone): the sheet is a full 360 deg disc round the camera and every vertex
        runs the wave math, including the ~60% behind the camera that is never seen. Triangles are stored as: the inner disc (always drawn), then the
        rest sorted by angle round the centre in OCEAN_BINS slices, so OceanSlices can draw only the slices inside the view. Same triangles, same look. */
@@ -54,7 +72,7 @@ export function oceanGeo() {
     const idx = inner.slice(), binStart = new Int32Array(OCEAN_BINS + 1); let bi = 0;
     outer.forEach((o, k) => { const b = (o as any).b; while (bi <= b) binStart[bi++] = inner.length + k * 3; idx.push(...o.t); });
     while (bi <= OCEAN_BINS) binStart[bi++] = idx.length;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setIndex(idx);
     g.userData = { inner: inner.length, binStart };
     return g;
 }
