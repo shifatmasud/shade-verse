@@ -759,7 +759,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             }
             if (uw) {   // full underwater wash only; the split is drawn by the post pass now
                 if (uw.dataset.split !== '0' || uw.style.maskImage !== 'none') { uw.style.maskImage = 'none'; (uw.style as any).webkitMaskImage = 'none'; uw.dataset.split = '0'; }
-                const op = under ? THREE.MathUtils.smoothstep(-dy, 0.6, 3.0).toFixed(2) : '0'; if (uw.style.opacity !== op) uw.style.opacity = op;   /* the blue wash deepens with depth instead of switching on */
+                const op = '0';   /* Shifat Nov 15 6:01 PM 'feels like a new world': the flat screen-space blue wash is gone - the depth fog + the underwater sky dome (cityScenery Sky) carry the water colour by distance and direction */ if (uw.style.opacity !== op) uw.style.opacity = op;   /* the blue wash deepens with depth instead of switching on */
             }
         }
         // hero
