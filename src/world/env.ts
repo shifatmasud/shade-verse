@@ -7,6 +7,19 @@ TOD.sunU = { value: TOD.sun };   // shared sun-direction uniform (set here so ev
 // underwater far colour (seabed haze = background, so the seabed plane has no visible far edge) and the underwater flag
 export const UWF = { value: new THREE.Color('#176e8c') };
 export const UW = { on: false };
+/* Shifat Nov 15 7:06 PM 'screen to world space': one water medium for the dive and the split lens, measured in metres along each view ray.
+   UWP.v = (1 while fully under, surface y at the lens, fog near, fog far) - the post pass and the scene fog read the same numbers. */
+export const UWP = { v: new THREE.Vector4(0, -1e4, 8, 150), on: { value: 0 } };
+/* Seawater absorption per metre (Pope & Fry 1997 pure water ~0.45 / 0.07 / 0.02 at 650 / 550 / 450 nm, scaled 0.12 for the game's clear
+   tropical read - the same law the kelp has used since Oct 29): reds go first, then greens, blue carries furthest. Beer-Lambert: c * exp(-k d). */
+export const UW_ABS = 'vec3(0.054, 0.0084, 0.0024)';
+/* Every fogged material under water: the same absorption by its own distance (per fragment, so a bubble 1 m away stays white while the
+   seabed 20 m off has lost its reds), then the existing haze law. Gated on the underwater fog (Scene pushes it to 1e4 m above water). */
+THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace('gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
+    `#ifndef FOG_EXP2
+	if (fogNear < 1000.0) gl_FragColor.rgb *= exp(-${UW_ABS} * vFogDepth);
+	#endif
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );`);
 
 /* Half-in/half-out lens (Shifat Oct 31): Scene sets the screen line (ndc: x*a + y*b + c < 0 is under water) and w=1 while the lens straddles the surface.
    The sea surface discards below it (true underworld seen directly) and the post pass fogs that half like diving. */

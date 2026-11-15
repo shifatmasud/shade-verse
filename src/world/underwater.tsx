@@ -157,7 +157,7 @@ export function Underwater({ sim }: { sim: Sim }) {
     return <group>
         <instancedMesh ref={kelp} args={[kGeo, kelpMat, 1400]} frustumCulled={false} />
         <points ref={bub} geometry={bGeo} frustumCulled={false}><primitive object={bubbleMat} attach="material" /></points>
-        <group ref={rays}><instancedMesh ref={rayInst} args={[rayGeo, rayMat, RAY_N]} frustumCulled={false} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} /></group>
+        <group ref={rays} visible={false}>{/* Shifat Nov 15 7:15 PM 'godrays can live in worldspace?': these camera-orbiting sheets are replaced by the post pass's marched shafts (src/shaders/post.ts uwRays) */}<instancedMesh ref={rayInst} args={[rayGeo, rayMat, RAY_N]} frustumCulled={false} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} /></group>
     </group>;
 }
 
