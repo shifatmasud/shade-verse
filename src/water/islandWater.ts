@@ -12,9 +12,11 @@ export function fallsMat(speed: number, alpha: number, bright: number, dw = fals
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay;
         float h(float x){ float q=fract(x*0.1031); q*=q+33.33; q*=q+q; return fract(q); }
-        void main(){ float cols = 34.0; float col = floor(vUv.x * cols); float sp = (0.8 + h(col) * 0.7) * ${speed.toFixed(2)};
-          float s = fract(vUv.y * (2.0 + h(col + 7.0) * 2.0) - uT * sp + h(col + 3.0));
-          float streak = smoothstep(0.0, 0.18, s) * (1.0 - smoothstep(0.35, 1.0, s));
+        float stk(float col){ float sp = (0.8 + h(col) * 0.7) * ${speed.toFixed(2)}; float s = fract(vUv.y * (2.0 + h(col + 7.0) * 2.0) - uT * sp + h(col + 3.0));
+          return smoothstep(0.0, 0.18, s) * (1.0 - smoothstep(0.35, 1.0, s)); }
+        void main(){ float cols = 34.0, cx = vUv.x * cols - 0.5, col = floor(cx), f = fract(cx);
+          /* Shifat 10:39 PM 'harsh on waterfalls': one hard floor() column per streak drew vertical staircases; each pixel now blends its two nearest columns */
+          float streak = mix(stk(col), stk(col + 1.0), f * f * (3.0 - 2.0 * f));
           float fine = 0.5 + 0.5 * sin(vUv.x * 210.0 + h(col) * 6.0);
           float edge = smoothstep(0.0, 0.2, vUv.x) * (1.0 - smoothstep(0.8, 1.0, vUv.x)) * smoothstep(0.0, 0.035, vUv.y);   // soft sides and a soft top lip
           float lip = 1.0 - smoothstep(0.0, 0.07, vUv.y), foam = smoothstep(0.78, 1.0, vUv.y);

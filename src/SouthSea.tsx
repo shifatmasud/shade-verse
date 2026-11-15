@@ -17,7 +17,7 @@ import { Bridge } from './world/southSea/bridge';
 import { FarmIsle } from './world/farmIsle';
 import { IceIsle } from './world/iceIsle';
 import { PirateShip } from './world/pirateShip';
-import { BEACH_T, GRASS_T, GRASS_U, MIST_MAT, SPRAY_MAT, beachShader, dockGeo, fallsSheet, islandTerrainGeo, lighthouseGeo, riverGeo, shacksGeo, sprayGeo, type Inst } from './world/southSea/islandGeo';
+import { BEACH_T, GRASS_T, GRASS_U, beachShader, dockGeo, fallsSheet, islandTerrainGeo, lighthouseGeo, riverGeo, shacksGeo, type Inst } from './world/southSea/islandGeo';
 export { hazeShader, CITY_LOD };
 export type { SouthSeaKit };
 
@@ -27,7 +27,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     useFrame((st, dt) => { BEACH_T.value += Math.min(dt, 0.1); if (terrRef.current) { const c = st.camera.position; terrRef.current.geometry = Math.hypot(c.x - ISLAND.cx, c.z - ISLAND.cz) > 420 ? terrainFar : terrain; } });
     const lh = useMemo(lighthouseGeo, []), shacks = useMemo(shacksGeo, []), dock = useMemo(dockGeo, []);
     const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.15, 0.0), fallsSheet(FALLS.w, 0.7), fallsSheet(FALLS.w * 0.8, 1.4)], []);
-    const spray = useMemo(() => sprayGeo(PHONE ? 50 : 110, FALLS.w), []), mist = useMemo(() => sprayGeo(PHONE ? 14 : 30, FALLS.w * 1.6), []), river = useMemo(riverGeo, []);
+    const river = useMemo(riverGeo, []);
     const foamPos = useMemo(() => [POOL.cx + (-FALLS.dx) * (FALL_WALL - 2.2), POOL.y + 0.06, POOL.cz + (-FALLS.dz) * (FALL_WALL - 2.2)] as [number, number, number], []);
     const propMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fff3c4' }), []);
@@ -149,7 +149,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         if (grassRef.current) grassRef.current.visible = d < 170;
         const t = sim.t, day = kit.tod.day.value; GRASS_T.value = t; GRASS_U.uTime.value = t; GRASS_U.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); GRASS_U.uCam.value.copy(camera.position);
         for (const m of FALLS_MATS) { m.uniforms.uT.value = t; m.uniforms.uDay.value = day; }
-        FOAM_MAT.uniforms.uT.value = t; FOAM_MAT.uniforms.uDay.value = day; SPRAY_MAT.uniforms.uT.value = t; MIST_MAT.uniforms.uT.value = t;
+        FOAM_MAT.uniforms.uT.value = t; FOAM_MAT.uniforms.uDay.value = day;
         RIVER_MAT.uniforms.uT.value = t; RIVER_MAT.uniforms.uDay.value = day; (RIVER_MAT.uniforms.uSky.value as THREE.Color).copy(kit.tod.fog).lerp(SKY_BLUE, 0.45);
         for (const w of waters) { const u = (w.material as THREE.ShaderMaterial).uniforms; u.uT.value = t; u.uDay.value = day; u.uSky.value.copy(kit.tod.fog).lerp(SKY_BLUE, 0.45); u.uSun.value.copy(kit.tod.sun); }
         { const night = 1 - day; lampMat.color.setRGB(1, 0.95, 0.75).multiplyScalar(0.8 + 0.6 * night); }
@@ -174,8 +174,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
             {waters.map((w, i) => <primitive key={i} object={w} />)}
             {sheets.map((g, i) => <mesh key={i} geometry={g} material={FALLS_MATS[i]} renderOrder={3 + i} />)}
             <mesh position={foamPos} rotation={[-Math.PI / 2, 0, 0]} material={FOAM_MAT} renderOrder={3} frustumCulled={false}><planeGeometry args={[FALLS.w * 1.9, FALLS.w * 1.9]} /></mesh>
-            <points geometry={spray} material={SPRAY_MAT} renderOrder={6} frustumCulled={false} />
-            <points geometry={mist} material={MIST_MAT} renderOrder={7} frustumCulled={false} />
+            {/* Shifat 10:39 PM 'harsh on waterfalls': the old sprite spray (7-26 m puffs masked by a magnified caustic texture, hard smoothstep) drew jagged holes and pixel steps; the GPU plunge spray in WaterFX replaces it */}
         </group>
     </group>;
 }

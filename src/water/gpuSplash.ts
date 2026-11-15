@@ -112,7 +112,7 @@ const DRAW_FS = `uniform float uDay; uniform vec3 uSky; varying float vA; varyin
 void main(){ if (vA < 0.004) discard; vec2 q = gl_PointCoord * 2.0 - 1.0; float r = dot(q, q); if (r > 1.0) discard;
   vec3 lit = mix(vec3(0.30, 0.40, 0.46), vec3(0.96, 0.99, 1.0), 0.55 + 0.45 * uDay);
   float soft = vR < 2.5 ? 1.0 : 1.0 - smoothstep(0.6, 1.0, r);   /* tiny points: full dot; bigger: round edge */
-  if (vK > 8.5) { gl_FragColor = vec4(lit, vA * 0.16 * exp(-3.2 * r)); return; }                          /* plunge spray cloud: soft gaussian puff */
+  if (vK > 8.5) { gl_FragColor = vec4(lit, vA * 0.075 * exp(-3.2 * r)); return; }   /* 0.16 stacked to flat white (10:39 PM) */                          /* plunge spray cloud: soft gaussian puff */
   if (vK > 1.5 && vK < 2.5) { gl_FragColor = vec4(lit, vA * 0.35 * soft); return; }                        /* mist */
   if (vK > 5.5 && vK < 6.5) { float rim = vR < 3.0 ? 0.7 : smoothstep(0.35, 0.85, r); gl_FragColor = vec4(mix(uSky * 0.6, lit, 0.6) + 0.25, vA * 0.45 * soft); return; }   /* air bubble under water: bright rim */
   if (vK > 6.5 && vK < 7.5) { gl_FragColor = vec4(lit * 0.97, vA * 0.75 * soft); return; }                                /* surface foam bubble */
