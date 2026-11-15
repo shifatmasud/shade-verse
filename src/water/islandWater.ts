@@ -12,15 +12,13 @@ export function fallsMat(speed: number, alpha: number, bright: number, dw = fals
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay;
         float h(float x){ float q=fract(x*0.1031); q*=q+33.33; q*=q+q; return fract(q); }
-        float stk(float col){ float sp = (0.8 + h(col) * 0.7) * ${speed.toFixed(2)}; float s = fract(vUv.y * (2.0 + h(col + 7.0) * 2.0) - uT * sp + h(col + 3.0));
-          return smoothstep(0.0, 0.18, s) * (1.0 - smoothstep(0.35, 1.0, s)); }
-        void main(){ float cols = 34.0, cx = vUv.x * cols - 0.5, col = floor(cx), f = fract(cx);
-          /* Shifat 10:39 PM 'harsh on waterfalls': one hard floor() column per streak drew vertical staircases; each pixel now blends its two nearest columns */
-          float streak = mix(stk(col), stk(col + 1.0), f * f * (3.0 - 2.0 * f));
+        void main(){ float cols = 34.0; float col = floor(vUv.x * cols); float sp = (0.8 + h(col) * 0.7) * ${speed.toFixed(2)};
+          float s = fract(vUv.y * (2.0 + h(col + 7.0) * 2.0) - uT * sp + h(col + 3.0));
+          float streak = smoothstep(0.0, 0.18, s) * (1.0 - smoothstep(0.35, 1.0, s));
           float fine = 0.5 + 0.5 * sin(vUv.x * 210.0 + h(col) * 6.0);
           float edge = smoothstep(0.0, 0.2, vUv.x) * (1.0 - smoothstep(0.8, 1.0, vUv.x)) * smoothstep(0.0, 0.035, vUv.y);   // soft sides and a soft top lip
           float lip = 1.0 - smoothstep(0.0, 0.07, vUv.y), foam = smoothstep(0.78, 1.0, vUv.y);
-          vec3 c = mix(vec3(0.42, 0.72, 0.82), vec3(0.97, 1.0, 1.0), clamp(streak * 0.75 * ${bright.toFixed(2)} + foam * 0.7 + lip * 0.5 + fine * 0.08, 0.0, 1.0)) * mix(0.32, 1.0, uDay);
+          vec3 c = mix(vec3(0.74, 0.81, 0.83) /* Shifat 10:57 PM 'high saturated blue should be removed': falling water is aerated white, not a blue sheet (was 0.42,0.72,0.82) */, vec3(0.97, 1.0, 1.0), clamp(streak * 0.75 * ${bright.toFixed(2)} + foam * 0.7 + lip * 0.5 + fine * 0.08, 0.0, 1.0)) * mix(0.32, 1.0, uDay);
           gl_FragColor = vec4(c, clamp((${alpha.toFixed(2)} + 0.45 * streak + 0.4 * foam + 0.3 * lip) * edge, 0.0, 1.0)); }`,
     }));
 }
