@@ -32,12 +32,12 @@ export function waterImpact(x: number, y: number, z: number, speed: number, size
     ixImpulse(x, z, -Math.min(0.42, 0.16 * e), R);
     ixImpulse(x, z, Math.min(0.26, 0.09 * e), R * 0.55, 0.2);
     ixImpulse(x, z, -Math.min(0.12, 0.04 * e), R * 0.45, 0.42);
-    // GPU particles (Shifat 4:38 PM 'super tiny & many'): thousands of millimetre drops instead of ~60 big balls
-    splBurst(SK.CROWN, x, y, z, 700 + 1500 * e, e, size, 0, 0, y);
-    splBurst(SK.JET, x, y, z, 160 + 480 * e, e, size, 0, 0, y);
-    splBurst(SK.MIST, x, y, z, 300 + 700 * e, e, size, 0, 0, y);
-    splBurst(SK.BUBBLE, x, y, z, 250 + 650 * e, e, size, 0, 0, y);
-    splBurst(SK.FOAM, x, y, z, 500 + 900 * e, e, size, 0, 0, y);
+    // GPU particles (Shifat 4:38 PM 'super tiny & many', 4:56 PM 'more more particles'): ~25-40k millimetre drops per dive
+    splBurst(SK.CROWN, x, y, z, 3200 + 6400 * e, e, size, 0, 0, y);
+    splBurst(SK.JET, x, y, z, 700 + 1900 * e, e, size, 0, 0, y);
+    splBurst(SK.MIST, x, y, z, 1400 + 3000 * e, e, size, 0, 0, y);
+    splBurst(SK.BUBBLE, x, y, z, 1100 + 2700 * e, e, size, 0, 0, y);
+    splBurst(SK.FOAM, x, y, z, 2200 + 3800 * e, e, size, 0, 0, y);
     // falling drops pock the surface: a scatter of tiny rings where the crown comes down (ballistic landing radius / time)
     const up = 1.4 + 2.6 * e;
     for (let i = 0; i < 10; i++) { const a = rnd(0, Math.PI * 2), tf = 2 * up * rnd(0.45, 1.1) / 9.81, rr = size * 0.45 + rnd(0.5, 2.6) * Math.sqrt(e) * tf * 0.8;
@@ -70,26 +70,26 @@ export function WaterFX({ sim }: { sim: Sim }) {
             // body centre a little ahead of the hips (head + shoulders lead), elongated swimmers approximated by a second smaller footprint behind
             ixBody(0, true, p[0] + fx * 0.25, p[2] + fz * 0.25, depth * sub, rad, foam);
             if (sp > 0.6 && !surfing) ixBody(1, true, p[0] - fx * 0.55, p[2] - fz * 0.55, depth * 0.5 * sub, 0.32, foam * 0.6); else ixBody(1, false);
-            if (!surfing && sp > 0.6) { S.foamAcc += dt * sp * 60; if (S.foamAcc >= 12) { const n = Math.floor(S.foamAcc); S.foamAcc -= n; splBurst(SK.FOAM, p[0] - fx * 0.5, surf!, p[2] - fz * 0.5, n, 0.3, 0.3, v[0] * 0.3, v[2] * 0.3, surf!); } }   /* churned bubbles strung along the wake */
+            if (!surfing && sp > 0.6) { S.foamAcc += dt * sp * 180; if (S.foamAcc >= 30) { const n = Math.floor(S.foamAcc); S.foamAcc -= n; splBurst(SK.FOAM, p[0] - fx * 0.5, surf!, p[2] - fz * 0.5, n, 0.3, 0.3, v[0] * 0.3, v[2] * 0.3, surf!); } }   /* churned bubbles strung along the wake */
             // stroke spray: each arm entry throws a handful of drops forward / up and dimples the surface
             if (!surfing && sp > 0.8) {
                 const half = Math.floor(S.stroke * 2);
                 if (half !== S.half) {   /* a new half-cycle = the other arm enters the water */
                     S.half = half; S.side = -S.side; const hx = p[0] + fx * 0.65 - fz * 0.32 * S.side, hzp = p[2] + fz * 0.65 + fx * 0.32 * S.side, k = Math.min(1.4, sp / 4);
                     ixImpulse(hx, hzp, -0.035 * k, 0.22);
-                    splBurst(SK.STROKE, hx, surf!, hzp, 90 + 160 * k, k, 0.4, fx, fz, surf!); splBurst(SK.FOAM, hx, surf!, hzp, 40 + 60 * k, 0.5, 0.25, v[0], v[2], surf!);
+                    splBurst(SK.STROKE, hx, surf!, hzp, 320 + 560 * k, k, 0.4, fx, fz, surf!); splBurst(SK.FOAM, hx, surf!, hzp, 140 + 220 * k, 0.5, 0.25, v[0], v[2], surf!);
                 }
             }
             // surf / fast tow: continuous spray sheets peeling off both sides
             if (surfing || sp > 6) {
-                S.sprayAcc += dt * Math.min(1400, sp * 160);   /* ~1000 tiny drops a second at surf speed */
-                if (S.sprayAcc >= 24) { const n = Math.floor(S.sprayAcc); S.sprayAcc -= n; splBurst(SK.SHEET, p[0], surf!, p[2], n, Math.min(1.4, sp / 6), 0.5, v[0], v[2], surf!); splBurst(SK.MIST, p[0], surf!, p[2], n * 0.25, 0.6, 0.6, 0, 0, surf!); splBurst(SK.FOAM, p[0] - fx * 0.6, surf!, p[2] - fz * 0.6, n * 0.4, 0.4, 0.4, 0, 0, surf!); }
+                S.sprayAcc += dt * Math.min(4800, sp * 520);   /* ~3500 tiny drops a second at surf speed */
+                if (S.sprayAcc >= 60) { const n = Math.floor(S.sprayAcc); S.sprayAcc -= n; splBurst(SK.SHEET, p[0], surf!, p[2], n, Math.min(1.4, sp / 6), 0.5, v[0], v[2], surf!); splBurst(SK.MIST, p[0], surf!, p[2], n * 0.25, 0.6, 0.6, 0, 0, surf!); splBurst(SK.FOAM, p[0] - fx * 0.6, surf!, p[2] - fz * 0.6, n * 0.4, 0.4, 0.4, 0, 0, surf!); }
             }
         } else { ixBody(0, false); ixBody(1, false); }
         // drips for ~0.7 s after leaving the water
-        if (t - S.dripT < 0.7) { S.dripAcc += dt * 260; if (S.dripAcc >= 8) { const n = Math.floor(S.dripAcc); S.dripAcc -= n; splBurst(SK.DRIP, p[0], p[1], p[2], n, 1, 0.5, v[0], v[2], waterAt(p[0], p[2], t) ?? p[1] - 4); } }
+        if (t - S.dripT < 0.7) { S.dripAcc += dt * 700; if (S.dripAcc >= 20) { const n = Math.floor(S.dripAcc); S.dripAcc -= n; splBurst(SK.DRIP, p[0], p[1], p[2], n, 1, 0.5, v[0], v[2], waterAt(p[0], p[2], t) ?? p[1] - 4); } }
         // under water (diving / deep swim): a thin stream of bubbles off the body
-        if (surf !== null && p[1] < surf - 0.5) { S.bubAcc += dt * (25 + sp * 30); if (S.bubAcc >= 6) { const n = Math.floor(S.bubAcc); S.bubAcc -= n; splBurst(SK.BUBBLE, p[0], p[1] + 0.9, p[2], n, 0.15, 0.35, 0, 0, surf); } }
+        if (surf !== null && p[1] < surf - 0.5) { S.bubAcc += dt * (80 + sp * 90); if (S.bubAcc >= 16) { const n = Math.floor(S.bubAcc); S.bubAcc -= n; splBurst(SK.BUBBLE, p[0], p[1] + 0.9, p[2], n, 0.15, 0.35, 0, 0, surf); } }
         S.prevSwim = sim.swim; S.prevDive = !!sim.dive; S.prevVy = v[1];
         // ---- enemies / objects falling into the water
         for (const e of sim.enemies) {

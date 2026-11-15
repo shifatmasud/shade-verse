@@ -8,11 +8,11 @@ import { QUALITY } from '../quality';
    One full-screen pass per frame spawns (bursts from ./splash.ts claim a ring range of particle slots; each slot hashes its own random launch),
    integrates (gravity, size-dependent air drag, bubble buoyancy + wobble, surface foam drift) and kills (drops that fall back into the water, bubbles
    that reach the surface). The draw is one THREE.Points of N vertices that fetch their state from the texture: no CPU per-particle work at all.
-   Sizes are real: spray drops 0.4-4 mm radius, mist 0.1-0.6 mm, bubbles 0.5-3 mm; a sub-pixel drop keeps a 1 px dot with its alpha scaled by
-   coverage, so thousands of them read as fine glittering spray instead of a few big balls. Desktop 128x128 = 16384, touch 96x96 = 9216 particles.
+   Sizes are real: spray drops 0.4-4 mm radius, mist 0.1-0.6 mm, bubbles 0.1-0.7 mm; a sub-pixel drop keeps a 1 px dot with its alpha scaled by
+   coverage, so thousands of them read as fine glittering spray instead of a few big balls. Desktop 256x256 = 65536, touch 160x160 = 25600 particles (4:56 PM: 'more more particles').
    Needs WebGL2 + EXT_color_buffer_float (all current desktop + phone GPUs); without it the splash is skipped and the ripples still run. */
 
-export const GS_W = QUALITY.coarse || QUALITY.tier === 'low' ? 96 : 128, GS_N = GS_W * GS_W;
+export const GS_W = QUALITY.coarse || QUALITY.tier === 'low' ? 160 : 256, GS_N = GS_W * GS_W;   /* Shifat 4:56 PM 'more more particles in splash' */
 const SLOTS = 24;
 
 const SIM_VS = 'out vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
@@ -54,7 +54,7 @@ void main(){
       p += vec3((h1 - 0.5) * 0.5, -0.6 + h2, (h3 - 0.5) * 0.5); v = vec3(C.x * 0.6, -0.5 - 0.5 * h4, C.y * 0.6); life = 1.2 + 0.4 * h5; r = 0.0008 + 0.0025 * big;
     } else if (k < 6.5) {   /* air bubbles dragged under by the entry / a diver: rise, wobble, pop at the surface */
       float a = h1 * TAU, o = sz * 0.5 * sqrt(h2); p += vec3(cos(a) * o, -0.15 - (0.3 + 1.2 * e) * h3 * sz * 2.0, sin(a) * o);
-      v = vec3(cos(a) * 0.3 * h4, 0.1 + 0.4 * h5, sin(a) * 0.3 * h4); life = 1.6 + 1.8 * h6; r = 0.0005 + 0.0025 * big;
+      v = vec3(cos(a) * 0.3 * h4, 0.1 + 0.4 * h5, sin(a) * 0.3 * h4); life = 1.6 + 1.8 * h6; r = 0.00012 + 0.0006 * big;   /* Shifat 4:56 PM 'underwater bubbles should be tiny too': 0.1-0.7 mm */
     } else {   /* surface foam: millimetre bubbles left floating on the churned water, drifting out and popping */
       float a = h1 * TAU, o = sz * (0.3 + 1.1 * sqrt(h2)); p += vec3(cos(a) * o, 0.0, sin(a) * o); v = vec3(cos(a), 0.0, sin(a)) * (0.05 + 0.5 * h3 * e) + vec3(C.x, 0.0, C.y) * 0.15;
       life = 0.9 + 2.2 * h4; r = 0.0004 + 0.0016 * big;
@@ -86,7 +86,7 @@ void main(){ vec4 P = texture2D(tP, aRef), M = texture2D(tM, aRef);
   vec3 p = P.xyz; float k = M.z; if (k > 6.5) p.y += ixHeight(p.xz) + 0.004;
   vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
   float ps = 2.0 * M.y * uScale / max(0.2, -mv.z), age = P.w / M.x;
-  gl_PointSize = clamp(ps, 1.0, 18.0); vR = ps;
+  gl_PointSize = clamp(ps, 1.0, k > 5.5 && k < 6.5 ? 3.0 : 18.0); vR = ps;
   float cov = clamp(ps * 1.4, 0.3, 1.0);   /* sub-pixel: keep a 1 px dot, alpha ~ its size (fine shimmer, not big balls) */
   float fade = k > 1.5 && k < 2.5 ? sin(min(1.0, age * 4.0) * 1.5708) * (1.0 - age) : k > 6.5 ? (1.0 - age) * smoothstep(0.0, 0.08, age) : 1.0 - age * age;
   vA = fade * cov; vK = k; }`;
@@ -128,7 +128,7 @@ export class GpuSplash {
         if (!this.ok) { bursts.length = 0; return; }
         const u = this.sim.uniforms; let k = 0;
         while (bursts.length && k < SLOTS) {
-            const b = bursts.shift()!, n = Math.min(b.n, GS_N >> 2);
+            const b = bursts.shift()!, n = Math.min(b.n, GS_N >> 1);
             (u.uA.value[k] as THREE.Vector4).set(b.x, b.y, b.z, b.k); (u.uB.value[k] as THREE.Vector4).set(this.cursor, n, b.e, b.s); (u.uC.value[k] as THREE.Vector4).set(b.dx, b.dz, b.wy, this.seed++ & 0xffffff);
             this.cursor = (this.cursor + n) % GS_N; k++;
             this.liveUntil = Math.max(this.liveUntil, t + (b.k === SK.BUBBLE || b.k === SK.FOAM ? 4 : 2.2));
