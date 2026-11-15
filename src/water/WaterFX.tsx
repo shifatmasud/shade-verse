@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { Sim } from '../sim';
 import { WATER_Z, isLakeWater, waterSurfaceAt, seabedAt } from '../sim';
 import { waterRenderY } from './waveHeight';
-import { WaterInteraction, ixImpulse, ixBody } from './interaction';
+import { WaterInteraction, ixImpulse, ixBody, WAKE, swimHull } from './interaction';
 import { splBurst, SK, waterHits } from './splash';
 import { GpuSplash } from './gpuSplash';
 import { QUALITY } from '../quality';
@@ -72,11 +72,11 @@ export function WaterFX({ sim }: { sim: Sim }) {
             let depth: number, rad = 0.45, foam = 0;
             if (surfing) { depth = 0.2; rad = 0.6; foam = THREE.MathUtils.smoothstep(sp, 3, 9) * 0.9; }
             else if (sp < 0.6) depth = 0.14 + 0.055 * Math.sin(t * Math.PI * 2 * 0.85) + 0.018 * Math.sin(t * Math.PI * 2 * 2.3 + 1.1);   // treading water: soft rings
-            else { const hz = 0.75 + 0.22 * sp; S.stroke += dt * hz; depth = 0.2 + 0.06 * Math.min(1, sp / 4); /* Shifat 7:03 PM 'ring ripple on swim shows, rings only when floating; wake takes too long to form': a steady, deeper hull (no stroke bob = no rings); its motion alone makes the V */ foam = THREE.MathUtils.smoothstep(sp, 2.2, 6) * 0.55; }
+            else { const hz = 0.75 + 0.22 * sp; S.stroke += dt * hz; depth = WAKE.depth(sp);   /* 8:35 PM 'smoother, cleaner, subtle': a few cm, see WAKE in interaction.ts */ /* Shifat 7:03 PM 'ring ripple on swim shows, rings only when floating; wake takes too long to form': a steady, deeper hull (no stroke bob = no rings); its motion alone makes the V */ foam = WAKE.foam(sp); }
             // body centre a little ahead of the hips (head + shoulders lead), elongated swimmers approximated by a second smaller footprint behind
-            ixBody(0, true, p[0] + fx * 0.25, p[2] + fz * 0.25, depth * sub, rad, foam);
-            if (sp > 0.6 && !surfing) { ixBody(1, true, p[0] - fx * 0.6, p[2] - fz * 0.6, depth * 0.75 * sub, 0.34, foam * 0.6); ixBody(2, true, p[0] + fx * 0.8, p[2] + fz * 0.8, depth * 0.8 * sub, 0.26, foam * 0.4); ixBody(3, true, p[0] - fx * 1.15, p[2] - fz * 1.15, depth * 0.4 * sub, 0.3, foam * 0.5); }   /* head, chest, hips, kicking legs: a 2 m hull throws a full V at once */
-            else { ixBody(1, false); ixBody(2, false); ixBody(3, false); }
+            if (sp > 0.6 && !surfing) swimHull((i, x, z, d, r, f) => ixBody(i, true, x, z, d * sub, r, f), p[0], p[2], fx, fz, depth, foam, S.stroke);   /* head to feet as one smooth hull */
+            else { ixBody(0, true, p[0] + fx * 0.25, p[2] + fz * 0.25, depth * sub, rad, foam);
+            ixBody(1, false); ixBody(2, false); ixBody(3, false); }
             if (!surfing && sp > 0.6) { S.foamAcc += dt * sp * 180; if (S.foamAcc >= 30) { const n = Math.floor(S.foamAcc); S.foamAcc -= n; splBurst(SK.FOAM, p[0] - fx * 0.5, surf!, p[2] - fz * 0.5, n, 0.3, 0.3, v[0] * 0.3, v[2] * 0.3, surf!); } }   /* churned bubbles strung along the wake */
             // stroke spray: each arm entry throws a handful of drops forward / up and dimples the surface
             if (!surfing && sp > 0.8) {

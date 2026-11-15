@@ -18,7 +18,7 @@ const C2 = Math.pow(RIPPLE_SPEED * STEP / IX_TEXEL, 2), DAMP = 0.993, FOAM_DECAY
 /** Shared uniforms: spread into every water material (same objects, so one update reaches them all). */
 /** Shifat 4:38 PM 'Wake trail & ring ripples waves must be visible in normals of water surface. Now not visible.' Real 1-3 cm ripples are
  *  drowned by the FFT chop + gust roughness in the lighting, so the height-field's slope is lit at this gain (geometry keeps the true height). */
-export const IX_NORMAL_GAIN = 5.0;   /* 5:26 PM 'still not visible, checked on phone': 3.2 -> 5 */
+export const IX_NORMAL_GAIN = 2.4;   /* 5:26 PM 'still not visible, checked on phone': 3.2 -> 5; 8:35 PM 'subtle': 3 with the cm-scale hull */
 export const IX_UNIFORMS = { uIxTex: { value: null as THREE.Texture | null }, uIxB: { value: new THREE.Vector4(0, 0, IX_SIZE, IX_TEXEL) }, uIxOn: { value: 0 }, uIxGain: { value: IX_NORMAL_GAIN } };
 
 /** GLSL (vertex + fragment): ixHeight (m), ixSlope (gradient dh/dx, dh/dz like wg/fftSlope), ixFoam (0..1). All exactly 0 outside the sim square. */
@@ -33,7 +33,7 @@ vec2 ixSlope(vec2 xz){ vec2 uv = ixUV(xz); float m = ixEdge(uv); if (m <= 0.0) r
 /* Ripple shading (5:26 PM): faces tilted toward the camera mirror the brighter sky, faces tilted away the deep water - the same thing Fresnel does,
    pushed so 1-3 cm rings and the wake read on a small phone screen at play distance. Returns a colour multiplier (1 = untouched). */
 float ixShade(vec2 xz, vec3 cam){ if (uIxOn < 0.5) return 1.0; vec2 g = ixSlope(xz); vec2 d = cam.xz - xz; float l = length(d); if (l < 1e-3) return 1.0;
-  float k = dot(g, d / l) * (1.0 - smoothstep(18.0, 40.0, l)); return 1.0 + clamp(k * 1.8, -0.32, 0.55); }
+  float k = dot(g, d / l) * (1.0 - smoothstep(18.0, 40.0, l)); return 1.0 + clamp(k * 1.2, -0.14, 0.22); }   /* 8:35 PM 'subtle': was 1.8, -0.32..+0.55 (read as glowing cyan bands) */
 float ixFoam(vec2 xz){ vec2 uv = ixUV(xz); float m = ixEdge(uv); return m > 0.0 ? texture2D(uIxTex, uv).b * m : 0.0; }
 `;
 
@@ -59,10 +59,22 @@ void main(){
     vec4 I = uImp[i]; if (I.z <= 0.0) continue; float k = I.w * G(vUv - I.xy, I.z); h += k; p += k; foam = max(foam, min(1.0, abs(k) * 7.0));
   }
   float sl = length(vec2(hxp - hxm, hzp - hzm)) / (2.0 * uTexel);   /* steep, broken water (bow wave, crater rim) churns white */
-  foam = max(foam, smoothstep(0.22, 0.6, sl) * 0.7);
+  foam = max(foam, smoothstep(0.45, 1.0, sl) * 0.3);   /* 8:35 PM: only truly broken water whitens */
   float sb = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y)), k = smoothstep(0.0, 0.08, sb);   /* sponge border: waves die before the edge, nothing reflects back */
   gl_FragColor = vec4(h * k, p * k, clamp(foam, 0.0, 1.0) * k, 1.0);
 }`;
+
+/* Shifat Nov 15 8:35 PM 'wave V wake trail need to be smoother, cleaner, subtle' (refs: aerial shots of a lone open-water swimmer and of a
+   duck on a still lake - two thin arms at ~19 deg, crests a few cm high, fine and evenly spaced, the water between the arms barely
+   disturbed, foam only in a narrow strip right at the body). A swimmer pushes the surface down by a few cm, not 20+: the hull is now a
+   smooth chain of overlapping footprints (head to feet), so it throws one clean V instead of a lumpy trench. */
+export const WAKE = { depth: (sp: number) => 0.06 + 0.025 * Math.min(1, sp / 4), foam: (sp: number) => THREE.MathUtils.smoothstep(sp, 2.5, 7) * 0.22, bob: 0.08 };
+const HULL = [[0.45, 0.22, 0.7], [0.15, 0.27, 1.0], [-0.15, 0.26, 0.9], [-0.45, 0.23, 0.6]] as const;   // [offset along heading (m), radius (m), depth share]
+/** the swimming hull: slots 0-3 as one elongated body centred at (x, z), heading (fx, fz) */
+export function swimHull(set: (i: number, x: number, z: number, d: number, r: number, f: number) => void, x: number, z: number, fx: number, fz: number, depth: number, foam: number, stroke = 0) {
+    const bob = 1 + WAKE.bob * Math.sin(stroke * Math.PI * 4);   /* each arm stroke lifts the shoulders a little: the arms of the V get their fine, evenly spaced feather crests (as in the refs) instead of one smooth ridge */
+    HULL.forEach(([o, r, k], i) => set(i, x + fx * o, z + fz * o, depth * k * (i < 2 ? bob : 1), r, foam * (i === 0 ? 1 : 0.5)));
+}
 
 type Imp = { x: number; z: number; r: number; a: number; at: number };
 const imps: Imp[] = [];
