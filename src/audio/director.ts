@@ -66,18 +66,19 @@ export class SoundDirector {
     private intensity = 0; private idleT = 0; private combatT = 0; private swingVol = 0; private lastLand = -9;
     private chargeV: any = null; private slamV: any = null;
     // ---- character voices: one line at a time world-wide, per-kind cooldowns, so the world chatters without spamming ----
-    private voGap = 0; private voCd: Record<string, number> = { shadow: 0, ghost: 0, robot: 0, boss: 0, ped: 0 }; private bossAggro = false;
+    private voGap = 0; private voCd: Record<string, number> = { shadow: 0, ghost: 0, robot: 0, boss: 0, ped: 0 }; private bossAggro = false; private voPending = false;
     vo(kind: string, pick?: number[], o: { pos?: Vec3; gain?: number; cd?: number; force?: boolean } = {}) {
-        if (!o.force && (this.voGap > 0 || this.voCd[kind] > 0)) return;
+        if (this.voPending || (!o.force && (this.voGap > 0 || this.voCd[kind] > 0))) return;
         const n = VO_N[kind], i = pick ? pick[Math.floor(Math.random() * pick.length)] : Math.floor(Math.random() * n);
-        audio.playSoon(`vo_${kind}_${i}`, { gain: (o.gain ?? 0.85) * VO_MIX, pos: o.pos ?? null, prio: 4, ref: 10, maxDist: 90 }, 1.2);
-        this.voGap = 2.2; this.voCd[kind] = o.cd ?? 6;
+        const name = `vo_${kind}_${i}`;
+        this.voPending = true; this.voGap = 99; this.voCd[kind] = o.cd ?? 6;
+        void audio.playWhenReady(name, { gain: (o.gain ?? 0.85) * VO_MIX, pos: o.pos ?? null, prio: 4, ref: 10, maxDist: 90 }, () => this.sim.mode === 'play').then(() => { this.voPending = false; this.voGap = 2.2; });
     }
     // ---- Ghost & Shadow banter (husband & wife): an exchange plays line by line, the reply 0.3 s after the line before it ends; never overlaps
     // other voice lines; about one exchange every 10-20 s (talk more), combat ones throttled harder; music ducks a little; small fading captions ----
     private bBusy = false; private bCd = 6; private bIdleT = 0; private bIdleAt = 10; private bCombatCd = 0; private bLast: Record<string, number> = {}; private lowWas = false;
     banter(trig: BanterTrig, force = false): boolean {
-        if (this.bBusy || this.sim.mode !== 'play' || (!force && (this.bCd > 0 || this.voGap > 0))) return false;
+        if (this.bBusy || this.voPending || this.sim.mode !== 'play' || (!force && (this.bCd > 0 || this.voGap > 0))) return false;
         const opts = BANTER.map((x, i) => i).filter((i) => BANTER[i].t === trig); if (!opts.length) return false;
         let k = opts[Math.floor(Math.random() * opts.length)]; if (opts.length > 1 && k === this.bLast[trig]) k = opts[(opts.indexOf(k) + 1) % opts.length]; this.bLast[trig] = k;
         const ex = BANTER[k], names = ex.l.map(([sp, i]) => `vo_${sp === 'g' ? 'cg' : 'cs'}_${i}`);

@@ -209,6 +209,11 @@ export class AudioEngine {
         if (this.bufs.has(name)) return void this.play(name, o);
         const t0 = performance.now(); void this.load(name).then(() => { if ((performance.now() - t0) / 1000 < maxWait) this.play(name, o); });
     }
+    /** Queue a cold one-shot until decode completes; no fixed expiry, with an optional stale-context guard. */
+    playWhenReady(name: string, o: PlayOpts = {}, isCurrent: () => boolean = () => true): Promise<Voice | null> {
+        if (this.bufs.has(name)) return Promise.resolve(isCurrent() ? this.play(name, o) : null);
+        return this.load(name).then((buf) => buf && isCurrent() ? this.play(name, o) : null);
+    }
     stopVoice(v: Voice | null, fade = 0.08) { const c = this.ctx; if (!c || !v) return; try { v.g.gain.setTargetAtTime(0, c.currentTime, fade / 3); v.src.stop(c.currentTime + fade + 0.05); } catch (e) { /* ignore */ } }
 
     // ---------- looping beds ----------

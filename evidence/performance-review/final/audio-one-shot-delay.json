@@ -1,0 +1,44 @@
+{
+  "browser": "Chromium SwiftShader diagnostic; verifies queued scheduling, not physical device audio latency",
+  "voiceDelayArtificialMs": 3500,
+  "formerOrdinaryCutoffMs": 1200,
+  "target": "vo_shadow_14",
+  "coldBeforeQueue": true,
+  "requestCount": 1,
+  "pendingAtMs": 1403,
+  "pendingState": {
+    "mode": "play",
+    "stillUncached": true,
+    "voicePending": true,
+    "gapReserved": true,
+    "plays": []
+  },
+  "requestToScheduleMs": 3521,
+  "requestFinishedAtMs": 3515,
+  "afterAudioArrived": {
+    "mode": "play",
+    "cached": true,
+    "voicePending": false,
+    "voGap": 2.1,
+    "plays": [
+      {
+        "name": "vo_shadow_14",
+        "scheduled": true,
+        "gain": 1.0199999809265137,
+        "outputRunning": true,
+        "muted": false,
+        "duration": 0.6095238095238096,
+        "atMs": 1794857211138
+      }
+    ],
+    "audioStats": {
+      "played": 2,
+      "dropped": 0,
+      "stolen": 0,
+      "ctxState": "running",
+      "muted": false
+    }
+  },
+  "scheduledAtPositiveGain": true,
+  "pageErrors": 0
+}
