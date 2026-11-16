@@ -135,8 +135,12 @@ export function OutlinePass() {
         /* Shifat 11:29 PM phone CPU: every gl.render() (world, sea split, glow, hero HD, probe) re-walked the whole scene graph to update
            world matrices. Now it is walked once per frame, here, before the first world render of the frame. */
         scene.updateMatrixWorld();
+        const sun = scene.getObjectByName('sun1') as THREE.DirectionalLight | undefined;
+        if (sun) { sun.getWorldPosition(_heroShadowLightPos); sun.target.getWorldPosition(_heroShadowLightTarget); _heroShadowLightDir.subVectors(_heroShadowLightPos, _heroShadowLightTarget).normalize(); }
         const trueShadow = updateTrueMeshShadow();
-        const characterShadow = updateCharacterMeshShadow(scene, camera);
+        const charShadowStart = DBG ? performance.now() : 0;
+        const characterShadow = updateCharacterMeshShadow(scene, camera, _heroShadowLightDir, DBG && !!(window as any).__skipCrowdEnemyShadow, DBG && !!(window as any).__noCharacterShadowCull);
+        if (DBG) (window as any).__characterShadowCpuMs = performance.now() - charShadowStart;
         renderManualShadowMap(gl, scene);
         const prevTarget = gl.getRenderTarget(), prevAutoClear = gl.autoClear;
         try { gl.autoClear = true; gl.setRenderTarget(st.cloudRt); gl.render(st.cloudScene, st.qc); }
@@ -166,12 +170,10 @@ export function OutlinePass() {
         } else {
             camera.layers.mask = cam0 | (1 << SEA_LAYER) | (1 << LATE_LAYER); gl.render(scene, camera); camera.layers.mask = cam0;   // desktop at 1 dpr: one pass as before
         }
-        const sun = scene.getObjectByName('sun1') as THREE.DirectionalLight | undefined;
         const shadowStrength = directShadowBalance(scene);
         const cinematicMood = DBG ? THREE.MathUtils.clamp(Number((window as any).__cinematicMood) || 0, 0, 1) : 0;
         st.mat.uniforms.uGradeDay = TOD.day; st.mat.uniforms.uGradeWarm = TOD.warm;
         st.mat.uniforms.uCineMood.value = cinematicMood; HERO_WATER.uHeroMood.value = cinematicMood;
-        if (sun) { sun.getWorldPosition(_heroShadowLightPos); sun.target.getWorldPosition(_heroShadowLightTarget); _heroShadowLightDir.subVectors(_heroShadowLightPos, _heroShadowLightTarget).normalize(); }
         st.mat.uniforms.uCloudSunDir.value.copy(_heroShadowLightDir); camera.updateMatrixWorld(); camera.getWorldPosition(st.mat.uniforms.uCloudCamera.value); st.mat.uniforms.uInvProjection.value.copy(camera.projectionMatrixInverse); st.mat.uniforms.uInvView.value.copy(camera.matrixWorld);   /* every frame: the underwater medium + light shafts rebuild world rays from depth even with shadows off */
         st.mat.uniforms.tHeroTriangles.value = trueShadow?.triangleTexture ?? null;
         st.mat.uniforms.tHeroBvh.value = trueShadow?.bvhTexture ?? null;
@@ -198,7 +200,7 @@ export function OutlinePass() {
             st.mat.uniforms.uCharacterBoundsMax.value.copy(characterShadow.boundsMax);
         }
         if (DBG) (window as any).__heroShadowState = { method: 'posed-skinned-triangle-bvh-ray', enabled: !!trueShadow?.enabled, nodeCount: trueShadow?.nodeCount ?? 0, lightDir: _heroShadowLightDir.toArray() };
-        if (DBG) (window as any).__characterShadowState = { method: 'separate-character-triangle-bvh-ray', enabled: !!characterShadow?.enabled, actors: characterShadow?.actorCount ?? 0, triangles: characterShadow?.triangleCount ?? 0, nodes: characterShadow?.nodeCount ?? 0 };
+        if (DBG) (window as any).__characterShadowState = { method: 'separate-character-triangle-bvh-ray', enabled: !!characterShadow?.enabled, actors: characterShadow?.actorCount ?? 0, triangles: characterShadow?.triangleCount ?? 0, nodes: characterShadow?.nodeCount ?? 0, signature: characterShadow?.signature ?? '', cpuMs: (window as any).__characterShadowCpuMs ?? 0 };
         const shadow = sun?.shadow;
         if (shadow?.map?.depthTexture) {
             st.mat.uniforms.tShadowMap.value = shadow.map.depthTexture;

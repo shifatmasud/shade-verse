@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { viewFrustum } from '../render/instCull';
+import { QUALITY } from '../quality';
 
 const LEAF_TRIANGLES = 4;
 const TRI_TEXTURE_WIDTH = 256;
 const BVH_TEXTURE_WIDTH = 256;
 const MAX_DISTANCE = 56;
 const MAX_TRIANGLES = 120_000;
+const MAX_CROWD_ENEMY_TRIANGLES = QUALITY.weakGpu ? 12_000 : MAX_TRIANGLES;
 
 export type CharacterShadowPose =
     | { kind: 'shadowbot'; time: { value: number }; rate: number; pedestrian?: boolean }
@@ -27,7 +30,7 @@ type CharacterMeshShadowState = {
     boundsMin: THREE.Vector3; boundsMax: THREE.Vector3; enabled: boolean; nodeCount: number; triangleCount: number; actorCount: number;
 };
 
-export type CharacterMeshShadowView = Pick<CharacterMeshShadowState, 'triangleTexture' | 'bvhTexture' | 'triangleTextureSize' | 'bvhTextureSize' | 'boundsMin' | 'boundsMax' | 'enabled' | 'nodeCount' | 'triangleCount' | 'actorCount'>;
+export type CharacterMeshShadowView = Pick<CharacterMeshShadowState, 'signature' | 'triangleTexture' | 'bvhTexture' | 'triangleTextureSize' | 'bvhTextureSize' | 'boundsMin' | 'boundsMax' | 'enabled' | 'nodeCount' | 'triangleCount' | 'actorCount'>;
 
 const registeredCasters = new Set<THREE.Mesh>();
 const instanceSnapshots = new Map<string, InstanceSnapshot>();
@@ -36,7 +39,7 @@ let pedestrianSources: PedestrianSources | null = null;
 let active: CharacterMeshShadowState | null = null;
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
 const _centroidMin = new THREE.Vector3(), _centroidMax = new THREE.Vector3();
-const _instance = new THREE.Matrix4(), _world = new THREE.Matrix4(), _q = new THREE.Quaternion(), _pos = new THREE.Vector3(), _scale = new THREE.Vector3();
+const _instance = new THREE.Matrix4(), _world = new THREE.Matrix4(), _q = new THREE.Quaternion(), _pos = new THREE.Vector3(), _scale = new THREE.Vector3(), _actorSphere = new THREE.Sphere();
 
 function textureLayout(texels: number, width: number) { return { width, height: Math.max(1, Math.ceil(texels / width)) }; }
 function makeFloatTexture(data: Float32Array, width: number, height: number) {
@@ -100,6 +103,20 @@ export function captureCharacterShadowInstances(mesh: THREE.InstancedMesh, count
 }
 
 function isVisible(object: THREE.Object3D) { for (let p: THREE.Object3D | null = object; p; p = p.parent) if (!p.visible) return false; return true; }
+function shadowCanReachView(actor: ActorSource, frustum: THREE.Frustum, rayDir: THREE.Vector3) {
+    if (actor.priority < 2) return true; // Ghost and boss casters stay outside the crowd/enemy budget.
+    const geometry = actor.geometry;
+    if (!geometry.boundingSphere) geometry.computeBoundingSphere();
+    _actorSphere.copy(geometry.boundingSphere!).applyMatrix4(actor.matrix);
+    _actorSphere.radius = _actorSphere.radius * 1.4 + 0.75; // cover gait/deformation and the analytic silhouette's edge.
+    if (frustum.intersectsSphere(_actorSphere)) return true;
+    // An off-screen caster can still shade visible receivers. Retain it if its conservative light-ray extrusion intersects this view.
+    for (const plane of frustum.planes) {
+        const lightMargin = MAX_DISTANCE * Math.max(0, -plane.normal.dot(rayDir));
+        if (plane.distanceToPoint(_actorSphere.center) + lightMargin < -_actorSphere.radius) return false;
+    }
+    return true;
+}
 function addRegisteredActors(out: ActorSource[], camera: THREE.Camera) {
     for (const mesh of registeredCasters) {
         if (!mesh.parent || !isVisible(mesh)) continue;
@@ -135,12 +152,17 @@ function addInstancedActors(out: ActorSource[], scene: THREE.Scene, camera: THRE
         }
     });
 }
-function collectActors(scene: THREE.Scene, camera: THREE.Camera) {
+function collectActors(scene: THREE.Scene, camera: THREE.Camera, rayDir: THREE.Vector3, skipCrowdAndEnemy = false, skipVisibilityCull = false) {
     const actors: ActorSource[] = []; addRegisteredActors(actors, camera); addPedestrianActors(actors, camera); addInstancedActors(actors, scene, camera);
-    // Preserve nearby heroes/enemies first; only distant low-priority crowd instances are trimmed if the GPU texture budget is reached.
+    if (skipCrowdAndEnemy) for (let i = actors.length - 1; i >= 0; i--) if (actors[i].priority >= 2) actors.splice(i, 1);
+    if (!skipVisibilityCull) {
+        const frustum = viewFrustum(camera);
+        for (let i = actors.length - 1; i >= 0; i--) if (!shadowCanReachView(actors[i], frustum, rayDir)) actors.splice(i, 1);
+    }
+    // Protect registered heroes/bosses; weak GPUs spend at most 12k detailed triangles on nearby crowd/enemies.
     actors.sort((a, b) => a.priority - b.priority || a.distanceSq - b.distanceSq);
-    let budget = MAX_TRIANGLES; const kept: ActorSource[] = [];
-    for (const actor of actors) { const template = getTemplate(actor.geometry); if (template.triangleCount > budget) continue; kept.push(actor); budget -= template.triangleCount; }
+    let budget = MAX_TRIANGLES, crowdEnemyBudget = MAX_CROWD_ENEMY_TRIANGLES; const kept: ActorSource[] = [];
+    for (const actor of actors) { const template = getTemplate(actor.geometry); if (template.triangleCount > budget || (actor.priority >= 2 && template.triangleCount > crowdEnemyBudget)) continue; kept.push(actor); budget -= template.triangleCount; if (actor.priority >= 2) crowdEnemyBudget -= template.triangleCount; }
     kept.sort((a, b) => a.priority - b.priority || a.key.localeCompare(b.key));
     return kept;
 }
@@ -267,8 +289,8 @@ function refresh(state: CharacterMeshShadowState) {
     state.triangleTexture.needsUpdate = true; state.bvhTexture.needsUpdate = true;
 }
 
-export function updateCharacterMeshShadow(scene: THREE.Scene, camera: THREE.Camera): CharacterMeshShadowView | null {
-    const actors = collectActors(scene, camera);
+export function updateCharacterMeshShadow(scene: THREE.Scene, camera: THREE.Camera, rayDir: THREE.Vector3, skipCrowdAndEnemy = false, skipVisibilityCull = false): CharacterMeshShadowView | null {
+    const actors = collectActors(scene, camera, rayDir, skipCrowdAndEnemy, skipVisibilityCull);
     if (!actors.length) {
         if (active) { active.triangleTexture.dispose(); active.bvhTexture.dispose(); active = null; }
         return null;
