@@ -30,6 +30,7 @@ function hillH(x: number, z: number) {
 // for a real free-falling waterfall, and a river (pool -> lagoon -> sea) carved into the terrain.
 const toPeak = (() => { const dx = PEAK.x - POOL.cx, dz = PEAK.z - POOL.cz, l = Math.hypot(dx, dz); return [dx / l, dz / l]; })();
 export const FALL_WALL = 10.2;   // metres from the pool centre (uphill) to the cliff face
+export const FALL_LANDING = FALL_WALL - 1.75;   // sheet centreline endpoint after its 0.55 m outward bow
 function cliffBump(x: number, z: number) { const cx = POOL.cx + toPeak[0] * (FALL_WALL + 5), cz = POOL.cz + toPeak[1] * (FALL_WALL + 5), d = Math.hypot(x - cx, z - cz); return 9 * Math.exp(-((d / 9) ** 2)); }
 export interface River { pts: [number, number][]; y0: number; y1: number; hw: number; hw1: number; len: number; acc: number[]; tEnd?: number }
 export const RIVERS: River[] = [];

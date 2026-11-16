@@ -77,6 +77,7 @@ export function robotMat(parts: { m: number; piv?: number[]; s?: number }[], sca
       else if(md<2.5){float a=sin(ph)*.5*uSgn[pi]*lv;float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x,d.y*c-d.z*s,d.y*s+d.z*c);}
       else {float a=(uRT*38.*uSgn[pi]+float(pi))*lv;float c=cos(a),s=sin(a);transformed=pv.xyz+vec3(d.x*c+d.z*s,d.y,-d.x*s+d.z*c);}}`);
     };
+    m.userData.characterShadowPose = { kind: 'robot', time, speed, pivots: piv.map((p) => [p.x, p.y, p.z, p.w]), signs: sgn };
     return m;
 }
 // Heavy armour for the enemy robots: pauldrons, chest plate, shin and forearm guards, back pack. Static plates ride the torso; guards ride the limbs.

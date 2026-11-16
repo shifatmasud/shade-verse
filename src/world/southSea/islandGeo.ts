@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DOCK, FALLS, FALL_WALL, ISLAND, LIGHTHOUSE, POOL, POOLS, RIVERS, RIVER_DEEP, SHACKS, islandH, islandRR, poolAt, riverHW, riverY } from '../../seaWorld';
+import { DOCK, FALLS, FALL_LANDING, FALL_WALL, ISLAND, LIGHTHOUSE, POOL, POOLS, RIVERS, RIVER_DEEP, SHACKS, islandH, islandRR, poolAt, riverHW, riverY } from '../../seaWorld';
 import { seabedAt } from '../../sim';
 import { PHONE, colorize, merged, rnd } from './common';
 import { CAUSTIC_GLSL, CAUSTIC_TEX } from '../../caustics';
@@ -86,21 +86,21 @@ export function dockGeo() {
 }
 // waterfall (2b): three layered free-falling sheets bowing out from the ledge in front of the cliff face, foam + ripples where it
 // hits the plunge pool, mist and spray. Streak scroll speeds differ per layer so the fall reads as depth, not one flat card.
-export function fallsSheet(width: number, out: number, n = 22, C = 8) {
+export function fallsSheet(width: number, out: number, n = 26, C = 14) {
     // water blend: 8 columns across instead of 2, so each sheet bows forward in a smooth convex curve (thickest mid-fall, flat at the
-    // lip), tapers narrower at the ledge and fans out toward the pool. No more flat card with straight polygon edges.
+    // lip), stays close to its ledge width, and ends at the same plunge point as its neighbouring layers.
     const pos: number[] = [], uv: number[] = [], idx: number[] = [];
-    const ux = -FALLS.dx, uz = -FALLS.dz, px = -uz, pz = ux, lip = FALL_WALL + 2.3, base = FALL_WALL - 1.2 - out * 0.6, top = FALLS.top + 0.25, bot = POOL.y - 0.3;
+    const ux = -FALLS.dx, uz = -FALLS.dz, px = -uz, pz = ux, lip = FALL_WALL + 2.3, base = FALL_LANDING + 0.55, top = FALLS.top + 0.25, bot = POOL.y - 0.3;
     for (let j = 0; j <= n; j++) {
-        const t = j / n, along = lip - (lip - base) * Math.pow(t, 0.42), y = top - (top - bot) * (t * t * 0.35 + t * 0.65), w = width * (0.66 + 0.48 * t);
-        const cx = POOL.cx + ux * along, cz = POOL.cz + uz * along, push = out * Math.sin(t * Math.PI) * 0.6;
-        for (let c = 0; c <= C; c++) { const sg = (c / C) * 2 - 1, bow = (1 - sg * sg) * (0.25 + 0.75 * Math.sin(Math.min(1, t * 1.6) * Math.PI * 0.5)) * 0.9, f = push + bow; pos.push(cx + px * w / 2 * sg - ux * f, y, cz + pz * w / 2 * sg - uz * f); uv.push(c / C, t); }
+        const t = j / n, along = lip - (lip - base) * Math.pow(t, 0.42), y = top - (top - bot) * (t * t * 0.35 + t * 0.65), w = width * (0.86 + 0.18 * t);
+        const cx = POOL.cx + ux * along, cz = POOL.cz + uz * along, push = out * Math.sin(t * Math.PI) * 0.34;
+        for (let c = 0; c <= C; c++) { const sg = (c / C) * 2 - 1, bow = (1 - sg * sg) * (0.25 + 0.75 * Math.sin(Math.min(1, t * 1.6) * Math.PI * 0.5)) * 0.55, f = push + bow; pos.push(cx + px * w / 2 * sg - ux * f, y, cz + pz * w / 2 * sg - uz * f); uv.push(c / C, t); }
     }
     for (let j = 0; j < n; j++) for (let c = 0; c < C; c++) { const a = j * (C + 1) + c, b = a + C + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
 }
 export function sprayGeo(n: number, spread: number) {
-    const N = n, pos = new Float32Array(N * 3), ph = new Float32Array(N), bx = POOL.cx + (-FALLS.dx) * (FALL_WALL - 1.6), bz = POOL.cz + (-FALLS.dz) * (FALL_WALL - 1.6);
+    const N = n, pos = new Float32Array(N * 3), ph = new Float32Array(N), bx = POOL.cx + (-FALLS.dx) * FALL_LANDING, bz = POOL.cz + (-FALLS.dz) * FALL_LANDING;
     for (let i = 0; i < N; i++) { pos[i * 3] = bx + (rnd() - 0.5) * spread; pos[i * 3 + 1] = POOL.y; pos[i * 3 + 2] = bz + (rnd() - 0.5) * spread; ph[i] = rnd(); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g;
 }

@@ -11,6 +11,7 @@ import { waterMat } from '../water/oceanMaterial';
 import { noInk } from '../water/common';
 import { renderManualShadowMap } from '../world/shadowMap';
 import { updateTrueMeshShadow } from '../world/trueMeshShadow';
+import { updateCharacterMeshShadow } from '../world/characterMeshShadow';
 import { TOD } from '../world/env';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
@@ -117,6 +118,7 @@ export function OutlinePass() {
         rt.depthTexture = new THREE.DepthTexture(4, 4); rt.depthTexture.type = THREE.UnsignedIntType;
         rt.texture.minFilter = rt.texture.magFilter = THREE.NearestFilter; rt.texture.colorSpace = THREE.SRGBColorSpace;
         const mat = new THREE.ShaderMaterial({ uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture }, tShadowMap: { value: null }, tHeroTriangles: { value: null }, tHeroBvh: { value: null }, uShadowTexel: { value: new THREE.Vector2(1, 1) }, uHeroTriangleTexSize: { value: new THREE.Vector2(1, 1) }, uHeroBvhTexSize: { value: new THREE.Vector2(1, 1) }, uHeroBvhNodeCount: { value: 0 }, uHeroTraceOn: { value: 0 }, uHeroTraceStrength: { value: 0.68 }, uHeroTraceWaterStrength: { value: 0.14 }, uHeroTraceDebug: { value: 0 }, uHeroBoundsMin: { value: new THREE.Vector3() }, uHeroBoundsMax: { value: new THREE.Vector3() }, uHeroRayDir: { value: new THREE.Vector3(0, 1, 0) }, uShadowMatrix: { value: new THREE.Matrix4() }, uInvProjection: { value: new THREE.Matrix4() }, uInvView: { value: new THREE.Matrix4() }, uShadowOn: { value: 0 }, uShadowBias: { value: 0.00012 }, uShadowStrength: { value: 0.82 }, uShadowWaterStrength: { value: 0.34 }, uCineMood: { value: 0 }, uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 700 }, uTh: { value: 1.0 }, uOn: { value: 1 }, uWL: { value: WATERLINE.v }, uWLq: { value: WATERLINE.q }, uUwC: { value: WATERLINE.col }, uUwP: { value: UWP.v }, uCaus: { value: CAUSTIC_TEX }, uUwT: SKY_T, uUwDay: TOD.day, uUwSteps: { value: QUALITY.coarse || QUALITY.weakGpu ? 10 : 16 }, uSunV: TOD.sunU }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: OUT_FS, depthTest: false, depthWrite: false, toneMapped: false });
+        Object.assign(mat.uniforms, { tCharacterTriangles: { value: null }, tCharacterBvh: { value: null }, uCharacterTriangleTexSize: { value: new THREE.Vector2(1, 1) }, uCharacterBvhTexSize: { value: new THREE.Vector2(1, 1) }, uCharacterBvhNodeCount: { value: 0 }, uCharacterTraceOn: { value: 0 }, uCharacterBoundsMin: { value: new THREE.Vector3() }, uCharacterBoundsMax: { value: new THREE.Vector3() } });
         const qs = new THREE.Scene(), q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); q.frustumCulled = false; qs.add(q);
         const r2 = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: false, stencilBuffer: false, samples: 0, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.UnsignedByteType }); const ft = r2.texture;   /* outline result goes to its own target that FXAA reads (was: drawn to the frame, then the whole frame copied) */
         const fm = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: ft }, uRes: { value: new THREE.Vector2(4, 4) }, tDepth: { value: rt.depthTexture }, uNear: { value: 0.5 }, uFar: { value: 700 }, uSharp: { value: SHARPEN.amount } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: FXAA_SHARP_FS, depthTest: false, depthWrite: false, toneMapped: false });
@@ -134,6 +136,7 @@ export function OutlinePass() {
            world matrices. Now it is walked once per frame, here, before the first world render of the frame. */
         scene.updateMatrixWorld();
         const trueShadow = updateTrueMeshShadow();
+        const characterShadow = updateCharacterMeshShadow(scene, camera);
         renderManualShadowMap(gl, scene);
         const prevTarget = gl.getRenderTarget(), prevAutoClear = gl.autoClear;
         try { gl.autoClear = true; gl.setRenderTarget(st.cloudRt); gl.render(st.cloudScene, st.qc); }
@@ -178,13 +181,24 @@ export function OutlinePass() {
         st.mat.uniforms.uHeroTraceStrength.value = shadowStrength * 0.84;
         st.mat.uniforms.uHeroTraceWaterStrength.value = shadowStrength * 0.18;
         st.mat.uniforms.uHeroTraceDebug.value = DBG ? THREE.MathUtils.clamp(Number((window as any).__heroTraceDebug) || 0, 0, 1) : 0;
+        st.mat.uniforms.tCharacterTriangles.value = characterShadow?.triangleTexture ?? null;
+        st.mat.uniforms.tCharacterBvh.value = characterShadow?.bvhTexture ?? null;
+        st.mat.uniforms.uCharacterTraceOn.value = characterShadow?.enabled ? 1 : 0;
+        st.mat.uniforms.uCharacterBvhNodeCount.value = characterShadow?.nodeCount ?? 0;
         if (trueShadow) {
             st.mat.uniforms.uHeroTriangleTexSize.value.copy(trueShadow.triangleTextureSize);
             st.mat.uniforms.uHeroBvhTexSize.value.copy(trueShadow.bvhTextureSize);
             st.mat.uniforms.uHeroBoundsMin.value.copy(trueShadow.boundsMin);
             st.mat.uniforms.uHeroBoundsMax.value.copy(trueShadow.boundsMax);
         }
+        if (characterShadow) {
+            st.mat.uniforms.uCharacterTriangleTexSize.value.copy(characterShadow.triangleTextureSize);
+            st.mat.uniforms.uCharacterBvhTexSize.value.copy(characterShadow.bvhTextureSize);
+            st.mat.uniforms.uCharacterBoundsMin.value.copy(characterShadow.boundsMin);
+            st.mat.uniforms.uCharacterBoundsMax.value.copy(characterShadow.boundsMax);
+        }
         if (DBG) (window as any).__heroShadowState = { method: 'posed-skinned-triangle-bvh-ray', enabled: !!trueShadow?.enabled, nodeCount: trueShadow?.nodeCount ?? 0, lightDir: _heroShadowLightDir.toArray() };
+        if (DBG) (window as any).__characterShadowState = { method: 'separate-character-triangle-bvh-ray', enabled: !!characterShadow?.enabled, actors: characterShadow?.actorCount ?? 0, triangles: characterShadow?.triangleCount ?? 0, nodes: characterShadow?.nodeCount ?? 0 };
         const shadow = sun?.shadow;
         if (shadow?.map?.depthTexture) {
             st.mat.uniforms.tShadowMap.value = shadow.map.depthTexture;

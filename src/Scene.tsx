@@ -61,6 +61,7 @@ import { City, TenementBlock, Sky } from './world/cityScenery';
 import { HD, applyRatio, registerHero, HERO_WATER } from './heroHD';
 import { ShadowMapSetup } from './world/shadowMap';
 import { registerTrueMeshShadow } from './world/trueMeshShadow';
+import { captureCharacterShadowInstances } from './world/characterMeshShadow';
 import { ORB_BLOOM_ALPHA_TAG, SELECTIVE_BLOOM_LAYER } from './renderLayers';
 
 
@@ -881,7 +882,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
                 m.setColorAt(cnt[k], ecol); cnt[k]++;
             }
             const efr = viewFrustum(camera);   // perf item 9: bots outside the view are packed out of the draw
-            for (let k = 0; k < 4; k++) { const m = enMeshes.current[k]; if (!m) continue; m.count = cnt[k]; cullInstances(m, efr); syncInk(m); { const sa = m.geometry.getAttribute('aStill'); if (sa) sa.needsUpdate = true; } m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+            for (let k = 0; k < 4; k++) { const m = enMeshes.current[k]; if (!m) continue; m.count = cnt[k]; captureCharacterShadowInstances(m, cnt[k]); cullInstances(m, efr); syncInk(m); { const sa = m.geometry.getAttribute('aStill'); if (sa) sa.needsUpdate = true; } m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
         }
         // orbs
         const t = sim.t;
@@ -951,7 +952,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         <mesh position={[0, (SEABED) / 2, WATER_Z - 0.3]}><boxGeometry args={[2 * HALF, -SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>
         {/* the 200 m wall extensions past the city run along open sea: top kept 0.4 m under the still-water line (at 0 m it read as a dark line on the horizon from the island) */}
         {[-1, 1].map((s) => <mesh key={s} position={[s * (HALF + 100), (SEABED + WATER_Y - 0.4) / 2, WATER_Z - 0.3]}><boxGeometry args={[200, WATER_Y - 0.4 - SEABED, 0.6]} /><primitive object={wallMat} attach="material" /></mesh>)}
-        {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
+        {enemySet.map((p, k) => <instancedMesh key={k} ref={(r) => { if (r) r.userData.characterShadow = { geometry: p.geo, pose: p.mat.userData.characterShadowPose, priority: 2 }; if (r && enMeshes.current[k] !== r) { enMeshes.current[k] = r; attachInk(r); } }} args={[p.geo, p.mat, 48]} frustumCulled={false} />)}
         <instancedMesh ref={cores} onUpdate={(o) => o.layers.enable(SELECTIVE_BLOOM_LAYER)} args={[undefined, undefined, 18]} frustumCulled={false}><icosahedronGeometry args={[1.3, 1]} /><meshBasicMaterial color="#fff4a6" transparent opacity={ORB_BLOOM_ALPHA_TAG} blending={THREE.NoBlending} toneMapped={false} /></instancedMesh>
     </>;
 }

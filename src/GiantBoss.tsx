@@ -6,6 +6,7 @@ import baseTexUrl from './basetex';
 import { BOSS_BODY_OFFSET, BOSS_ROOT_SCALE, BOSS_SCALE_FACTOR, SHADOW_ROOT_SCALE } from './bossConfig';
 import type { Sim } from './sim';
 import { bossReact } from './enemyReact';
+import { registerCharacterShadowMeshes } from './world/characterMeshShadow';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
 const SOURCE_HERO = JSON.parse(JSON.stringify(heroData)) as any;
@@ -253,6 +254,14 @@ export function GiantBoss({ sim, mini = false }: { sim: Sim; mini?: boolean }) {
     const root = rig.root;
     const state = useRef({ x: 0, z: 0, phase: 0, ready: false });
 
+    useEffect(() => {
+        const casters: THREE.Mesh[] = [];
+        rig.root.traverse((object) => {
+            const mesh = object as THREE.Mesh;
+            if ((mesh as any).isMesh && (mesh.userData.shadowBody || mesh.userData.bossArmor || mesh.material === rig.muscleMaterial)) casters.push(mesh);
+        });
+        return registerCharacterShadowMeshes(casters);
+    }, [rig]);
     useEffect(() => () => {
         rig.geometry.dispose(); rig.skin.map?.dispose(); rig.skin.dispose(); rig.outline.dispose();
         rig.muscleGeometry.dispose(); rig.muscleMaterial.dispose(); rig.muscleOutline.dispose();

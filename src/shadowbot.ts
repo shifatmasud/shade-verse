@@ -74,5 +74,7 @@ export function shadowMat(time: { value: number }, rate: number, pedestrian = fa
           transformed = mix(transformed, rotX(transformed, vec3(sd * 0.31, 1.55, 0.0), -sin(ph) * 0.45 * sd), wa);
           transformed.y += abs(sin(ph)) * 0.035 * (1.0 - aStill); }`);
     };
-    m.customProgramCacheKey = () => pedestrian ? 'shadowbot-pedestrian-hands' : 'shadowbot'; return m;
+    m.customProgramCacheKey = () => pedestrian ? 'shadowbot-pedestrian-hands' : 'shadowbot';
+    m.userData.characterShadowPose = { kind: 'shadowbot', time, rate, pedestrian };
+    return m;
 }

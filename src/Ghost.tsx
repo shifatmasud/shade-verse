@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { registerHero } from './heroHD';
+import { registerCharacterShadowMesh } from './world/characterMeshShadow';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { feminineHeroData, GHOST_HEIGHT } from './ghostBody';
@@ -230,6 +231,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         model.root.userData.noShadowReceive = true;
         return registerHero(model.root);
     }, [model]);   // Ghost joins the hero HD pass without shadow contributions
+    useEffect(() => registerCharacterShadowMesh(model.poseRoot.children[0] as THREE.SkinnedMesh), [model]);
     const actorRef = useRef<Sim | null>(null);
     useEffect(() => registerFxHero(() => actorRef.current, model, 2, () => model.root.visible), [model]);   // Ghost's limb trails + Slam fist glow (CombatFX)
     const controls = useMemo(makeControls, []);

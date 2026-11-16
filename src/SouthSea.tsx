@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { Sim } from './sim';
-import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, islandH, islandPeakY, coastK, poolAt, riverNear, POOL, FALL_WALL, HCOLS, HROWS } from './seaWorld';
+import { ISLAND, LAGOON, POOLS, PEAK, FALLS, DOCK, SHACKS, islandH, islandPeakY, coastK, poolAt, riverNear, POOL, FALL_LANDING, FALL_WALL, HCOLS, HROWS } from './seaWorld';
 import { addTrunkSolids } from './sim';
 import { QK } from './quality';
 import { SELECTIVE_BLOOM_LAYER } from './renderLayers';
@@ -26,9 +26,9 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     const terrainMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1d1b16' }); m.onBeforeCompile = hazeShader(kit.tod, beachShader, true); return m; }, []);
     useFrame((st, dt) => { BEACH_T.value += Math.min(dt, 0.1); if (terrRef.current) { const c = st.camera.position; terrRef.current.geometry = Math.hypot(c.x - ISLAND.cx, c.z - ISLAND.cz) > 420 ? terrainFar : terrain; } });
     const lh = useMemo(lighthouseGeo, []), shacks = useMemo(shacksGeo, []), dock = useMemo(dockGeo, []);
-    const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.15, 0.0), fallsSheet(FALLS.w, 0.7), fallsSheet(FALLS.w * 0.8, 1.4)], []);
+    const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.05, 0.0), fallsSheet(FALLS.w * 0.92, 0.55), fallsSheet(FALLS.w * 0.82, 1.1)], []);
     const spray = useMemo(() => sprayGeo(PHONE ? 50 : 110, FALLS.w), []), mist = useMemo(() => sprayGeo(PHONE ? 14 : 30, FALLS.w * 1.6), []), river = useMemo(riverGeo, []);
-    const foamPos = useMemo(() => [POOL.cx + (-FALLS.dx) * (FALL_WALL - 2.2), POOL.y + 0.06, POOL.cz + (-FALLS.dz) * (FALL_WALL - 2.2)] as [number, number, number], []);
+    const foamPos = useMemo(() => [POOL.cx + (-FALLS.dx) * FALL_LANDING, POOL.y + 0.06, POOL.cz + (-FALLS.dz) * FALL_LANDING] as [number, number, number], []);
     const propMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fff3c4' }), []);
     const waters = useMemo(() => POOLS.map((p) => { const g = new THREE.CircleGeometry(p.r * p.rim, 48); g.rotateX(-Math.PI / 2); const m = new THREE.Mesh(g, poolWaterMat(p)); m.position.set(p.cx, p.y, p.cz); m.renderOrder = 2; return m; }), []);
@@ -173,7 +173,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         <group ref={nearRef}>
             {waters.map((w, i) => <primitive key={i} object={w} />)}
             {sheets.map((g, i) => <mesh key={i} geometry={g} material={FALLS_MATS[i]} renderOrder={3 + i} />)}
-            <mesh position={foamPos} rotation={[-Math.PI / 2, 0, 0]} material={FOAM_MAT} renderOrder={3} frustumCulled={false}><planeGeometry args={[FALLS.w * 1.9, FALLS.w * 1.9]} /></mesh>
+            <mesh position={foamPos} rotation={[-Math.PI / 2, 0, 0]} material={FOAM_MAT} renderOrder={3} frustumCulled={false}><planeGeometry args={[FALLS.w * 1.25, FALLS.w * 1.25]} /></mesh>
             <points geometry={spray} material={SPRAY_MAT} renderOrder={6} frustumCulled={false} />
             <points geometry={mist} material={MIST_MAT} renderOrder={7} frustumCulled={false} />
         </group>

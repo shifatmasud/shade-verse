@@ -12,18 +12,21 @@ export function fallsMat(speed: number, alpha: number, bright: number, dw = fals
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay;
         float h(float x){ float q=fract(x*0.1031); q*=q+33.33; q*=q+q; return fract(q); }
-        void main(){ float cols = 34.0; float col = floor(vUv.x * cols); float sp = (0.8 + h(col) * 0.7) * ${speed.toFixed(2)};
-          float s = fract(vUv.y * (2.0 + h(col + 7.0) * 2.0) - uT * sp + h(col + 3.0));
-          float streak = smoothstep(0.0, 0.18, s) * (1.0 - smoothstep(0.35, 1.0, s));
-          float fine = 0.5 + 0.5 * sin(vUv.x * 210.0 + h(col) * 6.0);
-          float edge = smoothstep(0.0, 0.2, vUv.x) * (1.0 - smoothstep(0.8, 1.0, vUv.x)) * smoothstep(0.0, 0.035, vUv.y);   // soft sides and a soft top lip
-          float lip = 1.0 - smoothstep(0.0, 0.07, vUv.y), foam = smoothstep(0.78, 1.0, vUv.y);
-          vec3 c = mix(vec3(0.74, 0.81, 0.83) /* Shifat 10:57 PM 'high saturated blue should be removed': falling water is aerated white, not a blue sheet (was 0.42,0.72,0.82) */, vec3(0.97, 1.0, 1.0), clamp(streak * 0.75 * ${bright.toFixed(2)} + foam * 0.7 + lip * 0.5 + fine * 0.08, 0.0, 1.0)) * mix(0.32, 1.0, uDay);
-          gl_FragColor = vec4(c, clamp((${alpha.toFixed(2)} + 0.45 * streak + 0.4 * foam + 0.3 * lip) * edge, 0.0, 1.0)); }`,
+        void main(){ float cols = 44.0; float col = floor(vUv.x * cols); float sp = (0.8 + h(col) * 0.7) * ${speed.toFixed(2)};
+          float bend = 0.016 * sin(vUv.y * 8.0 + h(col + 13.0) * 6.283 + uT * 0.25);
+          float s = fract((vUv.y + bend) * (2.0 + h(col + 7.0) * 1.6) - uT * sp + h(col + 3.0));
+          float streak = smoothstep(0.02, 0.18, s) * (1.0 - smoothstep(0.42, 0.92, s));
+          float fine = 0.5 + 0.5 * sin(vUv.x * 155.0 + h(col) * 6.0 + vUv.y * 22.0);
+          float edge = smoothstep(0.0, 0.16, vUv.x) * (1.0 - smoothstep(0.84, 1.0, vUv.x)) * smoothstep(0.0, 0.055, vUv.y);
+          float lip = 1.0 - smoothstep(0.0, 0.1, vUv.y), foam = smoothstep(0.89, 1.0, vUv.y);
+          vec3 c = mix(vec3(0.72, 0.79, 0.82), vec3(0.96, 0.99, 1.0), clamp(streak * 0.55 * ${bright.toFixed(2)} + foam * 0.42 + lip * 0.26 + fine * 0.04, 0.0, 1.0)) * mix(0.32, 1.0, uDay);
+          float a = clamp((${alpha.toFixed(2)} + 0.24 * streak + 0.16 * foam + 0.08 * lip) * edge, 0.0, 0.78);
+          if (a < 0.025) discard;
+          gl_FragColor = vec4(c, a); }`,
     }));
 }
 
-export const FALLS_MATS = [fallsMat(0.55, 0.38, 0.6, true), fallsMat(0.85, 0.22, 0.9), fallsMat(1.25, 0.1, 1.2)];
+export const FALLS_MATS = [fallsMat(0.55, 0.16, 0.5, true), fallsMat(0.85, 0.11, 0.75), fallsMat(1.25, 0.07, 0.9)];
 
 export const FOAM_MAT = noInk(new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uCaus: { value: CAUSTIC_TEX } },
@@ -32,14 +35,14 @@ export const FOAM_MAT = noInk(new THREE.ShaderMaterial({
     // radial current - laced by the same caustic-cell network as the sea foam, irregular edge, no regular sine rings.
     fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay; uniform sampler2D uCaus;
     void main(){ vec2 q = vUv - 0.5; float r = length(q) * 2.0, a0 = atan(q.y, q.x);
-      float edge = 0.62 + 0.12 * sin(a0 * 3.0 + uT * 0.4) + 0.07 * sin(a0 * 7.0 - uT * 0.9);
+      float edge = 0.48 + 0.08 * sin(a0 * 3.0 + uT * 0.4) + 0.05 * sin(a0 * 7.0 - uT * 0.9);
       vec2 flow = q * (1.0 + fract(uT * 0.18) * 0.0); float t1 = fract(uT * 0.22), t2 = fract(uT * 0.22 + 0.5);
       vec2 dir = normalize(q + 1e-4);
       float l1 = texture2D(uCaus, q * 3.2 - dir * t1 * 0.9 + 0.13).r, l2 = texture2D(uCaus, q * 3.2 - dir * t2 * 0.9 + 0.57).r;
       float lace = mix(l1, l2, abs(t1 * 2.0 - 1.0)) + 0.6 * texture2D(uCaus, q * 7.7 + vec2(uT * 0.05, -uT * 0.07)).g;
-      float core = 1.0 - smoothstep(0.0, 0.34, r);
-      float sheet = (1.0 - smoothstep(edge - 0.25, edge, r)) * smoothstep(0.35, 0.95, lace + core * 0.8);
-      float a = clamp(core * 0.9 + sheet * 0.85, 0.0, 1.0);
+      float core = 1.0 - smoothstep(0.0, 0.28, r);
+      float sheet = (1.0 - smoothstep(edge - 0.2, edge, r)) * smoothstep(0.4, 0.95, lace + core * 0.7);
+      float a = clamp(core * 0.55 + sheet * 0.52, 0.0, 0.78);
       gl_FragColor = vec4(vec3(0.96, 0.99, 1.0) * mix(0.35, 1.0, uDay), a); }`,
 }));
 

@@ -9,7 +9,7 @@ import { splBurst, SK, waterHits } from './splash';
 import { GpuSplash } from './gpuSplash';
 import { QUALITY } from '../quality';
 import { TOD, WEATHER } from '../world/env';
-import { FALLS, POOL, FALL_WALL } from '../seaWorld';
+import { FALLS, FALL_LANDING, POOL } from '../seaWorld';
 
 /* Nov 15 2026 (Shifat: fake floating ring -> real displacement rings, swimming -> wake trail, impacts -> realistic particle splash).
    Replaces the hero's three flat foam-ring decals, the white two-arm wake ribbon and the cone-shard entry crown in Scene.tsx. Drives:
@@ -64,7 +64,7 @@ export function WaterFX({ sim }: { sim: Sim }) {
         // ---- island waterfall (Shifat Nov 15 9:36 PM 'waterfall in island should have our splash sprays too'). Refs: plunge-pool photos (Wikimedia
         //      'Gullfoss', 'Seljalandsfoss', Hawaii 'Akaka Falls'): a churning white base, droplets thrown out and up 1-3 m, a drifting mist cloud that
         //      rises past the falls, foam rafts sliding off across the pool, bubbles curtained under the plunge. Same GPU particles as the hero's splash.
-        if (gs.ok) { const ux = -FALLS.dx, uz = -FALLS.dz, bx = POOL.cx + ux * (FALL_WALL - 2.2), bz = POOL.cz + uz * (FALL_WALL - 2.2), dc = Math.hypot(camera.position.x - bx, camera.position.z - bz);
+        if (gs.ok) { const ux = -FALLS.dx, uz = -FALLS.dz, bx = POOL.cx + ux * FALL_LANDING, bz = POOL.cz + uz * FALL_LANDING, dc = Math.hypot(camera.position.x - bx, camera.position.z - bz);
             if (dc < 110) { S.fallAcc += dt * (QUALITY.coarse ? 2600 : 6000) * (1 - Math.max(0, dc - 60) / 50);
                 while (S.fallAcc >= 60) { const n = 60, w = (Math.random() - 0.5) * FALLS.w * 0.85, x = bx - uz * w, z = bz + ux * w, ox = FALLS.dx * 1.6, oz = FALLS.dz * 1.6, k = Math.random();
                     S.fallAcc -= n; if (k < 0.35) splBurst(SK.CROWN, x, POOL.y, z, n, rnd(1.1, 1.8), 0.9, ox, oz, POOL.y); else if (k < 0.5) splBurst(SK.SPRAY, x, POOL.y, z, 18, rnd(0.8, 1.3), 1, FALLS.dx, FALLS.dz, POOL.y); else if (k < 0.7) splBurst(SK.MIST, x, POOL.y + 0.3, z, n, rnd(0.8, 1.4), 1.6, ox * 0.5, oz * 0.5, POOL.y);
