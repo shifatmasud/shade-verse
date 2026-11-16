@@ -149,9 +149,9 @@ export function App() {
         }
         audio.unlock(); if (DBG) (window as any).__audio = { engine: audio, director: snd, ctx: () => audio.ctx, muted: () => mutedRef.current };
         setLoad({ on: true, pct: 0 }); void preloadNet(); readyRef.current = false;
-        /* gameplay begins only when every file is in memory, the world is built, its shaders compiled and every sound decoded (capped, never a lockout);
-           Nov 2 title redesign: the title's odometer then rolls to 100 and calls begin() as its curtain lifts */
-        capped(Promise.all([preloadNet(), worldReady]).then(() => capped(audio.loadAll(), 10000)), 45000).then(() => { markStage('audio'); readyRef.current = true; });
+        /* Gameplay waits for required world files, scene/shader readiness and core audio (capped, never a lockout).
+           Dialogue voice downloads begin in the background after world readiness and do not hold the Play gate. */
+        capped(Promise.all([preloadNet(), worldReady]).then(() => { audio.prefetchVoicesBackground(); return capped(audio.loadAll(), 10000); }), 45000).then(() => { markStage('audio'); readyRef.current = true; });
     }
     function begin() {
         starting.current = false; setLoad({ on: false, pct: 100 });

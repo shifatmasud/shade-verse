@@ -1,0 +1,32 @@
+{
+  "browser": "Chromium SwiftShader diagnostic, not a device load-time result",
+  "voiceRequestArtificialDelayMs": 2000,
+  "timeFromPlayTapToPlayableMs": 27167,
+  "firstVoiceRequestFromNavigationMs": 23955,
+  "voiceRequestsAtPlay": 18,
+  "voiceResponsesFinishedAtPlay": 12,
+  "voiceRequestsPendingAtPlay": 6,
+  "voiceRequestsAfterLongTailProbe": 19,
+  "requestsTriggeredByProbe": 1,
+  "voiceResponsesFinishedAfterProbe": 19,
+  "playableAtCheck": true,
+  "atPlay": {
+    "mode": "play",
+    "requestedVoiceKeys": 18,
+    "decodedVoiceKeys": 0,
+    "longTailCached": false
+  },
+  "onDemandLongTailProbe": {
+    "requested": true,
+    "name": "vo_cg_118",
+    "loaded": true,
+    "played": true,
+    "decodedByCheck": true
+  },
+  "stillPlayableAfterDelay": true,
+  "voiceCacheAfterProbe": {
+    "encodedVoiceEntries": 19,
+    "encodedVoiceBytes": 297375
+  },
+  "pageErrors": 0
+}

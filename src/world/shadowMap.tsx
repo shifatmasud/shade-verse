@@ -8,7 +8,7 @@ import { TOD } from './env';
 
 // Genuine geometry-based depth shadows for the existing WebGL renderer (not ray tracing).
 // This renderer owns its color/depth passes, so the shadow depth pass is rendered separately.
-const MAP_SIZE = HQ ? 2560 : (QUALITY.coarse || QUALITY.weakGpu ? 2048 : 2304);
+const MAP_SIZE = HQ ? 2560 : (QUALITY.coarse || QUALITY.weakGpu ? 1536 : 2304);
 const HALF_EXTENT = 64;
 const LIGHT_DISTANCE = 700;
 const LIGHT_FAR = 1800;

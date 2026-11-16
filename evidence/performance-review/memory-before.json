@@ -1,0 +1,463 @@
+{
+  "environment": "Chromium SwiftShader diagnostic on the sandbox host; not device RSS/GPU/audio-process measurements",
+  "viewportCss": {
+    "width": 760,
+    "height": 360,
+    "deviceScaleFactor": 2
+  },
+  "pageErrors": [],
+  "phases": {
+    "initial": {
+      "page": {
+        "mode": "play",
+        "audio": {
+          "codec": "ogg",
+          "encodedVoiceEntries": 282,
+          "encodedVoiceBytes": 5281512,
+          "encodedSettled": 282,
+          "encodedFailed": 0,
+          "decodedVoiceCount": 0,
+          "decodedVoiceBytes": 0,
+          "decodedVoiceNames": [],
+          "decodedAllCount": 45,
+          "decodedAllBytes": 42593924,
+          "voiceBufferDetails": []
+        },
+        "v8": {
+          "usedHeapBytes": 134794070,
+          "totalHeapBytes": 197670146,
+          "heapLimitBytes": 4395630592
+        },
+        "userAgentSpecificMemory": null,
+        "userAgentSpecificMemoryError": "not supported by this Chromium/page context",
+        "gl": {
+          "worldDpr": 0.6400000000000001,
+          "canvasDpr": 2,
+          "rendererDpr": 2,
+          "geometries": 100,
+          "textures": 43,
+          "calls": 186,
+          "triangles": 668759
+        }
+      },
+      "cdp": {
+        "perfMetrics": {
+          "Documents": 1,
+          "JSEventListeners": 201,
+          "Nodes": 433,
+          "JSHeapUsedSize": 50870648,
+          "JSHeapTotalSize": 113741824
+        },
+        "domCounters": {
+          "documents": 1,
+          "nodes": 433,
+          "jsEventListeners": 201
+        }
+      },
+      "browserProcessTree": {
+        "rootPid": 1113714,
+        "processes": [
+          {
+            "pid": 1113714,
+            "ppid": 1113698,
+            "rssBytes": 208973824,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --allow-pre-commit-input --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occ"
+          },
+          {
+            "pid": 1113911,
+            "ppid": 1113714,
+            "rssBytes": 94072832,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=utility --utility-sub-type=audio.mojom.AudioService --lang=en-US --service-sandbox-type=none --no-sandbox --disable"
+          },
+          {
+            "pid": 1113770,
+            "ppid": 1113714,
+            "rssBytes": 137314304,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=network --no-sandbox --"
+          },
+          {
+            "pid": 1113728,
+            "ppid": 1113714,
+            "rssBytes": 75120640,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=zygote --no-sandbox --headless=new --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-di"
+          },
+          {
+            "pid": 1114396,
+            "ppid": 1113728,
+            "rssBytes": 76312576,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113834,
+            "ppid": 1113728,
+            "rssBytes": 73728000,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113812,
+            "ppid": 1113728,
+            "rssBytes": 100331520,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113811,
+            "ppid": 1113728,
+            "rssBytes": 539570176,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113783,
+            "ppid": 1113728,
+            "rssBytes": 51703808,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=utility --utility-sub-type=storage.mojom.StorageService --lang=en-US --service-sandbox-type=utility --no-sandbox --"
+          },
+          {
+            "pid": 1113727,
+            "ppid": 1113714,
+            "rssBytes": 73404416,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=zygote --no-zygote-sandbox --no-sandbox --headless=new --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdi"
+          },
+          {
+            "pid": 1113762,
+            "ppid": 1113727,
+            "rssBytes": 558034944,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=gpu-process --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless=new --ozone-platform=headless --use-"
+          }
+        ],
+        "summedRssBytes": 1988567040
+      }
+    },
+    "voiceStress": {
+      "names": [
+        "vo_cg_0",
+        "vo_cg_1",
+        "vo_cg_2",
+        "vo_cg_3",
+        "vo_cg_4",
+        "vo_cg_5",
+        "vo_cg_6",
+        "vo_cg_7",
+        "vo_cg_8",
+        "vo_cg_9",
+        "vo_cg_10",
+        "vo_cg_11",
+        "vo_cg_12",
+        "vo_cg_13",
+        "vo_cg_14",
+        "vo_cg_15",
+        "vo_cg_16",
+        "vo_cg_17",
+        "vo_cg_18",
+        "vo_cg_19",
+        "vo_cg_20",
+        "vo_cg_21",
+        "vo_cg_22",
+        "vo_cg_23",
+        "vo_cg_24",
+        "vo_cg_25",
+        "vo_cg_26",
+        "vo_cg_27",
+        "vo_cg_28",
+        "vo_cg_29"
+      ],
+      "elapsedMs": 51.5,
+      "decodedVoices": 24
+    },
+    "after30VoiceStress": {
+      "page": {
+        "mode": "play",
+        "audio": {
+          "codec": "ogg",
+          "encodedVoiceEntries": 282,
+          "encodedVoiceBytes": 5281512,
+          "encodedSettled": 282,
+          "encodedFailed": 0,
+          "decodedVoiceCount": 24,
+          "decodedVoiceBytes": 6458112,
+          "decodedVoiceNames": [
+            "vo_cg_8",
+            "vo_cg_7",
+            "vo_cg_9",
+            "vo_cg_11",
+            "vo_cg_2",
+            "vo_cg_12",
+            "vo_cg_10",
+            "vo_cg_13",
+            "vo_cg_16",
+            "vo_cg_15",
+            "vo_cg_14",
+            "vo_cg_17",
+            "vo_cg_21",
+            "vo_cg_18",
+            "vo_cg_19",
+            "vo_cg_22",
+            "vo_cg_25",
+            "vo_cg_24",
+            "vo_cg_26",
+            "vo_cg_23",
+            "vo_cg_20",
+            "vo_cg_29",
+            "vo_cg_28",
+            "vo_cg_27"
+          ],
+          "decodedAllCount": 69,
+          "decodedAllBytes": 49052036,
+          "voiceBufferDetails": [
+            {
+              "name": "vo_cg_8",
+              "bytes": 223028,
+              "duration": 1.2643310657596372,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_7",
+              "bytes": 116884,
+              "duration": 0.6626077097505669,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_9",
+              "bytes": 237016,
+              "duration": 1.3436281179138323,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_11",
+              "bytes": 237240,
+              "duration": 1.3448979591836734,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_2",
+              "bytes": 463904,
+              "duration": 2.6298412698412696,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_12",
+              "bytes": 157036,
+              "duration": 0.8902267573696145,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_10",
+              "bytes": 291336,
+              "duration": 1.65156462585034,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_13",
+              "bytes": 269108,
+              "duration": 1.5255555555555556,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_16",
+              "bytes": 306040,
+              "duration": 1.734920634920635,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_15",
+              "bytes": 252476,
+              "duration": 1.4312698412698412,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_14",
+              "bytes": 289752,
+              "duration": 1.6425850340136054,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_17",
+              "bytes": 306580,
+              "duration": 1.7379818594104308,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_21",
+              "bytes": 226556,
+              "duration": 1.2843310657596372,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_18",
+              "bytes": 311696,
+              "duration": 1.7669841269841269,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_19",
+              "bytes": 135680,
+              "duration": 0.7691609977324263,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_22",
+              "bytes": 234040,
+              "duration": 1.3267573696145125,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_25",
+              "bytes": 268560,
+              "duration": 1.5224489795918368,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_24",
+              "bytes": 179456,
+              "duration": 1.0173242630385488,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_26",
+              "bytes": 189672,
+              "duration": 1.0752380952380953,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_23",
+              "bytes": 205064,
+              "duration": 1.1624943310657596,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_20",
+              "bytes": 466224,
+              "duration": 2.6429931972789116,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_29",
+              "bytes": 261896,
+              "duration": 1.4846712018140589,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_28",
+              "bytes": 411996,
+              "duration": 2.335578231292517,
+              "channels": 1
+            },
+            {
+              "name": "vo_cg_27",
+              "bytes": 416872,
+              "duration": 2.363219954648526,
+              "channels": 1
+            }
+          ]
+        },
+        "v8": {
+          "usedHeapBytes": 124572228,
+          "totalHeapBytes": 197670084,
+          "heapLimitBytes": 4395630592
+        },
+        "userAgentSpecificMemory": null,
+        "userAgentSpecificMemoryError": "not supported by this Chromium/page context",
+        "gl": {
+          "worldDpr": 0.6400000000000001,
+          "canvasDpr": 2,
+          "rendererDpr": 2,
+          "geometries": 100,
+          "textures": 43,
+          "calls": 186,
+          "triangles": 668759
+        }
+      },
+      "cdp": {
+        "perfMetrics": {
+          "Documents": 1,
+          "JSEventListeners": 199,
+          "Nodes": 433,
+          "JSHeapUsedSize": 40656340,
+          "JSHeapTotalSize": 113741824
+        },
+        "domCounters": {
+          "documents": 1,
+          "nodes": 433,
+          "jsEventListeners": 199
+        }
+      },
+      "browserProcessTree": {
+        "rootPid": 1113714,
+        "processes": [
+          {
+            "pid": 1113714,
+            "ppid": 1113698,
+            "rssBytes": 208973824,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --allow-pre-commit-input --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occ"
+          },
+          {
+            "pid": 1113911,
+            "ppid": 1113714,
+            "rssBytes": 94072832,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=utility --utility-sub-type=audio.mojom.AudioService --lang=en-US --service-sandbox-type=none --no-sandbox --disable"
+          },
+          {
+            "pid": 1113770,
+            "ppid": 1113714,
+            "rssBytes": 137314304,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=network --no-sandbox --"
+          },
+          {
+            "pid": 1113728,
+            "ppid": 1113714,
+            "rssBytes": 75120640,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=zygote --no-sandbox --headless=new --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-di"
+          },
+          {
+            "pid": 1114396,
+            "ppid": 1113728,
+            "rssBytes": 76312576,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113834,
+            "ppid": 1113728,
+            "rssBytes": 73728000,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113812,
+            "ppid": 1113728,
+            "rssBytes": 100331520,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113811,
+            "ppid": 1113728,
+            "rssBytes": 526565376,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=renderer --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/puppeteer_dev_chrom"
+          },
+          {
+            "pid": 1113783,
+            "ppid": 1113728,
+            "rssBytes": 51703808,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=utility --utility-sub-type=storage.mojom.StorageService --lang=en-US --service-sandbox-type=utility --no-sandbox --"
+          },
+          {
+            "pid": 1113727,
+            "ppid": 1113714,
+            "rssBytes": 73404416,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=zygote --no-zygote-sandbox --no-sandbox --headless=new --crashpad-handler-pid=0 --enable-crash-reporter=, --noerrdi"
+          },
+          {
+            "pid": 1113762,
+            "ppid": 1113727,
+            "rssBytes": 555708416,
+            "cmd": "/opt/manus/playwright/chromium-1234/chrome-linux64/chrome --type=gpu-process --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless=new --ozone-platform=headless --use-"
+          }
+        ],
+        "summedRssBytes": 1973235712
+      }
+    }
+  },
+  "limitations": [
+    "performance.memory and CDP JS heap exclude GPU-driver allocations and can exclude native AudioBuffer storage.",
+    "Chromium process-tree RSS is host/SwiftShader memory and includes browser, renderer, GPU, and utility processes; it is not Intel UHD 600 or Adreno 506 device memory.",
+    "renderer.info exposes texture/geometry counts, not their actual GPU byte totals.",
+    "AudioBuffer byte estimates use length × channels × 4 bytes per sample and are exact for the exposed Float32 channel data, but do not include decoder scratch buffers or browser-native overhead."
+  ]
+}

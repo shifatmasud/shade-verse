@@ -1,0 +1,18 @@
+{
+  "browser": "Chromium SwiftShader diagnostic; deterministic parity only",
+  "buildingCount": 1039,
+  "maxBuildingSpan": [
+    28.19999999999999,
+    27.92106648720801
+  ],
+  "rectanglesCompared": 750,
+  "overlappingAabbsChecked": 24162,
+  "missingBroadphaseCandidates": 0,
+  "occupancyChecksCompared": 5000,
+  "occupancyMismatches": 0,
+  "losSegmentsCompared": 1200,
+  "losMismatches": 0,
+  "dynamicTrunkRegistered": true,
+  "dynamicTrunkIndexed": true,
+  "result": true
+}

@@ -9,16 +9,16 @@ import { QUALITY } from '../quality';
    integrates (gravity, size-dependent air drag, bubble buoyancy + wobble, surface foam drift) and kills (drops that fall back into the water, bubbles
    that reach the surface). The draw is one THREE.Points of N vertices that fetch their state from the texture: no CPU per-particle work at all.
    Sizes are real: spray drops 0.4-4 mm radius, mist 0.1-0.6 mm, bubbles 0.1-0.7 mm; a sub-pixel drop keeps a 1 px dot with its alpha scaled by
-   coverage, so thousands of them read as fine glittering spray instead of a few big balls. Desktop 256x256 = 65536, touch 160x160 = 25600 particles (4:56 PM: 'more more particles').
+   coverage, so thousands of them read as fine glittering spray instead of a few big balls. Strong desktop 256x256 = 65536; touch and weak-GPU tiers 160x160 = 25600 particles.
    Needs WebGL2 + EXT_color_buffer_float (all current desktop + phone GPUs); without it the splash is skipped and the ripples still run. */
 
-export const GS_W = QUALITY.coarse || QUALITY.tier === 'low' ? 160 : 256, GS_N = GS_W * GS_W;   /* Shifat 4:56 PM 'more more particles in splash' */
+export const GS_W = QUALITY.coarse || QUALITY.tier === 'low' || QUALITY.weakGpu ? 160 : 256, GS_N = GS_W * GS_W;   /* weak integrated GPUs use the existing touch particle budget */
 const SLOTS = 24;
 
 const SIM_VS = 'out vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
 const SIM_FS = `precision highp float; precision highp int;
 in vec2 vUv;
-uniform sampler2D tP, tV, tM; uniform float uDt, uT, uW;
+uniform sampler2D tP, tV, tM; uniform float uDt, uT, uW; uniform int uSlots;
 uniform vec4 uA[${SLOTS}], uB[${SLOTS}], uC[${SLOTS}];   /* A = pos.xyz, kind | B = first slot, count, energy, body size | C = dir.xz, water y, seed */
 layout(location = 0) out vec4 oP; layout(location = 1) out vec4 oV; layout(location = 2) out vec4 oM;
 uint hu(uint x){ x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
@@ -28,6 +28,7 @@ void main(){
   ivec2 ic = ivec2(gl_FragCoord.xy); float idx = float(ic.y) * uW + float(ic.x), N = uW * uW;
   vec4 P = texelFetch(tP, ic, 0), V = texelFetch(tV, ic, 0), M = texelFetch(tM, ic, 0);
   for (int b = 0; b < ${SLOTS}; b++) {
+    if (b >= uSlots) break;
     vec4 B = uB[b]; if (B.y < 0.5) continue;
     float d = mod(idx - B.x + N, N); if (d >= B.y) continue;
     vec4 A = uA[b], C = uC[b]; uint s = hu(uint(idx) * 747796405u + uint(C.w) * 2891336453u + 17u);
@@ -136,7 +137,7 @@ export class GpuSplash {
         const mk = () => { const t = new THREE.WebGLRenderTarget(GS_W, GS_W, { count: 3, type: THREE.FloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false }); return t; };
         this.rt = [mk(), mk()];
         const v4 = () => Array.from({ length: SLOTS }, () => new THREE.Vector4());
-        this.sim = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: { tP: { value: null }, tV: { value: null }, tM: { value: null }, uDt: { value: 0 }, uT: { value: 0 }, uW: { value: GS_W }, uA: { value: v4() }, uB: { value: v4() }, uC: { value: v4() } },
+        this.sim = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: { tP: { value: null }, tV: { value: null }, tM: { value: null }, uDt: { value: 0 }, uT: { value: 0 }, uW: { value: GS_W }, uSlots: { value: 0 }, uA: { value: v4() }, uB: { value: v4() }, uC: { value: v4() } },
             vertexShader: SIM_VS, fragmentShader: SIM_FS, depthTest: false, depthWrite: false, toneMapped: false });
         const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.sim); q.frustumCulled = false; this.scene.add(q);
         const prev = gl.getRenderTarget(), cc = gl.getClearColor(new THREE.Color()), ca = gl.getClearAlpha(); gl.setClearColor(0x000000, 0);
@@ -152,7 +153,9 @@ export class GpuSplash {
             this.cursor = (this.cursor + n) % GS_N; k++;
             this.liveUntil = Math.max(this.liveUntil, t + (b.k === SK.BUBBLE || b.k === SK.FOAM ? 4 : b.k === SK.RAIN ? 0.6 : 2.2));
         }
+        const activeSlots = k;
         for (; k < SLOTS; k++) (u.uB.value[k] as THREE.Vector4).set(0, 0, 0, 0);
+        u.uSlots.value = activeSlots;
         const live = t < this.liveUntil; this.points.visible = live; if (!live) return;   /* nothing alive: no pass, no draw */
         const src = this.rt[this.cur], dst = this.rt[this.cur ^ 1];
         u.tP.value = src.textures[0]; u.tV.value = src.textures[1]; u.tM.value = src.textures[2]; u.uDt.value = Math.min(1 / 30, Math.max(0, dt)); u.uT.value = t;

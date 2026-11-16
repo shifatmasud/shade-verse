@@ -1,6 +1,6 @@
-// Everything the world needs is downloaded before gameplay begins (Shifat Nov 1 7:53 PM 'Preload everything first before gameplay begins.
-// No whileplay asset load'): the world code chunk, every model and texture (kept in three's loader cache, so the loaders in the world read
-// them from memory) and every sound file. It starts on the Play tap (Shifat 8:19 PM 'Only load when tap play'); gameplay waits for it.
+// World code, models, textures and core audio are downloaded before gameplay begins (Shifat Nov 1 7:53 PM 'Preload everything first before gameplay begins.
+// No whileplay asset load'). Dialogue voices are warmed in the background after scene/shader readiness and still load on demand if needed.
+// Preloading starts on the Play tap (Shifat 8:19 PM 'Only load when tap play'); gameplay waits for required world assets and core audio.
 import * as THREE from 'three';
 import { PRELOAD_IMAGES, PRELOAD_MODELS } from './preloadList';
 import { audio } from './audio/engine';
@@ -36,7 +36,7 @@ let readyRes: () => void = () => {};
 export const worldReady = new Promise<void>((r) => { readyRes = r; });
 export function markWorldReady() { stages.world = true; readyRes(); }
 /* the title odometer (src/title): REAL progress of everything Play waits for — files 70 %, the world mounted 8 %, its loaders idle 6 %,
-   its shaders compiled 6 %, every sound decoded 10 % (Nov 2 title redesign) */
+   its shaders compiled 6 %, core sounds decoded 10 % (Nov 2 title redesign) */
 const stages = { mounted: false, idle: false, world: false, audio: false };
 export function markStage(k: keyof typeof stages) { stages[k] = true; }
 export function preloadProgress() { return (total ? 0.7 * done / total : 0) + (stages.mounted ? 0.08 : 0) + (stages.idle ? 0.06 : 0) + (stages.world ? 0.06 : 0) + (stages.audio ? 0.1 : 0); }

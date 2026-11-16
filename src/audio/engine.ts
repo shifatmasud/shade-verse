@@ -103,17 +103,41 @@ export class AudioEngine {
     // ---------- loading ----------
     preload(names: string[]) { for (const n of names) void this.load(n); }
     private bytes = new Map<string, Promise<ArrayBuffer>>();
-    /** downloads every sound file now (no AudioContext needed); load() decodes from these bytes, so nothing is fetched during play */
+    private voiceWarmupStarted = false;
+    /** Downloads core SFX, ambience and music now; long-tail dialogue voices load on demand. */
     prefetch(): Promise<void> {
         const ps: Promise<unknown>[] = [];
-        for (const n in FILES) { if (!this.bytes.has(n)) this.bytes.set(n, fetch(BASE + FILES[n] + '.' + this.ext).then((r) => r.arrayBuffer())); ps.push(this.bytes.get(n)!.catch(() => null)); }
+        for (const n in FILES) if (!n.startsWith('vo_')) ps.push(this.fileBytes(n).catch(() => null));
         return Promise.all(ps).then(() => undefined);
     }
-    /** decodes every file and renders every synthesized sound (needs the AudioContext: call after unlock) */
-    /* voice lines (282 clips, ~93 MB once decoded) are downloaded up front but decoded only when first spoken (~20 ms each) and only the last
-       VO_KEEP stay decoded - phone RAM (Nov 2 perf). Everything else is decoded before play as before. */
+    /** Warm likely opening dialogue after the scene is ready, without holding the Play gate; other lines load on demand. */
+    prefetchVoicesBackground() {
+        if (this.voiceWarmupStarted) return;
+        this.voiceWarmupStarted = true;
+        const preferred = ['vo_shadow_3', 'vo_shadow_5', 'vo_shadow_11', 'vo_shadow_13', 'vo_shadow_0', 'vo_shadow_1', 'vo_shadow_2', 'vo_shadow_4', 'vo_shadow_10', 'vo_shadow_15', 'vo_robot_4', 'vo_robot_6', 'vo_boss_5', 'vo_boss_6', 'vo_boss_0', 'vo_boss_4', 'vo_ghost_0', 'vo_ped_0'];
+        const names = preferred.filter((n) => FILES[n]);
+        let at = 0;
+        const pump = () => {
+            const batch = names.slice(at, at + 6); at += batch.length;
+            if (!batch.length) return;
+            void Promise.all(batch.map((n) => this.fileBytes(n).catch(() => null))).then(() => { if (at < names.length) setTimeout(pump, 40); });
+        };
+        pump();
+    }
+    /** Decodes core files and renders synthesized sounds (needs the AudioContext: call after unlock). */
+    /* Voice lines (282 clips, ~93 MB if all decoded) outside the small opening warmup are fetched only when requested;
+       only the last VO_KEEP decoded buffers stay resident, bounding phone memory. Core audio and recipes still decode before play. */
     loadAll(): Promise<void> { return Promise.all([...Object.keys(FILES).filter((n) => !n.startsWith('vo_')), ...Object.keys(RECIPES)].map((n) => this.load(n))).then(() => undefined); }
     private voOrder: string[] = [];
+    private fileBytes(name: string) {
+        let p = this.bytes.get(name);
+        if (!p) {
+            p = fetch(BASE + FILES[name] + '.' + this.ext).then((r) => { if (!r.ok) throw new Error(`Audio fetch failed: ${r.status}`); return r.arrayBuffer(); });
+            this.bytes.set(name, p);
+            void p.catch(() => { if (this.bytes.get(name) === p) this.bytes.delete(name); });
+        }
+        return p;
+    }
     private keepVo(name: string) {
         if (!name.startsWith('vo_')) return;
         const i = this.voOrder.indexOf(name); if (i >= 0) this.voOrder.splice(i, 1); this.voOrder.push(name);
@@ -125,7 +149,7 @@ export class AudioEngine {
         const c = this.ctx; if (!c) return Promise.resolve(null);
         let p: Promise<AudioBuffer | null>;
         if (FILES[name]) {
-            p = (this.bytes.get(name) || fetch(BASE + FILES[name] + '.' + this.ext).then((r) => r.arrayBuffer())).then((ab) => ab.slice(0)).then((ab) => new Promise<AudioBuffer>((res, rej) => { const q = c.decodeAudioData(ab, res, rej); if (q && (q as any).catch) (q as any).catch(rej); }));
+            p = this.fileBytes(name).then((ab) => ab.slice(0)).then((ab) => new Promise<AudioBuffer>((res, rej) => { const q = c.decodeAudioData(ab, res, rej); if (q && (q as any).catch) (q as any).catch(rej); }));
         } else if (RECIPES[name]) { const rc = RECIPES[name]; p = this.q.then(() => renderRecipe(name, rc)); this.q = p.catch(() => null); }   // one offline render at a time: no load spike
         else p = Promise.resolve(null as any);
         p = p.then((b) => { if (b) { this.bufs.set(name, b); this.keepVo(name); } return b; }).catch(() => null);

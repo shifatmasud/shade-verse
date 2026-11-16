@@ -484,11 +484,18 @@ const OCEAN_GEO = oceanGeo(), SEABED_GEO = seabedGeo();
 
 
 /* Shifat 3:33 AM: '6-7 fps over sea, 8-9 on land' -> on-device bisect. Only with ?debug in the URL (no effect otherwise):
-   HUD gets draw calls, triangles and the CPU (JavaScript) ms per frame; ?debug&res=0.3 pins the world resolution, ?debug&nosea hides the sea,
-   ?debug&noout turns the ink outline pass off - so a phone can tell GPU fill vs CPU vs a single pass. */
+   HUD gets draw calls, triangles and CPU (JavaScript) ms per frame; ?debug&res=x requests a fraction of native DPR but is clamped at the
+   locked actual world DPR 0.8; ?debug&nosea hides the sea, and ?debug&noout turns the ink outline pass off for a phone-side bisect. */
 const DQ = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams('');
 const DQ_HIDE = (DQ.has('debug') && DQ.get('hide')) ? DQ.get('hide')!.split(',') : [];
+const MIN_WORLD_DPR = 0.8;
 const DQ_ON = DQ.has('debug'), DQ_BENCH = DQ_ON && DQ.has('bench'), DQ_RES = DQ_ON && DQ.get('res') ? Math.max(0.2, Math.min(2, +DQ.get('res')!)) : 0, DQ_NOSEA = DQ_ON && DQ.has('nosea');
+const clampWorldScale = (scale: number) => {
+    const minScale = MIN_WORLD_DPR / QK.envDpr;
+    const nativeScale = Math.min(QK.maxScale, Math.min(window.devicePixelRatio || 1, QK.dprCap) / QK.envDpr);
+    return Math.max(minScale, Math.min(nativeScale, scale));
+};
+const worldRatioForScale = (scale: number) => Math.max(MIN_WORLD_DPR, Math.min(QK.dprCap, QK.envDpr * scale));
 if (DQ_ON && DQ.has('noout')) OUTLINE_STATE.on = false;
 
 /* Shifat 11:22 PM: on-device bisect in ONE link. ?debug&bench: holds the view, switches one thing off at a time for 6 s each
@@ -515,7 +522,7 @@ function Bench() {
         ['no islands', hideBy((o) => top(o) === 'south-sea')],
         ['no skinned (heroes/bots)', hideBy((o) => o.isSkinnedMesh)],
         ['no instanced (crowd/trees/props)', hideBy((o) => o.isInstancedMesh)],
-        ['res x0.5', (on) => { W.__benchRes = on ? 0.5 : 0; }],
+        ['minimum world DPR 0.8', (on) => { W.__benchRes = on ? 1 : 0; }],
         ['base again', () => {}],
     ], []);
     useFrame(() => {
@@ -605,7 +612,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
     const { gl, camera } = useThree();
     const hero = useRef<THREE.Group>(null!), armR = useRef<THREE.Group>(null!), armL = useRef<THREE.Group>(null!), legR = useRef<THREE.Group>(null!), legL = useRef<THREE.Group>(null!), cape = useRef<THREE.Mesh>(null!);
     const web = useRef<THREE.Mesh>(null!), webB = useRef<THREE.Mesh>(null!), arrow = useRef<THREE.Mesh>(null!), cores = useRef<THREE.InstancedMesh>(null!);
-    const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(perf.scale), hyst = useRef({ s: 0, n: 0, down: -99 });
+    const cam = useRef(new THREE.Vector3()), look = useRef(new THREE.Vector3()), adapt = useRef(0), ema = useRef(16), curScale = useRef(clampWorldScale(perf.scale)), hyst = useRef({ s: 0, n: 0, down: -99 });
     const bv = useMemo(() => new THREE.Vector3(), []);
     const bv2 = useMemo(() => new THREE.Vector3(), []);
     const waterRef = useRef<THREE.Mesh>(null!);
@@ -636,20 +643,23 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         sim.t += dt;
         // adaptive resolution (device-friendly)
         const rd = Math.min(0.25, rawDt); ema.current += (rd * 1000 - ema.current) * 0.05; perf.fps = 1000 / ema.current; adapt.current += rd;
-        { applyRatio(gl, DQ_RES ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * DQ_RES : QK.envDpr); }   /* fixed world dpr (Shifat Nov 2 2:17 AM) */
-        { (window as any).__gl = gl; const tl = ((window as any).__tel ||= {}); tl.scale = Math.round(curScale.current * 100) / 100; tl.ms = Math.round(ema.current); tl.cam = [Math.round(state.camera.position.x), Math.round(state.camera.position.y), Math.round(state.camera.position.z)]; tl.mode = sim.mode; tl.swim = !!sim.swim; tl.calls = gl.info.render.calls; tl.tris = gl.info.render.triangles; }   /* device diagnostics (telemetry.ts) */   /* Shifat 10:13 PM 'phone environment dpr mustn't go below 1, no fps-based downscaling below 1' */   // world ratio unchanged; the canvas runs at native for the hero HD pass
+        curScale.current = clampWorldScale(curScale.current); perf.scale = curScale.current;
+        { applyRatio(gl, worldRatioForScale(curScale.current)); }   /* persist the adaptive world ratio; hero HD pass remains native */
+        { (window as any).__gl = gl; const tl = ((window as any).__tel ||= {}); tl.scale = Math.round(curScale.current * 100) / 100; tl.ms = Math.round(ema.current); tl.worldDpr = HD.worldRatio; tl.canvasDpr = HD.canvasRatio; tl.rendererDpr = gl.getPixelRatio(); tl.cam = [Math.round(state.camera.position.x), Math.round(state.camera.position.y), Math.round(state.camera.position.z)]; tl.mode = sim.mode; tl.swim = !!sim.swim; tl.calls = gl.info.render.calls; tl.tris = gl.info.render.triangles; }   /* diagnostics: world DPR may adapt; canvas and hero pass remain native */
         if (adapt.current > 0.8) {
             adapt.current = 0; let ns = curScale.current;
             /* Shifat 6:56 PM 'performance spikes near water': every scale step re-allocates the world/outline/copy render targets (a visible hitch), and the scaler
                used to bounce (down at >24 ms, up at <18 ms, checked every 0.8 s). Now a step needs the same verdict 2 checks in a row, and an up-step also waits 6 s after a down-step. */
-            const sd = coarse ? (ema.current > 34 && ns > 0.65 ? -0.1 : ema.current < 22 && ns < Math.min(window.devicePixelRatio || 1, 2) - 0.01 ? 0.05 : 0)   /* Shifat Oct 31 7:45 PM 'everything feels too low res. Auto': touch devices now climb above 1 css px toward the screen's native sharpness (cap 2x) while holding 45+ fps, and step down below 30 fps (floor 0.6) */   /* Shifat 11:19 AM 'phone should lower res when frames go slow too': below 25 fps a touch device steps the world res down (floor 0.6), and back up once it holds 33+ fps; heroes stay native in the HD pass */
-                : ema.current > 24 && ns > (coarse ? 0.8 / Math.min(window.devicePixelRatio || 1, QK.dprCap) + 0.01 : 0.6) ? -0.1  /* RCA Shifat 3:54 AM: ?debug&noout looked best because it drew the world at the phone's native res with the SAME 6-7 fps -> the phone is not fill-bound, so touch devices never drop below full res (floor 1) */ : ema.current > 16 && ns > 1 ? -0.05 : ema.current < 12.5 && ns >= 1 && ns < QK.maxScale && (coarse || HQ) ? 0.05 : ema.current < 18 && ns < 1 ? 0.05 : 0;
+            const minScale = MIN_WORLD_DPR / QK.envDpr, nativeScale = Math.min(QK.maxScale, Math.min(window.devicePixelRatio || 1, QK.dprCap) / QK.envDpr);
+            const sd = coarse ? (ema.current > 30 && ns > minScale + 0.01 ? -0.1 : ema.current < 22 && ns < nativeScale - 0.01 ? 0.05 : 0)   /* touch devices may step down only to the locked actual 0.8 world DPR; recover with headroom, heroes remain native */
+                : ema.current > 24 && ns > minScale + 0.01 ? -0.1 : ema.current > 16 && ns > 1 ? -0.05 : ema.current < 12.5 && ns >= 1 && ns < nativeScale && (coarse || HQ) ? 0.05 : ema.current < 18 && ns < 1 ? 0.05 : 0;
             const sg = Math.sign(sd); hyst.current.n = sg !== 0 && sg === hyst.current.s ? hyst.current.n + 1 : sg !== 0 ? 1 : 0; hyst.current.s = sg;
-            if (sd !== 0 && hyst.current.n >= 2 && (sd < 0 || sim.t - hyst.current.down > 6)) { ns = sd < -0.06 ? ns - 0.1 : sd < 0 ? Math.max(1, ns - 0.05) : ns + 0.05; hyst.current.n = 0; if (sd < 0) hyst.current.down = sim.t; }   // supersample tier: touch devices or ?q=high desktops running well under budget (<12.5 ms), reversible by the same >24 ms downshift
+            if (sd !== 0 && hyst.current.n >= 2 && (sd < 0 || sim.t - hyst.current.down > 6)) { ns = sd < -0.06 ? Math.max(minScale, ns - 0.1) : sd < 0 ? Math.max(1, ns - 0.05) : Math.min(nativeScale, ns + 0.05); hyst.current.n = 0; if (sd < 0) hyst.current.down = sim.t; }
             if (DBG && (window as any).__perfPin) ns = (window as any).__perfPin;
             if (DQ_BENCH) ns = (window as any).__benchRes || 1;   // bench holds the scaler (steps must compare like with like)
-            if (DQ_RES) ns = DQ_RES;   // ?debug&res=x: hold the world resolution for an on-device fill-rate test   // screenshot harness only: hold the scaler so a software renderer does not drop tiers
-            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, (DQ_RES || (DQ_BENCH && ns < 1)) ? Math.min(window.devicePixelRatio || 1, QK.dprCap) * ns : QK.envDpr); }   /* Shifat Nov 1 2:14 PM: min res dpr 0.8 for faster fps (was 1) */   /* ?debug&res=x bypasses the dpr-1 floor (on-device fill-rate test only) */
+            if (DQ_RES) ns = Math.min(window.devicePixelRatio || 1, QK.dprCap) * DQ_RES / QK.envDpr;   // requested fraction of native DPR, clamped to lock.md's actual 0.8 world-DPR floor
+            ns = clampWorldScale(ns);
+            if (Math.abs(ns - curScale.current) > 0.01) { curScale.current = ns; perf.scale = ns; applyRatio(gl, worldRatioForScale(ns)); }
         }
         if (sim.mode === 'play') {
             const gdt = dt * simTimeScale(sim, dt);   // finisher / Charged Slam slow-motion dip (1 outside it)

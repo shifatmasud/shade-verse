@@ -173,6 +173,46 @@ export const world = buildWorld();
 const blds = world.blds;
 for (const b of SEA_BLDS) blds.push(b);   // South Sea: lighthouse, shacks (and later bridge towers, harbor towers) collide and take webs like buildings
 
+// Static AABB broadphase for the repeated simulation queries below. IDs are kept
+// in source order so collision resolution and anchor tie-breaks stay unchanged.
+const BLD_CELL = 40;
+const bldCells = new Map<number, number[]>();
+const bldCellKey = (x: number, z: number) => (Math.floor(x / BLD_CELL) << 16) | (Math.floor(z / BLD_CELL) & 0xffff);
+function indexBuilding(bi: number) {
+    const b = blds[bi];
+    for (let iz = Math.floor(b.z0 / BLD_CELL); iz <= Math.floor(b.z1 / BLD_CELL); iz++)
+        for (let ix = Math.floor(b.x0 / BLD_CELL); ix <= Math.floor(b.x1 / BLD_CELL); ix++) {
+            const key = bldCellKey(ix * BLD_CELL, iz * BLD_CELL);
+            let cell = bldCells.get(key); if (!cell) bldCells.set(key, cell = []);
+            cell.push(bi);
+        }
+}
+for (let bi = 0; bi < blds.length; bi++) indexBuilding(bi);
+const bldQuery: number[] = [];
+let bldQueryStamp = 0, bldSeen = new Uint32Array(blds.length);
+const byBuildingId = (a: number, b: number) => a - b;
+function queryBuildingIds(x0: number, z0: number, x1: number, z1: number) {
+    bldQuery.length = 0;
+    if (bldSeen.length < blds.length) bldSeen = new Uint32Array(blds.length);
+    if (++bldQueryStamp >= 0xfffffffe) { bldSeen.fill(0); bldQueryStamp = 1; }
+    const stamp = bldQueryStamp;
+    for (let iz = Math.floor(Math.min(z0, z1) / BLD_CELL); iz <= Math.floor(Math.max(z0, z1) / BLD_CELL); iz++)
+        for (let ix = Math.floor(Math.min(x0, x1) / BLD_CELL); ix <= Math.floor(Math.max(x0, x1) / BLD_CELL); ix++) {
+            const cell = bldCells.get(bldCellKey(ix * BLD_CELL, iz * BLD_CELL)); if (!cell) continue;
+            for (const bi of cell) if (bldSeen[bi] !== stamp) { bldSeen[bi] = stamp; bldQuery.push(bi); }
+        }
+    bldQuery.sort(byBuildingId);
+    return bldQuery;
+}
+const buildingsAt = (x: number, z: number) => bldCells.get(bldCellKey(x, z)) || [];
+if ((import.meta as any).env?.VITE_DBG && typeof window !== 'undefined') {
+    (window as any).__svSpatialTest = {
+        buildings: blds,
+        query: (x0: number, z0: number, x1: number, z1: number) => [...queryBuildingIds(x0, z0, x1, z1)],
+        addTrunks: addTrunkSolids,
+    };
+}
+
 /* tree trunks are solid (Shifat Oct 31 8:51 PM 'many things need collision'): the renderers register what they actually placed, once per key.
    A slim box round the trunk (side collision) whose top sits at the canopy, so the crown is a perch you can land on. */
 const _trunkKeys = new Set<string>();
@@ -184,12 +224,12 @@ export function shadowFloorAt(x: number, y: number, z: number): number | null {
     if (z >= WATER_Z) g = parkH(x, z);
     const br = bridgeSurfaceAt(x, z); if (br !== null && br <= y + 0.3) g = Math.max(g, br);
     if (z < WATER_Z + 40) { const sf = seaSurface(x, z, y); if (sf !== null && sf <= y + 0.3) g = Math.max(g, sf); }
-    for (let i = 0; i < blds.length; i++) { const b = blds[i]; if (b.h > g && b.h <= y + 0.3 && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && !(b as any).ob) g = b.h; }
+    for (const bi of buildingsAt(x, z)) { const b = blds[bi]; if (b.h > g && b.h <= y + 0.3 && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && !(b as any).ob) g = b.h; }
     return g === -Infinity ? null : g;
 }
 export function addTrunkSolids(key: string, pts: { x: number; y: number; z: number; s: number }[], r = 0.45, canopy = 8) {
     if (_trunkKeys.has(key)) return; _trunkKeys.add(key); for (const p of pts) TRUNKS.push(p.x, p.y, p.z, p.s * canopy);
-    for (const p of pts) { const hr = r * p.s; blds.push({ x0: p.x - hr, x1: p.x + hr, z0: p.z - hr, z1: p.z + hr, y0: p.y - 1.5, h: p.y + canopy * p.s, sea: true, kind: 'solid' } as any); }
+    for (const p of pts) { const hr = r * p.s; blds.push({ x0: p.x - hr, x1: p.x + hr, z0: p.z - hr, z1: p.z + hr, y0: p.y - 1.5, h: p.y + canopy * p.s, sea: true, kind: 'solid' } as any); indexBuilding(blds.length - 1); }
 }
 
 // Fixed rooftop arena on the central tower, distinct from the player's spawn roof.
@@ -254,7 +294,7 @@ function newOrb(s: Sim): V3 {
         const x = Math.max(-HALF + 10, Math.min(HALF - 10, s.pos[0] + Math.sin(a) * r)), z = Math.max(-HALF + 10, Math.min(HALF - 10, s.pos[2] + Math.cos(a) * r));
         const y = 28 + Math.random() * 40;
         let inside = false;
-        for (const b of blds) if (x > b.x0 - 2 && x < b.x1 + 2 && z > b.z0 - 2 && z < b.z1 + 2 && y < b.h + 3) { inside = true; break; }
+        for (const bi of queryBuildingIds(x - 2, z - 2, x + 2, z + 2)) { const b = blds[bi]; if (x > b.x0 - 2 && x < b.x1 + 2 && z > b.z0 - 2 && z < b.z1 + 2 && y < b.h + 3) { inside = true; break; } }
         if (!inside) return [x, y, z];
     }
     return [s.pos[0] + 40, 50, s.pos[2]];
@@ -286,7 +326,7 @@ function spawnHarbor(s: Sim, noRoof: boolean): Enemy {
     for (let k = 0; k < 40; k++) {
         const x = hp[0] + (Math.random() - 0.5) * 180, z = hp[2] + (Math.random() - 0.5) * 180;
         if (!inHarbor(x, z) || harborVoid(x, z) || Math.hypot(x - hp[0], z - hp[2]) < 18 || Math.hypot(x - hp[0], z - hp[2]) > 95) continue;
-        let inside = false; for (const b of blds) if (b.sea && x > b.x0 - 1 && x < b.x1 + 1 && z > b.z0 - 1 && z < b.z1 + 1) { inside = true; break; }
+        let inside = false; for (const bi of queryBuildingIds(x - 1, z - 1, x + 1, z + 1)) { const b = blds[bi]; if (b.sea && x > b.x0 - 1 && x < b.x1 + 1 && z > b.z0 - 1 && z < b.z1 + 1) { inside = true; break; } }
         if (!inside) return { x, y: HARBOR.y + 1, z, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 };
     }
     return PARKED();
@@ -306,7 +346,7 @@ function spawnEnemy0(s: Sim, noRoof = false): Enemy {
         const sx = Math.round((x - CELL / 2) / CELL) * CELL + CELL / 2;
         if (Math.hypot(sx - s.pos[0], z - s.pos[2]) < 18) continue;
         let inside = false;
-        for (const b of blds) if (sx > b.x0 - 1 && sx < b.x1 + 1 && z > b.z0 - 1 && z < b.z1 + 1) { inside = true; break; }
+        for (const bi of queryBuildingIds(sx - 1, z - 1, sx + 1, z + 1)) { const b = blds[bi]; if (sx > b.x0 - 1 && sx < b.x1 + 1 && z > b.z0 - 1 && z < b.z1 + 1) { inside = true; break; } }
         if (!inside) return { x: sx, y: 1, z, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 };
     }
     return { x: 20, y: 1, z: 20, hp: 3, atk: 0, hit: 0, kb: [0, 0], ang: 0, down: 0 };
@@ -464,7 +504,9 @@ function findCarAnchor(s: Sim, bestScore: number, hd?: [number, number]): { a: V
 function findAnchor(s: Sim, strict = false, hd?: [number, number], skipB = -1): V3 {
     const p = s.pos, fx = hd ? hd[0] : Math.sin(s.yaw), fz = hd ? hd[1] : Math.cos(s.yaw);   // hd: search heading override (leaving a wall: away from it)
     let best: V3 | null = null, bs = 1e9;
-    for (let bi = 0; bi < blds.length; bi++) {
+    const candidates = queryBuildingIds(p[0] - 85, p[2] - 85, p[0] + 85, p[2] + 85);
+    for (let qi = 0; qi < candidates.length; qi++) {
+        const bi = candidates[qi];
         const b = blds[bi]; if (bi === skipB) continue;   // never the wall the hero is leaving
         const qx = Math.max(b.x0, Math.min(b.x1, p[0])), qz = Math.max(b.z0, Math.min(b.z1, p[2]));
         const dx = qx - p[0], dz = qz - p[2], dh = Math.hypot(dx, dz), dy = b.h - p[1];
@@ -589,7 +631,11 @@ function collideOB(s: Sim, prevY: number, b: any, bi: number, hw: number, hh: nu
 function collide(s: Sim, prevY: number) {
     const p = s.pos, v = s.vel; s.ground = false; hitN = null; hitB = -1;
     const hw = 0.5, hh = 1.0;
-    for (let bi = 0; bi < blds.length; bi++) {
+    // A 48 m margin covers the largest city footprint and adjacent push-outs;
+    // the source-order narrow phase and exact collision tests remain unchanged.
+    const candidates = queryBuildingIds(p[0] - hw - 48, p[2] - hw - 48, p[0] + hw + 48, p[2] + hw + 48);
+    for (let qi = 0; qi < candidates.length; qi++) {
+        const bi = candidates[qi];
         const b = blds[bi];
         if ((b as any).ob) { collideOB(s, prevY, b, bi, hw, hh); continue; }   // rotated solid (farm houses, barn ...)
         if (p[0] + hw <= b.x0 || p[0] - hw >= b.x1 || p[2] + hw <= b.z0 || p[2] - hw >= b.z1 || p[1] - hh > b.h + 0.05 || p[1] + hh <= (b.y0 ?? 0)) continue;
@@ -837,9 +883,28 @@ export const SLAM = { HOLD: 0.22, FULL: 0.7, AUTO: 1.5, MOVE_K: 0.4, CROUCH: 0.0
 export const slamLevel = (c: number) => Math.max(0, Math.min(1, (c - 0.5) / 0.5));   // level 1 at 350 ms, level 2 at 700 ms
 export const slamRadius = (c: number) => SLAM.R1 + (SLAM.R2 - SLAM.R1) * slamLevel(c);
 export const SNARE = { MAX_TARGETS: 5, RANGE: 24, VERTICAL_RANGE: 14, TOTAL: 1.65, GATHER_END: 0.9, SHOCK_START: 0.6, IMPACT: 0.15, HIT_RANGE: 5.5, GROUP_RADIUS: 2.4, PULL_SPEED: 30, DAMAGE: 3, KNOCKBACK: 18, HIT_STOP: 0.10, SHAKE: 0.34 } as const;
-const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => { const dx = bx - ax, dy = by - ay, dz = bz - az; for (const b of blds) { let t0 = 0, t1 = 1; const lo = [b.x0, -1e9, b.z0], hi = [b.x1, b.h, b.z1], o = [ax, ay, az], d = [dx, dy, dz]; let ok = true; for (let k = 0; k < 3; k++) { if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo[k] || o[k] > hi[k]) { ok = false; break; } } else { let ta = (lo[k] - o[k]) / d[k], tb = (hi[k] - o[k]) / d[k]; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) { ok = false; break; } } } if (ok) return false; } return true; };   // exact segment vs AABB (slab test)
-const insideBA = (x: number, z: number, y: number) => { for (const b of blds) if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return false; };   // air units are only blocked by buildings taller than their altitude
-const insideB = (x: number, z: number) => { for (const b of blds) if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; return z < -900 && harborVoid(x, z); };   // harbor bots never walk off the platform into a canal
+const losClear = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => {
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    const candidates = queryBuildingIds(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz));
+    for (const bi of candidates) {
+        const b = blds[bi]; let t0 = 0, t1 = 1, ok = true;
+        if (Math.abs(dx) < 1e-9) { if (ax < b.x0 || ax > b.x1) ok = false; }
+        else { let ta = (b.x0 - ax) / dx, tb = (b.x1 - ax) / dx; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) ok = false; }
+        if (ok) {
+            if (Math.abs(dy) < 1e-9) { if (ay < -1e9 || ay > b.h) ok = false; }
+            else { let ta = (-1e9 - ay) / dy, tb = (b.h - ay) / dy; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) ok = false; }
+        }
+        if (ok) {
+            if (Math.abs(dz) < 1e-9) { if (az < b.z0 || az > b.z1) ok = false; }
+            else { let ta = (b.z0 - az) / dz, tb = (b.z1 - az) / dz; if (ta > tb) { const q = ta; ta = tb; tb = q; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) ok = false; }
+        }
+        if (ok) return false;
+    }
+    return true;
+};   // exact segment vs AABB (slab test)
+const insideBA = (x: number, z: number, y: number) => { for (const bi of queryBuildingIds(x - 0.6, z - 0.6, x + 0.6, z + 0.6)) { const b = blds[bi]; if (b.h + 2 > y && x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; } return false; };   // air units are only blocked by buildings taller than their altitude
+const insideB = (x: number, z: number) => { for (const bi of queryBuildingIds(x - 0.6, z - 0.6, x + 0.6, z + 0.6)) { const b = blds[bi]; if (x > b.x0 - 0.6 && x < b.x1 + 0.6 && z > b.z0 - 0.6 && z < b.z1 + 0.6) return true; } return z < -900 && harborVoid(x, z); };   // harbor bots never walk off the platform into a canal
+if ((import.meta as any).env?.VITE_DBG && typeof window !== 'undefined') Object.assign((window as any).__svSpatialTest, { insideB, insideBA, losClear, shadowFloorAt, harborVoid });
 const inRoof = (e: Enemy, x: number, z: number) => !!e.roof && x > e.roof.x0 + 1 && x < e.roof.x1 - 1 && z > e.roof.z0 + 1 && z < e.roof.z1 - 1;
 // ===== COMBAT CHOREOGRAPHY (v0.77) =====
 // Move ids: 1 jab, 2 cross, 3 spin hook kick, 4 launcher (rising knee+uppercut), 5 aerial side-kick spike, 6 web-pull flying kick, 7 web-yank slam.
@@ -1043,8 +1108,9 @@ function enemyAir(s: Sim, e: Enemy, dt: number, ev: Events) {
 // (roof top, street, park slope; never the water). On the same surface it walks after the hero and melees; volleys and the chest
 // beam keep firing on their usual cooldowns throughout. No pathfinding: it flies over buildings.
 function bossLandY(x: number, z: number): { y: number; roof?: { x0: number; x1: number; z0: number; z1: number } } {
-    for (const b of blds) if (x > b.x0 + 0.4 && x < b.x1 - 0.4 && z > b.z0 + 0.4 && z < b.z1 - 0.4) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } };
-    for (const b of blds) if (x > b.x0 - 1.2 && x < b.x1 + 1.2 && z > b.z0 - 1.2 && z < b.z1 + 1.2) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } };   // hugging a wall: stand on that roof instead of clipping into it
+    const candidates = queryBuildingIds(x - 1.2, z - 1.2, x + 1.2, z + 1.2);
+    for (const bi of candidates) { const b = blds[bi]; if (x > b.x0 + 0.4 && x < b.x1 - 0.4 && z > b.z0 + 0.4 && z < b.z1 - 0.4) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } }; }
+    for (const bi of candidates) { const b = blds[bi]; if (x > b.x0 - 1.2 && x < b.x1 + 1.2 && z > b.z0 - 1.2 && z < b.z1 + 1.2) return { y: b.h + 1, roof: { x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 } }; }   // hugging a wall: stand on that roof instead of clipping into it
     if (z < WATER_Z) { const sf = seaSurface(x, z, 1e9); return { y: (sf ?? HARBOR.y) + 1 }; }   // harbor platform / footbridges
     return { y: (inPk(x, z) ? parkH(x, z) : 0) + 1 };
 }
