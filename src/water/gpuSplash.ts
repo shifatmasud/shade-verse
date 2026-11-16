@@ -123,6 +123,7 @@ void main(){ if (vA < 0.004) discard; vec2 q = gl_PointCoord * 2.0 - 1.0; float 
 
 export class GpuSplash {
     readonly ok: boolean; readonly points: THREE.Points;
+    debugPasses = 0;
     private rt: THREE.WebGLRenderTarget[] = []; private cur = 0; private sim!: THREE.ShaderMaterial; private draw: THREE.ShaderMaterial;
     private scene = new THREE.Scene(); private cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1); private cursor = 0; private seed = 1; private liveUntil = -1;
     constructor(private gl: THREE.WebGLRenderer, day: { value: number }) {
@@ -151,12 +152,13 @@ export class GpuSplash {
             const b = bursts.shift()!, n = Math.min(b.n, GS_N >> 1);
             (u.uA.value[k] as THREE.Vector4).set(b.x, b.y, b.z, b.k); (u.uB.value[k] as THREE.Vector4).set(this.cursor, n, b.e, b.s); (u.uC.value[k] as THREE.Vector4).set(b.dx, b.dz, b.wy, this.seed++ & 0xffffff);
             this.cursor = (this.cursor + n) % GS_N; k++;
-            this.liveUntil = Math.max(this.liveUntil, t + (b.k === SK.BUBBLE || b.k === SK.FOAM ? 4 : b.k === SK.RAIN ? 0.6 : 2.2));
+            this.liveUntil = Math.max(this.liveUntil, t + (b.k === SK.BUBBLE || b.k === SK.FOAM ? 4 : b.k === SK.RAIN ? 0.6 : b.k === SK.SPRAY ? 4.6 : 2.2));
         }
         const activeSlots = k;
         for (; k < SLOTS; k++) (u.uB.value[k] as THREE.Vector4).set(0, 0, 0, 0);
         u.uSlots.value = activeSlots;
         const live = t < this.liveUntil; this.points.visible = live; if (!live) return;   /* nothing alive: no pass, no draw */
+        if ((import.meta as any).env?.VITE_DBG) this.debugPasses++;
         const src = this.rt[this.cur], dst = this.rt[this.cur ^ 1];
         u.tP.value = src.textures[0]; u.tV.value = src.textures[1]; u.tM.value = src.textures[2]; u.uDt.value = Math.min(1 / 30, Math.max(0, dt)); u.uT.value = t;
         const prev = this.gl.getRenderTarget(), ac = this.gl.autoClear; this.gl.autoClear = false;

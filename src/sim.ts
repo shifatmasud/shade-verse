@@ -191,7 +191,7 @@ for (let bi = 0; bi < blds.length; bi++) indexBuilding(bi);
 const bldQuery: number[] = [];
 let bldQueryStamp = 0, bldSeen = new Uint32Array(blds.length);
 const byBuildingId = (a: number, b: number) => a - b;
-function queryBuildingIds(x0: number, z0: number, x1: number, z1: number) {
+export function queryBuildingIds(x0: number, z0: number, x1: number, z1: number) {
     bldQuery.length = 0;
     if (bldSeen.length < blds.length) bldSeen = new Uint32Array(blds.length);
     if (++bldQueryStamp >= 0xfffffffe) { bldSeen.fill(0); bldQueryStamp = 1; }
@@ -204,11 +204,23 @@ function queryBuildingIds(x0: number, z0: number, x1: number, z1: number) {
     bldQuery.sort(byBuildingId);
     return bldQuery;
 }
+export function nearbyBuildingIds(x: number, z: number, r: number) {
+    const ids = queryBuildingIds(x - r, z - r, x + r, z + r); let n = 0;
+    for (let i = 0; i < ids.length; i++) { const bi = ids[i], b = blds[bi]; if (x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) ids[n++] = bi; }
+    ids.length = n; return ids;
+}
+function projectileBuildingHit(x: number, y: number, z: number) {
+    for (const bi of queryBuildingIds(x, z, x, z)) { const b = blds[bi]; if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h) return true; }
+    return false;
+}
 const buildingsAt = (x: number, z: number) => bldCells.get(bldCellKey(x, z)) || [];
 if ((import.meta as any).env?.VITE_DBG && typeof window !== 'undefined') {
     (window as any).__svSpatialTest = {
         buildings: blds,
         query: (x0: number, z0: number, x1: number, z1: number) => [...queryBuildingIds(x0, z0, x1, z1)],
+        nearby: (x: number, z: number, r: number) => [...nearbyBuildingIds(x, z, r)],
+        projectileHit: projectileBuildingHit,
+        collisionProbe: spatialCollisionProbe,
         addTrunks: addTrunkSolids,
     };
 }
@@ -227,9 +239,10 @@ export function shadowFloorAt(x: number, y: number, z: number): number | null {
     for (const bi of buildingsAt(x, z)) { const b = blds[bi]; if (b.h > g && b.h <= y + 0.3 && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && !(b as any).ob) g = b.h; }
     return g === -Infinity ? null : g;
 }
+export function registerBuildingCollider(b: Bld) { const bi = blds.length; blds.push(b); indexBuilding(bi); return bi; }
 export function addTrunkSolids(key: string, pts: { x: number; y: number; z: number; s: number }[], r = 0.45, canopy = 8) {
     if (_trunkKeys.has(key)) return; _trunkKeys.add(key); for (const p of pts) TRUNKS.push(p.x, p.y, p.z, p.s * canopy);
-    for (const p of pts) { const hr = r * p.s; blds.push({ x0: p.x - hr, x1: p.x + hr, z0: p.z - hr, z1: p.z + hr, y0: p.y - 1.5, h: p.y + canopy * p.s, sea: true, kind: 'solid' } as any); indexBuilding(blds.length - 1); }
+    for (const p of pts) { const hr = r * p.s; registerBuildingCollider({ x0: p.x - hr, x1: p.x + hr, z0: p.z - hr, z1: p.z + hr, y0: p.y - 1.5, h: p.y + canopy * p.s, sea: true, kind: 'solid' }); }
 }
 
 // Fixed rooftop arena on the central tower, distinct from the player's spawn roof.
@@ -628,23 +641,39 @@ function collideOB(s: Sim, prevY: number, b: any, bi: number, hw: number, hh: nu
     p[0] += wx * d; p[2] += wz * d; const vn = v[0] * wx + v[2] * wz; if (vn < 0) { v[0] -= wx * vn * 1.1; v[2] -= wz * vn * 1.1; }
     hitB = bi; hitN = [wx, wz];
 }
-function collide(s: Sim, prevY: number) {
-    const p = s.pos, v = s.vel; s.ground = false; hitN = null; hitB = -1;
-    const hw = 0.5, hh = 1.0;
-    // A 48 m margin covers the largest city footprint and adjacent push-outs;
-    // the source-order narrow phase and exact collision tests remain unchanged.
-    const candidates = queryBuildingIds(p[0] - hw - 48, p[2] - hw - 48, p[0] + hw + 48, p[2] + hw + 48);
+const COLLISION_BROADPHASE_MARGIN = 48;
+function resolveBuildingCandidates(s: Sim, prevY: number, candidates: readonly number[]) {
+    const p = s.pos, v = s.vel, hw = 0.5, hh = 1.0; let contacts = 0;
     for (let qi = 0; qi < candidates.length; qi++) {
         const bi = candidates[qi];
         const b = blds[bi];
-        if ((b as any).ob) { collideOB(s, prevY, b, bi, hw, hh); continue; }   // rotated solid (farm houses, barn ...)
+        if ((b as any).ob) { const ox = p[0], oy = p[1], oz = p[2], oldHitB = hitB; collideOB(s, prevY, b, bi, hw, hh); if (hitB !== oldHitB || p[0] !== ox || p[1] !== oy || p[2] !== oz) contacts++; continue; }   // rotated solid (farm houses, barn ...)
         if (p[0] + hw <= b.x0 || p[0] - hw >= b.x1 || p[2] + hw <= b.z0 || p[2] - hw >= b.z1 || p[1] - hh > b.h + 0.05 || p[1] + hh <= (b.y0 ?? 0)) continue;
         if (prevY - hh >= b.h - 0.6 && v[1] <= 0.5) { p[1] = b.h + hh; if (v[1] < 0) v[1] = 0; s.ground = true; s.safe = [p[0], p[1], p[2]]; continue; }
         const l = p[0] + hw - b.x0, r = b.x1 - (p[0] - hw), f = p[2] + hw - b.z0, k = b.z1 - (p[2] - hw), m = Math.min(l, r, f, k);
+        contacts++;
         hitB = bi;
         if (m === l) { p[0] -= l; if (v[0] > 0) v[0] *= -0.1; hitN = [-1, 0]; } else if (m === r) { p[0] += r; if (v[0] < 0) v[0] *= -0.1; hitN = [1, 0]; }
         else if (m === f) { p[2] -= f; if (v[2] > 0) v[2] *= -0.1; hitN = [0, -1]; } else { p[2] += k; if (v[2] < 0) v[2] *= -0.1; hitN = [0, 1]; }
     }
+    return contacts;
+}
+function spatialCollisionProbe(x: number, y: number, z: number, fullScan = false) {
+    const oldHitN = hitN, oldHitB = hitB;
+    const s = { pos: [x, y, z] as V3, vel: [0, 0, 0] as V3, ground: false, safe: [x, y, z] as V3 } as Sim;
+    hitN = null; hitB = -1;
+    const candidates = fullScan ? blds.map((_, bi) => bi) : queryBuildingIds(x - 0.5 - COLLISION_BROADPHASE_MARGIN, z - 0.5 - COLLISION_BROADPHASE_MARGIN, x + 0.5 + COLLISION_BROADPHASE_MARGIN, z + 0.5 + COLLISION_BROADPHASE_MARGIN);
+    const contacts = resolveBuildingCandidates(s, y, candidates), result = { pos: [...s.pos], vel: [...s.vel], ground: s.ground, hitB, hitN: hitN ? [...hitN] : null, contacts, candidateCount: candidates.length };
+    hitN = oldHitN; hitB = oldHitB;
+    return result;
+}
+function collide(s: Sim, prevY: number) {
+    const p = s.pos, v = s.vel; s.ground = false; hitN = null; hitB = -1;
+    const hw = 0.5;
+    // A 48 m margin covers the largest city footprint and adjacent push-outs;
+    // the source-order narrow phase and exact collision tests remain unchanged.
+    const candidates = queryBuildingIds(p[0] - hw - COLLISION_BROADPHASE_MARGIN, p[2] - hw - COLLISION_BROADPHASE_MARGIN, p[0] + hw + COLLISION_BROADPHASE_MARGIN, p[2] + hw + COLLISION_BROADPHASE_MARGIN);
+    resolveBuildingCandidates(s, prevY, candidates);
     const lim = HALF - 3, xl = p[2] < WATER_Z - 4 ? SEA.xMax : lim;   // the open sea is wider than the city and runs far south
     if (p[0] > xl) { p[0] = xl; v[0] = Math.min(v[0], 0); } if (p[0] < -xl) { p[0] = -xl; v[0] = Math.max(v[0], 0); }
     if (p[2] > lim) { p[2] = lim; v[2] = Math.min(v[2], 0); } if (p[2] < SEA.zMin) { p[2] = SEA.zMin; v[2] = Math.max(v[2], 0); }
@@ -1264,7 +1293,7 @@ function stepCombat(s: Sim, dt: number, ev: Events, controls: Input = input, opt
         const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt, nz = b.z + b.vz * dt;
         let boom = b.t > 1.4;
         if (!boom) for (const e of s.enemies) { if (e.down > 0) continue; if (Math.hypot(e.x - nx, e.z - nz) < (e.boss ? BOSS_HIT_RADIUS : 1.6) && Math.abs((e.y + enemyBodyOffset(e)) - ny) < (e.boss ? BOSS_HIT_HALF_HEIGHT : 2.4)) { boom = true; break; } }
-        if (!boom) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { boom = true; break; } }
+        if (!boom && projectileBuildingHit(nx, ny, nz)) boom = true;
         if (!boom) { const sf = nz < WATER_Z ? seaSurface(nx, nz, ny) : null, gy = sf !== null ? sf + 1.0 : nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.85) boom = true; }
         if (boom) { detonate(s, nx, ny, nz, ev); s.plasma.splice(i, 1); } else { b.x = nx; b.y = ny; b.z = nz; }
     }

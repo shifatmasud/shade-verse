@@ -1,0 +1,68 @@
+{
+  "browser": "Chromium SwiftShader diagnostic; verifies queued playback scheduling, not device audio latency",
+  "voiceRequestArtificialDelayMs": 3500,
+  "formerCutoffMs": 2500,
+  "queueToFirstAudibleScheduleMs": 3523,
+  "targetExchange": [
+    "vo_cg_0",
+    "vo_cs_0"
+  ],
+  "targetColdBeforeQueue": true,
+  "requests": {
+    "total": 20,
+    "finished": 14,
+    "delayedBanter": [
+      {
+        "file": "cg_0.ogg",
+        "atMs": 24868
+      },
+      {
+        "file": "cs_0.ogg",
+        "atMs": 24869
+      }
+    ]
+  },
+  "pendingAfterFetchStarted": {
+    "mode": "play",
+    "busy": true,
+    "selectedStillUncached": true,
+    "dialogueScheduled": false,
+    "caption": []
+  },
+  "afterAudioArrived": {
+    "mode": "play",
+    "busy": true,
+    "decoded": [
+      {
+        "name": "vo_cg_0",
+        "cached": true
+      },
+      {
+        "name": "vo_cs_0",
+        "cached": true
+      }
+    ],
+    "plays": [
+      {
+        "name": "vo_cg_0",
+        "scheduled": true,
+        "gain": 1.0199999809265137,
+        "duration": 2.1822448979591837,
+        "outputRunning": true,
+        "muted": false,
+        "atMs": 1794855971884
+      }
+    ],
+    "captions": [
+      "Ghost: You've been quiet. Everything okay?"
+    ],
+    "audioStats": {
+      "played": 2,
+      "dropped": 0,
+      "ctxState": "running",
+      "muted": false
+    }
+  },
+  "audibleScheduledAtPositiveGain": true,
+  "pageErrors": 0
+}

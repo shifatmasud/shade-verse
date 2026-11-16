@@ -1,0 +1,282 @@
+{
+  "environment": "Sandbox Chromium using SwiftShader; simulated user-agent/viewport only, not Intel UHD 600/Edge or Adreno 506/Chrome hardware evidence.",
+  "profile": "android",
+  "userAgent": "Mozilla/5.0 (Linux; Android 10; SM-M025F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36",
+  "viewport": {
+    "width": 844,
+    "height": 390,
+    "deviceScaleFactor": 2,
+    "hasTouch": true,
+    "isMobile": true
+  },
+  "lock": {
+    "minimumActualWorldDpr": 0.8,
+    "belowFloorRequestScaler": 0.75,
+    "observedBelowFloorRequest": {
+      "world": 0.8,
+      "canvas": 2,
+      "renderer": 2,
+      "cssDevice": 2,
+      "scaler": 1,
+      "buffer": {
+        "width": 1688,
+        "height": 780
+      }
+    }
+  },
+  "input": {
+    "before": [
+      -13.581795795820653,
+      1.6999999999999997,
+      0
+    ],
+    "after": [
+      -13.581795795820653,
+      1,
+      2.0120917400740743
+    ],
+    "distance": 2.13,
+    "moved": true
+  },
+  "locations": {
+    "sea": {
+      "x": 30,
+      "z": -262
+    },
+    "projectReference": "test/waterline_cam.mjs",
+    "stillImpact": {
+      "x": 30,
+      "y": -0.3825256923200663,
+      "z": -262
+    }
+  },
+  "captures": {
+    "actualWorldDpr0_8": {
+      "mode": "play",
+      "dpr": {
+        "world": 0.8,
+        "canvas": 2,
+        "renderer": 2,
+        "cssDevice": 2,
+        "scaler": 1,
+        "buffer": {
+          "width": 1688,
+          "height": 780
+        }
+      },
+      "draw": {
+        "calls": 119,
+        "triangles": 570554,
+        "frameMs": 203,
+        "renderCpuMs": 216.51380231450221,
+        "gameLogicMs": 23.71658904956687
+      },
+      "quality": {
+        "tier": "auto",
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "weakGpu": true,
+        "coarse": true
+      },
+      "shadowMap": {
+        "enabled": true,
+        "casters": 246,
+        "size": 1536,
+        "extent": 64,
+        "method": "manual-webgl-depth-shadow-map",
+        "rayTracing": false
+      },
+      "splash": {
+        "width": 160,
+        "particles": 25600
+      },
+      "webgl2": true,
+      "floatColorTarget": true
+    },
+    "streetAtFloor": {
+      "mode": "play",
+      "dpr": {
+        "world": 0.8,
+        "canvas": 2,
+        "renderer": 2,
+        "cssDevice": 2,
+        "scaler": 1,
+        "buffer": {
+          "width": 1688,
+          "height": 780
+        }
+      },
+      "draw": {
+        "calls": 117,
+        "triangles": 571346,
+        "frameMs": 199,
+        "renderCpuMs": 199.5680068293911,
+        "gameLogicMs": 20.11064376645686
+      },
+      "quality": {
+        "tier": "auto",
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "weakGpu": true,
+        "coarse": true
+      },
+      "shadowMap": {
+        "enabled": true,
+        "casters": 246,
+        "size": 1536,
+        "extent": 64,
+        "method": "manual-webgl-depth-shadow-map",
+        "rayTracing": false
+      },
+      "splash": {
+        "width": 160,
+        "particles": 25600
+      },
+      "webgl2": true,
+      "floatColorTarget": true
+    },
+    "underwaterAtFloor": {
+      "mode": "play",
+      "dpr": {
+        "world": 0.8,
+        "canvas": 2,
+        "renderer": 2,
+        "cssDevice": 2,
+        "scaler": 1,
+        "buffer": {
+          "width": 1688,
+          "height": 780
+        }
+      },
+      "draw": {
+        "calls": 118,
+        "triangles": 371456,
+        "frameMs": 204,
+        "renderCpuMs": 226.5710954201846,
+        "gameLogicMs": 5.698378675147233
+      },
+      "quality": {
+        "tier": "auto",
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "weakGpu": true,
+        "coarse": true
+      },
+      "shadowMap": {
+        "enabled": true,
+        "casters": 267,
+        "size": 1536,
+        "extent": 64,
+        "method": "manual-webgl-depth-shadow-map",
+        "rayTracing": false
+      },
+      "splash": {
+        "width": 160,
+        "particles": 25600
+      },
+      "webgl2": true,
+      "floatColorTarget": true
+    },
+    "surfaceAtFloor": {
+      "mode": "play",
+      "dpr": {
+        "world": 0.8,
+        "canvas": 2,
+        "renderer": 2,
+        "cssDevice": 2,
+        "scaler": 1,
+        "buffer": {
+          "width": 1688,
+          "height": 780
+        }
+      },
+      "draw": {
+        "calls": 120,
+        "triangles": 401974,
+        "frameMs": 204,
+        "renderCpuMs": 92.3174083189989,
+        "gameLogicMs": 2.5452673218361817
+      },
+      "quality": {
+        "tier": "auto",
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "weakGpu": true,
+        "coarse": true
+      },
+      "shadowMap": {
+        "enabled": true,
+        "casters": 267,
+        "size": 1536,
+        "extent": 64,
+        "method": "manual-webgl-depth-shadow-map",
+        "rayTracing": false
+      },
+      "splash": {
+        "width": 160,
+        "particles": 25600
+      },
+      "webgl2": true,
+      "floatColorTarget": true
+    },
+    "highestAllowedWorldDpr": {
+      "mode": "play",
+      "dpr": {
+        "world": 0.8,
+        "canvas": 2,
+        "renderer": 2,
+        "cssDevice": 2,
+        "scaler": 1,
+        "buffer": {
+          "width": 1688,
+          "height": 780
+        }
+      },
+      "draw": {
+        "calls": 117,
+        "triangles": 401200,
+        "frameMs": 208,
+        "renderCpuMs": 37.855852538088264,
+        "gameLogicMs": 0.9114099737484506
+      },
+      "quality": {
+        "tier": "auto",
+        "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "weakGpu": true,
+        "coarse": true
+      },
+      "shadowMap": {
+        "enabled": true,
+        "casters": 267,
+        "size": 1536,
+        "extent": 64,
+        "method": "manual-webgl-depth-shadow-map",
+        "rayTracing": false
+      },
+      "splash": {
+        "width": 160,
+        "particles": 25600
+      },
+      "webgl2": true,
+      "floatColorTarget": true
+    }
+  },
+  "recording": {
+    "path": "water-splash-world-dpr-0.8.mp4",
+    "frames": 30,
+    "fps": 10,
+    "durationSeconds": 3,
+    "impact": {
+      "x": 30,
+      "y": 0.2845052111154638,
+      "z": -262
+    },
+    "purpose": "visual screen recording only; not performance timing"
+  },
+  "pageErrors": [],
+  "consoleErrors": [],
+  "files": [
+    "world-dpr-0.8.png",
+    "street-shadow-dpr-0.8.png",
+    "water-underwater-dpr-0.8.png",
+    "water-splash-dpr-0.8.png",
+    "water-highest-allowed-dpr-0.8.png",
+    "water-splash-world-dpr-0.8.mp4"
+  ]
+}

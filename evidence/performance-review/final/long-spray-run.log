@@ -1,0 +1,57 @@
+{
+  "environment": "Sandbox Chromium with SwiftShader; deterministic GPU splash lifecycle and visual captures, not device performance evidence.",
+  "test": "Single waterfall SK.SPRAY burst, natural emitter suppressed in debug mode; GPU simulation advanced at 30 steps per simulated second.",
+  "setup": {
+    "t0": 2.171500000000001,
+    "beforePasses": 0,
+    "deadline": 6.7715000000000005,
+    "deadlineDelta": 4.6,
+    "pointsVisible": true,
+    "ok": true,
+    "waterfall": {
+      "x": -154.1825180478317,
+      "z": -826.7870622775297,
+      "top": 27.499544786651015
+    },
+    "pool": {
+      "x": -148,
+      "y": 15.47995911098959,
+      "z": -834
+    },
+    "burst": {
+      "kind": "SPRAY",
+      "particles": 8000
+    }
+  },
+  "at2_8s": {
+    "visible": true,
+    "liveUntil": 6.7715000000000005,
+    "passCount": 86,
+    "simT": 2.271500000000001
+  },
+  "at4_2s": {
+    "visible": true,
+    "liveUntil": 6.7715000000000005,
+    "passCount": 136,
+    "simT": 2.9107000000476853
+  },
+  "afterExpiry": {
+    "visible": false,
+    "passCount": 144,
+    "beforePasses": 144,
+    "expectedDeadline": 6.7715000000000005,
+    "testT": 6.971500000000001
+  },
+  "after500msIdle": {
+    "passCount": 144,
+    "visible": false
+  },
+  "lateTailPassesContinued": true,
+  "inactivePassesStayedFlat": true,
+  "pageErrors": [],
+  "files": [
+    "waterfall-spray-2.8s.png",
+    "waterfall-spray-4.2s.png",
+    "waterfall-spray-expired.png"
+  ]
+}

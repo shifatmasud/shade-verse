@@ -51,7 +51,10 @@ export function WaterFX({ sim }: { sim: Sim }) {
     const ix = useMemo(() => new WaterInteraction(gl), [gl]);
     useEffect(() => () => ix.dispose(), [ix]);
     const gs = useMemo(() => new GpuSplash(gl, TOD.day), [gl]);
-    useEffect(() => () => gs.dispose(), [gs]);
+    useEffect(() => {
+        if ((import.meta as any).env?.VITE_DBG) (window as any).__gpuSplash = gs;
+        return () => { if ((window as any).__gpuSplash === gs) delete (window as any).__gpuSplash; gs.dispose(); };
+    }, [gs]);
     const st = useRef({ prevSwim: false, prevDive: false, prevVy: 0, stroke: 0, half: 0, side: 1, dripT: -9, sprayAcc: 0, foamAcc: 0, dripAcc: 0, bubAcc: 0, rainAcc: 0, fallAcc: 0, enemyY: new WeakMap<object, number>() });
 
     useFrame((_, dtRaw) => {
@@ -64,7 +67,7 @@ export function WaterFX({ sim }: { sim: Sim }) {
         // ---- island waterfall (Shifat Nov 15 9:36 PM 'waterfall in island should have our splash sprays too'). Refs: plunge-pool photos (Wikimedia
         //      'Gullfoss', 'Seljalandsfoss', Hawaii 'Akaka Falls'): a churning white base, droplets thrown out and up 1-3 m, a drifting mist cloud that
         //      rises past the falls, foam rafts sliding off across the pool, bubbles curtained under the plunge. Same GPU particles as the hero's splash.
-        if (gs.ok) { const ux = -FALLS.dx, uz = -FALLS.dz, bx = POOL.cx + ux * FALL_LANDING, bz = POOL.cz + uz * FALL_LANDING, dc = Math.hypot(camera.position.x - bx, camera.position.z - bz);
+        if (gs.ok && !((import.meta as any).env?.VITE_DBG && (window as any).__skipWaterfallSpray)) { const ux = -FALLS.dx, uz = -FALLS.dz, bx = POOL.cx + ux * FALL_LANDING, bz = POOL.cz + uz * FALL_LANDING, dc = Math.hypot(camera.position.x - bx, camera.position.z - bz);
             if (dc < 110) { S.fallAcc += dt * (QUALITY.coarse ? 2600 : 6000) * (1 - Math.max(0, dc - 60) / 50);
                 while (S.fallAcc >= 60) { const n = 60, w = (Math.random() - 0.5) * FALLS.w * 0.85, x = bx - uz * w, z = bz + ux * w, ox = FALLS.dx * 1.6, oz = FALLS.dz * 1.6, k = Math.random();
                     S.fallAcc -= n; if (k < 0.35) splBurst(SK.CROWN, x, POOL.y, z, n, rnd(1.1, 1.8), 0.9, ox, oz, POOL.y); else if (k < 0.5) splBurst(SK.SPRAY, x, POOL.y, z, 18, rnd(0.8, 1.3), 1, FALLS.dx, FALLS.dz, POOL.y); else if (k < 0.7) splBurst(SK.MIST, x, POOL.y + 0.3, z, n, rnd(0.8, 1.4), 1.6, ox * 0.5, oz * 0.5, POOL.y);

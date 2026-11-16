@@ -12,7 +12,22 @@
   "occupancyMismatches": 0,
   "losSegmentsCompared": 1200,
   "losMismatches": 0,
+  "cameraNearbyQueries": 600,
+  "cameraCandidatesCompared": 3481,
+  "cameraFullScanMismatches": 0,
+  "projectileImpactPointsCompared": 2800,
+  "fullScanProjectileHits": 562,
+  "projectileImpactMismatches": 0,
+  "chainedCollisionProbes": 350,
+  "averageIndexedCandidatesPerProbe": 52.5,
+  "chainedPushoutMismatches": 0,
   "dynamicTrunkRegistered": true,
   "dynamicTrunkIndexed": true,
+  "chainedPushout": {
+    "contacts": 2,
+    "indexedCandidateCount": 2,
+    "indexedAndFullScanMatch": true,
+    "addedBuildingsIndexed": true
+  },
   "result": true
 }

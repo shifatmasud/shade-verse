@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { buildings, isLegacyCityCore } from './sim';
+import { buildings, isLegacyCityCore, registerBuildingCollider } from './sim';
 
 /* Upgrade #3 (Oct 29, 9:12 PM plan "rooftops are flat empty slabs"): rooftop clutter on every outer-city building —
    AC units with fan grilles, vent stacks, roof hatches and an occasional water tank on legs. Five instanced meshes for the
@@ -64,7 +64,7 @@ export function RoofProps({ harborOnly = false }: { harborOnly?: boolean }) {   
             }
             // water tanks are solid (land on them, bump into them); the small AC units and vents stay walk-through to keep the per-frame collision loops cheap on phones
             for (const t of out.tank) { const hb = buildings.findIndex((b: any) => b.host === undefined && !b.sea && t.x > b.x0 && t.x < b.x1 && t.z > b.z0 && t.z < b.z1);
-                if (hb >= 0) (buildings as any[]).push({ x0: t.x - 2.0, x1: t.x + 2.0, z0: t.z - 2.0, z1: t.z + 2.0, h: t.y + 2.5, host: hb }); }
+                if (hb >= 0) registerBuildingCollider({ x0: t.x - 2.0, x1: t.x + 2.0, z0: t.z - 2.0, z1: t.z + 2.0, h: t.y + 2.5, host: hb }); }
             if (DBG) (window as any).__roofTanks = out.tank.map((t) => [t.x, t.y, t.z]);
             if (DBG) (window as any)[harborOnly ? '__roofPropsH' : '__roofProps'] = { spots: spotsRaw.spots.length, placed: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.length])) };
             setSets(out);

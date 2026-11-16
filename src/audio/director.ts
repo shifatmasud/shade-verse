@@ -82,9 +82,8 @@ export class SoundDirector {
         let k = opts[Math.floor(Math.random() * opts.length)]; if (opts.length > 1 && k === this.bLast[trig]) k = opts[(opts.indexOf(k) + 1) % opts.length]; this.bLast[trig] = k;
         const ex = BANTER[k], names = ex.l.map(([sp, i]) => `vo_${sp === 'g' ? 'cg' : 'cs'}_${i}`);
         this.bBusy = true; this.voGap = 99; audio.voDuck = 0.7;
-        const t0 = performance.now();
         void Promise.all(names.map((n) => audio.load(n))).then((bufs) => {
-            if (performance.now() - t0 > 2500 || bufs.some((b) => !b)) { this.endBanter(); return; }   // slow network: skip rather than talk late
+            if (bufs.some((b) => !b)) { this.endBanter(); return; }
             let j = 0;
             const next = () => {
                 if (j >= names.length || this.sim.mode !== 'play') { this.endBanter(); return; }

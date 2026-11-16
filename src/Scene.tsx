@@ -25,7 +25,7 @@ import { Mist } from './world/mist';
 import { BossArenaMarker } from './BossArenaMarker';
 import { poolAt, HBOSS } from './seaWorld';
 import { attachInk, syncInk } from './ink';
-import { buildings, WATER_Z, parkH, WATER_Y, SEABED, seabedAt, HALF, FOG, isLakeWater, waterSurfaceAt, stepSim, stepBeacon, resetSim, MOVES, SNARE, enemyBodyOffset, simTimeScale, getCompanionSim, type Sim, type Events } from './sim';
+import { buildings, nearbyBuildingIds, WATER_Z, parkH, WATER_Y, SEABED, seabedAt, HALF, FOG, isLakeWater, waterSurfaceAt, stepSim, stepBeacon, resetSim, MOVES, SNARE, enemyBodyOffset, simTimeScale, getCompanionSim, type Sim, type Events } from './sim';
 import { CombatFX, registerFxHero } from './CombatFX';
 import { ParkGround, PolyforkBuildings, PolyforkLakeBridge } from './polyforkEnvironment';
 import { RoofProps } from './RoofProps';
@@ -677,7 +677,7 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         /* Shifat 12:02 AM phone fps: the camera's three building checks scanned every building in the city several times a frame; only the
            ones within reach of the camera arm can matter, so they are gathered once (same results). */
         const camB = _camNear; camB.length = 0;
-        { const rr = Math.max(dist, Math.hypot(cam.current.x - p[0], cam.current.z - p[2])) + 8; for (const b of buildings) if (p[0] > b.x0 - rr && p[0] < b.x1 + rr && p[2] > b.z0 - rr && p[2] < b.z1 + rr) camB.push(b); }
+        { const rr = Math.max(dist, Math.hypot(cam.current.x - p[0], cam.current.z - p[2])) + 8; for (const bi of nearbyBuildingIds(p[0], p[2], rr)) camB.push(buildings[bi]); }
         for (; !dbgD && dist > (sim.wall ? 5 : 6); dist -= 1) {
             const ex = p[0] - fxd * dist, ey = p[1] + 1.5 + sy * dist, ez = p[2] - fzd * dist;
             let hit = false;
