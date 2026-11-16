@@ -2,23 +2,23 @@
   "browser": "Chromium SwiftShader diagnostic; verifies queued playback scheduling, not device audio latency",
   "voiceRequestArtificialDelayMs": 3500,
   "formerCutoffMs": 2500,
-  "queueToFirstAudibleScheduleMs": 3523,
+  "queueToFirstAudibleScheduleMs": 3527,
   "targetExchange": [
     "vo_cg_0",
     "vo_cs_0"
   ],
   "targetColdBeforeQueue": true,
   "requests": {
-    "total": 20,
-    "finished": 14,
+    "total": 21,
+    "finished": 15,
     "delayedBanter": [
       {
         "file": "cg_0.ogg",
-        "atMs": 24868
+        "atMs": 26595
       },
       {
         "file": "cs_0.ogg",
-        "atMs": 24869
+        "atMs": 26595
       }
     ]
   },
@@ -50,14 +50,14 @@
         "duration": 2.1822448979591837,
         "outputRunning": true,
         "muted": false,
-        "atMs": 1794855971884
+        "atMs": 1794856462138
       }
     ],
     "captions": [
       "Ghost: You've been quiet. Everything okay?"
     ],
     "audioStats": {
-      "played": 2,
+      "played": 3,
       "dropped": 0,
       "ctxState": "running",
       "muted": false

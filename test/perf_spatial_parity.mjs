@@ -92,11 +92,12 @@ try {
             const b = blds[Math.floor(i * blds.length / Math.min(500, blds.length))], x = (b.x0 + b.x1) / 2, z = (b.z0 + b.z1) / 2;
             projectilePoints.push([x, Math.max(-2, b.h - 0.1), z], [x, b.h + 0.1, z]);
         }
-        let projectileCompared = 0, projectileMismatches = 0, projectileHits = 0;
+        let projectileCompared = 0, projectileMismatches = 0, projectileHits = 0, enemyProjectileMismatches = 0;
         for (const [x, y, z] of projectilePoints) {
             const expected = blds.some((b) => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h);
-            const actual = t.projectileHit(x, y, z); projectileCompared++; if (expected) projectileHits++;
+            const actual = t.projectileHit(x, y, z), enemyActual = t.enemyProjectileHit(x, y, z); projectileCompared++; if (expected) projectileHits++;
             if (actual !== expected) projectileMismatches++;
+            if (enemyActual !== expected) enemyProjectileMismatches++;
         }
         let collisionCompared = 0, collisionMismatches = 0, localCandidateTotal = 0;
         const sameCollision = (a, b) => a.ground === b.ground && a.hitB === b.hitB && JSON.stringify(a.pos) === JSON.stringify(b.pos) && JSON.stringify(a.vel) === JSON.stringify(b.vel) && JSON.stringify(a.hitN) === JSON.stringify(b.hitN);
@@ -129,13 +130,15 @@ try {
             projectileImpactPointsCompared: projectileCompared,
             fullScanProjectileHits: projectileHits,
             projectileImpactMismatches: projectileMismatches,
+            enemyProjectileImpactPointsCompared: projectileCompared,
+            enemyProjectileImpactMismatches: enemyProjectileMismatches,
             chainedCollisionProbes: collisionCompared,
             averageIndexedCandidatesPerProbe: +(localCandidateTotal / collisionCompared).toFixed(1),
             chainedPushoutMismatches: collisionMismatches,
             dynamicTrunkRegistered: blds.length >= beforeDynamic + 3,
             dynamicTrunkIndexed: dynamicIndexed,
             chainedPushout,
-            result: rngMissing === 0 && insideMismatches === 0 && losMismatches === 0 && cameraMismatches === 0 && projectileMismatches === 0 && collisionMismatches === 0 && chainedPushout.contacts >= 2 && chainedPushout.indexedAndFullScanMatch && chainedPushout.addedBuildingsIndexed && dynamicIndexed,
+            result: rngMissing === 0 && insideMismatches === 0 && losMismatches === 0 && cameraMismatches === 0 && projectileMismatches === 0 && enemyProjectileMismatches === 0 && collisionMismatches === 0 && chainedPushout.contacts >= 2 && chainedPushout.indexedAndFullScanMatch && chainedPushout.addedBuildingsIndexed && dynamicIndexed,
         };
     });
     if (errors.length) throw new Error(`page errors: ${errors.join(' | ')}`);

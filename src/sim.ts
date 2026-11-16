@@ -220,6 +220,7 @@ if ((import.meta as any).env?.VITE_DBG && typeof window !== 'undefined') {
         query: (x0: number, z0: number, x1: number, z1: number) => [...queryBuildingIds(x0, z0, x1, z1)],
         nearby: (x: number, z: number, r: number) => [...nearbyBuildingIds(x, z, r)],
         projectileHit: projectileBuildingHit,
+        enemyProjectileHit: projectileBuildingHit,
         collisionProbe: spatialCollisionProbe,
         addTrunks: addTrunkSolids,
     };
@@ -1381,7 +1382,7 @@ function stepEnemyShots(s: Sim, dt: number, ev: Events) {
         // Web Shock pops incoming bolts around the hero
         if (!stop && shockOn && Math.hypot(nx - p[0], ny - (p[1] + 0.9), nz - p[2]) < 6.5) stop = true;
         if (!stop) { const cx = p[0], cy = p[1] + 0.9, cz = p[2]; const ax = b.x - cx, ay = b.y - cy, az = b.z - cz, bx = nx - b.x, by = ny - b.y, bz = nz - b.z, bb = bx * bx + by * by + bz * bz || 1; const tt = Math.max(0, Math.min(1, -(ax * bx + ay * by + az * bz) / bb)); if (Math.hypot(ax + bx * tt, ay + by * tt, az + bz * tt) < ESHOT.HIT_R && s.dodgeT <= 0) { hit = true; stop = true; } }   // swept test: fast bolts cannot tunnel through
-        if (!stop) for (const bd of blds) { if (nx > bd.x0 && nx < bd.x1 && nz > bd.z0 && nz < bd.z1 && ny < bd.h) { stop = true; break; } }
+        if (!stop && projectileBuildingHit(nx, ny, nz)) stop = true;
         if (!stop) { const sf = nz < WATER_Z ? seaSurface(nx, nz, ny) : null, gy = sf !== null ? sf + 1.0 : nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.9) stop = true; }
         if (hit) hurtHero(s, b.boss ? ESHOT.BOSS_DMG : ESHOT.DMG, ev);
         if (stop && b.t <= ESHOT.LIFE) ev.shot?.('impact', nx, ny, nz);

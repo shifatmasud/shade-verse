@@ -18,6 +18,8 @@
   "projectileImpactPointsCompared": 2800,
   "fullScanProjectileHits": 562,
   "projectileImpactMismatches": 0,
+  "enemyProjectileImpactPointsCompared": 2800,
+  "enemyProjectileImpactMismatches": 0,
   "chainedCollisionProbes": 350,
   "averageIndexedCandidatesPerProbe": 52.5,
   "chainedPushoutMismatches": 0,
