@@ -209,8 +209,13 @@ export function nearbyBuildingIds(x: number, z: number, r: number) {
     for (let i = 0; i < ids.length; i++) { const bi = ids[i], b = blds[bi]; if (x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) ids[n++] = bi; }
     ids.length = n; return ids;
 }
+type EnemyShotIndexTrace = { targetBuildingId: number; queryCount: number; candidateCount: number; targetCandidate: boolean };
+let enemyShotIndexTrace: EnemyShotIndexTrace | null = null;
+const SPATIAL_TEST_DEBUG = !!(import.meta as any).env?.VITE_DBG;
 function projectileBuildingHit(x: number, y: number, z: number) {
-    for (const bi of queryBuildingIds(x, z, x, z)) { const b = blds[bi]; if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h) return true; }
+    const ids = queryBuildingIds(x, z, x, z);
+    if (SPATIAL_TEST_DEBUG && enemyShotIndexTrace) { enemyShotIndexTrace.queryCount++; enemyShotIndexTrace.candidateCount += ids.length; if (ids.includes(enemyShotIndexTrace.targetBuildingId)) enemyShotIndexTrace.targetCandidate = true; }
+    for (const bi of ids) { const b = blds[bi]; if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h) return true; }
     return false;
 }
 const buildingsAt = (x: number, z: number) => bldCells.get(bldCellKey(x, z)) || [];
@@ -1370,7 +1375,7 @@ function enemyRanged(s: Sim, e: Enemy, i: number, isBoss: boolean, d: number, dt
     const o = enemyPalm(e); if (!losClear(o[0], o[1], o[2], p[0], p[1] + 0.9, p[2])) { ea.rpCd = 0.6; return; }
     ea.rpT = ESHOT.CHARGE; ea.rpN = isBoss ? 3 : 1; ev.shot?.('charge', o[0], o[1], o[2]);
 }
-function stepEnemyShots(s: Sim, dt: number, ev: Events) {
+function stepEnemyShots(s: Sim, dt: number, ev: Events, buildingHit: (x: number, y: number, z: number) => boolean = projectileBuildingHit) {
     const sh = s.eshots; if (!sh || !sh.length) return;
     const p = s.pos, sa = s as any, shockOn = sa.snareT > 0;
     for (let i = sh.length - 1; i >= 0; i--) {
@@ -1382,13 +1387,57 @@ function stepEnemyShots(s: Sim, dt: number, ev: Events) {
         // Web Shock pops incoming bolts around the hero
         if (!stop && shockOn && Math.hypot(nx - p[0], ny - (p[1] + 0.9), nz - p[2]) < 6.5) stop = true;
         if (!stop) { const cx = p[0], cy = p[1] + 0.9, cz = p[2]; const ax = b.x - cx, ay = b.y - cy, az = b.z - cz, bx = nx - b.x, by = ny - b.y, bz = nz - b.z, bb = bx * bx + by * by + bz * bz || 1; const tt = Math.max(0, Math.min(1, -(ax * bx + ay * by + az * bz) / bb)); if (Math.hypot(ax + bx * tt, ay + by * tt, az + bz * tt) < ESHOT.HIT_R && s.dodgeT <= 0) { hit = true; stop = true; } }   // swept test: fast bolts cannot tunnel through
-        if (!stop && projectileBuildingHit(nx, ny, nz)) stop = true;
+        if (!stop && buildingHit(nx, ny, nz)) stop = true;
         if (!stop) { const sf = nz < WATER_Z ? seaSurface(nx, nz, ny) : null, gy = sf !== null ? sf + 1.0 : nz < WATER_Z ? WATER_Y : 1.0 + parkH(nx, nz); if (ny <= gy - 0.9) stop = true; }
         if (hit) hurtHero(s, b.boss ? ESHOT.BOSS_DMG : ESHOT.DMG, ev);
         if (stop && b.t <= ESHOT.LIFE) ev.shot?.('impact', nx, ny, nz);
         if (stop) { b.dead = 0.0001; if (!hit) { b.x = nx; b.y = ny; b.z = nz; } } else { b.x = nx; b.y = ny; b.z = nz; }
     }
 }
+function enemyShotStepParityProbe() {
+    const eligible = blds.map((b, bi) => ({ b, bi })).filter(({ b }) => b.z0 > WATER_Z + 100 && b.h > 8 && b.x1 - b.x0 > 1 && b.z1 - b.z0 > 1);
+    if (!eligible.length) throw new Error('No suitable land building for an enemy-shot impact probe');
+    const count = Math.min(32, eligible.length);
+    const samples = Array.from({ length: count }, (_, i) => eligible[Math.floor(i * eligible.length / count)]);
+    const cases = samples.map(({ b, bi }) => {
+        const dt = 0.1, x = b.x0 + 0.25, y = Math.min(4.5, b.h - 0.5), z = (b.z0 + b.z1) / 2;
+        const run = (fullScan: boolean) => {
+            const trace: EnemyShotIndexTrace = { targetBuildingId: bi, queryCount: 0, candidateCount: 0, targetCandidate: false };
+            let fullScanChecks = 0;
+            const impacts: { kind: string; x: number; y: number; z: number }[] = [];
+            const s = {
+                pos: [1e6, 1e6, 1e6] as V3, dodgeT: 0,
+                eshots: [{ x: x - 0.5, y, z, vx: 5, vy: 0, vz: 0, t: 0, boss: false, dead: 0 }],
+            } as Sim;
+            const ev = { shot: (kind: string, ix: number, iy: number, iz: number) => impacts.push({ kind, x: ix, y: iy, z: iz }) } as unknown as Events;
+            const fullBuildingHit = (ix: number, iy: number, iz: number) => {
+                for (const building of blds) { fullScanChecks++; if (ix > building.x0 && ix < building.x1 && iz > building.z0 && iz < building.z1 && iy < building.h) return true; }
+                return false;
+            };
+            enemyShotIndexTrace = fullScan ? null : trace;
+            try {
+                if (fullScan) stepEnemyShots(s, dt, ev, fullBuildingHit);
+                else stepEnemyShots(s, dt, ev);
+            } finally { enemyShotIndexTrace = null; }
+            const bolt = s.eshots![0];
+            return { impacts, boltDead: bolt.dead, boltPosition: [bolt.x, bolt.y, bolt.z], indexQueries: trace.queryCount, indexCandidates: trace.candidateCount, targetBuildingInIndexCandidates: trace.targetCandidate, fullScanBuildingChecks: fullScanChecks };
+        };
+        const indexed = run(false), fullScan = run(true);
+        const sameImpact = JSON.stringify(indexed.impacts) === JSON.stringify(fullScan.impacts)
+            && indexed.boltDead === fullScan.boltDead && JSON.stringify(indexed.boltPosition) === JSON.stringify(fullScan.boltPosition);
+        const realImpact = indexed.impacts.length === 1 && indexed.impacts[0].kind === 'impact' && indexed.boltDead > 0;
+        const usedIndex = indexed.indexQueries === 1 && indexed.targetBuildingInIndexCandidates && indexed.indexCandidates > 0 && indexed.indexCandidates < blds.length;
+        return { buildingId: bi, indexed, fullScan, sameImpact, realImpact, usedIndex, pass: sameImpact && realImpact && usedIndex };
+    });
+    return {
+        path: 'stepEnemyShots actual bolt update', buildingCount: blds.length, caseCount: cases.length,
+        indexedCandidatesTotal: cases.reduce((n, c) => n + c.indexed.indexCandidates, 0),
+        fullScanBuildingChecksTotal: cases.reduce((n, c) => n + c.fullScan.fullScanBuildingChecks, 0),
+        mismatches: cases.filter((c) => !c.sameImpact).length, cases, result: cases.every((c) => c.pass),
+    };
+}
+if ((import.meta as any).env?.VITE_DBG && typeof window !== 'undefined' && (window as any).__svSpatialTest)
+    (window as any).__svSpatialTest.enemyShotStepParity = enemyShotStepParityProbe;
 export function stepBeacon(s: Sim, ev: Events) {
     const p = s.pos, b = s.beacon;
     if (Math.hypot(b[0] - p[0], b[1] - p[1], b[2] - p[2]) < 8) { s.beaconN++; s.score += 5; s.beacon = newBeacon(s); ev.orb(); }
