@@ -21,7 +21,7 @@ type ActorSource = {
 };
 type ActorState = ActorSource & { template: LocalTemplate; vertexOffset: number; triangleOffset: number; nodeOffset: number };
 type InstanceSnapshot = { mesh: THREE.InstancedMesh; count: number; matrices: Float32Array; still: Float32Array };
-type PedestrianSources = { ground: THREE.BufferGeometry[]; drone: THREE.BufferGeometry; transforms: number[]; groundPose?: CharacterShadowPose; dronePose?: CharacterShadowPose };
+type PedestrianSources = { ground: THREE.BufferGeometry[]; groundLowDetail?: THREE.BufferGeometry; drone: THREE.BufferGeometry; transforms: number[]; groundPose?: CharacterShadowPose; dronePose?: CharacterShadowPose };
 
 type CharacterMeshShadowState = {
     signature: string; actors: ActorState[]; nodes: BvhNode[]; sourceIndices: Uint32Array; vertexWorld: Float32Array;
@@ -36,6 +36,8 @@ const registeredCasters = new Set<THREE.Mesh>();
 const instanceSnapshots = new Map<string, InstanceSnapshot>();
 const templateCache = new Map<string, LocalTemplate>();
 let pedestrianSources: PedestrianSources | null = null;
+const pedestrianShadowLods = new Map<number, boolean>();
+const PED_SHADOW_LOD_ENTER = 18, PED_SHADOW_LOD_EXIT = 14;
 let active: CharacterMeshShadowState | null = null;
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
 const _centroidMin = new THREE.Vector3(), _centroidMax = new THREE.Vector3();
@@ -85,9 +87,9 @@ export function registerCharacterShadowMeshes(meshes: THREE.Mesh[]) {
     return () => { for (const mesh of meshes) registeredCasters.delete(mesh); };
 }
 
-export function registerPedestrianShadowSources(ground: THREE.BufferGeometry[], drone: THREE.BufferGeometry, transforms: number[], groundPose?: CharacterShadowPose, dronePose?: CharacterShadowPose) {
-    const entry = { ground, drone, transforms, groundPose, dronePose }; pedestrianSources = entry;
-    return () => { if (pedestrianSources === entry) pedestrianSources = null; };
+export function registerPedestrianShadowSources(ground: THREE.BufferGeometry[], drone: THREE.BufferGeometry, transforms: number[], groundPose?: CharacterShadowPose, dronePose?: CharacterShadowPose, groundLowDetail?: THREE.BufferGeometry) {
+    const entry = { ground, drone, transforms, groundPose, dronePose, groundLowDetail }; pedestrianSources = entry;
+    return () => { if (pedestrianSources === entry) { pedestrianSources = null; pedestrianShadowLods.clear(); } };
 }
 
 /** Snapshot all enemy instances before the renderer's frustum-cull pass packs their matrices. */
@@ -129,14 +131,21 @@ function addRegisteredActors(out: ActorSource[], camera: THREE.Camera) {
 }
 function addPedestrianActors(out: ActorSource[], camera: THREE.Camera) {
     const src = pedestrianSources; if (!src) return;
-    for (let i = 0; i + 5 < src.transforms.length; i += 6) {
-        const type = src.transforms[i], x = src.transforms[i + 1], y = src.transforms[i + 2], z = src.transforms[i + 3], rot = src.transforms[i + 4], scale = src.transforms[i + 5];
+    for (let i = 0; i + 6 < src.transforms.length; i += 7) {
+        const type = src.transforms[i], x = src.transforms[i + 1], y = src.transforms[i + 2], z = src.transforms[i + 3], rot = src.transforms[i + 4], scale = src.transforms[i + 5], actorId = src.transforms[i + 6];
         _pos.set(x, y, z); const distanceSq = _pos.distanceToSquared(camera.position); if (distanceSq > MAX_DISTANCE * MAX_DISTANCE) continue;
         _q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rot); _world.compose(_pos, _q, _scale.setScalar(scale));
         const drone = type === 5;
-        const geometry = drone ? src.drone : (src.ground[type] ?? src.ground[0]);
+        let lowDetail = false;
+        if (!drone && src.groundLowDetail) {
+            const distance = Math.sqrt(distanceSq), wasLow = pedestrianShadowLods.get(actorId);
+            lowDetail = wasLow === undefined ? distance > PED_SHADOW_LOD_ENTER : distance > (wasLow ? PED_SHADOW_LOD_EXIT : PED_SHADOW_LOD_ENTER);
+            pedestrianShadowLods.set(actorId, lowDetail);
+        }
+        const geometry = drone ? src.drone : lowDetail && src.groundLowDetail ? src.groundLowDetail : (src.ground[type] ?? src.ground[0]);
         if (!geometry) continue;
-        out.push({ key: `ped:${i / 6}:${type}`, geometry, matrix: _world.clone(), pose: drone ? src.dronePose : src.groundPose, instanceIndex: -1, phaseX: x, phaseZ: z, still: 0, priority: drone ? 3 : 4, distanceSq });
+        // Ground pedestrians share the same low-tier budget and distance sort as enemies instead of always coming after them.
+        out.push({ key: `ped:${actorId}:${type}`, geometry, matrix: _world.clone(), pose: drone ? src.dronePose : src.groundPose, instanceIndex: -1, phaseX: x, phaseZ: z, still: 0, priority: drone ? 3 : 2, distanceSq });
     }
 }
 function addInstancedActors(out: ActorSource[], scene: THREE.Scene, camera: THREE.Camera) {

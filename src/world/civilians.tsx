@@ -39,7 +39,7 @@ const PED_TYPES = [   // 0-4 street peds: Shadow-body robots in five shell/accen
 const PED_NEAR = 16, PED_N = 380, AIR_N = 64, PED_CAP = PED_N + AIR_N;   // street crowd + airborne drones; counts are iteration choices, not user numbers
 /** Legacy contact-shadow position triples; the full-shape analytic path uses PED_SHADOW_ACTORS. */
 export const PED_SHADOWS: number[] = [];
-/** Pre-cull character snapshots: [type, x, y, z, yaw, scale], capped to nearby street peds and drones. */
+/** Pre-cull character snapshots: [type, x, y, z, yaw, scale, stableId], capped to nearby street peds and drones. */
 export const PED_SHADOW_ACTORS: number[] = [];
 export function Civilians({sim}:{sim:Sim}){
     const refs=useRef<THREE.InstancedMesh[]>([]);
@@ -49,7 +49,8 @@ export function Civilians({sim}:{sim:Sim}){
         const r=robotGeo({model:t.model,eye:EYE_BLUE,shell:t.shell,scale:t.model==='sdrone'?1.3:t.model==='survey'?1.0:t.model==='companion'?1.15:1,extras:t.coat?coatRobot(t.coat):undefined});
         return {geo:r.geo,mat:robotMat(r.parts,r.scale,time.current,t.model==='sdrone'?0:3.2)};
     }),[]);
-    useEffect(() => registerPedestrianShadowSources(set.slice(0, 5).map((p: any) => p.geo), set[5].geo, PED_SHADOW_ACTORS, set[0].mat.userData.characterShadowPose, set[5].mat.userData.characterShadowPose), [set]);
+    const lowDetailShadowGeo=useMemo(()=>shadowGeo({shell:[0.62,0.70,0.74],accent:[0.10,0.28,0.38],eye:EYE_BLUE,cell:0.26}),[]);
+    useEffect(() => registerPedestrianShadowSources(set.slice(0, 5).map((p: any) => p.geo), set[5].geo, PED_SHADOW_ACTORS, set[0].mat.userData.characterShadowPose, set[5].mat.userData.characterShadowPose, lowDetailShadowGeo), [set,lowDetailShadowGeo]);
     if(DBG)(window as any).__pedInfo=set.map((p:any)=>{p.geo.computeBoundingBox();const b=p.geo.boundingBox;return{tris:(p.geo.index?p.geo.index.count:p.geo.attributes.position.count)/3,verts:p.geo.attributes.position.count,size:[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].map((x:number)=>+x.toFixed(2)),minY:+b.min.y.toFixed(2),hands:p.geo.userData.pedestrianHands||null,materialKey:p.mat.customProgramCacheKey()}});
     // distant tier: a ~40-triangle box proxy per type (torso, head, blue visor band), used beyond PED_NEAR metres; the full 600-2700 triangle robots stay for the near field
     const far=useMemo(()=>PED_TYPES.map((t:any,ti:number)=>{
@@ -90,11 +91,11 @@ export function Civilians({sim}:{sim:Sim}){
                     for(const b of buildings){if(b.x1>ax0&&b.x0<ax1&&b.z1>az0&&b.z0<az1&&b.h>wm)wm=b.h;}
                     const tgt=Math.max(y+12,wm+9),s0=ys.current,k0=i%AIR_N;if(!s0[k0])s0[k0]=tgt;s0[k0]+=(tgt-s0[k0])*Math.min(1,0.016*3);y=s0[k0];}
                 y+=Math.sin(sim.t*1.3+i)*0.6;
-                if(dd<35)PED_SHADOW_ACTORS.push(5,x,y,z,rot,(over?3.2:1.5)*fade);
+                if(dd<35)PED_SHADOW_ACTORS.push(5,x,y,z,rot,(over?3.2:1.5)*fade,i+1000);
                 if(DBG)(window as any).__pl.push([i,x,z,fade]);if(DBG)((window as any).__air||((window as any).__air=[])).push([x,y,z,over?1:0]);o.position.set(x,y,z);o.rotation.set(0,rot,0);o.scale.setScalar((over?3.2:1.5)*fade);o.updateMatrix();if(Math.hypot(x-hx,y-sim.pos[1],z-hz)<nr*1.1)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);return;}
             const ty=i%5,hov=0;if(dd<PED_VOICE.d){PED_VOICE.d=dd;PED_VOICE.x=x;PED_VOICE.y=hov;PED_VOICE.z=z;PED_VOICE.t=performance.now();}
             if(DBG)(window as any).__pl.push([i,x,z,fade]);if(dd<45&&PED_SHADOWS.length<72)PED_SHADOWS.push(x,hov,z);
-            if(dd<45)PED_SHADOW_ACTORS.push(ty,x,hov,z,rot,BOT_SC*fade);
+            if(dd<45)PED_SHADOW_ACTORS.push(ty,x,hov,z,rot,BOT_SC*fade,i);
             o.position.set(x,hov,z);o.rotation.set(0,rot,0);o.scale.setScalar(BOT_SC*fade);o.updateMatrix();if(Math.hypot(x-hx,z-hz)<nr)refs.current[ty].setMatrixAt(cnt[ty]++,o.matrix);else refsF.current[ty].setMatrixAt(cf[ty]++,o.matrix);
         };
         for(let i=0;i<nP;i++)place(i,false);
