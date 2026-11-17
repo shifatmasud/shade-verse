@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SELECTIVE_BLOOM_LAYER, TREE_SSR_LAYER } from '../renderLayers';
 import { useFrame } from '@react-three/fiber';
+import { captureInstanceSnapshot, cullInstanceSnapshot, viewFrustum, type InstanceSnapshot } from '../render/instCull';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 
@@ -15,6 +16,7 @@ const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrum
 export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean }) {
     const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
+    const cull = useRef({ x: 1e9, z: 1e9, frame: 0, trunks: [] as (InstanceSnapshot | null)[], high: [] as (InstanceSnapshot | null)[], low: [] as (InstanceSnapshot | null)[], bush: null as InstanceSnapshot | null });
     const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; };
         return [mk('/spray145.png'), mk('/bark.jpg', true), mk(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
@@ -86,6 +88,21 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
         }
         return { floor: fl, path: mk(8, 190, 2, 90, Math.atan(0.6), 0.04) };
     }, []);
+    useFrame(({ camera }) => {
+        const c = cull.current, p = last.current;
+        if (p[0] !== c.x || p[1] !== c.z) {
+            c.x = p[0]; c.z = p[1];
+            c.trunks = tr.current.map((m) => m ? captureInstanceSnapshot(m) : null);
+            c.high = lf.current.map((m) => m ? captureInstanceSnapshot(m) : null);
+            c.low = lo.current.map((m) => m ? captureInstanceSnapshot(m) : null);
+        }
+        if (++c.frame % 2 !== 0) return;
+        const fr = viewFrustum(camera);
+        for (let i = 0; i < tr.current.length; i++) { const m = tr.current[i], s = c.trunks[i]; if (m && s) cullInstanceSnapshot(m, s, fr, 1); }
+        for (let i = 0; i < lf.current.length; i++) { const m = lf.current[i], s = c.high[i]; if (m && s) cullInstanceSnapshot(m, s, fr, 1); }
+        for (let i = 0; i < lo.current.length; i++) { const m = lo.current[i], s = c.low[i]; if (m && s) cullInstanceSnapshot(m, s, fr, 1); }
+        if (bush.current) { c.bush ||= captureInstanceSnapshot(bush.current); if (c.bush) cullInstanceSnapshot(bush.current, c.bush, fr, 1); }
+    });
     return <group>
         {renderGround && <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>}
         {renderGround && <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>}
@@ -154,6 +171,7 @@ export function Meadow({ sim }: { sim: Sim }) {
     useFrame((st) => { if (ff.current && ff.current.layers.mask !== 3) ff.current.layers.enable(SELECTIVE_BLOOM_LAYER); uni.current.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); uni.current.uCam.value.copy(st.camera.position); if (DBG && gr.current) (window as any).__polyforkGrass = { outlineMaskAlpha: gr.current.userData.outlineMaskAlpha, outlineMaskThreshold: gr.current.userData.outlineMaskThreshold, bladeSegments: { near: HQ ? 5 : 4, far: HQ ? 2 : 1 } }; const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
     const geo = useMemo(() => tuftGeo(HQ ? 5 : 4), []), geoF = useMemo(() => tuftGeo(HQ ? 2 : 1), []);   /* Constrained tiers keep near blades smooth and halve far-blade geometry; density and placement stay unchanged. */
     const grF = useRef<THREE.InstancedMesh>(null!);
+    const grassCull = useRef({ x: 1e9, z: 1e9, frame: 0, near: null as InstanceSnapshot | null, far: null as InstanceSnapshot | null, flowers: null as InstanceSnapshot | null });
     const flGeo = useMemo(() => { const g = new THREE.CircleGeometry(0.17, 7); g.rotateX(-Math.PI / 2.4); g.translate(0, 0.62, 0); const st = new THREE.PlaneGeometry(0.02, 0.62); st.translate(0, 0.31, 0); return mergeGeometries([g, st], false)!; }, []);
     const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5 + parkH(p[i * 3], p[i * 3 + 2]); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
     const place = (hx: number, hz: number) => {
@@ -169,6 +187,22 @@ export function Meadow({ sim }: { sim: Sim }) {
     useFrame((st) => { uni.current.uTime.value = fu.current.uTime.value = st.clock.elapsedTime; const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 8) { last.current = [hx, hz]; place(hx, hz); } });
     const onGrass = parkGrassOnCompile(uni.current);
     const grMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1c3410'), side: THREE.DoubleSide }); m.onBeforeCompile = onGrass; return m; }, []);   // one material (one program) for near + far tufts
+    useFrame(({ camera }) => {
+        const c = grassCull.current, p = last.current;
+        const moved = p[0] !== c.x || p[1] !== c.z;
+        if (moved) {
+            c.x = p[0]; c.z = p[1]; c.frame = 0;
+            if (gr.current && grF.current && fl.current) {
+                c.near = captureInstanceSnapshot(gr.current);
+                c.far = captureInstanceSnapshot(grF.current);
+                c.flowers = captureInstanceSnapshot(fl.current);
+            }
+        } else if (++c.frame % 3 !== 0) return;
+        const fr = viewFrustum(camera);
+        if (c.near && gr.current) cullInstanceSnapshot(gr.current, c.near, fr, 3.5);
+        if (c.far && grF.current) cullInstanceSnapshot(grF.current, c.far, fr, 3.5);
+        if (c.flowers && fl.current) cullInstanceSnapshot(fl.current, c.flowers, fr, 1);
+    });
     return <group>
         <instancedMesh ref={gr} name="polyfork-curved-grass-blades" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geo, grMat, QK.grass]} frustumCulled={true} />
         <instancedMesh ref={grF} name="polyfork-curved-grass-blades-far" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geoF, grMat, QK.grass]} frustumCulled={true} />
