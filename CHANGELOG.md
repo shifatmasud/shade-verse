@@ -1,5 +1,16 @@
 # Changelog
 
+## Wall-run rig, pose and contact fix (2026-11-17)
+
+- The wall-run pose no longer hangs the hero ~0.5 m beside the facade. `src/heroWallRun.ts` first sits the body so its wall-side shoulder grazes the wall (0.20 m clearance), which keeps Scene's skinned-hull wall push-out at zero. Before the fix that correction shoved the drawn body off the wall, so every "planted" hand and foot floated beside it.
+- The wall-side palm and foot targets are measured from the shoulder and hip they hang from, not from the physics centre, so the reference contact chain (palm, elbow bend, wall shoulder, pelvis, wall-side knee, foot plant) lands on the facade. The trailing foot is left behind and off the wall; the free arm swings out on the balancing side.
+- The torso now tips into the wall by wall side, not by run direction: `applyHeroRootPose` no longer adds the ±0.14 roll that flipped with the travel direction, and the wall-run pose no longer forces the body upright at 0.06 rad.
+- The pose moved out of `Scene.tsx` into `src/heroWallRun.ts`: typed targets, reach-clamped two-bone IK, mirrored by `wallSide`, with the stride keyed off the run cycle.
+
+Measured on the instrumented build (hold RMB+Shift into an x-facing facade, Chromium/SwiftShader at 800x520, frames stepped by sim time): wall-side palm 0.474-0.577 m -> 0.230-0.259 m clear of the facade, wall-side foot 0.474-0.577 m -> 0.220-0.249 m, trailing foot 0.46-0.60 m off the wall, torso tipped 0.16 rad into the wall, pose weight 1.0, clip `run`. Entry, sustained run (6.4 m/s along the wall), facade clearance and release-to-crawl are unchanged from `main`.
+
+Verification: `npm run typecheck` and `npm run build` pass; `test/wall-run-pose.mjs` (new) passes against a `VITE_DBG=1` preview. `test/swing-wall-run.mjs` cannot run in this environment (the headless shell has no pointer lock and it fails identically on `main`). Frame-by-frame A/B sheets were captured before/after on the same wall, camera and stride.
+
 ## Water rendering maintenance (2026-11-14)
 
 - Fixed the Jungle Island river fragment shader's duplicate local declaration and undefined `hc`/`hk` references, which prevented the material from compiling.
