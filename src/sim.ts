@@ -271,7 +271,7 @@ export interface Sim {
     camHeld?: boolean; yaw: number; pitch: number; ang: number; score: number; time: number; best: number;
     hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number; atkPend: number; shotE: Enemy | null; anchorReal: boolean; spring: number; shotT: number; shotTgt: V3; glideOn: boolean; airT: number;
-    grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; vaulted: number;
+    grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; wallRun: boolean; vaulted: number;
     plasma: Plasma[]; blasts: Blast[]; aimE: Enemy | null;
     eshots?: EShot[];
 }
@@ -298,7 +298,7 @@ export function getCompanionSim() { return companionSim; }
 export function createSim(): Sim {
     let best = 0;
     try { best = parseInt(localStorage.getItem('webswinger3d-best') || '0', 10) || 0; } catch (e) { /* ignore */ }
-    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, atkPend: 0, shotE: null, anchorReal: false, spring: 0, shotT: 0, shotTgt: [0, 0, 0], glideOn: false, airT: 0, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0, swim: false, dive: false, wall: null, wallB: -1, wallT: 0, vaulted: 0, plasma: [], blasts: [], aimE: null };
+    const s: Sim = { mode: 'menu', pos: [0, 0, 0], vel: [0, 0, 0], ground: true, web: false, atkPend: 0, shotE: null, anchorReal: false, spring: 0, shotT: 0, shotTgt: [0, 0, 0], glideOn: false, airT: 0, anchor: [0, 0, 0], rope: 20, yaw: 0, pitch: 0.28, ang: 0, score: 0, time: 75, best, hp: 100, hurtT: 0, atkT: 0, dodgeT: 0, combo: 0, comboT: 0, kos: 0, land: 0, landHard: 0, enemies: [], lastHit: -9, orbs: [], beacon: [0, 0, 0], beaconN: 0, t: 0, runPhase: 0, lastDrag: -10, safe: [0, 0, 0], maxSpeed: 0, swings: 0, webT: 0, swim: false, dive: false, wall: null, wallB: -1, wallT: 0, wallRun: false, vaulted: 0, plasma: [], blasts: [], aimE: null };
     resetSim(s);
     return s;
 }
@@ -393,7 +393,7 @@ export function resetSim(s: Sim) {
     s.beaconN = 0; s.beacon = newBeacon(s);
     s.glideOn = false; s.airT = 0; (s as any).pressT = undefined; (s as any).flightBoost = false; (s as any).glideMode = false; (s as any).dblUsed = false;
     input.jumpQ = false; input.jumpHeld = false; input.jumpReleased = false; input.jumpCancelled = false; input.keys[' '] = false;
-    s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
+    s.grappleFlight = false; (s as any).glideBlocked = false; s.webDepartB = undefined; s.wall = null; s.wallRun = false; s.swim = false; s.dive = false; s.wallT = 0; s.vaulted = 0; s.hp = 100; s.hurtT = 0; s.atkT = 0; s.dodgeT = 0; s.combo = 0; s.comboT = 0; s.kos = 0; s.land = 0; s.landHard = 0;
     s.plasma = []; s.blasts = []; s.eshots = []; s.aimE = null; s.shotE = null; const sa = s as any; sa.snareCd = 0; sa.snareT = 0; sa.snareList = []; sa.slam = null; sa.slamLatch = false; sa.slowT = 0; sa.fovK = 0;
     s.enemies = []; for (let i = 0; i < ENEMY_N; i++) s.enemies.push(spawnEnemy(s)); s.enemies.push(spawnBoss(s)); s.enemies.push(spawnMiniBoss(s));
 }
@@ -564,7 +564,7 @@ function leaveHeading(s: Sim): [number, number] {
 }
 function leaveWall(s: Sim, h: [number, number]) {
     if (!s.wall) return;
-    s.webDepartB = s.wallB; s.wall = null; s.wallT = 0.3; s.ground = false;
+    s.webDepartB = s.wallB; s.wall = null; s.wallRun = false; s.wallT = 0.3; s.ground = false;
     const to = Math.atan2(h[0], h[1]), dy = ((to - s.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     if (Math.abs(dy) > 0.3) { const g = s as any; g.yawTo = to; g.yawTurnT = 0.6; g.yawTurnDrag = s.lastDrag; }   // camera swings round behind the hero (cancelled by any manual look)
 }
@@ -814,12 +814,20 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     } else if (s.wall && !s.web) {
         (s as any).surf = false;
         const n = s.wall, tx = -n[1], tz = n[0];
-        const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
-        if (push < -0.3) { s.wall = null; s.wallT = 0.2; v[0] = n[0] * 3; v[2] = n[1] * 3; v[1] = 0; }
-        else {
-            const up = push > 0.3 ? push * 16 : 0;
-            v[0] = tx * lat * 18 - n[0] * 2; v[2] = tz * lat * 18 - n[1] * 2; v[1] += (up - v[1]) * Math.min(1, dt * 12);
-            s.runPhase += (Math.abs(up) + Math.abs(lat) * 18) * dt * 0.52;
+        if (s.wallRun && swingHeld) {
+            const along = v[0] * tx + v[2] * tz, steer = wx * tx + wz * tz;
+            const target = Math.abs(steer) > 0.12 ? steer * 18 : along;
+            const speed = (Math.abs(steer) > 0.12 ? along + (target - along) * Math.min(1, dt * 5) : along * Math.pow(0.997, dt * 60));
+            v[0] = tx * speed - n[0] * 1.5; v[2] = tz * speed - n[1] * 1.5; v[1] += (0 - v[1]) * Math.min(1, dt * 12);
+            s.runPhase += Math.abs(speed) * dt * 0.9;
+        } else {
+            const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
+            if (push < -0.3) { s.wall = null; s.wallRun = false; s.wallT = 0.2; v[0] = n[0] * 3; v[2] = n[1] * 3; v[1] = 0; }
+            else {
+                const up = push > 0.3 ? push * 16 : 0;
+                v[0] = tx * lat * 18 - n[0] * 2; v[2] = tz * lat * 18 - n[1] * 2; v[1] += (up - v[1]) * Math.min(1, dt * 12);
+                s.runPhase += (Math.abs(up) + Math.abs(lat) * 18) * dt * 0.52;
+            }
         }
     } else if (s.ground && !s.web) {
         const a = Math.min(1, dt * 13); v[0] += (wx * WALK_V - v[0]) * a; v[2] += (wz * WALK_V - v[2]) * a; v[1] = 0;   // 10:19 PM 'make walk faster': 15 -> 22 m/s, quicker pickup
@@ -857,13 +865,20 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     (s as any).onCar = -1; collideCars(s, prevY, dt);
     (s as any).onBoat = -1; collideBoats(s, prevY, dt);
     if (s.webDepartB !== undefined) { const b = blds[s.webDepartB]; if (!s.web || !b || p[0] < b.x0 - 1.2 || p[0] > b.x1 + 1.2 || p[2] < b.z0 - 1.2 || p[2] > b.z1 + 1.2 || p[1] - 1 > b.h + 0.2) s.webDepartB = undefined; }
-    // Hero side-wall contact ends web travel and enters wall-running mode.
-    // A distant anchor attaching is not contact; roofs remain normal landings.
+    // A swing catch on any side of a facade enters a wall-run while the existing hold remains active.
+    // Keep the collision-plane tangent momentum and orient the body along that run; release returns to crawl.
     if (hitN && !s.ground && !s.swim && s.wallT <= 0 && !stunned && hitB !== s.webDepartB && (s.web || s.grappleFlight)) {
-        const wasWeb = s.web; s.web = false; s.spring = 0; s.grappleFlight = false;
+        const wasWeb = s.web, wasGrappleFlight = s.grappleFlight; s.web = false; s.spring = 0; s.grappleFlight = false;
         s.glideOn = false; (s as any).glideLatch = false; s.airT = 0;
         s.wall = hitN; s.wallB = hitB; s.vaulted = 0;
-        v[0] = -hitN[0] * 2; v[1] = 0; v[2] = -hitN[1] * 2;
+        const tx = -hitN[1], tz = hitN[0], incomingTangent = v[0] * tx + v[2] * tz, steerTangent = wx * tx + wz * tz;
+        s.wallRun = controls === input && swingHeld && (wasWeb || wasGrappleFlight);
+        if (s.wallRun) {
+            const fallback = Math.sign(steerTangent) || Math.sign(fx * tx + fz * tz) || 1;
+            const speed = Math.abs(incomingTangent) >= 3 ? incomingTangent : fallback * Math.max(14, Math.abs(steerTangent) * 18);
+            v[0] = tx * speed - hitN[0] * 1.5; v[1] = 0; v[2] = tz * speed - hitN[1] * 1.5;
+            s.ang = Math.atan2(tx * Math.sign(speed), tz * Math.sign(speed));
+        } else { v[0] = -hitN[0] * 2; v[1] = 0; v[2] = -hitN[1] * 2; }
         if (wasWeb) ev.release();
     }
     if (hitN && !s.web && !s.ground && s.wallT <= 0 && !stunned) {
@@ -873,7 +888,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     else if (hitN && !s.web && s.wallT <= 0 && !stunned && p[1] <= 1.05 && -(wx * hitN[0] + wz * hitN[1]) > 0.5) { s.wall = hitN; s.wallB = hitB; v[1] = 0.1; p[1] = 1.06; }
     else if (!hitN) s.wall = null;
 
-    if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
+    if (s.wall && s.wallB >= 0) { const b = blds[s.wallB]; if (p[1] - 1.0 >= b.h - 0.5) { const n = s.wall; p[1] = b.h + 1.02; p[0] -= n[0] * 1.1; p[2] -= n[1] * 1.1; v[0] = v[1] = v[2] = 0; s.wall = null; s.wallRun = false; s.vaulted++; s.ground = true; s.safe = [p[0], p[1], p[2]]; } }
     if (s.ground && s.web && p[1] > 1.2) s.web = false;
     if (s.swim) { const floor = isLakeWater(p[0], p[2]) ? lakeFloorAt(p[0], p[2]) + 1.05 : seabedAt(p[0], p[2]) + 1; if (p[1] < floor) { p[1] = floor; if (v[1] < 0) v[1] = 0; } }
     const parkFloor = parkH(p[0], p[2]), bridgeFloor = bridgeSurfaceAt(p[0], p[2]);
@@ -884,6 +899,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         p[1] = gy; if (v[1] < 0) v[1] = 0;
     }
     if (s.ground || s.swim || s.wall || s.glideOn) s.grappleFlight = false;
+    if (!s.wall || !swingHeld) s.wallRun = false;
     if (s.ground && !wasGround && landVy < -7) {
         const imp = -landVy; s.land = Math.min(1, imp / 30); const hard = imp > 26;
         s.landHard = hard ? 0.45 : 0;
@@ -892,7 +908,10 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     }
     const sp = len(v); if (sp > s.maxSpeed) s.maxSpeed = sp;
     const hs = Math.hypot(v[0], v[2]);
-    if (s.wall) { s.ang = Math.atan2(-s.wall[0], -s.wall[1]); } else if (hs > 1.5) { let da = Math.atan2(v[0], v[2]) - s.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); s.ang += da * Math.min(1, dt * 12); }
+    if (s.wall) {
+        if (s.wallRun) { const tx = -s.wall[1], tz = s.wall[0], along = v[0] * tx + v[2] * tz; if (Math.abs(along) > 0.2) s.ang = Math.atan2(tx * Math.sign(along), tz * Math.sign(along)); }
+        else s.ang = Math.atan2(-s.wall[0], -s.wall[1]);
+    } else if (hs > 1.5) { let da = Math.atan2(v[0], v[2]) - s.ang; da = Math.atan2(Math.sin(da), Math.cos(da)); s.ang += da * Math.min(1, dt * 12); }
     if (s.ground) s.runPhase += hs * dt * 0.9;
     s.land = Math.max(0, s.land - dt * 3);
     stepCombat(s, dt, ev, controls, options);

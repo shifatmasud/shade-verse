@@ -224,7 +224,10 @@ export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, po
     root.position.set(position[0], position[1] - 1, position[2]);
     root.scale.setScalar(scale);
     if (sim.land > 0.02 && !sim.swim) { const sy = 1 - 0.16 * sim.land, sxz = 1 / Math.sqrt(sy); root.scale.set(scale * sxz, scale * sy, scale * sxz); }   // landing squash (volume kept), decays with sim.land
-    if (sim.wall) { root.position.x += Math.sin(sim.ang) * 0.2; root.position.z += Math.cos(sim.ang) * 0.2; }
+    if (sim.wall) {
+        if (sa.wallRun) { root.position.x -= sim.wall[0] * 0.2; root.position.z -= sim.wall[1] * 0.2; }
+        else { root.position.x += Math.sin(sim.ang) * 0.2; root.position.z += Math.cos(sim.ang) * 0.2; }
+    }
     if (sourcePose) state.swW = sourcePose.swimWave;
     if (sim.swim) {
         if (!sourcePose) { const baseY = waterRenderY(position[0], position[2], sim.t) - waveAtWater(position[0], position[2], sim.t), kw = Math.max(0, Math.min(1, (position[1] - baseY + 2) / 2.3)), wv = waveAtWater(position[0], position[2], sim.t) * kw; state.swW = state.swW === undefined ? wv : state.swW + (wv - state.swW) * Math.min(1, dt * 10); }
@@ -232,7 +235,7 @@ export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, po
     }
     const oldBlend = state.gB || 0;
     state.gB = sourcePose?.glideBlend ?? oldBlend + ((sim.glideOn ? 1 : 0) - oldBlend) * Math.min(1, dt * 3.5);
-    const lean = sourcePose?.lean ?? ((sim.swim ? (sim.dive ? 1.9 : 1.45) : sim.wall ? 0.32 : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - state.gB * 0.8) + state.gB * 1.12);
+    const lean = sourcePose?.lean ?? ((sim.swim ? (sim.dive ? 1.9 : 1.45) : sim.wall ? (sa.wallRun ? 0.22 : 0.32) : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - state.gB * 0.8) + state.gB * 1.12);
     root.rotation.set(0, sim.ang, 0);
     poseRoot.rotation.set(lean, 0, 0); poseRoot.rotation.order = 'ZXY';
     let bank = sourcePose?.bank;
@@ -240,7 +243,8 @@ export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, po
         const yr = state.bYaw === undefined ? 0 : ((sim.yaw - state.bYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3);
         state.bYaw = sim.yaw; state.bR = (state.bR || 0) + (Math.max(-0.5, Math.min(0.5, -yr * 0.9)) * state.gB - (state.bR || 0)) * Math.min(1, dt * 4); bank = state.bR;
     } else { state.bYaw = sourcePose!.yaw; state.bR = bank; }
-    poseRoot.rotation.z = bank;
+    const wallAlong = sim.wall ? sim.vel[0] * -sim.wall[1] + sim.vel[2] * sim.wall[0] : 0;
+    poseRoot.rotation.z = bank + (sim.wall && sa.wallRun ? (wallAlong >= 0 ? -0.14 : 0.14) : 0);
     if (state.gB > 0.01) { const lc = 0.9 * state.gB; root.position.x -= Math.sin(sim.ang) * Math.sin(lean) * lc; root.position.z -= Math.cos(sim.ang) * Math.sin(lean) * lc; root.position.y += (1 - Math.cos(lean)) * lc * 0.6; }
     traversalRoot(sim, rig, dt, scale);   // swing pendulum body (heroTraversal.ts)
     root.position.y -= sim.land * 0.5;
@@ -270,7 +274,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
         else { const charge = sn <= SNARE.SHOCK_START ? Math.sin((SNARE.SHOCK_START - sn) * 18) * 0.035 : 0; armR.rotation.x = -1.22 - charge; armL.rotation.x = -1.22 - charge; armR.rotation.z = -0.2; armL.rotation.z = 0.2; legR.rotation.x = -0.2; legL.rotation.x = 0.1; }
     }
     { const tR = legR.rotation.x, tL = legL.rotation.x, tuck = sim.ground || sim.glideOn || sim.wall ? 0 : 0.35; rig.b.shinR.rotation.x = Math.max(0, tR) * 0.9 + 0.08 + tuck; rig.b.shinL.rotation.x = Math.max(0, tL) * 0.9 + 0.08 + tuck; rig.b.farmR.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armR.rotation.x + 1.2) * 0.2; rig.b.farmL.rotation.x = sn > 0 ? -0.9 : -0.35 + Math.min(0, armL.rotation.x + 1.2) * 0.2; rig.b.spine.rotation.x = Math.sin(sim.runPhase * 3) * 0.04 * (sim.ground ? 1 : 0); }
-    const ck = (sa.mv || sa.flip || sn > 0 || (sim.glideOn && glideBlend > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? 'wall' : sim.atkT > 0 && sim.shotT <= 0 ? (sa.kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
+    const ck = (sa.mv || sa.flip || sn > 0 || (sim.glideOn && glideBlend > 0.3)) ? '' : sim.swim ? 'swim' : sim.wall ? (sa.wallRun ? 'run' : 'wall') : sim.atkT > 0 && sim.shotT <= 0 ? (sa.kick ? '' : 'punch') : (!sim.ground && !sim.web) ? 'jump' : (sim.ground && hs < 0.6 && !sim.dive) ? 'idle' : (sim.ground && !sim.web) ? 'run' : '';
     const cs = clipState;
     if (sourceClipState) { cs.key = sourceClipState.key; cs.t = sourceClipState.t; cs.w = sourceClipState.w; }
     else {
@@ -303,9 +307,9 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     }
     for (const side of ['L', 'R']) { const hf = rig.b['hipFix' + side] as THREE.Bone | undefined, th = rig.b['thigh' + side] as THREE.Bone | undefined; if (hf && th) { hf.quaternion.identity().slerp(th.quaternion, 0.5); hf.scale.setScalar(1 + 0.14 * (rig._supW?.[side] ?? 0)); } } if (rig._supW) rig._supW.L = rig._supW.R = 0;   // + the support side's volume keeper: up to 14% fuller hip band while that leg carries the kick's tipped pelvis (supportLegIK), so the big hip angle does not pinch the upper thigh   // hip corrective follows its thigh at half the angle (buildRig)
     const zip = sim.web && sim.webT < 1.6 && sim.anchor[1] - sim.pos[1] > 25 && Math.hypot(sim.anchor[0] - sim.pos[0], sim.anchor[1] - sim.pos[1], sim.anchor[2] - sim.pos[2]) < sim.rope - 0.5;
-    const action = sn > 0 ? 'shadow-snare' : sa.mv ? `move-${sa.mv.id}` : sa.flip ? 'dodge-flip' : sim.shotT > 0 ? 'plasma-web-shot' : sim.spring > 0 ? 'web-spring-launch' : sim.web ? (zip ? 'street-zip-up' : 'web-swing') : sim.swim ? (sim.dive ? 'dive' : 'swim') : sim.wall ? 'wall-crawl' : sim.wallT > 0 ? 'wall-jump' : sim.glideOn ? (sa.flightBoost ? 'powered-flight' : 'glide') : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne') : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
+    const action = sn > 0 ? 'shadow-snare' : sa.mv ? `move-${sa.mv.id}` : sa.flip ? 'dodge-flip' : sim.shotT > 0 ? 'plasma-web-shot' : sim.spring > 0 ? 'web-spring-launch' : sim.web ? (zip ? 'street-zip-up' : 'web-swing') : sim.swim ? (sim.dive ? 'dive' : 'swim') : sim.wall ? (sa.wallRun ? 'wall-run' : 'wall-crawl') : sim.wallT > 0 ? 'wall-jump' : sim.glideOn ? (sa.flightBoost ? 'powered-flight' : 'glide') : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne') : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
     const snarePhase = sn <= 0 ? 'inactive' : sn > SNARE.GATHER_END ? 'gather' : sn > SNARE.SHOCK_START ? 'grip' : sn > SNARE.IMPACT ? 'shockwave' : 'discharge';
-    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, snarePhase, gripHands: sn > 0 ? 2 : 0, snareTargets: (sa.snareList || []).length, shotT: sim.shotT, spring: sim.spring, aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
+    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, snarePhase, gripHands: sn > 0 ? 2 : 0, snareTargets: (sa.snareList || []).length, shotT: sim.shotT, spring: sim.spring, aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, wallRun: !!sa.wallRun, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
 }
 export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: number; shake: number }; perf: { scale: number; fps: number; speed: number } }
 
