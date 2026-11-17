@@ -9,7 +9,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { SELECTIVE_BLOOM_LAYER, TREE_SSR_LAYER } from '../renderLayers';
 import { useFrame, useThree } from '@react-three/fiber';
 import { captureInstanceSnapshot, cullInstanceSnapshot, viewFrustum, type InstanceSnapshot } from '../render/instCull';
-import { packCanopyLod, updateCanopyLodState } from '../render/foliageLod';
+import { forceFullCanopyDetail, packCanopyLod, updateCanopyLodState } from '../render/foliageLod';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
 const _canopyViewport = new THREE.Vector4();
@@ -139,8 +139,9 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
         renderer.getCurrentViewport(_canopyViewport);
         const height = Math.max(1, Math.round(_canopyViewport.w));
         const bounds = canopyBounds[type], state = canopyStateFor(camera, height, type, snapshot);
-        updateCanopyLodState(snapshot, camera, height, bounds.center, bounds.radius, state);
         const lakeCopy = camera === mainCamera && camera.layers.mask === (1 << TREE_SSR_LAYER);
+        if (lakeCopy) forceFullCanopyDetail(snapshot, state);
+        else updateCanopyLodState(snapshot, camera, height, bounds.center, bounds.radius, state);
         const allSources = shadowPass || camera !== mainCamera || lakeCopy;
         const packed = packCanopyLod(mesh, snapshot, state, highDetail, !allSources);
         if (DBG) {

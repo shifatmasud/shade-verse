@@ -60,12 +60,14 @@ assert.equal(lod.packCanopyLod(mainHigh, snapshot, choices, true, true), 1);
 assert.equal(lod.packCanopyLod(mainLow, snapshot, choices, false, true), 0);
 assert.deepEqual(ids(mainHigh), [1]);
 
-// Lake-copy render uses the same main view's eligible list and high/low split.
+// Lake reflections use every source at full canopy detail; the 1/8 target downsamples it without switching to sparse foliage meshes.
+const lakeChoices = new Uint8Array(snapshot.count);
+lod.forceFullCanopyDetail(snapshot, lakeChoices);
 const lakeHigh = meshFor(3), lakeLow = meshFor(3);
-assert.equal(lod.packCanopyLod(lakeHigh, snapshot, choices, true, true), mainHigh.count);
-assert.equal(lod.packCanopyLod(lakeLow, snapshot, choices, false, true), mainLow.count);
-assert.deepEqual(ids(lakeHigh), ids(mainHigh));
-assert.deepEqual(ids(lakeLow), ids(mainLow));
+assert.equal(lod.packCanopyLod(lakeHigh, snapshot, lakeChoices, true, false), snapshot.count);
+assert.equal(lod.packCanopyLod(lakeLow, snapshot, lakeChoices, false, false), 0);
+assert.deepEqual(ids(lakeHigh), [1, 2, 3]);
+assert.deepEqual(ids(lakeLow), []);
 
 const shadowHigh = meshFor(3), shadowLow = meshFor(3);
 assert.equal(lod.packCanopyLod(shadowHigh, snapshot, choices, true, false), 2);
@@ -83,4 +85,4 @@ for (const z of [-20, -25, -34, -26, -20]) {
     assert.deepEqual([...ids(hi), ...ids(loMesh)].sort(), [1, 2, 3]);
 }
 
-console.log('foliage_lod: PASS — threshold hysteresis, full shadow sources, lake-copy parity, and canopy continuity');
+console.log('foliage_lod: PASS — hysteresis, full-detail lake canopy, all-source shadows, and canopy continuity');

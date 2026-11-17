@@ -52,6 +52,11 @@ export function updateCanopyLodState(
     }
 }
 
+/** A downsampled reflection should filter full canopies, not swap to sparse foliage LODs. */
+export function forceFullCanopyDetail(snapshot: InstanceSnapshot, state: Uint8Array) {
+    state.fill(1, 0, Math.min(snapshot.count, state.length));
+}
+
 type PackedCanopyCache = { snapshot: InstanceSnapshot | null; indices: Int32Array; next: Int32Array; count: number };
 
 /** Pack one quality variant. Main draws use the main-camera visible list; shadow draws
