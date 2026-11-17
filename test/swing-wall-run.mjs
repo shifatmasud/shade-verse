@@ -19,6 +19,20 @@ try {
     await page.evaluate(() => window.__game.start());
     await page.waitForFunction(() => window.__game.sim.mode === 'play', { timeout: 45000 });
 
+    await page.evaluate(() => { window.__ts = 0; window.__game.input.swing = false; window.__game.input.swingQ = false; });
+    await page.keyboard.down('Shift');
+    await page.waitForFunction(() => window.__game.input.swing === true, { timeout: 3000 });
+    await page.keyboard.up('Shift');
+    await page.waitForFunction(() => window.__game.input.swing === false, { timeout: 1500 });
+    const canvasBox = await page.$eval('.stage canvas', (canvas) => { const r = canvas.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await page.mouse.click(canvasBox.x, canvasBox.y);
+    await page.waitForFunction(() => document.pointerLockElement === document.querySelector('.stage canvas'), { timeout: 3000 });
+    await page.mouse.down({ button: 'right' });
+    await page.waitForFunction(() => window.__game.input.swing === true, { timeout: 3000 });
+    await page.mouse.up({ button: 'right' });
+    await page.waitForFunction(() => window.__game.input.swing === false, { timeout: 1500 });
+    await page.evaluate(() => { window.__game.input.swingQ = false; window.__game.input.grabQ = false; });
+
     const fixture = await page.evaluate(() => {
         const g = window.__game;
         const choices = g.buildings.filter((b) => !b.ob && b.host === undefined && !b.sea && b.h > 24 && b.x1 - b.x0 > 18 && b.z1 - b.z0 > 18)
@@ -34,8 +48,8 @@ try {
         await page.waitForFunction(() => window.__game.sim.wallRun && !!window.__game.sim.wall, { timeout: 2200 });
         await new Promise((resolve) => setTimeout(resolve, 220));
         return page.evaluate(() => {
-            const s = window.__game.sim, a = window.__shadowAnimation;
-            return { pos: [...s.pos], vel: [...s.vel], wall: s.wall ? [...s.wall] : null, wallB: s.wallB, web: s.web, wallRun: s.wallRun, ang: s.ang, action: a?.action, clipKey: a?.clipKey };
+            const s = window.__game.sim, a = window.__shadowAnimation, b = window.__rig?.b;
+            return { pos: [...s.pos], vel: [...s.vel], wall: s.wall ? [...s.wall] : null, wallB: s.wallB, web: s.web, wallRun: s.wallRun, ang: s.ang, action: a?.action, clipKey: a?.clipKey, wallRunPoseWeight: a?.wallRunPoseWeight, wallRunWallFoot: a?.wallRunWallFoot, ghostWallRunPoseWeight: window.__ghostState?.animation?.wallRunPoseWeight ?? 0, spineZ: b?.spine?.rotation.z, wallThighZ: b?.[a?.wallRunWallFoot === 'right' ? 'thighR' : 'thighL']?.rotation.z };
         });
     }
 
@@ -59,6 +73,8 @@ try {
         assert.equal(entry.web, false, 'wall contact should end the web swing cleanly');
         assert.equal(entry.action, 'wall-run', 'the animation state should identify the wall-run');
         assert.equal(entry.clipKey, 'run', 'the wall-run should use the existing running stride, not the crawl clip');
+        assert.ok(entry.wallRunPoseWeight > 0.5, 'Shadow should blend into the added parkour step pose');
+        assert.equal(entry.ghostWallRunPoseWeight, 0, 'Ghost must not inherit Shadow’s new wall-run pose layer');
         assert.ok(entry.wall, 'the contacted wall normal must be retained');
 
         const n = entry.wall, tangent = [-n[1], n[0]], direction = [Math.sin(entry.ang), Math.cos(entry.ang)];
@@ -69,11 +85,14 @@ try {
         const runningStart = await page.evaluate(() => ({ pos: [...window.__game.sim.pos], t: window.__game.sim.t }));
         await page.waitForFunction((target) => window.__game.sim.t >= target, { timeout: 10000 }, runningStart.t + 0.35);
         const running = await page.evaluate(({ face, start }) => {
-            const s = window.__game.sim;
-            return { start, end: [...s.pos], vel: [...s.vel], wall: s.wall ? [...s.wall] : null, wallRun: s.wallRun, action: window.__shadowAnimation?.action, face };
+            const s = window.__game.sim, a = window.__shadowAnimation;
+            return { start, end: [...s.pos], vel: [...s.vel], wall: s.wall ? [...s.wall] : null, wallRun: s.wallRun, action: a?.action, wallRunPoseWeight: a?.wallRunPoseWeight, wallRunWallFoot: a?.wallRunWallFoot, ghostWallRunPoseWeight: window.__ghostState?.animation?.wallRunPoseWeight ?? 0, spineZ: window.__rig?.b?.spine?.rotation.z, wallThighZ: window.__rig?.b?.[a?.wallRunWallFoot === 'right' ? 'thighR' : 'thighL']?.rotation.z, face };
         }, { face, start: runningStart.pos });
         assert.equal(running.wallRun, true, 'holding the existing swing input should sustain wall-run');
         assert.equal(running.action, 'wall-run');
+        assert.ok(running.wallRunPoseWeight > 0.8, 'the purposeful wall-run pose should be fully blended while traversing');
+        assert.equal(running.ghostWallRunPoseWeight, 0, 'the follower must retain its existing traversal pose without the new Shadow overlay');
+        assert.ok(Math.abs(running.spineZ) > 0.03 && Math.abs(running.wallThighZ) > 0.1, `the wall-side hip/torso cant and foot-placement reach should be visible in the rig (spineZ=${running.spineZ}, thighZ=${running.wallThighZ}, side=${running.wallRunWallFoot})`);
         const tangentDistance = face === 'x' ? Math.abs(running.end[2] - running.start[2]) : Math.abs(running.end[0] - running.start[0]);
         assert.ok(tangentDistance > 2.2, `wall-run should carry momentum along the ${face}-face (moved ${tangentDistance.toFixed(2)} m)`);
         assert.ok(Math.abs(running.end[1] - running.start[1]) < 0.45, 'wall-run should not turn into a vertical crawl');
