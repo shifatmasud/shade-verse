@@ -75,7 +75,7 @@ try {
     assert(Math.abs(placementEvidence.deckProbe - placementEvidence.lake.bridgeDeckY) < 1e-6, 'Bridge deck collision height differs from its rendered deck surface');
     assert(Number.isFinite(placementEvidence.rampMidProbe) && placementEvidence.rampMidProbe < placementEvidence.deckProbe, 'Approach ramp does not slope down from the bridge');
     assert(Number.isFinite(placementEvidence.rampEndProbe), 'Approach ramp does not connect to the park floor');
-    assert(placementEvidence.grass.bladeSegments === 8 && placementEvidence.grass.outlineMaskAlpha < placementEvidence.grass.outlineMaskThreshold, 'Curved grass blades are not excluded from the outline mask');
+    assert(placementEvidence.grass.bladeSegments.near === 4 && placementEvidence.grass.bladeSegments.far === 1 && placementEvidence.grass.outlineMaskAlpha < placementEvidence.grass.outlineMaskThreshold, 'Low-tier curved grass LOD or outline-mask exclusion is incorrect');
     assert(JSON.stringify(placementEvidence.vegetation).includes('palm-tree-a307da') && JSON.stringify(placementEvidence.vegetation).includes('tall-pine-tree-ab4108') && JSON.stringify(placementEvidence.vegetation).includes('broadleaf-oak-997c22') && JSON.stringify(placementEvidence.vegetation).includes('cherry-blossom-tree-3f7ab7') && JSON.stringify(placementEvidence.vegetation).includes('cherry-tree-a710a9') && JSON.stringify(placementEvidence.vegetation).includes('round-bush-cd2ac0'), 'Required Polyfork tree/bush species are not present in the environment batch');
 
     // Test the real simulation floor snap on both the flat bridge deck and the sloped approach.

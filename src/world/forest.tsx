@@ -1,7 +1,7 @@
 import { BEACH_DIR, HALF, LAKE_SHORE, PARK, PARK_POND, WATER_Z, bridgeSurfaceAt, buildings, parkH, sandWeight, world, addTrunkSolids, type Sim } from '../sim';
 import * as THREE from 'three';
 import { TREE_PATTERN, TREE_TYPES, cherryLeafShader, coniferGeo, leafWindShader, palmFrondShader, palmFrondTex, palmGeo, palmTrunkTex, treeGeo, treeWindTime, trunkWindShader } from './trees';
-import { QK } from '../quality';
+import { HQ, QK } from '../quality';
 import { TOD } from './env';
 import { PINE_URL } from '../texdata';
 import { useEffect, useMemo, useRef } from 'react';
@@ -151,8 +151,8 @@ const grassTag = (sh: any) => { sh.fragmentShader = sh.fragmentShader.replace('#
 const FL_COL = ['#8a5cf0', '#4f7cff', '#e03a4a', '#ff7fb8'];
 export function Meadow({ sim }: { sim: Sim }) {
     const gr = useRef<THREE.InstancedMesh>(null!), fl = useRef<THREE.InstancedMesh>(null!), ff = useRef<THREE.Points>(null!), last = useRef([1e9, 1e9]), uni = useRef({ uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uCam: { value: new THREE.Vector3() } }), fu = useRef({ uTime: { value: 0 } });
-    useFrame((st) => { if (ff.current && ff.current.layers.mask !== 3) ff.current.layers.enable(SELECTIVE_BLOOM_LAYER); uni.current.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); uni.current.uCam.value.copy(st.camera.position); if (DBG && gr.current) (window as any).__polyforkGrass = { outlineMaskAlpha: gr.current.userData.outlineMaskAlpha, outlineMaskThreshold: gr.current.userData.outlineMaskThreshold, bladeSegments: 8 }; const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
-    const geo = useMemo(() => tuftGeo(5), []), geoF = useMemo(() => tuftGeo(2), []);   /* Shifat 10:22 PM 25 fps phone: 5 / 2 segments (was 8 / 3) - the arc still reads smooth at DPR 1, -40% grass triangles */   /* far tufts (> GR_NEAR m from the hero): 3-segment blades - a few pixels tall from there, ~60% fewer grass triangles in the park */
+    useFrame((st) => { if (ff.current && ff.current.layers.mask !== 3) ff.current.layers.enable(SELECTIVE_BLOOM_LAYER); uni.current.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); uni.current.uCam.value.copy(st.camera.position); if (DBG && gr.current) (window as any).__polyforkGrass = { outlineMaskAlpha: gr.current.userData.outlineMaskAlpha, outlineMaskThreshold: gr.current.userData.outlineMaskThreshold, bladeSegments: { near: HQ ? 5 : 4, far: HQ ? 2 : 1 } }; const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
+    const geo = useMemo(() => tuftGeo(HQ ? 5 : 4), []), geoF = useMemo(() => tuftGeo(HQ ? 2 : 1), []);   /* Constrained tiers keep near blades smooth and halve far-blade geometry; density and placement stay unchanged. */
     const grF = useRef<THREE.InstancedMesh>(null!);
     const flGeo = useMemo(() => { const g = new THREE.CircleGeometry(0.17, 7); g.rotateX(-Math.PI / 2.4); g.translate(0, 0.62, 0); const st = new THREE.PlaneGeometry(0.02, 0.62); st.translate(0, 0.31, 0); return mergeGeometries([g, st], false)!; }, []);
     const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5 + parkH(p[i * 3], p[i * 3 + 2]); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
@@ -176,4 +176,3 @@ export function Meadow({ sim }: { sim: Sim }) {
         <points ref={ff} geometry={ffGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} blending={THREE.AdditiveBlending} uniforms={fu.current} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying vec3 vOrbCol; void main(){ vOrbCol=0.58+0.42*cos(ph+vec3(0.0,2.1,4.2)); vec3 p = position; p.x += sin(uTime*0.4+ph*3.0)*2.5; p.z += cos(uTime*0.35+ph*2.0)*2.5; p.y += sin(uTime*0.7+ph)*0.8; vec4 mv = modelViewMatrix*vec4(p,1.0); gl_Position = projectionMatrix*mv; vA = 0.35+0.65*pow(0.5+0.5*sin(uTime*1.6+ph*5.0),2.0); gl_PointSize = clamp(38.0/(-mv.z), 2.0, 9.0); }`} fragmentShader={`varying float vA;varying vec3 vOrbCol;void main(){float d=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.0,d);gl_FragColor=vec4(vOrbCol*(0.7+0.3*a),a*a*vA);}`} /></points>
     </group>;
 }
-
