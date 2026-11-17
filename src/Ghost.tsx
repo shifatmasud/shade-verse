@@ -172,7 +172,7 @@ function animateHuman(actor: Sim, rig: ReturnType<typeof buildRig>, dt: number, 
     const shadowClipState = driver !== actor ? (driver as any).__heroClipState as HeroClipState | undefined : undefined;
     const shadowPoseState = driver !== actor ? (driver as any).__heroPoseState as CombatPoseState | undefined : undefined;
     if (shadowPoseState) { state.pose.w = shadowPoseState.w; state.pose.c.set(shadowPoseState.c); state.pose.t.set(shadowPoseState.t); }
-    const animation = animateHeroBones(driver, rig, dt, { clipState: state.anim as HeroClipState, poseState: state.pose as CombatPoseState, sourceClipState: shadowClipState, poseDt: shadowClipState ? 0 : dt, glideBlend: rootPose.glideBlend, publishState: driver === actor });
+    const animation = animateHeroBones(driver, rig, dt, { clipState: state.anim as HeroClipState, poseState: state.pose as CombatPoseState, sourceClipState: shadowClipState, poseDt: shadowClipState ? 0 : dt, glideBlend: rootPose.glideBlend, publishState: driver === actor, shadowWallRunPose: true });
     if (animation.clipKey === 'idle' && animation.weight > 0.01) uprightHead(rig, animation.weight);   // she stands tall in idle: the shared idle clip hangs the head forward
     applyCapeWind(driver, rig, dt);
     root.updateMatrixWorld(true);
@@ -244,7 +244,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
     const shockMatRef = useRef<THREE.LineBasicMaterial>(null!);
     const morphRef = useRef<THREE.Points>(null!);
     const morphMatRef = useRef<THREE.PointsMaterial>(null!);
-    const state = useRef({ ready: false, wallSyncB: -1, leaderSurfaceSeen: false, leaderGround: false, leaderWallB: -1, leaderWall: null as [number, number] | null, lastVaulted: 0, vaultUntil: -1, gB: 0, bYaw: undefined as number | undefined, bR: 0, floorY: 0, floorX: 1e9, floorZ: 1e9, floorT: -1, attackAt: 0, shotAt: 0, jumpAt: 0, swingAt: 0, specialAt: 0, dodgeAt: 0,
+    const state = useRef({ ready: false, leaderSurfaceSeen: false, leaderGround: false, leaderWallRun: false, wallExitWeb: false, leaderWallB: -1, leaderWall: null as [number, number] | null, lastVaulted: 0, vaultUntil: -1, gB: 0, bYaw: undefined as number | undefined, bR: 0, floorY: 0, floorX: 1e9, floorZ: 1e9, floorT: -1, attackAt: 0, shotAt: 0, jumpAt: 0, swingAt: 0, specialAt: 0, dodgeAt: 0,
         morph: { active: false, phase: 'out' as 'out' | 'in', t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0, 0] as [number, number, number], seed: 0, reason: '' },
         anim: createHeroClipState(), pose: createCombatPoseState(), slamHold: 0, slamAt: 0, slamSeen: 0 });
 
@@ -253,7 +253,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         if (sim.mode !== 'play') {
             root.visible = false; st.ready = false; actorRef.current = null; setCompanionSim(null);
             st.morph.active = false; setRigOpacity(root, 1); root.scale.setScalar(GHOST_SCALE);
-            st.leaderSurfaceSeen = false; st.leaderWall = null; st.leaderWallB = -1; st.lastVaulted = 0; st.vaultUntil = -1;
+            st.leaderSurfaceSeen = false; st.leaderWall = null; st.leaderWallRun = false; st.wallExitWeb = false; st.leaderWallB = -1; st.lastVaulted = 0; st.vaultUntil = -1;
             st.attackAt = st.shotAt = st.jumpAt = st.swingAt = st.specialAt = st.dodgeAt = 0; st.slamHold = 0; st.slamAt = 0;
             st.anim.key = ''; st.anim.t = 0; st.anim.w = 0; st.pose.w = 0; st.pose.c.fill(0); st.pose.t.fill(0);
             if (lineRef.current) lineRef.current.visible = false;
@@ -269,16 +269,18 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         let tx = sim.pos[0] - fx * 1.45 + rx * 2.6;
         let tz = sim.pos[2] - fz * 1.45 + rz * 2.6;
         const leaderWall = sim.wall && !sim.swim ? sim.wall as [number, number] : null;
+        const wallRunExit = st.leaderWallRun && !leaderWall;
         const leaderAir = sim.glideOn || sim.grappleFlight || sim.spring > 0 || (!sim.ground && !sim.web && !sim.wall && !sim.swim);
-        const wallEntered = !!leaderWall && st.leaderSurfaceSeen && (!st.leaderWall || st.leaderWallB !== sim.wallB || Math.hypot(leaderWall[0] - st.leaderWall[0], leaderWall[1] - st.leaderWall[1]) > 0.25);
+        const wallNormalChanged = !!leaderWall && !!st.leaderWall && Math.hypot(leaderWall[0] - st.leaderWall[0], leaderWall[1] - st.leaderWall[1]) > 0.25;
+        const wallEntered = !!leaderWall && st.leaderSurfaceSeen && (!st.leaderWall || (wallNormalChanged && !sim.wallRun));
         const landed = !!(st.leaderSurfaceSeen && sim.ground && !st.leaderGround);
         const surfaceTransition = landed || wallEntered;
         const vaulted = (sim as any).vaulted || 0;
         if (vaulted !== st.lastVaulted) { st.lastVaulted = vaulted; if (vaulted > 0 && !leaderWall) st.vaultUntil = sim.t + 0.75; }
         st.leaderSurfaceSeen = true; st.leaderGround = !!sim.ground;
+        st.leaderWallRun = !!(leaderWall && sim.wallRun);
         st.leaderWall = leaderWall ? [...leaderWall] as [number, number] : null;
         st.leaderWallB = leaderWall ? sim.wallB : -1;
-        if (!leaderWall) st.wallSyncB = -1;
         const airborneLeader = !sim.ground && !sim.wall && !sim.swim;
         let ty: number;
         if (sim.ground && !sim.web && !sim.wall && !sim.swim) {
@@ -306,7 +308,7 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         resetControls(controls);
         const independentSnare = (sim as any).snareT > 0 || (actor as any).snareT > 0;
         const fightAnim = (o: any) => !!(o.mv || o.slam || o.snareT > 0 || o.atkT > 0 || o.shotT > 0 || o.flip);
-        const independentFight = fightAnim(sim) || fightAnim(actor) || (st.slamHold > 0);   // Nov 2 (recording finding #1): Ghost plays HER OWN attacks; she only mirrors Shadow's traversal
+        const independentFight = !(DBG && (window as any).__ghostDisableCombat) && (fightAnim(sim) || fightAnim(actor) || (st.slamHold > 0));   // Nov 2 (recording finding #1): Ghost plays HER OWN attacks; she only mirrors Shadow's traversal
         const animationSource = !independentSnare && !independentFight && (hasLiveShadowAction(sim) || sim.t < st.vaultUntil) ? sim : actor;
         const toLeader = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[1] - sim.pos[1], actor.pos[2] - sim.pos[2]);
         const targetDistance = Math.hypot(tx - actor.pos[0], ty - actor.pos[1], tz - actor.pos[2]);
@@ -315,12 +317,11 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             actor.vel[0] = actor.vel[1] = actor.vel[2] = 0;
             actor.web = false; actor.wall = null; actor.ground = true; actor.swim = false;
             actor.ang = sim.ang; actor.yaw = sim.ang; st.ready = true;
-        } else if (!st.morph.active && (toLeader > 42 || surfaceTransition || (leaderWall && st.wallSyncB !== sim.wallB && targetDistance > 10))) {
+        } else if (!st.morph.active && (toLeader > 42 || surfaceTransition)) {
             st.morph.active = true; st.morph.phase = 'out'; st.morph.t = 0;
             st.morph.from = [actor.pos[0], actor.pos[1], actor.pos[2]];
             st.morph.to = [tx, ty, tz]; st.morph.seed = sim.t * 2.1;
-            st.morph.reason = wallEntered ? 'wall-entry' : landed ? 'ground-landing' : toLeader > 42 ? 'distance-catch-up' : 'wall-resync';
-            if (leaderWall) st.wallSyncB = sim.wallB;
+            st.morph.reason = wallEntered ? 'wall-entry' : landed ? 'ground-landing' : 'distance-catch-up';
         }
         if (st.morph.active) {
             st.morph.t += dt;
@@ -328,6 +329,11 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
                 actor.pos[0] = st.morph.to[0]; actor.pos[1] = st.morph.to[1]; actor.pos[2] = st.morph.to[2];
                 actor.vel[0] = actor.vel[1] = actor.vel[2] = 0;
                 actor.web = false; actor.wall = leaderWall ? [...leaderWall] as [number, number] : null; actor.wallB = leaderWall ? sim.wallB : -1;
+                if (leaderWall && (sim as any).wallRun) {
+                    const tx = -leaderWall[1], tz = leaderWall[0], leaderAlong = sim.vel[0] * tx + sim.vel[2] * tz;
+                    const along = Math.sign(leaderAlong || 1) * Math.min(16, Math.abs(leaderAlong));
+                    actor.vel[0] = tx * along - leaderWall[0] * 1.5; actor.vel[2] = tz * along - leaderWall[1] * 1.5;
+                }
                 actor.ground = !leaderWall && !leaderAir; actor.swim = false; actor.dive = false; actor.glideOn = false; actor.airT = leaderAir ? 0.34 : 0; actor.wallT = 0;
                 if (leaderAir) { actor.ground = false; actor.vel[1] = 2.5; }
                 actor.ang = leaderWall ? sim.ang : sim.ang; actor.yaw = sim.ang;
@@ -359,7 +365,17 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         const fighting = !!enemy && enemyD < 23;
         if (leaderWall) {
             actor.wall = [...leaderWall] as [number, number]; actor.wallB = sim.wallB; actor.wallT = 0;
-            actor.ground = false; actor.web = false; actor.swim = false; actor.glideOn = false; actor.airT = 0;
+            actor.wallRun = !!(sim as any).wallRun && !independentFight;
+            actor.ground = false;
+            actor.web = false;
+            if (actor.wallRun) {
+                const tx = -leaderWall[1], tz = leaderWall[0];
+                const along = Math.max(-16, Math.min(16, sim.vel[0] * tx + sim.vel[2] * tz));
+                actor.vel[0] = tx * along - leaderWall[0] * 1.5;
+                actor.vel[1] = 0;
+                actor.vel[2] = tz * along - leaderWall[1] * 1.5;
+            }
+            actor.swim = false; actor.glideOn = false; actor.airT = 0;
         }
         const gx = fighting && enemy ? enemy.x : tx, gz = fighting && enemy ? enemy.z : tz;
         const dx = gx - actor.pos[0], dz = gz - actor.pos[2], goalD = Math.hypot(dx, dz);
@@ -368,16 +384,32 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
         if (leaderWall) {
             const wallDx = tx - actor.pos[0], wallDy = ty - actor.pos[1], wallDz = tz - actor.pos[2];
             const rightX = -Math.cos(actor.yaw), rightZ = Math.sin(actor.yaw);
-            controls.my = Math.max(-1, Math.min(1, wallDy / 2.2));
-            controls.mx = Math.max(-1, Math.min(1, (wallDx * rightX + wallDz * rightZ) / 2.2));
+            if (actor.wallRun) {
+                const tangentX = -leaderWall[1], tangentZ = leaderWall[0];
+                const facingAlong = Math.sign(Math.sin(actor.yaw) * tangentX + Math.cos(actor.yaw) * tangentZ) || 1;
+                const leaderAlong = sim.vel[0] * tangentX + sim.vel[2] * tangentZ;
+                const targetAlong = Math.max(-16, Math.min(16, leaderAlong + (wallDx * tangentX + wallDz * tangentZ) * 2.5));
+                controls.my = Math.max(-1, Math.min(1, targetAlong / (18 * facingAlong)));
+                controls.mx = 0;
+            } else {
+                controls.my = Math.max(-1, Math.min(1, wallDy / 2.2));
+                controls.mx = Math.max(-1, Math.min(1, (wallDx * rightX + wallDz * rightZ) / 2.2));
+            }
+            controls.swing = actor.wallRun;
         } else if (goalD > 2.4) { controls.my = 1; }
         if (fighting && enemyD < 3.5 && enemy && enemy.atk > 0.18 && actor.dodgeT <= 0 && sim.t >= st.dodgeAt) {
             controls.dodgeQ = true; controls.mx = (enemy.x - actor.pos[0]) >= 0 ? -0.65 : 0.65; controls.my = -0.7; st.dodgeAt = sim.t + 1.1;
         }
         const longRoute = Math.hypot(tx - actor.pos[0], tz - actor.pos[2]) > 12 || goalD > 15;
-        if (sim.web) {
+        if (sim.web && !leaderWall && !independentFight) {
             controls.swing = true;
-            if (!actor.web) controls.swingQ = true;
+            actor.web = true; actor.webT = sim.webT; actor.anchor = [...sim.anchor]; actor.anchorReal = sim.anchorReal;
+            actor.rope = sim.rope; actor.swings = sim.swings; (actor as any).anchorCar = (sim as any).anchorCar ?? -1;
+            actor.wall = null; actor.wallB = -1; actor.wallRun = false;
+            if (wallRunExit) st.wallExitWeb = true;
+            controls.swingQ = false;
+        } else if (st.wallExitWeb && !sim.web) {
+            controls.swing = false; controls.swingQ = false; actor.web = false; actor.webT = 0; actor.rope = 0; st.wallExitWeb = false;
         } else if (longRoute && !actor.web && !actor.swim && !leaderWall && !leaderAir && sim.t >= st.swingAt) {
             if (!actor.ground && !actor.wall) { controls.swingQ = true; controls.swing = true; st.swingAt = sim.t + 1.2; }
             else if (goalD > 22) { controls.grabQ = true; st.swingAt = sim.t + 1.8; }
@@ -419,7 +451,16 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             (window as any).__ghostForceSpecial = false;
         }
         if (DBG && (window as any).__ghostHold) resetControls(controls);   // pose tests (test/superhero_landing.mjs): she stands where she is put, no follow/jump
-        for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
+        if (leaderWall && actor.wallRun && !st.morph.active) {
+            const k = Math.min(1, dt * 14), tangentX = -leaderWall[1], tangentZ = leaderWall[0];
+            actor.pos[0] += (tx - actor.pos[0]) * k; actor.pos[1] += (ty - actor.pos[1]) * k; actor.pos[2] += (tz - actor.pos[2]) * k;
+            const along = sim.vel[0] * tangentX + sim.vel[2] * tangentZ;
+            actor.vel[0] = tangentX * along - leaderWall[0] * 1.5; actor.vel[1] = 0; actor.vel[2] = tangentZ * along - leaderWall[1] * 1.5;
+            actor.wall = [...leaderWall] as [number, number]; actor.wallB = sim.wallB; actor.wallRun = true; actor.web = false;
+            actor.ground = false; actor.ang = sim.ang; actor.yaw = sim.ang; actor.runPhase = sim.runPhase;
+        } else {
+            for (let i = 0; i < 2; i++) stepSim(actor, dt / 2, SILENT, controls, { updateEnemies: false });
+        }
         { const an = (actor as any).slamN || 0; if (an !== st.slamSeen) { st.slamSeen = an; const d = Math.hypot(actor.pos[0] - sim.pos[0], actor.pos[2] - sim.pos[2]); if (an && d < 25) { const L = sim as any; L.shake = Math.min(1, (L.shake || 0) + 0.35 * (1 - d / 25));
             if (!(L.slowT > 0) || L.slowK > 0.3) { const A = actor as any; L.slowK = 0.3; L.slowHold = A.slowHold ?? 0.33; L.slowEase = A.slowEase ?? 0.25; L.slowT = L.slowHold + L.slowEase; } } } }   // her Slam shakes the camera too, by distance, and gets the same brief world slow-mo as Shadow's (0.3x)
         if (leaderAir) actor.vel[1] += Math.max(-8, Math.min(8, (ty - actor.pos[1]) * 0.32 - actor.vel[1] * 0.65)) * dt;
@@ -469,7 +510,8 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
             enemyDistance: enemyD, targetId: enemy ? sim.enemies.indexOf(enemy) : -1,
             action: ((actor as any).mv || (actor as any).snareT > 0) ? 'combat' : actor.wall ? 'wall' : actor.web ? 'swing' : actor.glideOn ? 'glide' : actor.swim ? 'swim' : 'follow',
             animation,
-            morphReason: st.morph.reason, surfaceTransition, landed, wallEntered, leaderGround: !!sim.ground, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1,
+            morphReason: st.morph.reason, surfaceTransition, landed, wallEntered, leaderGround: !!sim.ground, leaderWall: !!leaderWall, leaderWallB: leaderWall ? sim.wallB : -1, leaderWallNormal: leaderWall ? [...leaderWall] : null,
+            followerWall: !!actor.wall, followerWallRun: !!actor.wallRun, followerSwingHeld: !!controls.swing, independentFight,
             leaderTraversal: leaderWall ? 'wall' : sim.web ? 'swing' : leaderAir ? 'glide' : sim.swim ? 'swim' : 'ground',
             ghostTraversal: actor.wall ? 'wall' : actor.web ? 'swing' : actor.glideOn ? 'glide' : actor.swim ? 'swim' : 'follow',
             transport: 'idle', web: actor.web, webHandMask, snareWebLines, pulseSegments, ringSegments, pulseProgress, snareColor: ownSnare ? GHOST_SNARE_COLOR : null, strandColor: lineMatRef.current?.color.getHexString(), shockColor: shockMatRef.current?.color.getHexString(), gripHands: animation.gripHands, snarePhase: animation.snarePhase, combo: actor.combo, kos: actor.kos,

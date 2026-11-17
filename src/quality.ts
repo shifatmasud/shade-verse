@@ -37,8 +37,6 @@ export const QK = {
     maxScale: HQ ? 1.25 : 1,
     anisotropy: HQ ? 8 : 4,
     grass: HQ ? 9500 : LOWQ ? 3500 : 6500,
-    grassRadius: HQ ? 72 : 57,
-    leafLodDist: HQ ? 70 : 36,
     // Shifat Oct 29 "add more foliage on trees": leaf-card multiplier for the broadleaf/cherry/umbrella/poplar canopies (palms and conifers unchanged).
     foliage: HQ ? 1.9 : LOWQ ? 1 : (QUALITY.coarse || QUALITY.weakGpu) ? 1.2 : 1.65,
     lakeCopyScale: HQ ? 0.5 : 0.25,

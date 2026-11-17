@@ -7,38 +7,21 @@ import { PINE_URL } from '../texdata';
 import { useEffect, useMemo, useRef } from 'react';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SELECTIVE_BLOOM_LAYER, TREE_SSR_LAYER } from '../renderLayers';
-import { useFrame, useThree } from '@react-three/fiber';
-import { captureInstanceSnapshot, cullInstanceSnapshot, viewFrustum, type InstanceSnapshot } from '../render/instCull';
-import { forceFullCanopyDetail, packCanopyLod, updateCanopyLodState } from '../render/foliageLod';
+import { useFrame } from '@react-three/fiber';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;   // test hooks only in instrumented builds
-const _canopyViewport = new THREE.Vector4();
 
 // Park forest (trees, bushes, floor grass, ink outlines) and the meadow (grass tufts + flowers).
 export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: boolean }) {
-    const lo = useRef<THREE.InstancedMesh[]>([]), last = useRef([1e9, 1e9]);
     const grass = useRef<THREE.Mesh>(null!), tr = useRef<THREE.InstancedMesh[]>([]), lf = useRef<THREE.InstancedMesh[]>([]), bush = useRef<THREE.InstancedMesh>(null!);
-    const cull = useRef({ x: 1e9, z: 1e9, frame: 0, trunks: [] as (InstanceSnapshot | null)[], high: [] as (InstanceSnapshot | null)[], low: [] as (InstanceSnapshot | null)[], bush: null as InstanceSnapshot | null });
-    const mainCamera = useThree((s) => s.camera);
-    const canopyViews = useRef(new WeakMap<THREE.Camera, Map<number, { states: Uint8Array[]; positions: Float32Array[] }>>());
     const [leafTex, barkTex, pineTex, pbarkTex] = useMemo(() => { const l = new THREE.TextureLoader(); const mk = (u: string, rep = false) => { const t = l.load(u); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = QK.anisotropy; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); } return t; };
         return [mk('/spray145.png'), mk('/bark.jpg', true), mk(PINE_URL), mk('/pinebark.jpg', true)]; }, []);
     const geos = useMemo(() => TREE_TYPES.map(({ kind, seed }) => {
         const con = kind === 'pine' || kind === 'spruce';
-        if (kind === 'palm') { const p = palmGeo(seed); return { trunk: p.trunk, leaves: p.leaves, lo: p.lo, con, kind }; }
+        if (kind === 'palm') { const p = palmGeo(seed); return { trunk: p.trunk, leaves: p.leaves, con, kind }; }
         const hi = con ? coniferGeo(kind, seed, kind === 'pine' ? 5 : 6, 3, 1.12) : treeGeo(kind as any, seed, Math.round((kind === 'broad' ? 460 : kind === 'cherry' ? 560 : 340) * QK.foliage), 1.45);
-        const lw = con ? coniferGeo(kind, seed, 3, 2, 1.6).leaves : treeGeo(kind as any, seed, Math.round((kind === 'cherry' ? 140 : 110) * (0.5 + 0.5 * QK.foliage)), 2.2).leaves;
-        return { trunk: hi.trunk, leaves: hi.leaves, lo: lw, con, kind };
+        return { trunk: hi.trunk, leaves: hi.leaves, con, kind };
     }), []);
-    const canopyBounds = useMemo(() => geos.map((g) => {
-        if (!g.leaves.boundingSphere) g.leaves.computeBoundingSphere();
-        if (!g.lo.boundingSphere) g.lo.computeBoundingSphere();
-        const center = g.leaves.boundingSphere!.center.clone();
-        const radius = Math.max(g.leaves.boundingSphere!.radius, center.distanceTo(g.lo.boundingSphere!.center) + g.lo.boundingSphere!.radius);
-        const bounds = new THREE.Sphere(center, radius);
-        g.leaves.boundingSphere = bounds.clone(); g.lo.boundingSphere = bounds.clone();
-        return { center, radius };
-    }), [geos]);
     const pts = useMemo(() => { let r = 7; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const a: { x: number; z: number; s: number; c: number; v: number }[] = []; for (let i = 0; i < 600 && a.length < 130; i++) { const px = PARK.x0 + 6 + rnd() * (PARK.x1 - PARK.x0 - 12), pz = PARK.z0 + 6 + rnd() * (PARK.z1 - PARK.z0 - 12), cxm = (PARK.x0 + PARK.x1) / 2, czm = (PARK.z0 + PARK.z1) / 2; if (Math.hypot(px - cxm, pz - czm) < 54 || Math.abs((px - cxm) - (pz - czm) * 0.6) < 6) continue; if (rnd() < 0.2) continue; a.push({ x: px, z: pz, s: 0.8 + rnd() * 0.5, c: rnd(), v: TREE_PATTERN[a.length % TREE_PATTERN.length] }); }
         // Small street-side clusters use the same families and LOD, clear of buildings and intersections.
         const street = world.streetBlds.map((b,i)=>({b,i,k:Math.sin((b.x0*13.37+b.z0*7.17))*43758.5453%1})).sort((a,b)=>a.k-b.k);
@@ -76,35 +59,19 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
     useMemo(() => addTrunkSolids('park+street', pts.map((p) => ({ x: p.x, y: parkH(p.x, p.z), z: p.z, s: p.s }))), [pts]);
     if (DBG) (window as any).__treePts = pts;
     const NT = TREE_TYPES.length;
-    const canopyStateFor = (camera: THREE.Camera, viewportHeight: number, type: number, snapshot: InstanceSnapshot) => {
-        let perHeight = canopyViews.current.get(camera);
-        if (!perHeight) { perHeight = new Map(); canopyViews.current.set(camera, perHeight); }
-        const key = Math.max(1, Math.round(viewportHeight));
-        let view = perHeight.get(key);
-        if (!view) {
-            view = { states: Array.from({ length: NT }, () => new Uint8Array(70)), positions: Array.from({ length: NT }, () => { const a = new Float32Array(140); a.fill(Number.NaN); return a; }) };
-            perHeight.set(key, view);
-        }
-        const state = view.states[type], positions = view.positions[type];
-        for (let i = 0; i < snapshot.count; i++) {
-            const o = i * 16, k = i * 2, x = snapshot.matrices[o + 12], z = snapshot.matrices[o + 14];
-            if (positions[k] !== x || positions[k + 1] !== z) { state[i] = 0; positions[k] = x; positions[k + 1] = z; }
-        }
-        return state;
+    const place = () => {
+        const o = new THREE.Object3D(), col = new THREE.Color(); const ct = Array(NT).fill(0), ch = Array(NT).fill(0);
+        pts.forEach((p) => { if (ct[p.v] >= 70) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; if (geos[v].kind === 'cherry' || geos[v].kind === 'palm') col.setRGB(1, 1, 1).multiplyScalar(0.86 + w * 0.22); else col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const M = lf.current[v]; M.setMatrixAt(ch[v], o.matrix); M.setColorAt(ch[v]++, col); });
+        for (let v = 0; v < NT; v++) { tr.current[v].count = ct[v]; lf.current[v].count = ch[v]; [tr.current[v], lf.current[v]].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); if(m.boundingSphere) m.boundingSphere.radius += 0.7; }); }
     };
-    const place = (hx: number, hz: number) => {
-        const o = new THREE.Object3D(), col = new THREE.Color(); const ct = Array(NT).fill(0), ch = Array(NT).fill(0), cl = Array(NT).fill(0);
-        pts.forEach((p) => { const d = Math.hypot(p.x - hx, p.z - hz); if (d > (p.x > PARK.x0 && p.x < PARK.x1 && p.z > PARK.z0 && p.z < PARK.z1 ? 230 : 140) || ct[p.v] >= 70) return; o.rotation.set(0, p.c * 6.28, 0); o.position.set(p.x, 0.05 + parkH(p.x, p.z), p.z); o.scale.set(p.s, p.s * (0.9 + p.c * 0.25), p.s); o.updateMatrix(); const v = p.v; { const q = (Math.sin(p.x * 0.37 + p.z * 0.21) + 1) * 0.5, w = (p.c * 7.3) % 1; if (geos[v].kind === 'cherry' || geos[v].kind === 'palm') col.setRGB(1, 1, 1).multiplyScalar(0.86 + w * 0.22); else col.setHSL(geos[v].con ? 0.31 + (w - 0.5) * 0.06 : 0.20 + q * 0.10 + w * 0.035, geos[v].con ? 0.28 : 0.45 + w * 0.2, 0.66 + ((p.c * 3.1) % 1) * 0.30); } tr.current[v].setMatrixAt(ct[v]++, o.matrix); const high = lf.current[v], low = lo.current[v]; high.setMatrixAt(ch[v], o.matrix); high.setColorAt(ch[v]++, col); low.setMatrixAt(cl[v], o.matrix); low.setColorAt(cl[v]++, col); });
-        for (let v = 0; v < NT; v++) { tr.current[v].count = ct[v]; lf.current[v].count = ch[v]; lo.current[v].count = cl[v]; [tr.current[v], lf.current[v], lo.current[v]].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); if(m.boundingSphere) m.boundingSphere.radius += 0.7; }); }
-    };
-    useFrame((st) => { treeWindTime.value = DBG && (window as any).__windT !== undefined ? (window as any).__windT : st.clock.elapsedTime; if(bush.current) (bush.current.material as THREE.MeshLambertMaterial).emissive.set('#263c1c').multiplyScalar(0.12+0.88*TOD.day.value); for (let v = 0; v < NT; v++) { const a = lf.current[v], b = lo.current[v]; const em = geos[v].kind === 'cherry' ? '#6e3f50' : geos[v].kind === 'palm' ? '#2a3a14' : '#426439'; if(a) (a.material as THREE.MeshLambertMaterial).emissive.set(em).multiplyScalar(0.12 + 0.88 * TOD.day.value); if(b) (b.material as THREE.MeshLambertMaterial).emissive.set(em).multiplyScalar(0.12 + 0.88 * TOD.day.value); } petalU.uTime.value = st.clock.elapsedTime; const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 6) { last.current = [hx, hz]; place(hx, hz); } });
+    useFrame((st) => { treeWindTime.value = DBG && (window as any).__windT !== undefined ? (window as any).__windT : st.clock.elapsedTime; if(bush.current) (bush.current.material as THREE.MeshLambertMaterial).emissive.set('#263c1c').multiplyScalar(0.12+0.88*TOD.day.value); for (let v = 0; v < NT; v++) { const a = lf.current[v]; const em = geos[v].kind === 'cherry' ? '#6e3f50' : geos[v].kind === 'palm' ? '#2a3a14' : '#426439'; if(a) (a.material as THREE.MeshLambertMaterial).emissive.set(em).multiplyScalar(0.12 + 0.88 * TOD.day.value); } petalU.uTime.value = st.clock.elapsedTime;  });
     useEffect(() => {
-        const o = new THREE.Object3D(), col = new THREE.Color(); place(1e5, 1e5); last.current = [1e9, 1e9];
+        const o = new THREE.Object3D(), col = new THREE.Color(); place();
         for (let i = 0; i < 70; i++) { const p = pts[i < 45 ? i % pts.length : Math.min(pts.length - 1, 130 + i - 45)], k = 0.8 + p.c; o.rotation.set(0, p.c * 9, 0); o.position.set(p.x + (i < 45 ? 3 + (i % 5) : 0), 0.02 + parkH(p.x + (i < 45 ? 3 + (i % 5) : 0), p.z + (i < 45 ? 2 : 0)), p.z + (i < 45 ? 2 : 0)); o.scale.set(k * (0.8 + (i % 3) * 0.25), k * (0.55 + (i % 4) * 0.12), k * (0.8 + ((i + 1) % 3) * 0.25)); o.updateMatrix(); bush.current.setMatrixAt(i, o.matrix); bush.current.setColorAt(i, col.setHSL(0.22 + ((p.c * 5.7) % 1) * 0.08, 0.18 + ((p.c * 2.3) % 1) * 0.12, 0.55 + ((p.c * 9.1) % 1) * 0.20)); }
         bush.current.instanceMatrix.needsUpdate = true; bush.current.instanceColor!.needsUpdate = true;
     }, [pts]);
     // Shifat 3:44 PM 'small scale trees only SSR': park trees also live on TREE_SSR_LAYER so the pond's tiny screen-space copy renders just them.
-    useEffect(() => { for (const arr of [tr.current, lf.current, lo.current]) for (const m of arr) m?.layers.enable(TREE_SSR_LAYER); }, []);
+    useEffect(() => { for (const arr of [tr.current, lf.current]) for (const m of arr) m?.layers.enable(TREE_SSR_LAYER); }, []);
     const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2;
     useFrame(() => { const gm2 = grass.current && (grass.current.material as THREE.MeshLambertMaterial); if (gm2) { const nn2 = 1 - TOD.day.value; gm2.color.setRGB(1 - 0.35 * nn2, 1 - 0.12 * nn2, 1 + 0.35 * nn2); gm2.emissive.setRGB(0.0, 0.002 * nn2, 0.006 * nn2); } });   // night: cool the ground tone to match the cool tufts
     const terrain = useMemo(() => {   // displaced grids following parkH, in world-aligned coordinates around (cx, cz)
@@ -117,52 +84,15 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
         }
         return { floor: fl, path: mk(8, 190, 2, 90, Math.atan(0.6), 0.04) };
     }, []);
-    useFrame(({ camera }) => {
-        const c = cull.current, p = last.current;
-        if (p[0] !== c.x || p[1] !== c.z) {
-            c.x = p[0]; c.z = p[1];
-            c.trunks = tr.current.map((m) => m ? captureInstanceSnapshot(m) : null);
-            c.high = lf.current.map((m) => m ? captureInstanceSnapshot(m) : null);
-            c.low = lo.current.map((m) => m ? captureInstanceSnapshot(m) : null);
-        }
-        if (++c.frame % 2 !== 0) return;
-        const fr = viewFrustum(camera);
-        for (let i = 0; i < tr.current.length; i++) { const m = tr.current[i], s = c.trunks[i]; if (m && s) cullInstanceSnapshot(m, s, fr, 1); }
-        for (let i = 0; i < lf.current.length; i++) { const m = lf.current[i], s = c.high[i]; if (m && s) { m.userData.__canopyLodCache = null; cullInstanceSnapshot(m, s, fr, 1); } }
-        for (let i = 0; i < lo.current.length; i++) { const m = lo.current[i], s = c.low[i]; if (m && s) { m.userData.__canopyLodCache = null; cullInstanceSnapshot(m, s, fr, 1); } }
-        if (bush.current) { c.bush ||= captureInstanceSnapshot(bush.current); if (c.bush) cullInstanceSnapshot(bush.current, c.bush, fr, 1); }
-    });
-    const applyCanopyLod = (renderer: THREE.WebGLRenderer, camera: THREE.Camera, type: number, highDetail: boolean, shadowPass = false) => {
-        const mesh = (highDetail ? lf.current : lo.current)[type];
-        const snapshot = (highDetail ? cull.current.high : cull.current.low)[type];
-        if (!mesh || !snapshot) return;
-        renderer.getCurrentViewport(_canopyViewport);
-        const height = Math.max(1, Math.round(_canopyViewport.w));
-        const bounds = canopyBounds[type], state = canopyStateFor(camera, height, type, snapshot);
-        const lakeCopy = camera === mainCamera && camera.layers.mask === (1 << TREE_SSR_LAYER);
-        if (lakeCopy) forceFullCanopyDetail(snapshot, state);
-        else updateCanopyLodState(snapshot, camera, height, bounds.center, bounds.radius, state);
-        const allSources = shadowPass || camera !== mainCamera || lakeCopy;
-        const packed = packCanopyLod(mesh, snapshot, state, highDetail, !allSources);
-        if (DBG) {
-            const pass = shadowPass ? 'shadow' : lakeCopy ? 'lake' : camera === mainCamera ? 'main' : 'aux';
-            const root = ((window as any).__forestCanopyLod ??= {}), key = `${pass}:${height}`;
-            const view = (root[key] ??= { height, types: {} });
-            const row = (view.types[type] ??= { source: snapshot.count, visible: snapshot.visibleCount });
-            row[highDetail ? 'high' : 'low'] = packed;
-        }
-    };
     return <group>
         {renderGround && <mesh ref={grass} position={[cx, 0.05, cz]} geometry={terrain.floor}><meshLambertMaterial color="#ffffff" vertexColors /></mesh>}
         {renderGround && <mesh position={[cx, 0.09, cz]} geometry={terrain.path}><meshLambertMaterial color="#b89865" /></mesh>}
         {geos.map((g, v) => <group key={v}>
             <instancedMesh ref={(m) => { if (m) tr.current[v] = m; }} args={[g.trunk, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.kind === 'palm' ? palmTrunkTex() : g.con ? pbarkTex : barkTex} bumpMap={g.kind === 'palm' ? palmTrunkTex() : g.con ? pbarkTex : barkTex} bumpScale={g.kind === 'palm' ? 1.6 : 2.2} vertexColors color={g.kind === 'palm' ? '#a89274' : g.kind === 'cherry' ? '#a5949a' : '#ffffff'} emissive={g.kind === 'palm' ? '#3a3024' : '#4a3a2c'} side={THREE.DoubleSide} onBeforeCompile={trunkWindShader} /></instancedMesh>
             {g.kind === 'palm' ? <>
-                <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]} onBeforeRender={(renderer, _scene, camera) => applyCanopyLod(renderer, camera, v, false)} onBeforeShadow={(renderer, _scene, _camera, shadowCamera) => applyCanopyLod(renderer, shadowCamera, v, false, true)}><meshLambertMaterial map={palmFrondTex()} vertexColors emissive="#2a3a14" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={palmFrondShader} /></instancedMesh>
-                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]} onBeforeRender={(renderer, _scene, camera) => applyCanopyLod(renderer, camera, v, true)} onBeforeShadow={(renderer, _scene, _camera, shadowCamera) => applyCanopyLod(renderer, shadowCamera, v, true, true)}><meshLambertMaterial map={palmFrondTex()} vertexColors emissive="#2a3a14" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={palmFrondShader} /></instancedMesh>
+                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={palmFrondTex()} vertexColors emissive="#2a3a14" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={palmFrondShader} /></instancedMesh>
             </> : <>
-                <instancedMesh ref={(m) => { if (m) lo.current[v] = m; }} args={[g.lo, undefined, 70]} onBeforeRender={(renderer, _scene, camera) => applyCanopyLod(renderer, camera, v, false)} onBeforeShadow={(renderer, _scene, _camera, shadowCamera) => applyCanopyLod(renderer, shadowCamera, v, false, true)}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
-                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]} onBeforeRender={(renderer, _scene, camera) => applyCanopyLod(renderer, camera, v, true)} onBeforeShadow={(renderer, _scene, _camera, shadowCamera) => applyCanopyLod(renderer, shadowCamera, v, true, true)}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
+                <instancedMesh ref={(m) => { if (m) lf.current[v] = m; }} args={[g.leaves, undefined, 70]} frustumCulled={false}><meshLambertMaterial map={g.con ? pineTex : leafTex} vertexColors emissive="#426439" alphaTest={0.5} side={THREE.DoubleSide} onBeforeCompile={g.kind === 'cherry' ? cherryLeafShader : leafWindShader} /></instancedMesh>
             </>}
         </group>)}
         <points geometry={petalGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} uniforms={petalU} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying float vR; void main(){ float life = fract(uTime * 0.055 + ph); vec3 p = position; p.y += 4.6 * (1.0 - life); p.x += sin(uTime * 0.9 + ph * 40.0) * 0.6 + life * 2.2; p.z += cos(uTime * 0.7 + ph * 23.0) * 0.5; vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vA = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.85, 1.0, life)); vR = uTime * 2.0 + ph * 30.0; gl_PointSize = clamp(55.0 / -mv.z, 1.5, 7.0); }`} fragmentShader={`uniform float uDayP; varying float vA; varying float vR; void main(){ vec2 q = gl_PointCoord - 0.5; float c = cos(vR), s = sin(vR); q = mat2(c, -s, s, c) * q; float e = length(q * vec2(1.0, 1.9)); if (e > 0.48) discard; gl_FragColor = vec4(mix(vec3(0.5, 0.33, 0.42), vec3(1.0, 0.78, 0.86), uDayP), vA * 0.95); }`} /></points>
@@ -172,6 +102,7 @@ export function Forest({ sim, renderGround = true }: { sim: Sim; renderGround?: 
 
 // meadow: long grass tufts + subtle flowers + fireflies. Reference study: instanced blade-cluster grass with wind sway in the vertex shader (common real-time approach, e.g. GDC "Ghost of Tsushima" grass talk, three.js instanced grass guides); blade shapes, colours and placement are mine
 const GR_POOL = (() => { let r = 4242; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; const cx = (PARK.x0 + PARK.x1) / 2, cz = (PARK.z0 + PARK.z1) / 2; const a: number[] = []; for (let i = 0; i < 39000; i++) { const x = PARK.x0 + 3 + rnd() * (PARK.x1 - PARK.x0 - 6), z = PARK.z0 + 3 + rnd() * (PARK.z1 - PARK.z0 - 6); const pond = ((x - PARK_POND.cx) / (PARK_POND.rx + 1.5)) ** 2 + ((z - PARK_POND.cz) / (PARK_POND.rz + 1.5)) ** 2; if (Math.abs((x - cx) - (z - cz) * 0.6) < 6.5 || Math.hypot(x - cx, z - cz) < 4 || pond < 1.0 || bridgeSurfaceAt(x, z) !== null || sandWeight(x, z) > 0.35) continue; a.push(x, z, rnd(), rnd()); } return a; })();
+const GR_COUNT = QK.grass;
 // shared park assets (South Sea island reuses them: Shifat 5:49 PM "reuse the parks assets")
 export function parkBushGeo(){
         const gs:THREE.BufferGeometry[]=[];let r=73;const rnd=()=>(r=r*16807%2147483647)/2147483647;
@@ -186,7 +117,6 @@ export function parkGrassOnCompile(uni: { uTime: { value: number }; uHero: { val
     // grass optics (ref: BotW grassland, blades dark at the root and sun-lit translucent yellow-green at the tips): base occlusion, bright backlit tips, soft sheen
     sh.uniforms.uDayG = TOD.day; sh.fragmentShader = 'varying float vHt; uniform float uDayG;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'outgoingLight *= mix(0.8, 1.15, vHt); outgoingLight *= mix(vec3(0.62, 0.86, 1.12), vec3(1.0), uDayG); outgoingLight += mix(vec3(0.05, 0.11, 0.2), vec3(0.25, 0.32, 0.17), uDayG) * vHt * vHt * 0.32; diffuseColor.a = 0.5;\n#include <opaque_fragment>\ngl_FragColor.a = 0.25;'); };   // env-iter3: OPAQUE forced alpha back to 1.0 after the old 0.5, so blades were inked one by one; 0.25 = grass class for the outline pass
 }
-const GR_NEAR = 22;
 export function tuftGeo(segN = 8) {
     const pos: number[] = [], col: number[] = []; let r = 5; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
     for (let b = 0; b < 7; b++) {
@@ -216,46 +146,27 @@ export function tuftGeo(segN = 8) {
 const grassTag = (sh: any) => { sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a = 0.25;'); };
 const FL_COL = ['#8a5cf0', '#4f7cff', '#e03a4a', '#ff7fb8'];
 export function Meadow({ sim }: { sim: Sim }) {
-    const gr = useRef<THREE.InstancedMesh>(null!), fl = useRef<THREE.InstancedMesh>(null!), ff = useRef<THREE.Points>(null!), last = useRef([1e9, 1e9]), uni = useRef({ uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uCam: { value: new THREE.Vector3() } }), fu = useRef({ uTime: { value: 0 } });
-    useFrame((st) => { if (ff.current && ff.current.layers.mask !== 3) ff.current.layers.enable(SELECTIVE_BLOOM_LAYER); uni.current.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); uni.current.uCam.value.copy(st.camera.position); if (DBG && gr.current) (window as any).__polyforkGrass = { outlineMaskAlpha: gr.current.userData.outlineMaskAlpha, outlineMaskThreshold: gr.current.userData.outlineMaskThreshold, bladeSegments: { near: HQ ? 5 : 4, far: HQ ? 2 : 1 } }; const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
-    const geo = useMemo(() => tuftGeo(HQ ? 5 : 4), []), geoF = useMemo(() => tuftGeo(HQ ? 2 : 1), []);   /* Constrained tiers keep near blades smooth and halve far-blade geometry; density and placement stay unchanged. */
-    const grF = useRef<THREE.InstancedMesh>(null!);
-    const grassCull = useRef({ x: 1e9, z: 1e9, frame: 0, near: null as InstanceSnapshot | null, far: null as InstanceSnapshot | null, flowers: null as InstanceSnapshot | null });
+    const gr = useRef<THREE.InstancedMesh>(null!), fl = useRef<THREE.InstancedMesh>(null!), ff = useRef<THREE.Points>(null!), uni = useRef({ uTime: { value: 0 }, uHero: { value: new THREE.Vector3() }, uCam: { value: new THREE.Vector3() } }), fu = useRef({ uTime: { value: 0 } });
+    useFrame((st) => { if (ff.current && ff.current.layers.mask !== 3) ff.current.layers.enable(SELECTIVE_BLOOM_LAYER); uni.current.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); uni.current.uCam.value.copy(st.camera.position); if (DBG && gr.current) (window as any).__polyforkGrass = { outlineMaskAlpha: gr.current.userData.outlineMaskAlpha, outlineMaskThreshold: gr.current.userData.outlineMaskThreshold, bladeSegments: HQ ? 5 : 3, fullParkInstances: gr.current.count }; const m = gr.current && (gr.current.material as THREE.MeshLambertMaterial); if (m) m.emissive.set('#1c3410').multiplyScalar(0.12 + 0.88 * TOD.day.value); });   // tuft self-light follows the day level so grass does not glow at night
+    const geo = useMemo(() => tuftGeo(HQ ? 5 : 3), []);   /* Full meadow coverage with a fixed light blade mesh. */
     const flGeo = useMemo(() => { const g = new THREE.CircleGeometry(0.17, 7); g.rotateX(-Math.PI / 2.4); g.translate(0, 0.62, 0); const st = new THREE.PlaneGeometry(0.02, 0.62); st.translate(0, 0.31, 0); return mergeGeometries([g, st], false)!; }, []);
     const ffGeo = useMemo(() => { const n = 90, p = new Float32Array(n * 3), ph = new Float32Array(n); let r = 99; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; for (let i = 0; i < n; i++) { p[i * 3] = PARK.x0 + 10 + rnd() * (PARK.x1 - PARK.x0 - 20); p[i * 3 + 2] = PARK.z0 + 10 + rnd() * (PARK.z1 - PARK.z0 - 20); p[i * 3 + 1] = 0.8 + rnd() * 5 + parkH(p[i * 3], p[i * 3 + 2]); ph[i] = rnd() * 6.28; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g; }, []);
-    const place = (hx: number, hz: number) => {
+    const place = () => {
         const o = new THREE.Object3D(), col = new THREE.Color(); let gi = 0, fi = 0;
-        let gf = 0;
-        for (let i = 0; i < GR_POOL.length && gi + gf < QK.grass; i += 4) {
-            const x = GR_POOL[i], z = GR_POOL[i + 1], dh = Math.hypot(x - hx, z - hz); if (dh > QK.grassRadius || bridgeSurfaceAt(x, z) !== null) continue; const far = dh > GR_NEAR, gm = far ? grF.current : gr.current, gk = far ? gf++ : gi++;
+        for (let i = 0; i < GR_POOL.length && gi < GR_COUNT; i += 4) {
+            const x = GR_POOL[i], z = GR_POOL[i + 1]; if (bridgeSurfaceAt(x, z) !== null) continue; const gm = gr.current, gk = gi++;
             o.position.set(x, 0.05 + parkH(x, z), z); o.rotation.set(0, GR_POOL[i + 2] * 6.28, 0); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09), sc = (1.0 + GR_POOL[i + 3] * 0.7) * (1 + 0.4 * cl) * (1 + 0.04 * Math.max(0, -parkH(x, z)));   o.scale.set(sc, sc, sc); o.updateMatrix(); gm.setMatrixAt(gk, o.matrix); gm.setColorAt(gk, col.setHSL(0.22 + GR_POOL[i + 3] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.30 + 0.06 * cl, 0.34 + GR_POOL[i + 2] * 0.10 + 0.065 * cl));
-            if (GR_POOL[i + 2] < 0.12 && fi < 420) { o.position.set(x + 0.2, 0.05 + parkH(x + 0.2, z), z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
+            if (GR_POOL[i + 2] < 0.12) { o.position.set(x + 0.2, 0.05 + parkH(x + 0.2, z), z); o.scale.setScalar(0.8 + GR_POOL[i + 3] * 0.6); o.updateMatrix(); fl.current.setMatrixAt(fi, o.matrix); fl.current.setColorAt(fi++, col.set(FL_COL[Math.floor(GR_POOL[i + 3] * 4) % 4])); }
         }
-        gr.current.count = gi; grF.current.count = gf; fl.current.count = fi; [gr.current, grF.current, fl.current].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); if(m.boundingSphere) m.boundingSphere.radius += 0.7; });
+        gr.current.count = gi; fl.current.count = fi; [gr.current, fl.current].forEach((m) => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); if(m.boundingSphere) m.boundingSphere.radius += 0.7; });
     };
-    useFrame((st) => { uni.current.uTime.value = fu.current.uTime.value = st.clock.elapsedTime; const hx = sim.pos[0], hz = sim.pos[2]; if (Math.hypot(hx - last.current[0], hz - last.current[1]) > 8) { last.current = [hx, hz]; place(hx, hz); } });
+    useEffect(() => { place(); }, []);
+    useFrame((st) => { uni.current.uTime.value = fu.current.uTime.value = st.clock.elapsedTime; });
     const onGrass = parkGrassOnCompile(uni.current);
-    const grMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1c3410'), side: THREE.DoubleSide }); m.onBeforeCompile = onGrass; return m; }, []);   // one material (one program) for near + far tufts
-    useFrame(({ camera }) => {
-        const c = grassCull.current, p = last.current;
-        const moved = p[0] !== c.x || p[1] !== c.z;
-        if (moved) {
-            c.x = p[0]; c.z = p[1]; c.frame = 0;
-            if (gr.current && grF.current && fl.current) {
-                c.near = captureInstanceSnapshot(gr.current);
-                c.far = captureInstanceSnapshot(grF.current);
-                c.flowers = captureInstanceSnapshot(fl.current);
-            }
-        } else if (++c.frame % 3 !== 0) return;
-        const fr = viewFrustum(camera);
-        if (c.near && gr.current) cullInstanceSnapshot(gr.current, c.near, fr, 3.5);
-        if (c.far && grF.current) cullInstanceSnapshot(grF.current, c.far, fr, 3.5);
-        if (c.flowers && fl.current) cullInstanceSnapshot(fl.current, c.flowers, fr, 1);
-    });
+    const grMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: new THREE.Color('#1c3410'), side: THREE.DoubleSide }); m.onBeforeCompile = onGrass; return m; }, []);   // one material and instanced draw for the full park meadow
     return <group>
-        <instancedMesh ref={gr} name="polyfork-curved-grass-blades" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geo, grMat, QK.grass]} frustumCulled={true} />
-        <instancedMesh ref={grF} name="polyfork-curved-grass-blades-far" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geoF, grMat, QK.grass]} frustumCulled={true} />
-        <instancedMesh ref={fl} args={[flGeo, undefined, 420]}><meshLambertMaterial emissive="#555555" side={THREE.DoubleSide} onBeforeCompile={grassTag} /></instancedMesh>
+        <instancedMesh ref={gr} name="polyfork-curved-grass-blades" userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geo, grMat, GR_COUNT]} frustumCulled={false} />
+        <instancedMesh ref={fl} args={[flGeo, undefined, Math.min(GR_COUNT, Math.ceil(GR_COUNT * 0.12))]} frustumCulled={false}><meshLambertMaterial emissive="#555555" side={THREE.DoubleSide} onBeforeCompile={grassTag} /></instancedMesh>
         <points ref={ff} geometry={ffGeo} frustumCulled={false}><shaderMaterial transparent depthWrite={false} blending={THREE.AdditiveBlending} uniforms={fu.current} vertexShader={`uniform float uTime; attribute float ph; varying float vA; varying vec3 vOrbCol; void main(){ vOrbCol=0.58+0.42*cos(ph+vec3(0.0,2.1,4.2)); vec3 p = position; p.x += sin(uTime*0.4+ph*3.0)*2.5; p.z += cos(uTime*0.35+ph*2.0)*2.5; p.y += sin(uTime*0.7+ph)*0.8; vec4 mv = modelViewMatrix*vec4(p,1.0); gl_Position = projectionMatrix*mv; vA = 0.35+0.65*pow(0.5+0.5*sin(uTime*1.6+ph*5.0),2.0); gl_PointSize = clamp(38.0/(-mv.z), 2.0, 9.0); }`} fragmentShader={`varying float vA;varying vec3 vOrbCol;void main(){float d=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.0,d);gl_FragColor=vec4(vOrbCol*(0.7+0.3*a),a*a*vA);}`} /></points>
     </group>;
 }

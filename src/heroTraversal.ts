@@ -48,6 +48,11 @@ export function traversalRoot(sim: any, rig: any, dt: number, scale: number) {
     const T = tv(rig), pr = rig.poseRoot as THREE.Group, root = rig.root as THREE.Group;
     const h = Math.min(dt, 0.1), sw = swinging(sim);
     const lean0 = pr.rotation.x, bank0 = pr.rotation.z;
+    if (sim.wall) {
+        T.on = false; T.fl = 0; T.sp = 0; T.spW = 0; T.w = 0; T.p = lean0; T.pv = 0; T.r = bank0; T.rv = 0;
+        T.bw = 0; T.lg = 0; T.lgv = 0; T.rl = 0; T.rlv = 0; pr.scale.set(1, 1, 1);
+        return;
+    }
     T.fw = 0;
     if (T.fl && (sw || !free(sim))) { T.fl = 0; T.p = wrapPi(T.p); T.pv = cl(T.pv, -8, 8); }   // interrupted: hand the current angle on, no pop
     if (!sw && T.on && !sim.web && free(sim) && !(sim.spring > 0) && sim.vel[1] > 3 && Math.hypot(sim.vel[0], sim.vel[1], sim.vel[2]) > 10) {   // released on the rise

@@ -225,8 +225,7 @@ export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, po
     root.scale.setScalar(scale);
     if (sim.land > 0.02 && !sim.swim) { const sy = 1 - 0.16 * sim.land, sxz = 1 / Math.sqrt(sy); root.scale.set(scale * sxz, scale * sy, scale * sxz); }   // landing squash (volume kept), decays with sim.land
     if (sim.wall) {
-        if (sa.wallRun) { root.position.x -= sim.wall[0] * 0.2; root.position.z -= sim.wall[1] * 0.2; }
-        else { root.position.x += Math.sin(sim.ang) * 0.2; root.position.z += Math.cos(sim.ang) * 0.2; }
+        if (!sa.wallRun) { root.position.x += Math.sin(sim.ang) * 0.2; root.position.z += Math.cos(sim.ang) * 0.2; }
     }
     if (sourcePose) state.swW = sourcePose.swimWave;
     if (sim.swim) {
@@ -235,7 +234,7 @@ export function applyHeroRootPose(sim: any, rig: any, dt: number, state: any, po
     }
     const oldBlend = state.gB || 0;
     state.gB = sourcePose?.glideBlend ?? oldBlend + ((sim.glideOn ? 1 : 0) - oldBlend) * Math.min(1, dt * 3.5);
-    const lean = sourcePose?.lean ?? ((sim.swim ? (sim.dive ? 1.9 : 1.45) : sim.wall ? (sa.wallRun ? 0.22 : 0.32) : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - state.gB * 0.8) + state.gB * 1.12);
+    const lean = sourcePose?.lean ?? ((sim.swim ? (sim.dive ? 1.9 : 1.45) : sim.wall ? (sa.wallRun ? (sim.web ? 0.5 : 0.22) : 0.32) : sim.web ? 0.5 : sim.ground ? 0.12 : 0.3) * (1 - state.gB * 0.8) + state.gB * 1.12);
     root.rotation.set(0, sim.ang, 0);
     poseRoot.rotation.set(lean, 0, 0); poseRoot.rotation.order = 'ZXY';
     let bank = sourcePose?.bank;
@@ -259,8 +258,8 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     let wallRunPoseWeight = 0;
     if (shadowWallRunPose) {
         const interrupted = !!(sa.mv || sa.flip || (sa.snareT || 0) > 0 || (sim.shotT || 0) > 0 || (sim.spring || 0) > 0 || (sim.atkT || 0) > 0);
-        const target = sim.wall && sa.wallRun && !interrupted ? 1 : 0, prev = sa.__wallRunPoseBlend || 0;
-        wallRunPoseWeight = sa.__wallRunPoseBlend = prev + (target - prev) * Math.min(1, dt * 9);
+        const target = sim.wall && sa.wallRun && !interrupted ? 1 : 0, blendRig = rig as any, prev = blendRig.__wallRunPoseBlend || 0;
+        wallRunPoseWeight = blendRig.__wallRunPoseBlend = prev + (target - prev) * Math.min(1, dt * 9);
     }
     rig.bones.forEach((b: THREE.Bone) => b.rotation.set(0, 0, 0));
     const speed = Math.hypot(v[0], v[1], v[2]), hs = Math.hypot(v[0], v[2]);
@@ -301,11 +300,11 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     if (cs.w > 0.02 && (cs.key === 'run' || cs.key === 'idle') && CLIPS[cs.key].hy) { const c = CLIPS[cs.key], fi = Math.floor(((cs.t * c.fps) % c.n + c.n) % c.n); rig.b.hips.position.y = rig.hipsY + (c.hy[fi] - 1) * (cs.key === 'idle' ? 0.3 : 0.6) * cs.w; } else rig.b.hips.position.y = rig.hipsY;
     if (cs.w > 0.02 && CLIPS[cs.key]) sampleClip(CLIPS[cs.key], cs.t, cs.key === 'wall' || cs.key === 'swim' || cs.key === 'idle' || cs.key === 'run', rig.bones, cs.w);
     const wallSide = sim.wall ? Math.sign(-sim.wall[0] * Math.cos(sim.ang) + sim.wall[1] * Math.sin(sim.ang)) || 1 : 0;
-    if (wallRunPoseWeight > 0.001 && wallSide) applyShadowWallRunPose(sim, rig, wallRunPoseWeight, wallSide);
     if (sim.shotT > 0 || sim.spring > 0) { const tg = sim.shotT > 0 ? sim.shotTgt : sim.anchor, wt = Math.min(1, (sim.shotT > 0 ? sim.shotT : sim.spring) / 0.12); rig.root.updateWorldMatrix(true, true); _tg.set(tg[0], tg[1], tg[2]); for (const side of ['L', 'R']) { aimBone(rig.b['uarm' + side], rig.b['farm' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); aimBone(rig.b['farm' + side], rig.b['hand' + side], _tg, wt); rig.root.updateWorldMatrix(true, true); } }
     traversalBones(sim, rig, dt);
     const activePoseState = poseState ?? _cp;
     combatPose(sim, rig, h, poseDt, activePoseState);
+    if (wallRunPoseWeight > 0.001 && wallSide) applyHeroWallRunPose(sim, rig, wallRunPoseWeight, wallSide, cs.t);
     shotRecoilBones(sim, rig, dt);   // web-shot recoil on top of the aim (src/heroRecoil.ts)
     if (!sourceClipState) heroHurtBones(sim, rig, dt);   // hurt flinch on top of every pose (src/heroHurt.ts); not on Ghost's mirrored frames
     if (publishState && !sourceClipState) {
@@ -315,9 +314,20 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     }
     for (const side of ['L', 'R']) { const hf = rig.b['hipFix' + side] as THREE.Bone | undefined, th = rig.b['thigh' + side] as THREE.Bone | undefined; if (hf && th) { hf.quaternion.identity().slerp(th.quaternion, 0.5); hf.scale.setScalar(1 + 0.14 * (rig._supW?.[side] ?? 0)); } } if (rig._supW) rig._supW.L = rig._supW.R = 0;   // + the support side's volume keeper: up to 14% fuller hip band while that leg carries the kick's tipped pelvis (supportLegIK), so the big hip angle does not pinch the upper thigh   // hip corrective follows its thigh at half the angle (buildRig)
     const zip = sim.web && sim.webT < 1.6 && sim.anchor[1] - sim.pos[1] > 25 && Math.hypot(sim.anchor[0] - sim.pos[0], sim.anchor[1] - sim.pos[1], sim.anchor[2] - sim.pos[2]) < sim.rope - 0.5;
-    const action = sn > 0 ? 'shadow-snare' : sa.mv ? `move-${sa.mv.id}` : sa.flip ? 'dodge-flip' : sim.shotT > 0 ? 'plasma-web-shot' : sim.spring > 0 ? 'web-spring-launch' : sim.web ? (zip ? 'street-zip-up' : 'web-swing') : sim.swim ? (sim.dive ? 'dive' : 'swim') : sim.wall ? (sa.wallRun ? 'wall-run' : 'wall-crawl') : sim.wallT > 0 ? 'wall-jump' : sim.glideOn ? (sa.flightBoost ? 'powered-flight' : 'glide') : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne') : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
+    const action = sn > 0 ? 'shadow-snare'
+        : sa.mv ? `move-${sa.mv.id}`
+            : sa.flip ? 'dodge-flip'
+                : sim.shotT > 0 ? 'plasma-web-shot'
+                    : sim.spring > 0 ? 'web-spring-launch'
+                        : sim.wall ? (sa.wallRun ? 'wall-run' : 'wall-crawl')
+                            : sim.web ? (zip ? 'street-zip-up' : 'web-swing')
+                                : sim.swim ? (sim.dive ? 'dive' : 'swim')
+                                    : sim.wallT > 0 ? 'wall-jump'
+                                        : sim.glideOn ? (sa.flightBoost ? 'powered-flight' : 'glide')
+                                            : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne')
+                                                : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
     const snarePhase = sn <= 0 ? 'inactive' : sn > SNARE.GATHER_END ? 'gather' : sn > SNARE.SHOCK_START ? 'grip' : sn > SNARE.IMPACT ? 'shockwave' : 'discharge';
-    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, wallRunPoseWeight: shadowWallRunPose ? wallRunPoseWeight : 0, wallRunWallFoot: shadowWallRunPose && wallRunPoseWeight > 0.01 && wallSide ? (wallSide > 0 ? 'right' : 'left') : null, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, snarePhase, gripHands: sn > 0 ? 2 : 0, snareTargets: (sa.snareList || []).length, shotT: sim.shotT, spring: sim.spring, aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, wallRun: !!sa.wallRun, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
+    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, wallRunPoseWeight: shadowWallRunPose ? wallRunPoseWeight : 0, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, snarePhase, gripHands: sn > 0 ? 2 : 0, snareTargets: (sa.snareList || []).length, shotT: sim.shotT, spring: sim.spring, aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, wallRun: !!sa.wallRun, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
 }
 export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: number; shake: number }; perf: { scale: number; fps: number; speed: number } }
 
@@ -491,40 +501,86 @@ function blendWallRunAxis(bone: THREE.Bone, axis: 'x' | 'y' | 'z', target: numbe
     bone.rotation[axis] += (target - bone.rotation[axis]) * weight;
 }
 
-function applyShadowWallRunPose(sim: any, rig: any, weight: number, wallSide: number) {
-    const hs = Math.hypot(sim.vel[0], sim.vel[2]), stride = THREE.MathUtils.clamp(hs / 12, 0.45, 1);
-    const tau = Math.PI * 2, phase = ((sim.runPhase * 0.5) % tau + tau) % tau, cycle = phase / tau;
-    const plant = 1 - cstep(Math.max(0, Math.min(1, (cycle - 0.56) / 0.12))), lift = 1 - plant;
-    const follow = Math.sin(phase - Math.PI * 0.68), followLift = Math.max(0, follow);
-    const counter = Math.sin(phase - Math.PI * 0.3), wallRight = wallSide > 0;
-    const wallThigh = rig.b['thigh' + (wallRight ? 'R' : 'L')] as THREE.Bone;
-    const wallShin = rig.b['shin' + (wallRight ? 'R' : 'L')] as THREE.Bone;
-    const wallFoot = rig.b['foot' + (wallRight ? 'R' : 'L')] as THREE.Bone;
-    const followThigh = rig.b['thigh' + (wallRight ? 'L' : 'R')] as THREE.Bone;
-    const followShin = rig.b['shin' + (wallRight ? 'L' : 'R')] as THREE.Bone;
-    const followFoot = rig.b['foot' + (wallRight ? 'L' : 'R')] as THREE.Bone;
-    // The wall-side sole stays in a deliberate plant/push window; the far leg folds through as a follow step.
-    blendWallRunAxis(wallThigh, 'x', -0.08 + stride * (lift * 0.36 - plant * 0.08), weight);
-    blendWallRunAxis(wallShin, 'x', 0.08 + stride * (lift * 0.62 + plant * 0.08), weight);
-    blendWallRunAxis(wallFoot, 'x', -0.04 - stride * lift * 0.12, weight);
-    blendWallRunAxis(wallThigh, 'z', wallSide * (0.16 + plant * 0.22), weight);
-    blendWallRunAxis(wallFoot, 'z', wallSide * (0.06 + plant * 0.14), weight);
-    blendWallRunAxis(followThigh, 'x', -0.10 + stride * follow * 0.34, weight);
-    blendWallRunAxis(followShin, 'x', 0.08 + stride * followLift * 0.5, weight);
-    blendWallRunAxis(followFoot, 'x', -0.04 - stride * followLift * 0.12, weight);
-    blendWallRunAxis(followThigh, 'z', -wallSide * 0.06, weight);
-    blendWallRunAxis(followFoot, 'z', -wallSide * 0.04, weight);
-    // Pelvis reaches into the plant while the upper torso counters away, keeping the shoulders over tangent momentum.
-    blendWallRunAxis(rig.b.hips as THREE.Bone, 'z', -wallSide * 0.045, weight);
-    blendWallRunAxis(rig.b.spine as THREE.Bone, 'z', wallSide * 0.065, weight);
-    blendWallRunAxis(rig.b.chest as THREE.Bone, 'z', wallSide * 0.025, weight);
-    const armR = rig.b.uarmR as THREE.Bone, armL = rig.b.uarmL as THREE.Bone;
-    blendWallRunAxis(armR, 'x', -0.55 + stride * counter * 0.16, weight);
-    blendWallRunAxis(armL, 'x', -0.55 - stride * counter * 0.16, weight);
-    blendWallRunAxis(armR, 'z', wallSide * (0.22 + counter * 0.07), weight);
-    blendWallRunAxis(armL, 'z', -wallSide * (0.22 + counter * 0.07), weight);
-    blendWallRunAxis(rig.b.farmR as THREE.Bone, 'x', -0.34 - counter * 0.1, weight);
-    blendWallRunAxis(rig.b.farmL as THREE.Bone, 'x', -0.34 + counter * 0.1, weight);
+const _wallHandTarget = new THREE.Vector3();
+const _wallFootTarget = new THREE.Vector3(), _wallFacing = new THREE.Vector3(), _wallAxis = new THREE.Vector3(), _worldQ = new THREE.Quaternion(), _localQ = new THREE.Quaternion(), _parentWorldQ = new THREE.Quaternion(), _deltaQ = new THREE.Quaternion(), _palmAxis = new THREE.Vector3(0, 0, 1), _soleAxis = new THREE.Vector3(0, 1, 0), _legHip = new THREE.Vector3(), _legKnee = new THREE.Vector3(), _legAnkle = new THREE.Vector3(), _legDir = new THREE.Vector3(), _legPole = new THREE.Vector3(), _legCurrentKnee = new THREE.Vector3();
+const WALL_RUN_UPPER_KEYS = [
+    { wallRoll: 0.07, chestRoll: 0.03, freeArmX: 0.25, freeArmZ: 0.75, freeForearmX: -0.62, nearHip: 0.22, nearKnee: -0.06, farHip: -0.32, farKnee: 0.42 },
+    { wallRoll: 0.09, chestRoll: 0.04, freeArmX: 0.02, freeArmZ: 0.88, freeForearmX: -0.45, nearHip: -0.06, nearKnee: 0.18, farHip: 0.18, farKnee: 0.02 },
+    { wallRoll: 0.12, chestRoll: 0.06, freeArmX: -0.18, freeArmZ: 0.98, freeForearmX: -0.34, nearHip: -0.32, nearKnee: 0.42, farHip: 0.22, farKnee: -0.06 },
+    { wallRoll: 0.08, chestRoll: 0.04, freeArmX: 0.12, freeArmZ: 0.82, freeForearmX: -0.56, nearHip: 0.18, nearKnee: 0.02, farHip: -0.06, farKnee: 0.18 },
+];
+export function applyHeroWallRunPose(sim: any, rig: any, weight: number, wallSide: number, clipTime: number) {
+    const phase = (((clipTime * CLIPS.run.fps / CLIPS.run.n) % 1) + 1) % 1 * WALL_RUN_UPPER_KEYS.length;
+    const i = Math.floor(phase), a = WALL_RUN_UPPER_KEYS[i], b = WALL_RUN_UPPER_KEYS[(i + 1) % WALL_RUN_UPPER_KEYS.length], f = phase - i;
+    const lerp = (key: keyof typeof a) => a[key] + (b[key] - a[key]) * f;
+    const wallRight = wallSide > 0, wallArm = wallRight ? 'R' : 'L', freeArm = wallRight ? 'L' : 'R';
+    const nearLeg = wallRight ? 'R' : 'L', farLeg = wallRight ? 'L' : 'R';
+    const pr = rig.poseRoot as THREE.Group;
+    pr.rotation.z += (-wallSide * lerp('wallRoll') - pr.rotation.z) * weight;
+    pr.rotation.x += (0.06 - pr.rotation.x) * weight;
+    blendWallRunAxis(rig.b.hips as THREE.Bone, 'x', 0.10, weight);
+    blendWallRunAxis(rig.b.spine as THREE.Bone, 'x', 0.04, weight);
+    blendWallRunAxis(rig.b.chest as THREE.Bone, 'x', 0.02, weight);
+    blendWallRunAxis(rig.b.neck as THREE.Bone, 'x', 0, weight);
+    blendWallRunAxis(rig.b.head as THREE.Bone, 'x', 0.03, weight);
+    blendWallRunAxis(rig.b.hips as THREE.Bone, 'z', -wallSide * 0.12, weight);
+    blendWallRunAxis(rig.b.spine as THREE.Bone, 'z', -wallSide * 0.08, weight);
+    blendWallRunAxis(rig.b.chest as THREE.Bone, 'z', -wallSide * lerp('chestRoll'), weight);
+    blendWallRunAxis(rig.b['thigh' + nearLeg] as THREE.Bone, 'x', rig.b['thigh' + nearLeg].rotation.x + lerp('nearHip'), weight);
+    blendWallRunAxis(rig.b['shin' + nearLeg] as THREE.Bone, 'x', rig.b['shin' + nearLeg].rotation.x + lerp('nearKnee'), weight);
+    blendWallRunAxis(rig.b['thigh' + farLeg] as THREE.Bone, 'x', rig.b['thigh' + farLeg].rotation.x + lerp('farHip'), weight);
+    blendWallRunAxis(rig.b['shin' + farLeg] as THREE.Bone, 'x', rig.b['shin' + farLeg].rotation.x + lerp('farKnee'), weight);
+    blendWallRunAxis(rig.b['thigh' + nearLeg] as THREE.Bone, 'z', wallSide * 0.08, weight);
+    blendWallRunAxis(rig.b['thigh' + farLeg] as THREE.Bone, 'z', wallSide * 0.04, weight);
+    blendWallRunAxis(rig.b['uarm' + freeArm] as THREE.Bone, 'x', lerp('freeArmX'), weight);
+    blendWallRunAxis(rig.b['uarm' + freeArm] as THREE.Bone, 'z', -wallSide * lerp('freeArmZ'), weight);
+    blendWallRunAxis(rig.b['farm' + freeArm] as THREE.Bone, 'x', lerp('freeForearmX'), weight);
+    const wall = sim.wall as [number, number], building = buildings[sim.wallB];
+    const tx = -wall[1], tz = wall[0], travel = Math.sign(sim.vel[0] * tx + sim.vel[2] * tz) || 1;
+    _wallHandTarget.set(sim.pos[0] - wall[0] * 0.54 + tx * travel * 0.10, sim.pos[1] + 0.76, sim.pos[2] - wall[1] * 0.54 + tz * travel * 0.10);
+    if (building) { if (Math.abs(wall[0]) > 0.5) _wallHandTarget.x = (wall[0] < 0 ? building.x0 : building.x1) + wall[0] * 0.06; else _wallHandTarget.z = (wall[1] < 0 ? building.z0 : building.z1) + wall[1] * 0.06; }
+    aimWallRunLimb(rig, 'uarm' + wallArm, 'farm' + wallArm, 'hand' + wallArm, _wallHandTarget, wall[0] * 0.17 - tx * travel * 0.35, 0.92, wall[1] * 0.17 - tz * travel * 0.35, weight);
+    _wallFacing.set(-wall[0], 0, -wall[1]).normalize();
+    orientWallContactAxis(rig.b['hand' + wallArm] as THREE.Bone, _palmAxis, _wallFacing, weight);
+    blendWallRunAxis(rig.b.head as THREE.Bone, 'x', THREE.MathUtils.clamp(-pr.rotation.x * 0.55, -0.7, 0.7) + 0.12, weight);
+    const phaseAngle = phase / WALL_RUN_UPPER_KEYS.length * Math.PI * 2, step = Math.sin(phaseAngle) * 0.20;
+    const n = sim.wall as [number, number], tangentX = -n[1], tangentZ = n[0];
+    let wallX = sim.pos[0] - n[0] * 0.54, wallZ = sim.pos[2] - n[1] * 0.54;
+    if (building) { if (Math.abs(n[0]) > 0.5) wallX = (n[0] < 0 ? building.x0 : building.x1) + n[0] * 0.06; else wallZ = (n[1] < 0 ? building.z0 : building.z1) + n[1] * 0.06; }
+    const nearY = sim.pos[1] - 0.58 + step * 0.12, farY = sim.pos[1] - 0.58 - step * 0.12;
+    const nearStep = 0.10 * travel + step, farStep = -0.28 * travel - step;
+    aimWallRunFoot(rig, nearLeg, _wallFootTarget.set(wallX + tangentX * nearStep, nearY, wallZ + tangentZ * nearStep), wall[0] * 0.36 - tangentX * travel * 0.89, -0.29, wall[1] * 0.36 - tangentZ * travel * 0.89, weight);
+    aimWallRunFoot(rig, farLeg, _wallFootTarget.set(wallX + tangentX * farStep, farY, wallZ + tangentZ * farStep), wall[0] * 0.36 - tangentX * travel * 0.78, 0.52, wall[1] * 0.36 - tangentZ * travel * 0.78, weight);
+    orientWallContactAxis(rig.b['foot' + nearLeg] as THREE.Bone, _soleAxis, _wallFacing, weight);
+    orientWallContactAxis(rig.b['foot' + farLeg] as THREE.Bone, _soleAxis, _wallFacing, weight);
+}
+
+function orientWallContactAxis(bone: THREE.Bone, localAxis: THREE.Vector3, desiredWorldAxis: THREE.Vector3, weight: number) {
+    const parent = bone.parent; if (!parent || weight <= 0) return;
+    bone.getWorldQuaternion(_worldQ); _wallAxis.copy(localAxis).applyQuaternion(_worldQ).normalize();
+    _deltaQ.setFromUnitVectors(_wallAxis, desiredWorldAxis); _worldQ.premultiply(_deltaQ);
+    parent.getWorldQuaternion(_parentWorldQ); _localQ.copy(_parentWorldQ).invert().multiply(_worldQ);
+    bone.quaternion.slerp(_localQ, weight);
+}
+
+function aimWallRunLimb(rig: any, rootName: string, middleName: string, endName: string, target: THREE.Vector3, poleX: number, poleY: number, poleZ: number, weight: number) {
+    const root = rig.b[rootName] as THREE.Bone, middle = rig.b[middleName] as THREE.Bone, end = rig.b[endName] as THREE.Bone;
+    rig.root.updateWorldMatrix(true, true); root.getWorldPosition(_legHip); middle.getWorldPosition(_legCurrentKnee); end.getWorldPosition(_legAnkle);
+    const upper = _legHip.distanceTo(_legCurrentKnee), lower = _legCurrentKnee.distanceTo(_legAnkle);
+    _legDir.copy(target).sub(_legHip); let d = _legDir.length(); if (d < 1e-4) return;
+    _legDir.multiplyScalar(1 / d); d = THREE.MathUtils.clamp(d, Math.abs(upper - lower) + 0.01, upper + lower - 0.01);
+    _legPole.set(poleX, poleY, poleZ).addScaledVector(_legDir, -_legDir.x * poleX - _legDir.y * poleY - _legDir.z * poleZ);
+    if (_legPole.lengthSq() < 1e-5) _legPole.set(0, 1, 0).addScaledVector(_legDir, -_legDir.y);
+    _legPole.normalize();
+    const along = (upper * upper - lower * lower + d * d) / (2 * d), bend = Math.sqrt(Math.max(0, upper * upper - along * along));
+    _legKnee.copy(_legHip).addScaledVector(_legDir, along).addScaledVector(_legPole, bend);
+    _legAnkle.copy(_legHip).addScaledVector(_legDir, d);
+    aimBone(root, middle, _legKnee, weight); rig.root.updateMatrixWorld(true, true);
+    aimBone(middle, end, _legAnkle, weight); rig.root.updateMatrixWorld(true, true);
+}
+
+function aimWallRunFoot(rig: any, side: string, target: THREE.Vector3, poleX: number, poleY: number, poleZ: number, weight: number) {
+    aimWallRunLimb(rig, 'thigh' + side, 'shin' + side, 'foot' + side, target, poleX, poleY, poleZ, weight);
 }
 
 

@@ -87,10 +87,10 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         pineLeaf: Object.assign(new THREE.MeshLambertMaterial({ map: tex.pine, vertexColors: true, emissive: '#1f3a22', alphaTest: 0.5, side: THREE.DoubleSide }), { onBeforeCompile: hazeShader(kit.tod, kit.leafWindShader), customProgramCacheKey: () => 'islPineLeaf' }),
     }), []);
     /* 25 fps pass (Oct 31): island trees were 16 instanced draw calls (each species' trunk + leaves). Species sharing a material now go in ONE
-       BatchedMesh per material (wind sway reads the batching matrix, per-tree tint kept as batch colour, per-tree frustum culling). */
+       BatchedMesh per material (wind sway reads the batching matrix, per-tree tint kept as batch colour; vegetation visibility stays fixed on). */
     const vegSpecs = useMemo(() => [
-        ['pAt', geos.pA.trunk, mats.palmTrunk, veg.palmA, '#ffffff', '#e8dccb'], ['pAl', PHONE ? geos.pA.lo : geos.pA.leaves, mats.palmLeaf, veg.palmA, '#ffffff', '#d8e8a8'],
-        ['pBt', geos.pB.trunk, mats.palmTrunk, veg.palmB, '#f0e6d6', '#ffffff'], ['pBl', geos.pB.lo, mats.palmLeaf, veg.palmB, '#c8f0a0', '#ffffff'],
+        ['pAt', geos.pA.trunk, mats.palmTrunk, veg.palmA, '#ffffff', '#e8dccb'], ['pAl', geos.pA.leaves, mats.palmLeaf, veg.palmA, '#ffffff', '#d8e8a8'],
+        ['pBt', geos.pB.trunk, mats.palmTrunk, veg.palmB, '#f0e6d6', '#ffffff'], ['pBl', geos.pB.leaves, mats.palmLeaf, veg.palmB, '#c8f0a0', '#ffffff'],
         ['bt', geos.t.trunk, mats.trunk, veg.broad, '#ffffff', '#d8cfc4'], ['bl', geos.t.leaves, mats.leaf, veg.broad, '#ffffff', '#b8e890'],
         ['ut', geos.u.trunk, mats.trunk, veg.tall, '#ffffff', '#e0d8d0'], ['ul', geos.u.leaves, mats.leaf, veg.tall, '#ffffff', '#c8e8a8'],
         ['pnt', geos.pine.trunk, mats.pineTrunk, veg.pine, '#ffffff', '#e0d8d0'], ['pnl', geos.pine.leaves, mats.pineLeaf, veg.pine, '#7fa898', '#6a9a84'],
@@ -107,7 +107,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
             if (list.length < 2) continue;
             let nv = 0, ni = 0, nInst = 0; for (const s of list) { nv += s[1].attributes.position.count; ni += s[1].index ? s[1].index.count : 0; nInst += s[3].length; }
             const bm = new THREE.BatchedMesh(nInst, nv, list[0][1].index ? ni : undefined, mat);
-            bm.sortObjects = false; bm.perObjectFrustumCulled = true; bm.frustumCulled = false;
+            bm.sortObjects = false; bm.perObjectFrustumCulled = false; bm.frustumCulled = false;
             for (const s of list) {
                 const gid = bm.addGeometry(s[1]); keys.add(s[0]); cb.set(s[5]);
                 for (const p of s[3]) { o.position.set(p.x, p.y, p.z); o.rotation.set(0, p.r, 0); o.scale.set(p.s, p.s * (p.sy ?? 1), p.s); o.updateMatrix(); const id = bm.addInstance(gid); bm.setMatrixAt(id, o.matrix); bm.setColorAt(id, c.set(s[4]).lerp(cb, p.tint ?? 0)); }
@@ -117,7 +117,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         return { meshes, keys };
     }, [vegSpecs]);
     useEffect(() => () => { for (const m of vegBatch.meshes) m.dispose(); }, [vegBatch]);
-    const vegRef = useRef<THREE.Group>(null!), nearRef = useRef<THREE.Group>(null!), grassRef = useRef<THREE.Group>(null!);
+    const nearRef = useRef<THREE.Group>(null!);
     const inst = useRef<Record<string, THREE.InstancedMesh | null>>({});
     useEffect(() => {
         const o = new THREE.Object3D(), c = new THREE.Color();
@@ -130,23 +130,20 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         fill('pnt', veg.pine, '#ffffff', '#e0d8d0'); fill('pnl', veg.pine, '#7fa898', '#6a9a84'); fill('spt', veg.spruce, '#ffffff', '#e0d8d0'); fill('spl', veg.spruce, '#5f8a62', '#6f9a70');
         fill('cht', veg.cherry, '#ffffff', '#e0d8d0'); fill('chl', veg.cherry, '#e8f0c0', '#ffffff');
     }, []);
-    const grassPool = useMemo(() => { setSeed(555); const N = PHONE ? 2600 : 6500, R0 = PHONE ? 34 : 44, a = new Float32Array(N * 5); for (let i = 0; i < N; i++) { const r = R0 * Math.sqrt(rnd()), t = rnd() * 6.283; a[i * 5] = Math.cos(t) * r; a[i * 5 + 1] = Math.sin(t) * r; a[i * 5 + 2] = rnd() * 6.283; a[i * 5 + 3] = 0.75 + rnd() * 0.7; a[i * 5 + 4] = rnd(); } return { N, a }; }, []);
-    const grassAt = useRef([1e9, 1e9]);
-    const placeGrass = (hx: number, hz: number) => {
+    const grassPool = useMemo(() => { setSeed(555); const N = PHONE ? 2600 : 6500, R0 = ISLAND.R * 0.94, a = new Float32Array(N * 5); for (let i = 0; i < N; i++) { const r = R0 * Math.sqrt(rnd()), t = rnd() * 6.283; a[i * 5] = ISLAND.cx + Math.cos(t) * r; a[i * 5 + 1] = ISLAND.cz + Math.sin(t) * r; a[i * 5 + 2] = rnd() * 6.283; a[i * 5 + 3] = 0.75 + rnd() * 0.7; a[i * 5 + 4] = rnd(); } return { N, a }; }, []);
+    const placeGrass = () => {
         const m = inst.current['grass']; if (!m) return; const { half, n, mask } = (veg as any).mask, o = new THREE.Object3D(), c = new THREE.Color(); let k = 0;
         for (let i = 0; i < grassPool.N; i++) {
-            const q = grassPool.a, x = hx + q[i * 5], z = hz + q[i * 5 + 1], gi = Math.floor(x - ISLAND.cx + half), gj = Math.floor(z - ISLAND.cz + half);
+            const q = grassPool.a, x = q[i * 5], z = q[i * 5 + 1], gi = Math.floor(x - ISLAND.cx + half), gj = Math.floor(z - ISLAND.cz + half);
             if (gi < 0 || gj < 0 || gi >= n || gj >= n) continue; const y = mask[gj * n + gi]; if (y !== y) continue;
             o.position.set(x, y - 0.05, z); o.rotation.set(0, q[i * 5 + 2], 0); o.scale.set(q[i * 5 + 3], q[i * 5 + 3] * (0.8 + q[i * 5 + 4] * 0.9), q[i * 5 + 3]); o.updateMatrix(); m.setMatrixAt(k, o.matrix); const cl = Math.sin(x * 0.11 + 1.3) * Math.cos(z * 0.09); m.setColorAt(k, c.setHSL(0.22 + q[i * 5 + 4] * 0.1 - 0.045 * cl + 0.03 * Math.sin(x * 0.045 + z * 0.06), 0.30 + 0.06 * cl, 0.34 + q[i * 5 + 4] * 0.10 + 0.065 * cl)); k++;   // the park meadow's tint formula
         }
         m.count = k; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
     };
+    useEffect(() => { placeGrass(); }, []);
     useFrame(({ camera }) => {
         const d = Math.hypot(camera.position.x - ISLAND.cx, camera.position.z - ISLAND.cz);
-        if (d < 170 && Math.hypot(sim.pos[0] - grassAt.current[0], sim.pos[2] - grassAt.current[1]) > 6) { grassAt.current = [sim.pos[0], sim.pos[2]]; placeGrass(sim.pos[0], sim.pos[2]); }
-        if (vegRef.current) vegRef.current.visible = d < (PHONE ? 330 : 430);
         if (nearRef.current) nearRef.current.visible = d < 260;
-        if (grassRef.current) grassRef.current.visible = d < 170;
         const t = sim.t, day = kit.tod.day.value; GRASS_T.value = t; GRASS_U.uTime.value = t; GRASS_U.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); GRASS_U.uCam.value.copy(camera.position);
         for (const m of FALLS_MATS) { m.uniforms.uT.value = t; m.uniforms.uDay.value = day; }
         FOAM_MAT.uniforms.uT.value = t; FOAM_MAT.uniforms.uDay.value = day; SPRAY_MAT.uniforms.uT.value = t; MIST_MAT.uniforms.uT.value = t;
@@ -154,7 +151,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         for (const w of waters) { const u = (w.material as THREE.ShaderMaterial).uniforms; u.uT.value = t; u.uDay.value = day; u.uSky.value.copy(kit.tod.fog).lerp(SKY_BLUE, 0.45); u.uSun.value.copy(kit.tod.sun); }
         { const night = 1 - day; lampMat.color.setRGB(1, 0.95, 0.75).multiplyScalar(0.8 + 0.6 * night); }
     });
-    const I = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, n: number) => <instancedMesh ref={(m) => { inst.current[key] = m; }} args={[geo, mat, Math.max(1, n)]} />;   /* Shifat 10:22 PM 25 fps: island trees/bushes/rocks cull when off screen (bounds computed in fill) */
+    const I = (key: string, geo: THREE.BufferGeometry, mat: THREE.Material, n: number) => <instancedMesh ref={(m) => { inst.current[key] = m; }} args={[geo, mat, Math.max(1, n)]} frustumCulled={false} />;   /* Vegetation stays visible at every camera distance; batching remains the draw-call optimization. */
     return <group name="south-sea-island">
         <mesh ref={terrRef} geometry={terrain} material={terrainMat} />
         <mesh geometry={lh.body} material={propMat} />
@@ -162,13 +159,13 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         <LightShafts kit={kit} lampY={lh.lampY} />
         <mesh geometry={shacks} material={propMat} />
         <mesh geometry={dock} material={propMat} />
-        <group ref={vegRef}>
+        <group>
             {vegBatch.meshes.map((m, i) => <primitive key={'vb' + i} object={m} />)}
             {vegSpecs.filter((s) => !vegBatch.keys.has(s[0])).map((s) => <React.Fragment key={s[0]}>{I(s[0], s[1], s[2], s[3].length)}</React.Fragment>)}
             {I('bush', geos.b.leaves, mats.bush, veg.bush.length)}
             {I('rock', geos.rock, mats.rock, veg.rock.length)}
         </group>
-        <group ref={grassRef}><instancedMesh ref={(m) => { inst.current['grass'] = m; }} userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geos.grass, mats.grass, grassPool.N]} frustumCulled={false} /></group>
+        <group><instancedMesh ref={(m) => { inst.current['grass'] = m; }} userData={{ outlineMaskAlpha: 0.5, outlineMaskThreshold: 0.75 }} args={[geos.grass, mats.grass, grassPool.N]} frustumCulled={false} /></group>
         <mesh geometry={river} material={RIVER_MAT} renderOrder={1} />
         <group ref={nearRef}>
             {waters.map((w, i) => <primitive key={i} object={w} />)}

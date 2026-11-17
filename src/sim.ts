@@ -706,6 +706,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     { const g = s as any; if (g.yawTurnT > 0) { g.yawTurnT -= dt; if (s.lastDrag !== g.yawTurnDrag || s.camHeld) g.yawTurnT = 0; else { const dy = ((g.yawTo - s.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI; s.yaw += dy * (1 - Math.exp(-11 * dt)); } } }   // leave-wall camera swing (leaveWall)
     if (k['arrowup'] || k['arrowdown']) { s.pitch = Math.max(-1.15, Math.min(1.35, s.pitch + ((k['arrowdown'] ? 1 : 0) - (k['arrowup'] ? 1 : 0)) * dt)); s.lastDrag = s.t; }
     const swingHeld = input.swing;   // desktop pass: swing is held through input.swing only (right mouse hold / LT / touch button)
+    const wallRunAtStep = !!(s.wallRun && s.wall && swingHeld), wallRunDepartB = s.wallB;
     const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = -fz, rz = fx;
     const stunned = s.landHard > 0;
     const slamK = (s as any).slam ? ((s as any).slam.ph === 0 ? SLAM.MOVE_K : 0) : 1;   // charging: 40% move speed; leap/dive: no steering
@@ -721,7 +722,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         s.wall = null; ev.attach();
     }
     input.swingQ = false;
-    if (!swingHeld && s.web) { s.web = false; v[1] += 3; ev.release(); }
+    if (!swingHeld && s.web) { const wallRun = s.wallRun; s.web = false; if (wallRun) s.wallRun = false; else v[1] += 3; ev.release(); }
     let springAnchor: V3 | null = null;
     // web grab button: two-hand web to the nearest real building anchor, then the same spring travel as the spring jump
     let springWall: [number, number] | null = null, springH: [number, number] | null = null;
@@ -811,7 +812,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
             const wl = Math.hypot(wx, wz), ax = p[0] + wx / wl * 1.6, az = p[2] + wz / wl * 1.6, sf = seaSurface(ax, az, 1e9);
             if (sf !== null && sf > surface + 0.15 && sf < surface + 10.5 && !poolAt(ax, az)) { p[0] = ax; p[1] = sf + 1; p[2] = az; v[0] = v[1] = v[2] = 0; s.swim = false; s.dive = false; s.ground = true; (s as any).leapT = 0.4; }
         }
-    } else if (s.wall && !s.web) {
+    } else if (s.wall && (!s.web || s.wallRun)) {
         (s as any).surf = false;
         const n = s.wall, tx = -n[1], tz = n[0];
         if (s.wallRun && swingHeld) {
@@ -845,7 +846,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         if (!s.web) { const dr = Math.pow(0.992, dt * 60); v[0] *= dr; v[2] *= dr; }
     }
     p[0] += v[0] * dt; p[1] += v[1] * dt; p[2] += v[2] * dt;
-    if (s.web) {
+    if (s.web && !s.wallRun) {
         s.webT += dt; s.rope = Math.max(10, s.rope - 1.5 * dt);
         const a = s.anchor, d = sub(p, a), l = len(d);
         const reel = ((s as any).swingReel = Math.max(0, ((s as any).swingReel || 0) - dt)) > 0;   // roof start: reel in for 0.7 s so the arc clears the roof
@@ -874,6 +875,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         const tx = -hitN[1], tz = hitN[0], incomingTangent = v[0] * tx + v[2] * tz, steerTangent = wx * tx + wz * tz;
         s.wallRun = controls === input && swingHeld && (wasWeb || wasGrappleFlight);
         if (s.wallRun) {
+            s.web = false; s.webDepartB = hitB;
             const fallback = Math.sign(steerTangent) || Math.sign(fx * tx + fz * tz) || 1;
             const speed = Math.abs(incomingTangent) >= 3 ? incomingTangent : fallback * Math.max(14, Math.abs(steerTangent) * 18);
             v[0] = tx * speed - hitN[0] * 1.5; v[1] = 0; v[2] = tz * speed - hitN[1] * 1.5;
@@ -897,6 +899,12 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35) || (seaG && wasGround && v[1] <= 0.5 && p[1] - gy < 1.2)) && onLand && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes
         if (!s.ground) { s.ground = true; }
         p[1] = gy; if (v[1] < 0) v[1] = 0;
+    }
+    if (wallRunAtStep && !s.wall && !s.web && !s.ground && !s.swim && swingHeld) {
+        const hl = Math.hypot(v[0], v[2]) || 1, heading: [number, number] = [v[0] / hl, v[2] / hl];
+        const real = findAnchor(s, true, heading, wallRunDepartB), anchor = real || airAnchor(s, heading, 22, 24);
+        s.webDepartB = wallRunDepartB; s.anchorReal = !!real; s.anchor = anchor; (s as any).anchorCar = (real as any)?.car ?? -1;
+        s.web = true; s.webT = 0; s.rope = Math.max(12, len(sub(s.anchor, p))); (s as any).swingReel = 0; s.swings++; ev.attach();
     }
     if (s.ground || s.swim || s.wall || s.glideOn) s.grappleFlight = false;
     if (!s.wall || !swingHeld) s.wallRun = false;
