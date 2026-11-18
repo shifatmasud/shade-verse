@@ -1,5 +1,17 @@
 # Changelog
 
+## Web Slingshot: centred, both fists on the line, no snap (2026-11-18)
+
+- The two-hand web pull is now the **Web Slingshot** in game (controls overlay and the phone button label). The sim state is still `sim.spring`; the action id is still `web-spring-launch`.
+- **Both fists stay on the line.** The two-hand aim used to run before the torso and limb layers, so `springBones` (spine/chest) and `combatPose` rotated the shoulders out from under it: measured 57-73 deg off the anchor mid-pull, L and R disagreeing. `aimHandsOnLine` (`src/heroSlingshot.ts`) is now the last write to an arm bone in the frame. Measured on the instrumented build: upper arm and forearm 0.0-3.0 deg off, both sides, from the coil to the launch (was 57-73 deg).
+- **No sideways lean.** The pose is built from mirrored numbers only, and the stock air clip (whose held frame rolls the hips 11 deg and twists the spine 15 - the lean) stays off the body while the slingshot owns it. Measured: body roll 0.000 rad, hips/spine/chest roll and twist under 0.01 rad, head 0.002 m off the hips' pull plane, fists mirrored at -0.42 / +0.44 m.
+- **A coil that reads.** A held anticipation beat (90 ms: knees tucked to ~90 deg, chest curled, fists high) releases into the extension along the line: knees 90 -> 164 deg, legs trailing together, toes pointed, back arched, head up into the pull. Both knees are mirrored within 2 deg (was 157 / 164).
+- **No snap after the pull.** The pose carries its own weight and eases out over 0.5 s instead of handing the body straight to the air pose, and the spring-release front flip is gone: the hero keeps climbing along the line instead of flipping into a frog tuck while still rising at 44 m/s. The two web lines now stay on the anchor through the flight they launch (they used to vanish the instant `sim.spring` hit 0), and they shoot out over the first 90 ms instead of shrinking from full length.
+- `src/heroSlingshot.ts` (new) holds the constants, the coil/stretch keys, the aim and the pose weight; `springBones` is gone from `heroTraversal.ts`.
+- `test/web-spring-pose.mjs` (new) asserts the aim (< 10 deg on both arms), the mirror symmetry, zero roll/twist, the coil -> extension knee range, the tether and the no-flip exit. `test/ghost-animation-sync.mjs`: the dual-hand case now expects no sampled clip, because the slingshot body is procedural.
+
+Measured on the instrumented build (tap the web button on the street toward a roof anchor, Chromium/SwiftShader headless, frames pinned by `__ts`), before -> after: arm off the line 57-73 deg (L/R unequal) -> 0.0-3.0 deg (L/R within 1 deg), knees 157/164 -> 90/92 at the coil and 164/165 at the launch, body roll 0 -> 0, tether at the end of the pull off -> on. `npm run typecheck` and `npm run build` pass; four-angle A/B sheets were captured before/after on the same fixture, camera and frame marks.
+
 ## Wall-run legs: a real running stride, measured off the reference (2026-11-18)
 
 - The wall-run legs no longer fold up under the pelvis. The pose now keeps the hip ~1.05 m off the facade and the back upright, so the legs have room to extend: a shoulder welded to the wall was what pulled both feet up into the frog crouch.

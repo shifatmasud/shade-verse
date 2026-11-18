@@ -1,5 +1,5 @@
 // Desktop input (Shifat's final desktop map, Oct 29 00:55): mouse + keyboard and gamepad, routed onto the EXISTING input flags only.
-// Mouse: pointer-lock look; left tap = web shot, left hold = Web Shock (specialQ); right tap = web spring (grabQ), right hold = swing.
+// Mouse: pointer-lock look; left tap = web shot, left hold = Web Shock (specialQ); right tap = web slingshot (grabQ), right hold = swing.
 // Keys (in App): WASD move, arrows camera, Space = the mobile jump button 1:1, K / Ctrl melee.
 // Extra keys (Shifat Nov 2 4:40 AM final map): I = Space, J = left button (shot/shock), L = right button (spring/swing).
 // Gamepad (standard mapping): left stick move, right stick camera, A = Space, RB tap shot / hold Web Shock, LT tap spring / hold swing, X melee.
@@ -119,9 +119,9 @@ export function installDesktopInput(sim: Sim, isDesk: () => boolean, ev: DeskEve
 
 export const MAP_KB: [string, string][] = [
     ['WASD', 'Move'], ['Arrows / Mouse', 'Camera (click to lock, Esc frees)'], ['J / LMB / Alt', 'Tap web shot · hold Web Shock'],
-    ['I / Space', 'Tap jump · hold fly'], ['K / Ctrl', 'Melee'], ['L / RMB / Shift', 'Tap web spring · hold swing'],
+    ['I / Space', 'Tap jump · hold fly'], ['K / Ctrl', 'Melee'], ['L / RMB / Shift', 'Tap web slingshot · hold swing'],
 ];
 export const MAP_PAD: [string, string][] = [
     ['L-stick', 'Move'], ['R-stick', 'Camera'], ['A', 'Tap jump · 2× double · hold fly · release glide'],
-    ['RB', 'Tap web shot · hold Web Shock'], ['LT', 'Tap web spring · hold swing'], ['X', 'Melee'],
+    ['RB', 'Tap web shot · hold Web Shock'], ['LT', 'Tap web slingshot · hold swing'], ['X', 'Melee'],
 ];
