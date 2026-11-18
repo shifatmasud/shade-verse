@@ -1,5 +1,15 @@
 # Changelog
 
+## Web Slingshot: a real pull beat, and the webs let go on launch (2026-11-18)
+
+- **Two beats instead of one.** The slingshot used to fire the whole launch velocity on the trigger frame (`src/sim.ts`), so the hero was already ~5 m up and gone before a single frame of the 90 ms coil had played. The move now runs PULL (0.12 s): the webbing goes taut and draws him ~1.4 m along the line (peak 12 m/s), with no catapult velocity; then LAUNCH fires the full slingshot velocity from where he is at that moment. `SLINGSHOT.PULL` / `PULL_V` in `src/heroSlingshot.ts`.
+- **The webs release on launch.** `src/Scene.tsx` no longer holds the two lines on the anchor for the whole `grappleFlight` - they were stretching metres behind him long after he had passed the anchor. They hold the anchor through the pull, then at the launch beat (`sim.springRel`) snap back into the fists over `SLINGSHOT.RETRACT` (0.12 s) and disappear. The fists come off the line over `AIM_OUT` (0.16 s) so the arms ease into the flight pose. `src/Ghost.tsx` mirrors the same release and retract on her lines.
+- **Launch power is preserved.** The roof arc is solved at the launch beat from the position then (it still lands on the roof: y = 35.2 m on the 34.2 m fixture roof), and the air-anchor launch keeps the velocity the hero brought in (`springV0`).
+- **Audio follows the beats.** The spring whoosh now plays at the launch beat instead of 120 ms early during the pull (`src/audio/director.ts`).
+- `test/web-spring-pose.mjs` now asserts the two beats: fists on the line and both lines ON the anchor through the pull, pull speed under 20 m/s (no launch velocity before the launch), the release inside 0.09-0.16 s, the catapult after it, and zero web lines drawn in any frame after the release + retract.
+
+Measured on the instrumented build (same fixture, camera and frame marks, Chromium/SwiftShader), before -> after: at the pull beat (0.13 s after the trigger) 9.4 m up at 65 m/s -> 1.7 m up at 10.6 m/s; lines drawn in 13/13 frames of the move, 5 of them past 0.2 s with the line end 0.00 m on the anchor -> 0 frames drawn after the release (0.13 s) + 0.14 s retract. `npm run typecheck` and `npm run build` pass; A/B sheet `downloads/slingshot-release-ab.png`.
+
 ## Island waterfall: layered turbulent cascade, rock frame, no water outlines (2026-11-18)
 
 - **The falls are water again, not a painted card.** `fallsMat()` (`src/water/islandWater.ts`) drops the 44-column `floor()` lane field that quantised the streaks into 25 px mosaic steps and sums three .78-alpha sheets into a solid white mass. The sheet is now multi-octave domain-warped FBM: a 3-octave warp bends two 4-octave filament fields (~12 cm wide, ~60 cm tall cells, scrolling and accelerating downward), with froth only at thread scale near the plunge. Colours run pale cyan -> white; per-sheet alpha is capped at .5 (.3 for the outer veil), so overlapping sheets read as translucent water with the wet cliff behind, never a blown-out blob.
