@@ -230,9 +230,9 @@ export function App() {
         {hud.mode === 'play' && <>
             <div className="padzone" onPointerDown={padStart} onPointerMove={(e) => { if (e.pointerId === stickId.current) padMove(e); }} onPointerUp={stickEnd} onPointerCancel={stickEnd} onLostPointerCapture={stickEnd} />
             <div className="dpad" ref={padRef}><svg width="120" height="120" viewBox="0 0 120 120" {...IC} strokeWidth={2}><path d="M60 8l9 11H51zM60 112l-9-11h18zM8 60l11-9v18zM112 60l-11 9V51z" fill="currentColor" stroke="none" opacity=".85" /><circle cx="60" cy="60" r="38" opacity=".35" /></svg><div className="knob" ref={knobRef} /></div>
-            {/* Shifat Nov 2 4:26/4:30 AM: one button per pair, same as desktop - tap = web spring, hold = swing; tap = web shot, hold = Web Shock (HOLD_MS) */}
+            {/* Shifat Nov 2 4:26/4:30 AM: one button per pair, same as desktop - tap = web slingshot, hold = swing; tap = web shot, hold = Web Shock (HOLD_MS) */}
             {/* Nov 2 phone polish: one finger per button, every release path ends the press once (src/touchButtons.ts); data-down / data-held drive the pressed and past-HOLD_MS looks */}
-            <button className={'ico hold swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web spring (tap) / web swing (hold)"
+            <button className={'ico hold swing' + (swingOn ? ' on' : '') + (hud.wb ? ' linked' : '')} aria-label="web slingshot (tap) / web swing (hold)"
                 onPointerDown={(e) => { if (!pressBtn(tb.sw, e, () => { input.swing = true; input.swingQ = true; setSwingOn(true); }, swEnd)) return; burst(e, '#8fe9ff', -25, false); }}
                 onPointerUp={(e) => { const r = releaseBtn(tb.sw, e); if (!r) return; if (r.held) { input.swing = false; setSwingOn(false); } else if (r.long) { input.swing = true; input.swingQ = true; requestAnimationFrame(() => requestAnimationFrame(() => { if (tb.sw.id === -1) input.swing = false; })); } else input.grabQ = true; }}
                 onPointerCancel={(e) => { if (releaseBtn(tb.sw, e)) swEnd(); }} onLostPointerCapture={(e) => { if (releaseBtn(tb.sw, e)) swEnd(); }}><ISwing /></button>

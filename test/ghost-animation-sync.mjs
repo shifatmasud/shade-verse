@@ -35,7 +35,7 @@ const actions = [
     { name: 'jump', expected: 'airborne', state: { ground: false, pos: [30, 60, 30], vel: [0, 4, 0] }, clip: 'jump' },
     { name: 'wall-jump', expected: 'wall-jump', state: { ground: false, pos: [30, 60, 30], wallT: 0.24, vel: [2, 5, 0] }, clip: 'jump' },
     { name: 'rooftop-vault-landing', expected: 'rooftop-vault', state: { ground: true, land: 0.22, pos: [0, 31, 0], vel: [2, 0, 0], vaulted: 1 }, clip: '' },
-    { name: 'dual-hand-spring-shot-launch', expected: 'web-spring-launch', triggerSpring: true, state: { ground: false, pos: [30, 60, 30], web: true, webT: 0.25, anchorReal: true, anchor: [34, 90, 32], rope: 50, swings: 1, vel: [0, 0, 0] }, clip: 'jump' },
+    { name: 'dual-hand-web-slingshot', expected: 'web-spring-launch', triggerSpring: true, state: { ground: false, pos: [30, 60, 30], web: true, webT: 0.25, anchorReal: true, anchor: [34, 90, 32], rope: 50, swings: 1, vel: [0, 0, 0] }, clip: '' },   // the slingshot body is procedural (src/heroSlingshot.ts), so no clip is sampled while it runs
     { name: 'single-hand-web-swing-right', expected: 'web-swing', webHandMask: 2, state: { ground: false, pos: [30, 60, 30], web: true, webT: 0.25, anchorReal: true, anchor: [34, 80, 32], rope: 50, swings: 1, vel: [0, 0, 0] }, clip: '' },
     { name: 'single-hand-web-swing-left', expected: 'web-swing', webHandMask: 1, state: { ground: false, pos: [30, 60, 30], web: true, webT: 0.25, anchorReal: true, anchor: [34, 80, 32], rope: 50, swings: 2, vel: [0, 0, 0] }, clip: '' },
     { name: 'auto-glide', expected: 'glide', state: { ground: false, pos: [30, 60, 30], glideOn: true, airT: 0.6, gB: 0.6, vel: [0, 1, 4] }, clip: '' },
