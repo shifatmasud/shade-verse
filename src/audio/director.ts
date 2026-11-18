@@ -32,7 +32,7 @@ export function surfaceAt(x: number, z: number, y: number, groundY: number): Sur
     return 'concrete';
 }
 
-interface Prev { slamPh: number; cc: number; csn: number; muted: boolean; web: boolean; spring: number; shotT: number; atkT: number; snareT: number; swim: boolean; dive: boolean; glide: boolean; mode: string; hit: number[]; down: number[]; speed: number }
+interface Prev { slamPh: number; cc: number; csn: number; muted: boolean; web: boolean; spring: number; springRel: number; shotT: number; atkT: number; snareT: number; swim: boolean; dive: boolean; glide: boolean; mode: string; hit: number[]; down: number[]; speed: number }
 
 /* Per-move hit sounds (Shifat Nov 2 3:42 PM on the synth layers of 77696ea: "Sounds wrong. Hit should sound like real hits. Study real sounds refs").
    Every hit is now a REAL recording (CC0 foley: boxing-mitt and punching-bag hits, face/body punches, a power kick, body falls, metal clanks;
@@ -61,7 +61,7 @@ function playHit(set: string, gain: number, o: { pos?: Vec3; prio?: number; ref?
     audio.play('hits', { offset: off, dur, gain: gain * (0.92 + Math.random() * 0.16), rate: (o.rate ?? 1) * (0.96 + Math.random() * 0.08), pos: o.pos, ref: o.ref, prio: o.prio ?? 3 });
 }
 export class SoundDirector {
-    private p: Prev = { slamPh: -1, cc: 0, csn: 0, muted: false, web: false, spring: 0, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
+    private p: Prev = { slamPh: -1, cc: 0, csn: 0, muted: false, web: false, spring: 0, springRel: -1, shotT: 0, atkT: 0, snareT: 0, swim: false, dive: false, glide: false, mode: 'menu', hit: [], down: [], speed: 0 };
     private stepAcc = 0; private stepI = 0;
     private intensity = 0; private idleT = 0; private combatT = 0; private swingVol = 0; private lastLand = -9;
     private chargeV: any = null; private slamV: any = null;
@@ -226,7 +226,9 @@ export class SoundDirector {
             // ---------- hero edges ----------
             if (s.web && !p.web) { audio.play('thwip', { gain: 0.6, rate: 0.85 + Math.random() * 0.15, prio: 3 }); audio.play('attach', { gain: 0.35, when: audio.ctx.currentTime + 0.1, pos: s.anchor as Vec3, prio: 1, ref: 20 }); audio.play('whoosh', { gain: 0.35 + 0.3 * clamp01(sp / 40), rate: 0.85 + clamp01(sp / 50) * 0.5, prio: 2 }); }
             if (!s.web && p.web && !s.ground) audio.play('whoosh', { gain: 0.25 + 0.35 * clamp01(sp / 40), rate: 1.0 + clamp01(sp / 50) * 0.5, prio: 2 });
-            if (s.spring > 0.3 && p.spring <= 0.05) audio.play('spring', { gain: 0.6, rate: 0.95 + Math.random() * 0.1, prio: 3 });
+            // Web Slingshot: the thwip of the webbing biting is the existing attach event; the spring whoosh belongs to the
+            // LAUNCH beat (sim.springRel), not to the trigger - it used to fire 120 ms before the catapult, during the pull.
+            if (((sa.springRel ?? -1) as number) >= 0 && p.springRel < 0) audio.play('spring', { gain: 0.6, rate: 0.95 + Math.random() * 0.1, prio: 3 });
             if (s.shotT > p.shotT + 0.1) { audio.play('thwip', { gain: 0.55, rate: 1.2 + Math.random() * 0.15, prio: 3 }); this.combatT = 6; }
             if (s.atkT > p.atkT + 0.1 && s.shotT <= p.shotT + 0.1) { const W = SWISH[sa.mv?.id] ?? [0.4, 1]; audio.play('swish', { gain: W[0] * (0.9 + Math.random() * 0.2), rate: W[1] * (0.92 + Math.random() * 0.16), prio: 2 }); }
             // Slam: holding K past HOLD_MS (ph 0 = charging) now has a rising charge swell; it cuts the moment the leap starts
@@ -295,7 +297,7 @@ export class SoundDirector {
             this.banterTick(dt, day, near);
             this.debug = { ...this.debug, zoneCity: +cityW.toFixed(2), zonePark: +parkW.toFixed(2), zoneOcean: +oceanW.toFixed(2), zoneLake: +lakeW.toFixed(2), grove: +groveW.toFixed(2), day: +day.toFixed(2), alt: +alt.toFixed(2), under, music: +this.intensity.toFixed(2) };
         }
-        p.web = s.web; p.spring = s.spring; p.shotT = s.shotT; p.atkT = s.atkT; p.snareT = sa.snareT || 0; p.swim = s.swim; p.dive = s.dive; p.glide = s.glideOn; p.mode = s.mode; p.speed = sp;
+        p.web = s.web; p.spring = s.spring; p.springRel = ((sa.springRel ?? -1) as number); p.shotT = s.shotT; p.atkT = s.atkT; p.snareT = sa.snareT || 0; p.swim = s.swim; p.dive = s.dive; p.glide = s.glideOn; p.mode = s.mode; p.speed = sp;
         audio.tick(dt);
     }
 }

@@ -26,11 +26,15 @@ import * as THREE from 'three';
 /** Timing of the move, in seconds. `DUR` matches the countdown `sim.ts` starts on `sim.spring`. */
 export const SLINGSHOT = {
     DUR: 0.4,        // sim.spring counts down from here
+    PULL: 0.12,      // ...and the launch beat is here (sim.ts): the webbing is taut and drawing him in for this long first
+    PULL_V: 12,      // peak draw speed of the pull beat (m/s along the line): about 1 m of travel, not a teleport
     COIL: 0.09,      // the anticipation beat is held this long after the trigger
     STRETCH: 0.22,   // ...and the body is fully extended along the line by here
     EXIT: 0.5,       // the pose hands over to the air pose over this long after the pull ends
-    AIM_IN: 0.05,    // the fists reach the line over the first frames of the pull
+    AIM_IN: 0.03,    // the fists reach the line over the first frames of the pull
+    AIM_OUT: 0.16,   // ...and come off it over this long after the release
     TETHER_IN: 0.09, // the two lines shoot out over this long (Scene.tsx draws them)
+    RETRACT: 0.12,   // the two lines snap back into the fists over this long after the release (Scene.tsx)
 } as const;
 
 /** The parts of the rig this pose drives. */

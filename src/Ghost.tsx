@@ -10,6 +10,7 @@ import { buildings, parkH, SNARE, stepSim, setCompanionSim, type Events, type In
 import { registerFxHero } from './CombatFX';
 import { animateHeroBones, applyCapeWind, applyHeroRootPose, buildRig, createCombatPoseState, createHeroClipState, SNARE_PULSE_SEGMENTS, SNARE_RING_SEGMENTS, writeSnarePulse, type CombatPoseState, type HeroClipState, type HeroRootPoseState } from './Scene';
 import { BOSS_BODY_OFFSET } from './bossConfig';
+import { SLINGSHOT } from './heroSlingshot';
 import { HERO_REFL } from './caustics';
 
 const DBG = !!(import.meta as any).env.VITE_DBG;
@@ -472,17 +473,28 @@ export function GhostCompanion({ sim }: { sim: Sim }) {
 
         const la = lineGeo.attributes.position as THREE.BufferAttribute, xa = shockGeo.attributes.position as THREE.BufferAttribute; let n = 0, webHandMask = 0, pulseSegments = 0, ringSegments = 0, snareWebLines = 0, pulseProgress = 0;
         const webSource = animationSource, webState = webSource as any;
-        if (webSource.web || webSource.spring > 0 || webState.snareT > 0) {
+        // The slingshot's two lines follow the same two beats as the hero's (src/sim.ts): on the anchor through the pull,
+        // then released at the launch beat and snapped back into her fists over SLINGSHOT.RETRACT.
+        const wRel = (webSource as any).springRel ?? -1, wU = SLINGSHOT.DUR - (webSource.spring || 0);
+        const wSince = wRel >= 0 ? Math.max(0, wU - wRel) : 0;
+        const wHi = wRel >= 0 && wSince < SLINGSHOT.RETRACT;
+        const wShrink = wRel >= 0 ? Math.pow(1 - Math.min(1, wSince / SLINGSHOT.RETRACT), 1.6) : 1;   // 1 = anchored, 0 = back in the fist
+        const wTether = (webSource.spring || 0) > 0 && (wRel < 0 || wSince < SLINGSHOT.RETRACT);
+        if (webSource.web || wTether || webState.snareT > 0) {
             model.root.updateMatrixWorld(true);
             model.b.handL.getWorldPosition(_handL); model.b.handR.getWorldPosition(_handR);
-            if (webSource.web || webSource.spring > 0) {
-                const bothHands = webSource.spring > 0, swingSide = webSource.swings % 2;
+            if (webSource.web || wTether) {
+                const bothHands = !!wTether, swingSide = webSource.swings % 2;
+                const ex = webSource.anchor[0], ey = webSource.anchor[1], ez = webSource.anchor[2];
+                const endAt = (h: THREE.Vector3): [number, number, number] => bothHands ? [h.x + (ex - h.x) * wShrink, h.y + (ey - h.y) * wShrink, h.z + (ez - h.z) * wShrink] : [ex, ey, ez];
                 if (bothHands || swingSide === 0) {
-                    la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
+                    const e0 = endAt(_handL);
+                    la.setXYZ(n * 2, _handL.x, _handL.y, _handL.z); la.setXYZ(n * 2 + 1, e0[0], e0[1], e0[2]); n++;
                     webHandMask |= 1;
                 }
                 if (bothHands || swingSide === 1) {
-                    la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, webSource.anchor[0], webSource.anchor[1], webSource.anchor[2]); n++;
+                    const e1 = endAt(_handR);
+                    la.setXYZ(n * 2, _handR.x, _handR.y, _handR.z); la.setXYZ(n * 2 + 1, e1[0], e1[1], e1[2]); n++;
                     webHandMask |= 2;
                 }
             }

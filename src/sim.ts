@@ -1,5 +1,6 @@
 import { fxMelee, fxShot, fxShock, fxSlam, fxDischarge } from './combatFx';
 import { capHitStop } from './hitFeel';
+import { SLINGSHOT } from './heroSlingshot';   // Web Slingshot timing: the pull beat, the launch, the release
 import { waveSumJS } from './water/waves';
 // Pure game simulation: city generation + swing physics. No rendering code here.
 import { BOSS_BODY_OFFSET, BOSS_HIT_HALF_HEIGHT, BOSS_HIT_RADIUS } from './bossConfig';
@@ -272,6 +273,12 @@ export interface Sim {
     hp: number; hurtT: number; atkT: number; dodgeT: number; combo: number; comboT: number; kos: number; land: number; landHard: number; enemies: Enemy[]; lastHit: number;
     orbs: V3[]; beacon: V3; beaconN: number; t: number; runPhase: number; lastDrag: number; safe: V3; maxSpeed: number; swings: number; webT: number; atkPend: number; shotE: Enemy | null; anchorReal: boolean; spring: number; shotT: number; shotTgt: V3; glideOn: boolean; airT: number;
     grappleFlight?: boolean; webDepartB?: number; swim: boolean; dive: boolean; wall: [number, number] | null; wallB: number; wallT: number; wallRun: boolean; vaulted: number;
+    // Web Slingshot, two beats: the pull draws him in on the anchored lines, then the catapult fires and lets go.
+    springFired?: boolean;   // the launch beat has happened (the catapult velocity is on)
+    springRel?: number;      // elapsed-time of the release (0.4 - spring at the launch beat), -1 while still on the lines
+    springV0?: V3;           // velocity at the trigger: the launch keeps the speed the hero brought in
+    springRoof?: V3;         // roof landing point the arc is solved for
+    springDir?: V3;          // pull direction at the trigger (the plane the hero must not cross before the launch)
     plasma: Plasma[]; blasts: Blast[]; aimE: Enemy | null;
     eshots?: EShot[];
 }
@@ -733,17 +740,20 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     } }
     if (!springAnchor && input.jumpQ && !s.swim && !s.wall && (s.web || (swingHeld && !s.ground)) && s.spring <= 0) springAnchor = s.web ? (s.anchorReal ? s.anchor : null) : findAnchor(s, true);
     if (springAnchor) {
-        // PROTOTYPE spring-shot jump (both hands): JUMP while the web is out, or JUMP while holding SWING in the air, springs toward the anchor
+        // WEB SLINGSHOT (both hands): JUMP while the web is out, or JUMP while holding SWING in the air.
+        // Two beats (Shifat, Option B): the webbing goes taut and draws him a short way along the line (PULL), and only
+        // then does the catapult fire and the webs let go (springRel). It used to fire the full launch velocity on the
+        // trigger frame, so he was already 5 m up and gone before the coil had played a single frame.
         input.jumpQ = false;
         (s as any).anchorCar = (springAnchor as any).car ?? ((springAnchor === s.anchor) ? (s as any).anchorCar ?? -1 : -1); s.anchor = springAnchor; s.grappleFlight = true;
         if (springWall && springH) leaveWall(s, springH);   // spring straight off a wall crawl
-        const d = norm(sub(s.anchor, p)); s.web = false; s.spring = 0.4; s.ground = false;
-        const R = (springAnchor as any).roof as V3 | undefined;
-        if (R) {   /* Shifat 3:39 AM 'web spring must take you on top of the attached object': a ballistic arc that clears the roof edge and lands on top */
-            const H = Math.max(R[1], p[1]) + 6, vy = Math.sqrt(2 * G * Math.max(1, H - p[1])), T = vy / G + Math.sqrt(2 * Math.max(0.5, H - R[1] - 1) / G_FALL);
-            const kd = -60 * Math.log(0.992), hv = kd / (1 - Math.exp(-kd * T));   // air drag below (0.992 per 60 Hz frame) is undone so the arc ends on the roof
-            v[0] = (R[0] - p[0]) * hv; v[1] = vy; v[2] = (R[2] - p[2]) * hv; (s as any).springRoof = R;
-        } else { v[0] = v[0] * 0.3 + d[0] * 24; v[1] = Math.max(v[1], 0) * 0.3 + d[1] * 24 + 7; v[2] = v[2] * 0.3 + d[2] * 24; }
+        const d = norm(sub(s.anchor, p)); s.web = false; s.spring = SLINGSHOT.DUR; s.ground = false;
+        const g0 = s as any;
+        g0.springFired = false; g0.springRel = -1;
+        g0.springV0 = [v[0], v[1], v[2]];                                  // the launch keeps the speed he brought in (air-anchor power)
+        g0.springRoof = (springAnchor as any).roof as V3 | undefined;      // the roof arc is solved at the launch beat, from where he is then
+        g0.springDir = [d[0], d[1], d[2]];                                 // the line he must not cross before the launch
+        v[0] = v[1] = v[2] = 0;                                            // the line takes his weight; the draw below moves him
         ev.jump(); ev.attach();
     }
     if (input.jumpQ) {
@@ -779,6 +789,31 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     gl.flightBoost = gl.pressT !== undefined && gl.pressT >= HOLD && heldNow && !!gl.glideMode;   /* Shifat Oct 31 8:32 PM: holding space ALWAYS flies (was: first hold = glide, second hold = flight); release = auto glide while in flight mode; tap = cancel; press again = fly */
     const prevY = p[1];
     s.spring = Math.max(0, s.spring - dt); s.shotT = Math.max(0, s.shotT - dt);
+    // WEB SLINGSHOT, the two beats. Runs before the move is integrated, so this frame already carries the right velocity.
+    //   PULL   : the anchored lines draw him along them (an accelerating tug, no catapult yet) - the coil has time to read.
+    //   LAUNCH : the full slingshot velocity (roof arc / air-anchor power preserved), and springRel stamps the release so
+    //            the webs let go and retract. Fires early if he is carried past the anchor plane before the pull ends.
+    if (s.spring > 0) {
+        const g0 = s as any, u = SLINGSHOT.DUR - s.spring;
+        const a = s.anchor, ax = a[0] - p[0], ay = a[1] - p[1], az = a[2] - p[2];
+        const L = Math.hypot(ax, ay, az) || 1, dx = ax / L, dy = ay / L, dz = az / L;
+        const sd = (g0.springDir || [dx, dy, dz]) as V3;
+        const passed = (p[0] - a[0]) * sd[0] + (p[1] - a[1]) * sd[1] + (p[2] - a[2]) * sd[2] > 0;   // he is through the anchor
+        if (!g0.springFired) {
+            if (u >= SLINGSHOT.PULL || passed) {
+                const v0 = (g0.springV0 || [0, 0, 0]) as V3, R = g0.springRoof as V3 | undefined;
+                if (R) {   /* Shifat 3:39 AM 'web spring must take you on top of the attached object': a ballistic arc that clears the roof edge and lands on top */
+                    const H = Math.max(R[1], p[1]) + 6, vy = Math.sqrt(2 * G * Math.max(1, H - p[1])), T = vy / G + Math.sqrt(2 * Math.max(0.5, H - R[1] - 1) / G_FALL);
+                    const kd = -60 * Math.log(0.992), hv = kd / (1 - Math.exp(-kd * T));   // air drag below (0.992 per 60 Hz frame) is undone so the arc ends on the roof
+                    v[0] = (R[0] - p[0]) * hv; v[1] = vy; v[2] = (R[2] - p[2]) * hv;
+                } else { v[0] = v0[0] * 0.3 + dx * 24; v[1] = Math.max(v0[1], 0) * 0.3 + dy * 24 + 7; v[2] = v0[2] * 0.3 + dz * 24; }
+                g0.springFired = true; g0.springRel = u;
+            } else {
+                const k = u / SLINGSHOT.PULL, pull = SLINGSHOT.PULL_V * (0.45 + 0.55 * k);
+                v[0] = dx * pull; v[1] = dy * pull; v[2] = dz * pull;
+            }
+        }
+    }
     s.airT = (!s.ground && !s.swim && !s.wall && !s.web) ? s.airT + dt : 0;
     // Auto-glide during free flight after the launch beat. Mid-air JUMP cancels until the next flight.
     if (s.ground || s.web || s.wall || s.swim || s.spring > 0) (s as any).glideBlocked = false;
@@ -896,7 +931,7 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
     const parkFloor = parkH(p[0], p[2]), bridgeFloor = bridgeSurfaceAt(p[0], p[2]);
     let gy = 1.0 + Math.max(parkFloor, bridgeFloor ?? -Infinity), onLand = p[2] >= WATER_Z, seaG = false;
     if (p[2] < WATER_Z + 40) { const sf = seaSurface(p[0], p[2], prevY - 1.0); if (sf !== null && (!onLand || sf + 1 > gy)) { gy = sf + 1.0; onLand = true; seaG = true; } }   // South Sea: island ground, dock, bridge deck, harbor platform
-    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35) || (seaG && wasGround && v[1] <= 0.5 && p[1] - gy < 1.2)) && onLand && !s.swim) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes
+    if ((p[1] <= gy + 0.0005 || (gy < 1 && v[1] <= 0 && p[1] - gy < 0.35) || (seaG && wasGround && v[1] <= 0.5 && p[1] - gy < 1.2)) && onLand && !s.swim && !(s.spring > 0)) { // street level, valley floor, or the footbridge/ramp: snaps down gentle slopes (never during the slingshot pull: the lines hold him off the ground)
         if (!s.ground) { s.ground = true; }
         p[1] = gy; if (v[1] < 0) v[1] = 0;
     }

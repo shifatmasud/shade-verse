@@ -264,6 +264,12 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     }
     rig.bones.forEach((b: THREE.Bone) => b.rotation.set(0, 0, 0));
     const slingW = slingshotWeight(sim, rig, dt);   // slingshot: 1 through the pull, easing out after it (src/heroSlingshot.ts)
+    // The fists ride the line through the pull and come off it over AIM_OUT once the launch releases the webs, so the
+    // arms ease out into the flight pose instead of staying pinned to an anchor he has already left.
+    const slingU = SLINGSHOT.DUR - (sim.spring || 0), slingRel = ((sa.springRel ?? -1) as number);
+    const aimW = (sim.spring || 0) > 0
+        ? Math.min(1, Math.max(0, slingU / SLINGSHOT.AIM_IN)) * (slingRel >= 0 ? Math.max(0, 1 - (slingU - slingRel) / SLINGSHOT.AIM_OUT) : 1)
+        : 0;
     const speed = Math.hypot(v[0], v[1], v[2]), hs = Math.hypot(v[0], v[2]);
     const legR = rig.b.thighR as THREE.Bone, legL = rig.b.thighL as THREE.Bone;
     const armR = rig.b.uarmR as THREE.Bone, armL = rig.b.uarmL as THREE.Bone;
@@ -310,7 +316,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     if (wallRunPoseWeight > 0.001 && wallSide) applyWallRunPose(sim, rig, wallRunPoseWeight, wallSide, cs.t);
     shotRecoilBones(sim, rig, dt);   // web-shot recoil on top of the aim (src/heroRecoil.ts)
     if (!sourceClipState) heroHurtBones(sim, rig, dt);   // hurt flinch on top of every pose (src/heroHurt.ts); not on Ghost's mirrored frames
-    aimHandsOnLine(rig, sim.anchor, Math.min(1, slingW * 4));   // slingshot: both fists on the line, LAST so no layer can pull them off it
+    aimHandsOnLine(rig, sim.anchor, Math.min(1, slingW * 4) * aimW);   // slingshot: both fists on the line, LAST so no layer can pull them off it (weight eases off after the release)
     if (publishState && !sourceClipState) {
         sa.__heroClipState = { key: cs.key, t: cs.t, w: cs.w };
         const sharedPose = sa.__heroPoseState ?? (sa.__heroPoseState = { w: 0, c: new Float32Array(activePoseState.c.length), t: new Float32Array(activePoseState.t.length) });
@@ -331,7 +337,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
                                             : !sim.ground ? (sa.glideBlocked || sa.flightTapCancel ? 'glide-cancel' : sa.leapT > 0 ? 'shore-exit-leap' : 'airborne')
                                                 : sim.vaulted > 0 && sim.land > 0 ? 'rooftop-vault' : hs > 0.6 ? 'run' : 'idle';
     const snarePhase = sn <= 0 ? 'inactive' : sn > SNARE.GATHER_END ? 'gather' : sn > SNARE.SHOCK_START ? 'grip' : sn > SNARE.IMPACT ? 'shockwave' : 'discharge';
-    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, wallRunPoseWeight: shadowWallRunPose ? wallRunPoseWeight : 0, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, snarePhase, gripHands: sn > 0 ? 2 : 0, snareTargets: (sa.snareList || []).length, shotT: sim.shotT, spring: sim.spring, slingshotPose: +slingW.toFixed(2), aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, wallRun: !!sa.wallRun, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
+    return { key: ck || '', clipKey: cs.key, t: cs.t, weight: cs.w, frame: cs.key && CLIPS[cs.key] ? (cs.t * CLIPS[cs.key].fps) % CLIPS[cs.key].n : 0, poseWeight: activePoseState.w, wallRunPoseWeight: shadowWallRunPose ? wallRunPoseWeight : 0, action, moveId: sa.mv?.id ?? null, moveT: sa.mv?.t ?? 0, flip: sa.flip ? { t: sa.flip.t, dur: sa.flip.dur, ax: sa.flip.ax, dir: sa.flip.dir } : null, snareT: sn, snarePhase, gripHands: sn > 0 ? 2 : 0, snareTargets: (sa.snareList || []).length, shotT: sim.shotT, spring: sim.spring, springRel: slingRel, aimWeight: +aimW.toFixed(3), slingshotPose: +slingW.toFixed(2), aimedHands: sim.shotT > 0 || sim.spring > 0 ? 2 : 0, aimTarget: sim.shotT > 0 ? [...sim.shotTgt] : sim.spring > 0 ? [...sim.anchor] : null, web: sim.web, wall: !!sim.wall, wallRun: !!sa.wallRun, swim: sim.swim, dive: sim.dive, glideOn: sim.glideOn };
 }
 export interface SceneProps { sim: Sim; ev: Events; coarse: boolean; fx: { fov: number; shake: number }; perf: { scale: number; fps: number; speed: number } }
 
@@ -867,12 +873,19 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
         if ((sim as any).snareT > SNARE.IMPACT || (sim as any).cWeb) { const sa = sim as any; if (!sa.handW) sa.handW = [[0, 0, 0], [0, 0, 0]]; h.updateMatrixWorld(true); [rig.b.handL, rig.b.handR].forEach((b: any, i: number) => { b.getWorldPosition(_hp); sa.handW[i][0] = _hp.x; sa.handW[i][1] = _hp.y; sa.handW[i][2] = _hp.z; }); }
         // web
         { // two web lines, each from an actual animated hand (world position), shot out to the anchor over ~0.14 s
-            const wl2 = web.current, wr2 = webB.current, side = sim.swings % 2; // swing: alternate hands (odd = right); spring-shot jump and web-shot attack: both hands together
-            // slingshot: the two lines stay on the anchor for the whole pull AND the flight it launches, so the hero is
-            // still visibly hanging from them while he climbs (they used to vanish the instant sim.spring hit 0)
-            const tethering = sim.spring > 0 || (!!(sim as any).grappleFlight && !sim.web && !sim.ground && !sim.wall);
+            const wl2 = web.current, wr2 = webB.current, side = sim.swings % 2; // swing: alternate hands (odd = right); web slingshot and web-shot attack: both hands together
+            // SLINGSHOT: the two lines hold the anchor through the PULL beat only. At the launch beat (sim.springRel) the
+            // webbing lets go and snaps back into the fists over SLINGSHOT.RETRACT, so the hero flies free - the lines used
+            // to stay pinned to the anchor for the whole grappleFlight, stretching metres behind him long after he had
+            // passed it (Shifat: the webs should release on launch, not follow him up).
+            const rel = ((sim as any).springRel ?? -1) as number;
+            const gripped = sim.spring > 0 && rel < 0;
+            const sinceRel = rel >= 0 ? Math.max(0, SLINGSHOT.DUR - sim.spring - rel) : 0;
+            const retracting = rel >= 0 && sinceRel < SLINGSHOT.RETRACT;
+            const tethering = gripped || retracting;
             const mode = tethering ? 1 : sim.web ? 0 : -1;   // shot: the plasma bolt is the visual now (was mode 2 hand-to-target cylinders)
             const both = mode > 0;
+            const shrink = retracting ? Math.pow(1 - Math.min(1, sinceRel / SLINGSHOT.RETRACT), 1.6) : 1;   // 1 = end at the anchor, 0 = snapped back into the fist
             wl2.visible = mode >= 0 && (both || side === 0); wr2.visible = mode >= 0 && (both || side === 1);
             if (mode >= 0) {
                 rig.root.updateWorldMatrix(true, true);
@@ -881,13 +894,16 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
                 const ws = [wl2, wr2], hb = [rig.b.handL, rig.b.handR], fb = [rig.b.farmL, rig.b.farmR];
                 for (let i = both ? 0 : side; i <= (both ? 1 : side); i++) {
                     hb[i].getWorldPosition(_hp); fb[i].getWorldPosition(_fp); _hp.addScaledVector(_wd2.copy(_hp).sub(_fp).normalize(), 0.08);
-                    const dx = tgt[0] - _hp.x, dy = tgt[1] - _hp.y, dz = tgt[2] - _hp.z, l = Math.hypot(dx, dy, dz) || 1, ll = l * grow;
+                    const tx = tgt[0] + (_hp.x - tgt[0]) * (1 - shrink), ty = tgt[1] + (_hp.y - tgt[1]) * (1 - shrink), tz = tgt[2] + (_hp.z - tgt[2]) * (1 - shrink);
+                    const dx = tx - _hp.x, dy = ty - _hp.y, dz = tz - _hp.z, l = Math.hypot(dx, dy, dz) || 1, ll = l * grow;
                     ws[i].position.set(_hp.x + dx / l * ll / 2, _hp.y + dy / l * ll / 2, _hp.z + dz / l * ll / 2);
                     ws[i].quaternion.setFromUnitVectors(Y, _wd2.set(dx / l, dy / l, dz / l));
                     ws[i].scale.set(1, ll, 1);
-                    if (DBG) { (window as any)['__webO' + i] = [_hp.x, _hp.y, _hp.z]; (window as any).__webMode = mode; }
+                    if (DBG) { (window as any)['__webO' + i] = [_hp.x, _hp.y, _hp.z]; }   // the fist the line is drawn from
                 }
-            }
+            } else if (DBG) { (window as any).__webO0 = null; (window as any).__webO1 = null; }
+            if (DBG) (window as any).__webMode = mode;
+            if (DBG) (window as any).__webDbg = { mode, rel: +rel.toFixed(3), gripped, retracting, sinceRel: +sinceRel.toFixed(3), shrink: +shrink.toFixed(3), vis: [wl2.visible, wr2.visible], len: [wl2.visible ? +wl2.scale.y.toFixed(3) : 0, wr2.visible ? +wr2.scale.y.toFixed(3) : 0] };
         }
         { const bm = beaconRef.current; bm.position.set(sim.beacon[0], sim.beacon[1] + 45, sim.beacon[2]); bm.scale.set(1 + 0.08 * Math.sin(sim.t * 3), 1, 1 + 0.08 * Math.sin(sim.t * 3)); }
         { // edge-aware beacon marker (DOM, no React state)
