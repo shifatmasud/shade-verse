@@ -293,7 +293,14 @@ ${GRID_TRACE_GLSL}
         float critical = smoothstep(0.84, 1.04, s2);
         /* Shifat 10:38-10:48 PM: from below the surface shows what's in the air, semi-transparent, no visible edges (refs: Wikimedia Snell's window photos -
            a bright soft sky disc overhead, the air seen wavy and blurred through it, outside it a darker teal mirror of the water, soft rim) */
-        { float crit2 = smoothstep(0.62, 1.12, s2);
+        { /* Nov 18 (Shifat's phone: an arched, stepped dome overhead): s2 was taken on the full per-pixel wave normal, so at the window's rim a
+             one-pixel change of ripple slope moved the boundary several pixels and the smoothstep collapsed into a ragged contour - the 'dome'.
+             The boundary now uses a partly smoothed normal (gentle wobble, no pixel-scale jitter) and a screen-space-derivative-wide ramp, so it
+             can never become a hard 1-pixel edge, however steeply the surface is seen. */
+          vec3 nc = normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.55)); float ciC = clamp(dot(nc, v), 0.0, 1.0);
+          float s2c = (1.333 / 1.0) * (1.333 / 1.0) * (1.0 - ciC * ciC);
+          float fw = min(fwidth(s2c), 0.35), wc = max(0.24, 3.0 * fw), wi = max(0.20, 2.5 * fw);
+          float crit2 = smoothstep(0.87 - wc, 0.87 + wc, s2c);
           vec3 td = normalize(-v + n * vec3(0.18, 0.0, 0.18)); td.y = max(td.y, 0.02); td = normalize(td);
           vec3 aw2 = mix(uSky, zc, smoothstep(0.0, 0.45, td.y));
           vec3 nbw2; vec4 at2 = airTrace(vec3(vW.x, 0.0, vW.z), td, nbw2, 1.0); aw2 = mix(aw2, mix(aw2, at2.rgb * mix(0.3, 0.6, uDay), 0.55), at2.a * 0.6);
@@ -307,7 +314,7 @@ ${GRID_TRACE_GLSL}
           vec3 mfl = vec3(0.62, 0.6, 0.46) * mix(0.1, 1.0, uDay) * (0.75 + 0.6 * mca * uDay);
           vec3 mirr = mix(mfl * vec3(0.6, 0.9, 0.95) * 1.3, under, 1.0 - exp(-(mt + mtd) * 0.04));   /* 8:44 PM: mirror path fogs like the dive medium (was 0.022, bed showed through as hard swirls) */
           vec3 outside = mix(under * 0.9, mirr, 0.95);
-          col = mix(mix(aw2, under, 0.22 + 0.5 * smoothstep(0.55, 1.1, s2)), outside, crit2);   /* 8:44 PM RCA: exact Fresnel jumps to 1 at the critical angle - that step drew a hard straight rim across Snell's window; rough-surface smooth ramp instead */
+          col = mix(mix(aw2, under, 0.22 + 0.5 * smoothstep(0.55 - wi, 1.10 + wi, s2c)), outside, crit2);   /* 8:44 PM RCA: exact Fresnel jumps to 1 at the critical angle - that step drew a hard straight rim across Snell's window; rough-surface smooth ramp instead */
           aOut = mix(0.6, 0.93, crit2); }   /* 9:16 PM "surface must be see-through a bit": 7% outside the window (was 14% = hard ghosts, then 0%) */ /* Shifat Nov 15 9:01 PM phone 'hard artifacts on water surface' RCA: outside Snell's window the underside was still 14% see-through, so the raw (unrefracted, unfogged-by-air) city towers, bridge and island hills above the sea ghosted through it as hard flat shapes. Physically total internal reflection lets no air light through there: opaque. Inside the window the air still shows (airTrace + 60% alpha) */
       }
       // Shifat 4:33 AM: distance exp-squared fog - clear near the player, then rolls in fast, hiding low-res reflections/far detail and the

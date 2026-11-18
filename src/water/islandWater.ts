@@ -6,44 +6,71 @@ import { WATER_COMMON_GLSL, noInk } from './common';
 import { WATER_RIPPLES_GLSL, RIPPLE_UNIFORMS } from './ripples';
 import { RIVERS, islandH, riverHW } from '../seaWorld';
 
-export function fallsMat(speed: number, alpha: number, bright: number, dw = false) {
+export function fallsMat(speed: number, alpha: number, bright: number, veil = false, dw = false) {
     return noInk(new THREE.ShaderMaterial({
-        transparent: true, depthWrite: dw /* back sheet writes depth so the outline pass stops inking the cliff's contours through the falling water */, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
+        transparent: true, depthWrite: dw /* the core sheet writes depth so the outline pass stops inking the cliff's contours through the falling water */, side: THREE.DoubleSide, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay;
-        float h(float x){ float q=fract(x*0.1031); q*=q+33.33; q*=q+q; return fract(q); }
-        void main(){ float cols = 44.0; float col = floor(vUv.x * cols); float sp = (0.8 + h(col) * 0.7) * ${speed.toFixed(2)};
-          float bend = 0.016 * sin(vUv.y * 8.0 + h(col + 13.0) * 6.283 + uT * 0.25);
-          float s = fract((vUv.y + bend) * (2.0 + h(col + 7.0) * 1.6) - uT * sp + h(col + 3.0));
-          float streak = smoothstep(0.02, 0.18, s) * (1.0 - smoothstep(0.42, 0.92, s));
-          float fine = 0.5 + 0.5 * sin(vUv.x * 155.0 + h(col) * 6.0 + vUv.y * 22.0);
-          float edge = smoothstep(0.0, 0.16, vUv.x) * (1.0 - smoothstep(0.84, 1.0, vUv.x)) * smoothstep(0.0, 0.055, vUv.y);
-          float lip = 1.0 - smoothstep(0.0, 0.1, vUv.y), foam = smoothstep(0.89, 1.0, vUv.y);
-          vec3 c = mix(vec3(0.72, 0.79, 0.82), vec3(0.96, 0.99, 1.0), clamp(streak * 0.55 * ${bright.toFixed(2)} + foam * 0.42 + lip * 0.26 + fine * 0.04, 0.0, 1.0)) * mix(0.32, 1.0, uDay);
-          float a = clamp((${alpha.toFixed(2)} + 0.24 * streak + 0.16 * foam + 0.08 * lip) * edge, 0.0, 0.78);
-          if (a < 0.025) discard;
+        /* Nov 18 remodel to the real-fall reference (downloads/refs/wf_real_ref.jpg). The fall used to be smooth airbrushed vertical bands
+           (a 44-column floor() lane field). Now it is multi-octave domain-warped FBM: a low-frequency warp bends fine noise filaments as they
+           accelerate down the face, a second octave breaks them into froth near the plunge, and the density follows the noise, so the water
+           reads as chaotic rushing threads with white water where it tears - not a painted ribbon. Zero column quantisation (nothing to step),
+           per-sheet alpha capped at .5 and the veil sheet very thin, so overlapping sheets never sum to a solid white mass. */
+        fragmentShader: `
+        varying vec2 vUv; uniform float uT; uniform float uDay;
+        float h(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
+        float fbm3(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { s += a * vn(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
+        float fbm4(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * vn(p); p = p * 2.07 + 3.7; a *= 0.5; } return s; }
+        void main(){
+          float v = vUv.y, sp = ${speed.toFixed(2)};
+          float accel = 0.75 + 1.25 * v;                       /* the water speeds up as it falls */
+          float px = fwidth(vUv.x);                            /* one pixel in uv units: fades the finest octaves at distance (no moire) */
+          float lod = smoothstep(0.0016, 0.012, px);
+          float wu = vUv.x * 64.0;                             /* ~12 cm threads across an 8 m sheet */
+          float flow = (v - uT * sp * accel * 0.14) * 26.0;    /* ~60 cm tall cells, scrolling down faster as it falls */
+          float warp = fbm3(vec2(wu * 0.09, flow * 0.10)) - 0.5;   /* domain warp: bends the filaments without direction changes */
+          float f1 = fbm4(vec2(wu + warp * 9.0, flow));            /* long rushing threads */
+          float f2 = fbm4(vec2(wu * 2.7 + 19.0 - warp * 6.0, flow * 2.2 + 5.0));   /* fine breakup inside them */
+          float fil = f1 * 0.70 + f2 * (0.30 * (1.0 - 0.55 * lod));
+          float thread = smoothstep(0.44, 0.62, fil);              /* crisp filament edges (soft range, no banding) */
+          float froth = smoothstep(0.55, 1.0, v) * smoothstep(0.50, 0.74, f2 * 1.15);   /* white water where the fall tears at the bottom, at thread scale (no large blob field) */
+          float body = clamp(thread * (0.84 + 0.16 * froth) + froth * 0.18, 0.0, 1.0);
+          /* outer edges: noise-broken feather that widens toward the pool, so the veil spreads over the water instead of ending on a line */
+          float tear = fbm3(vec2(vUv.x * 9.0, v * 5.0 + uT * 0.05));
+          float ew = (0.12 + 0.26 * tear) * (1.0 + 0.25 * smoothstep(0.55, 1.0, v));
+          float edge = smoothstep(0.0, ew, vUv.x) * (1.0 - smoothstep(1.0 - ew, 1.0, vUv.x)) * smoothstep(0.0, 0.05, v);
+          vec3 c = mix(vec3(0.76, 0.92, 0.97), vec3(1.0, 1.0, 1.0), clamp(body * ${bright.toFixed(2)} * (${veil ? '0.78' : '1.0'}) + froth * 0.22, 0.0, 1.0)) * mix(0.32, 1.0, uDay);
+          float a = (${alpha.toFixed(2)} + 0.46 * body + 0.10 * froth) * edge;
+          a = clamp(a, 0.0, ${veil ? '0.30' : '0.50'});
+          if (a < 0.015) discard;
           gl_FragColor = vec4(c, a); }`,
     }));
 }
 
-export const FALLS_MATS = [fallsMat(0.55, 0.16, 0.5, true), fallsMat(0.85, 0.11, 0.75), fallsMat(1.25, 0.07, 0.9)];
+/* sheet 0 = the outer breaking veil (thin, wide, splayed), 1 = mid, 2 = the dense inner core (writes depth) */
+export const FALLS_MATS = [fallsMat(0.55, 0.10, 0.72, true), fallsMat(0.85, 0.12, 0.85, true), fallsMat(1.25, 0.14, 0.98, false, true)];
 
 export const FOAM_MAT = noInk(new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: { value: 1 }, uCaus: { value: CAUSTIC_TEX } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
+    vertexShader: `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     // Plunge-pool foam (ref: Ghost of Tsushima / RDR2 falls): a boiling white core, then lacy foam sheets carried outward by the
-    // radial current - laced by the same caustic-cell network as the sea foam, irregular edge, no regular sine rings.
-    fragmentShader: `varying vec2 vUv; uniform float uT; uniform float uDay; uniform sampler2D uCaus;
-    void main(){ vec2 q = vUv - 0.5; float r = length(q) * 2.0, a0 = atan(q.y, q.x);
-      float edge = 0.48 + 0.08 * sin(a0 * 3.0 + uT * 0.4) + 0.05 * sin(a0 * 7.0 - uT * 0.9);
-      vec2 flow = q * (1.0 + fract(uT * 0.18) * 0.0); float t1 = fract(uT * 0.22), t2 = fract(uT * 0.22 + 0.5);
-      vec2 dir = normalize(q + 1e-4);
-      float l1 = texture2D(uCaus, q * 3.2 - dir * t1 * 0.9 + 0.13).r, l2 = texture2D(uCaus, q * 3.2 - dir * t2 * 0.9 + 0.57).r;
-      float lace = mix(l1, l2, abs(t1 * 2.0 - 1.0)) + 0.6 * texture2D(uCaus, q * 7.7 + vec2(uT * 0.05, -uT * 0.07)).g;
-      float core = 1.0 - smoothstep(0.0, 0.28, r);
-      float sheet = (1.0 - smoothstep(edge - 0.2, edge, r)) * smoothstep(0.4, 0.95, lace + core * 0.7);
-      float a = clamp(core * 0.55 + sheet * 0.52, 0.0, 0.78);
-      gl_FragColor = vec4(vec3(0.96, 0.99, 1.0) * mix(0.35, 1.0, uDay), a); }`,
+    // radial current - irregular edge, no regular sine rings.
+    // Nov 18 (ring RCA): the old mask was a thresholded caustic-tile lace plus a rim annulus, and the flat 5.6 m disc is seen almost edge-on from
+    // the pool - the lace magnified into big white contour bands and the annulus into concentric rings ('bulls-eyes') over the whole fall base.
+    // Now: one monotone Gaussian core with a noise-wobbled radius and a fine grain, no annulus, no thresholded texture. Cap .5, near-camera fade.
+    fragmentShader: `varying vec2 vUv; varying vec3 vW; uniform float uT; uniform float uDay;
+    float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+    float vn2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y); }
+    void main(){ float camD = length(cameraPosition - vW); if (camD < 1.6) discard;
+      vec2 q = vUv - 0.5; float r = length(q) * 2.0, a0 = atan(q.y, q.x);
+      float wob = 0.50 + 0.09 * sin(a0 * 3.0 + uT * 0.4) + 0.05 * sin(a0 * 7.0 - uT * 0.9) + 0.04 * vn2(q * 6.0 + uT * 0.03);
+      float rr = r / max(wob, 0.2);
+      float core = exp(-rr * rr * 2.2);                                 /* one monotone falloff: no ring, no iso-contour */
+      float grain = 0.82 + 0.18 * vn2(q * 13.0 + vec2(uT * 0.07, -uT * 0.05));
+      float a = clamp(core * grain * 0.42, 0.0, 0.38) * smoothstep(1.6, 4.5, camD);
+      if (a < 0.02) discard;
+      gl_FragColor = vec4(vec3(0.93, 0.97, 1.0) * mix(0.32, 1.0, uDay), a); }`,
 }));
 
 // water blend: the river and pools now write depth (fragments under 3% alpha are discarded), so the outline pass sees one flat water

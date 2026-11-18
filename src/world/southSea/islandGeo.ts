@@ -86,36 +86,86 @@ export function dockGeo() {
 }
 // waterfall (2b): three layered free-falling sheets bowing out from the ledge in front of the cliff face, foam + ripples where it
 // hits the plunge pool, mist and spray. Streak scroll speeds differ per layer so the fall reads as depth, not one flat card.
-export function fallsSheet(width: number, out: number, n = 26, C = 14) {
+export function fallsSheet(width: number, out: number, n = 26, C = 14, splay = 1) {
     // water blend: 8 columns across instead of 2, so each sheet bows forward in a smooth convex curve (thickest mid-fall, flat at the
     // lip), stays close to its ledge width, and ends at the same plunge point as its neighbouring layers.
     const pos: number[] = [], uv: number[] = [], idx: number[] = [];
     const ux = -FALLS.dx, uz = -FALLS.dz, px = -uz, pz = ux, lip = FALL_WALL + 2.3, base = FALL_LANDING + 0.55, top = FALLS.top + 0.25, bot = POOL.y - 0.3;
     for (let j = 0; j <= n; j++) {
-        const t = j / n, along = lip - (lip - base) * Math.pow(t, 0.42), y = top - (top - bot) * (t * t * 0.35 + t * 0.65), w = width * (0.86 + 0.18 * t);
-        const cx = POOL.cx + ux * along, cz = POOL.cz + uz * along, push = out * Math.sin(t * Math.PI) * 0.34;
-        for (let c = 0; c <= C; c++) { const sg = (c / C) * 2 - 1, bow = (1 - sg * sg) * (0.25 + 0.75 * Math.sin(Math.min(1, t * 1.6) * Math.PI * 0.5)) * 0.55, f = push + bow; pos.push(cx + px * w / 2 * sg - ux * f, y, cz + pz * w / 2 * sg - uz * f); uv.push(c / C, t); }
+        const t = j / n, along = lip - (lip - base) * Math.pow(t, 0.42), y = top - (top - bot) * (t * t * 0.35 + t * 0.65);
+        /* Nov 18 (real-fall reference): the sheet was a straight-sided ribbon of near-constant width. Now it leaves the crest at ~60% of its
+           pool width and widens along a gentle curve, with a low-frequency wobble down the fall, so the silhouette tapers like real falling water. */
+        const taper = 0.60 + 0.40 * Math.pow(t, 0.55), wob = 1 + 0.05 * Math.sin(t * 11.7 + 1.3) + 0.03 * Math.sin(t * 27.4 + 4.1), w = width * 1.08 * taper * wob;
+        const cx = POOL.cx + ux * along, cz = POOL.cz + uz * along, push = out * Math.sin(t * Math.PI) * 0.34 * splay;   /* splay: the veil sheet bows further out than the core, so the cascade has real thickness from the side */
+        for (let c = 0; c <= C; c++) { const sg = (c / C) * 2 - 1, bow = (1 - sg * sg) * (0.25 + 0.75 * Math.sin(Math.min(1, t * 1.6) * Math.PI * 0.5)) * 0.55 * splay, f = push + bow; pos.push(cx + px * w / 2 * sg - ux * f, y, cz + pz * w / 2 * sg - uz * f); uv.push(c / C, t); }
     }
     for (let j = 0; j < n; j++) for (let c = 0; c < C; c++) { const a = j * (C + 1) + c, b = a + C + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+/* Nov 18 (real-fall reference): the creast came out of nowhere - a sheet starting on a smooth pyramid. A wet basalt frame now holds the water:
+   a broken row of dark boulders along the lip (the spillway it pours over) and a ring of half-submerged boulders round the plunge base, so the
+   cascade starts in rock and lands in rock. One merged geometry, one draw call, flat-shaded wet tones. */
+export function fallsRockGeo() {
+    const parts: THREE.BufferGeometry[] = [], ux = -FALLS.dx, uz = -FALLS.dz, px = -uz, pz = ux;
+    let r = 2711; const rn = () => (r = (r * 16807) % 2147483647) / 2147483647;
+    const wet = ['#464d45', '#525a4e', '#3d443c', '#5b6254', '#4a5147'], moss = '#4d6b3d';
+    const blob = (sx: number, sy: number, sz: number, seed: number) => {
+        const g0 = new THREE.IcosahedronGeometry(1, 1), g = (g0.index ? g0.toNonIndexed() : g0) as THREE.BufferGeometry;
+        const pa = g.attributes.position as THREE.BufferAttribute; let s = seed * 7919 + 13;
+        const rl = () => (s = (s * 16807) % 2147483647) / 2147483647;
+        for (let i = 0; i < pa.count; i++) { const f = 0.78 + rl() * 0.44; pa.setXYZ(i, pa.getX(i) * f * sx, pa.getY(i) * f * sy, pa.getZ(i) * f * sz); }
+        g.computeVertexNormals(); return g;
+    };
+    // lip: boulders the water spills between, sitting just behind and below the crest
+    for (let k = 0; k < 9; k++) {
+        const t = k / 8 - 0.5, w = FALLS.w * 1.16, along = FALL_WALL - 0.35 + (rn() - 0.5) * 0.9;
+        const g = blob(0.8 + rn() * 0.7, 0.6 + rn() * 0.6, 0.8 + rn() * 0.7, k + 1);
+        g.rotateY(rn() * 6.28); g.translate(POOL.cx + ux * along + px * w * t, FALLS.top - 0.1 + rn() * 0.35, POOL.cz + uz * along + pz * w * t);
+        parts.push(colorize(g, k % 3 === 0 ? moss : wet[k % wet.length]));
+    }
+    // plunge base: half-submerged boulders where the cascade lands, leaving the centre clear for the foam
+    for (let k = 0; k < 10; k++) {
+        const a = -1.15 + 2.3 * (k / 9), d = FALL_LANDING + 0.3 + rn() * 1.7;
+        const g = blob(0.55 + rn() * 0.55, 0.35 + rn() * 0.4, 0.5 + rn() * 0.55, k + 21);
+        g.rotateY(rn() * 6.28); g.translate(POOL.cx + ux * d + px * Math.sin(a) * FALLS.w * 1.05, POOL.y - 0.25 + rn() * 0.3, POOL.cz + uz * d + pz * Math.sin(a) * FALLS.w * 1.05);
+        parts.push(colorize(g, k % 4 === 0 ? moss : wet[(k + 2) % wet.length]));
+    }
+    return merged(parts);
 }
 export function sprayGeo(n: number, spread: number) {
     const N = n, pos = new Float32Array(N * 3), ph = new Float32Array(N), bx = POOL.cx + (-FALLS.dx) * FALL_LANDING, bz = POOL.cz + (-FALLS.dz) * FALL_LANDING;
     for (let i = 0; i < N; i++) { pos[i * 3] = bx + (rnd() - 0.5) * spread; pos[i * 3 + 1] = POOL.y; pos[i * 3 + 2] = bz + (rnd() - 0.5) * spread; ph[i] = rnd(); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1)); return g;
 }
-function sprayMat(rise: number, size: number, alpha: number, rate: number) {
+function sprayMat(rise: number, size: number, alpha: number, rate: number, capPx: number, arc: number) {
     return new THREE.ShaderMaterial({
-        transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uCaus: { value: CAUSTIC_TEX } },
-        vertexShader: `attribute float ph; uniform float uT; varying float vA; varying float vPh; void main(){ vPh = ph; float life = fract(uT * ${rate.toFixed(2)} + ph); vec3 p = position; p.y += life * ${rise.toFixed(1)} - life * life * ${(rise * 0.45).toFixed(1)}; p.x += sin(ph * 40.0) * life * 3.0; p.z += cos(ph * 23.0) * life * 3.0;
-          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; vA = (1.0 - life) * smoothstep(0.0, 0.12, life); gl_PointSize = (${size.toFixed(1)} * (0.6 + life)) * 60.0 / max(-mv.z, 1.0); }`,
-        fragmentShader: `varying float vA; varying float vPh; uniform sampler2D uCaus; void main(){ vec2 pc = gl_PointCoord - 0.5; float d = length(pc);   /* clumpy droplet puffs, not flat discs */
-          float clump = texture2D(uCaus, pc * 0.55 + vec2(vPh * 7.3, vPh * 3.1)).r * 0.9 + 0.35; float m = (1.0 - smoothstep(0.12, 0.5, d)) * smoothstep(0.25, 0.75, clump - d * 0.6);
-          gl_FragColor = vec4(0.95, 0.99, 1.0, vA * ${alpha.toFixed(2)} * 1.25 * m); }`,
+        transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uDay: { value: 1 } },
+        // Nov 18 (cliff 'cracks' + night glow RCA): gl_PointSize was uncapped, so a sprite 1-3 m from the lens drew 250-2500 px wide, and the sprite
+        // mask was the caustic tile read in gl_PointCoord space - its thin lines became metre-wide white cracks on the cliff. Now the size is capped per
+        // emitter, sprites fade out under 4 m, each drop gets its own outward arc angle/radius instead of one shared sine path, and the mask is a soft
+        // radial droplet/mist falloff with low-frequency noise. uDay keeps the spray from glowing pure white at night.
+        vertexShader: `attribute float ph; uniform float uT; varying float vA; varying float vPh; void main(){ vPh = ph; float life = fract(uT * ${rate.toFixed(2)} + ph);
+          float sd = fract(ph * 91.7 + 0.37), ang = sd * 6.2831853, rad = 0.35 + 0.9 * fract(sd * 13.37);
+          vec3 p = position; p.y += life * ${rise.toFixed(1)} - life * life * ${(rise * 0.45).toFixed(1)};
+          p.x += cos(ang) * rad * life * ${arc.toFixed(1)}; p.z += sin(ang) * rad * life * ${arc.toFixed(1)};
+          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; float camD = -mv.z;
+          vA = (1.0 - life) * smoothstep(0.0, 0.12, life) * smoothstep(1.5, 4.0, camD);
+          gl_PointSize = min((${size.toFixed(1)} * (0.6 + life) * (0.8 + 0.4 * fract(sd * 3.1))) * 60.0 / max(camD, 1.0), ${capPx.toFixed(1)}); }`,
+        fragmentShader: `varying float vA; varying float vPh; uniform float uDay;
+        float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+        float vn2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y); }
+        void main(){ vec2 pc = gl_PointCoord - 0.5; float d = length(pc) * 2.0;
+          /* one monotone radial falloff (no second lobe, so no bright ring) + a fine, low-amplitude grain: a droplet / a mist puff, never a disc or a bulls-eye */
+          float soft = exp(-d * d * 3.0) * (1.0 - smoothstep(0.85, 1.35, d));   /* Gaussian: overlapping puffs merge into one cloud, no disc edge to read as a ring or a hole */
+          float grain = 0.88 + 0.12 * vn2(pc * 10.0 + vPh * 7.0);
+          float m = soft * grain;
+          float a = vA * ${alpha.toFixed(2)} * 1.25 * mix(0.5, 1.0, uDay) * m;
+          if (a < 0.004) discard;
+          gl_FragColor = vec4(vec3(0.88, 0.94, 0.98) * mix(0.30, 1.0, uDay), a); }`,
     });
 }
-export const SPRAY_MAT = sprayMat(4.5, 7, 0.45, 0.65), MIST_MAT = sprayMat(9, 26, 0.12, 0.22);
-// river (2b): a strip along each carved channel, flow streaks scroll downstream, white water where it drops fastest
+/* droplets: hundreds of tiny crisp specks arcing out and down; mist: a low cushion of small soft puffs. Sizes in metres, point size capped. */
+export const SPRAY_MAT = sprayMat(4.2, 0.85, 0.75, 0.75, 14, 3.2), MIST_MAT = sprayMat(5.5, 2.4, 0.10, 0.24, 44, 3.6);   /* sizes are metres: a drop is a few px, the mist puff a metre or two (Nov 18: 7 m sprites capped at 64 px read as soap bubbles) */// river (2b): a strip along each carved channel, flow streaks scroll downstream, white water where it drops fastest
 const sm = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export function riverGeo() {
     // water blend: the river centreline is already a dense spline (seaWorld smoothPts); each cross-section uses the averaged tangent so
