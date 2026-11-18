@@ -42,6 +42,8 @@ async function contacts() {
         const tangent = [-n[1], 0, n[0]];
         const travel = Math.sign(s.vel[0] * tangent[0] + s.vel[2] * tangent[2]) || 1;
         const along = (p) => (p.x - hips3.x) * tangent[0] * travel + (p.z - hips3.z) * tangent[2] * travel;
+        const nv = new (hips3.constructor)(n[0], 0, n[1]).normalize();
+        const seg = V(b.head).sub(V(b.hips));
         return {
             wallSide,
             hand: +at(b['hand' + wallSideName]).toFixed(3),
@@ -52,6 +54,11 @@ async function contacts() {
             weight: +(window.__shadowAnimation?.wallRunPoseWeight ?? 0).toFixed(2),
             action: window.__shadowAnimation?.action,
             hipsClear: +at(b.hips).toFixed(3),
+            leanDeg: +(Math.atan2(Math.abs(seg.dot(nv)), Math.abs(seg.y)) * 180 / Math.PI).toFixed(1),
+            leanOut: seg.dot(nv) > 0,          // head further from the facade than the hips = the marked 45 deg diagonal
+            hull: window.__wc ? window.__wc.hull : null,          // deepest skinned point, metres clear of the facade
+            hullCorr: window.__wc ? window.__wc.corr : null,      // the scene's push-out that correction asked for
+            speed: +Math.hypot(...s.vel).toFixed(1),
             wallKnee: +knee(thW3, shW3, ftW3).toFixed(1),          // bend in degrees: 0 = straight, 90 = folded up
             freeKnee: +knee(thF3, shF3, ftF3).toFixed(1),
             wsAlong: +along(ftW3).toFixed(2),
@@ -63,7 +70,7 @@ async function contacts() {
 }
 
 try {
-    await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });
     await page.waitForFunction(() => !!window.__game, { timeout: 60000 });
     await page.evaluate(() => window.__game.start());
     await page.waitForFunction(() => window.__game.sim.mode === 'play', { timeout: 120000 });
@@ -83,6 +90,7 @@ try {
         s.wall = null; s.wallB = -1; s.wallT = 0; s.wallRun = false; s.spring = 0; s.webDepartB = undefined;
         g.input.swing = true; g.input.swingQ = false; g.input.mx = 0; g.input.my = 0.6;
         for (const k of Object.keys(g.input.keys)) g.input.keys[k] = false;
+        window.__dbgWall = true;   // expose the scene's hull push-out (window.__wc)
         return { x0: b.x0, z0: b.z0 };
     });
 
@@ -92,6 +100,15 @@ try {
 
     const c = await contacts();
     assert.ok(c, 'the hero keeps a wall contact while the hold is down');
+    // Shifat Nov 19, the cyan line: the whole body is a ~45 deg diagonal OUT of the facade, not upright against it
+    assert.ok(c.leanOut, `the body leans away from the facade (head ${c.head} m, hips ${c.hips} m clear)`);
+    assert.ok(c.leanDeg > 38 && c.leanDeg < 50, `the body axis holds the marked ~45 deg off vertical (${c.leanDeg} deg)`);
+    assert.ok(c.head - c.hips > 0.55, `the chest and head travel out over open air (head ${(c.head - c.hips).toFixed(2)} m further out than the hips)`);
+    assert.ok(c.foot < 0.45, `the wall-side sole stays planted on the facade (${c.foot} m clear)`);
+    assert.ok(c.hull === null || c.hull > -0.05, `no part of the skinned body sinks into the facade (deepest point ${c.hull} m)`);
+    assert.ok(c.hullCorr === null || Math.abs(c.hullCorr) < 0.08, `the lean leaves the scene's hull push-out at zero (${c.hullCorr} m)`);
+    // Shifat Nov 19: wall-run and wall-crawl are ~1.6x faster (18 -> 28, 16 -> 26, 18 -> 24 m/s)
+    assert.ok(c.speed >= 21, `the run enters and holds wall-run speed (${c.speed} m/s, 28 target)`);
     // sample the stride: the legs must scissor, never fold into a crouch
     const samples = [];
     // step the clock by hand (__ts) so the sampling covers a whole stride cycle without the hero running off the facade
@@ -120,8 +137,45 @@ try {
     const after = await page.evaluate(() => ({ action: window.__shadowAnimation?.action, wall: !!window.__game.sim.wall }));
     assert.equal(after.action, 'wall-crawl', 'releasing the hold leaves wall-run for the crawl');
     assert.equal(after.wall, true, 'the wall contact itself is kept after the release');
+
+    // the crawl's own speeds: 26 m/s up the facade, 24 m/s along it
+    const crawl = await page.evaluate(async () => {
+        const g = window.__game, s = g.sim, n = s.wall;
+        if (!n) return null;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const advance = async (sec) => { const t0 = s.t; for (let i = 0; i < 400 && s.t < t0 + sec; i++) await wait(50); };
+        const t = [-n[1], 0, n[0]];
+        g.input.swing = false; g.input.mx = 0; g.input.my = 1;
+        s.yaw = Math.atan2(-n[0], -n[1]);            // face into the facade
+        s.ang = s.yaw; s.vel = [0, 0, 0];
+        await advance(0.5);
+        const up = +s.vel[1].toFixed(1);
+        s.yaw = Math.atan2(t[0], t[2]); s.ang = s.yaw;   // face along the facade
+        s.vel = [0, 0, 0];
+        await advance(0.5);
+        const lat = +Math.hypot(s.vel[0], s.vel[2]).toFixed(1);
+        g.input.my = 0;
+        return { up, lat, wall: !!s.wall };
+    });
+    assert.ok(crawl && crawl.up > 22, `the crawl climbs at the new speed (${crawl && crawl.up} m/s, 26 target)`);
+    assert.ok(crawl && crawl.lat > 18, `the crawl moves sideways at the new speed (${crawl && crawl.lat} m/s, 24 target)`);
+
+    // the faster climb still tops out cleanly: the vault puts him on the roof, not through it
+    const vault = await page.evaluate(async () => {
+        const g = window.__game, s = g.sim, n = s.wall;
+        if (!n) return null;
+        const b = g.buildings[s.wallB], wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        s.pos = [b.x0 - 0.35, b.h - 2.2, (b.z0 + b.z1) / 2]; s.vel = [0, 0, 0];
+        s.yaw = Math.atan2(-n[0], -n[1]); s.ang = s.yaw;
+        g.input.my = 1; g.input.mx = 0; g.input.swing = false;
+        for (let i = 0; i < 400 && !(s.ground && !s.wall); i++) await wait(50);
+        g.input.my = 0;
+        return { ground: s.ground, wall: !!s.wall, y: +s.pos[1].toFixed(2), roof: +b.h.toFixed(2) };
+    });
+    assert.ok(vault && vault.ground && !vault.wall, `the climb tops out and vaults onto the roof (${JSON.stringify(vault)})`);
+    assert.ok(vault && Math.abs(vault.y - (vault.roof + 1.02)) < 1.5, `he lands on the roof surface, not short of it (${JSON.stringify(vault)})`);
     assert.deepEqual(errors, [], `browser errors: ${errors.join(' | ')}`);
-    console.log(JSON.stringify({ ok: true, fixture, contacts: c, legRange: { straightest, mostTucked, minWallDrop, maxSplit, hipClears: [Math.min(...hipClears), Math.max(...hipClears)] }, released: after }, null, 1));
+    console.log(JSON.stringify({ ok: true, fixture, contacts: c, lean: { deg: c.leanDeg, outward: c.leanOut, headOverHips: +(c.head - c.hips).toFixed(2), hull: c.hull, hullCorr: c.hullCorr }, legRange: { straightest, mostTucked, minWallDrop, maxSplit, hipClears: [Math.min(...hipClears), Math.max(...hipClears)] }, speeds: { run: c.speed, ...crawl }, vault, released: after }, null, 1));
 } catch (e) {
     console.error(e);
     if (errors.length) console.error('Browser errors:', JSON.stringify(errors));

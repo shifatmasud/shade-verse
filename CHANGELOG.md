@@ -1,5 +1,17 @@
 # Changelog
 
+## Wall-run: the 45° diagonal, and a ~1.6x faster wall (2026-11-19)
+
+- **The body is one diagonal off the facade** (Shifat's cyan mark). `BODY.roll` (`src/heroWallRun.ts`) goes from 0.02 rad to 0.60 rad at the pose root and the spine chain adds 0.06 / 0.06 / 0.055 rad, so the whole body axis holds **44.4° out of the wall** (measured on the drawn rig: head-hip axis 42.4° off vertical, **outward** - it used to tip 4.3° *into* the wall). The head now rides **0.78 m further out than the hips** (head 1.77 m clear of the facade, hips 0.96 m) instead of 0.09 m behind them.
+- **The hips move in so the diagonal can reach the wall.** `BODY.hipClear` 1.05 -> 0.95 m: the planted foot, not the shoulder, is the anchor of the marked pose. `WALL_LEG.drop` 1.12 -> 1.06 m and `GAIT.wallGap` 0.20 -> 0.18 m keep the wall-side sole on the facade inside the leg's reach at that lean, and the deepest point of the skinned body stays 0.006 m clear of it (the scene's hull push-out asks for 0.036 m, i.e. nothing).
+- **The brace arm reaches instead of planting.** At 45° the shoulder sits 1.24 m off the facade, further than the 0.93 m arm, so `WALL_ARM` (`rise` 0.24 -> 0.02, `lead` 0.12 -> 0.14, `reach` 0.97 -> 0.80) aims the palm at the wall with the elbow bent: the hand rides 0.50 m out, reaching, instead of over-stretching to a contact it cannot make.
+- **Stride cadence keeps up with the speed.** `GAIT.rate` 0.62 -> 0.95 cycles/s, so the legs still scissor at the new run speed.
+- **Wall-run is fast enough to matter** (`src/sim.ts`): steer target 18 -> **28 m/s**, pickup `dt * 5` -> `dt * 7`, coast decay 0.997 -> 0.9995 per 60 Hz frame, and a swing catch no longer dumps the speed he arrived with - it keeps any tangent >= 22 m/s and never enters the run below **22 m/s** (was: keep any 3 m/s, else fall back to 14).
+- **Wall-crawl is faster too**: vertical climb `push * 16` -> **`push * 26`**, lateral crawl 18 -> **24 m/s**, with `runPhase` (the run cycle) scaled to match. The roof vault still lands cleanly: the climb tops out at y = 35.17 m on the 34.17 m fixture roof, `ground = true`, `wall = null`.
+- `test/wall-run-pose.mjs` now asserts the lean (38-50° and outward), the head-over-hips offset, the planted wall-side sole, no skinned penetration and a hull push-out under 0.08 m, the run speed (>= 21 m/s at entry), the crawl's climb (26) and lateral (24) speeds, and the clean roof vault.
+
+Measured on the instrumented build (same fixture, wall and camera, Chromium/SwiftShader), before -> after: lean 4.3° inward -> 42.4° outward; head 0.99 m -> 1.77 m clear of the facade; hips 1.08 m -> 0.96 m; hand 0.12 m (planted) -> 0.50 m (reaching); wall-side foot 0.24 m -> 0.22 m; wall-run speed 14-18 m/s -> 22-28 m/s; crawl climb 16 -> 26 m/s, lateral 18 -> 24 m/s. `npm run typecheck` and `npm run build` pass; A/B sheet `downloads/wall-run-45deg-ab.png`.
+
 ## Web Slingshot: a real pull beat, and the webs let go on launch (2026-11-18)
 
 - **Two beats instead of one.** The slingshot used to fire the whole launch velocity on the trigger frame (`src/sim.ts`), so the hero was already ~5 m up and gone before a single frame of the 90 ms coil had played. The move now runs PULL (0.12 s): the webbing goes taut and draws him ~1.4 m along the line (peak 12 m/s), with no catapult velocity; then LAUNCH fires the full slingshot velocity from where he is at that moment. `SLINGSHOT.PULL` / `PULL_V` in `src/heroSlingshot.ts`.

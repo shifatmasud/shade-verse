@@ -33,14 +33,21 @@ export interface WallRunRig {
 
 /** Body targets: radians for rotations, metres for lengths. */
 const BODY = {
-    roll: 0.02,        // back upright, shoulders parallel to the wall (the reference's braced reach)
+    // Shifat Nov 19, the cyan line on his still: the whole body is one ~45 deg diagonal off the facade - planted foot on
+    // the wall, hips, torso and head carried out over open air. The lean is split between the pose root (the long
+    // diagonal) and the spine chain (the runner's stretch), so it reads as a body axis, not a bent neck.
+    roll: 0.60,        // 34 deg, outward, away from the facade (pose root)
     pitch: 0.10,       // forward lean along the run
-    hipClear: 1.05,    // metres the hip keeps outside the facade - the braced arm has to read across that gap
-    spineRoll: 0.02,
-    chestRoll: 0.02,
+    hipClear: 0.95,    // metres the hip keeps outside the facade - the hips ride the diagonal, so they sit closer than
+                       // the upright brace pose did; the torso above them is what travels out
+    spineRoll: 0.06,   // hips + spine, 3.4 deg each
+    chestRoll: 0.055,  // chest, 3.2 deg - the three together add ~10 deg to the root's 34 deg
     twist: 0.14,       // pelvis / chest counter-twist through the stride
     headUp: 0.26,      // keeps the eyes up the wall instead of at the masonry
 } as const;
+
+/** The pose's total sideways lean, in radians: the root diagonal plus the spine chain. 0.775 rad = 44.4 deg. */
+export const WALLRUN_LEAN = BODY.roll + 2 * BODY.spineRoll + BODY.chestRoll;
 
 /**
  * The stride, leg by leg. A wall-runner's two legs do different jobs at the same instant, so each has its own
@@ -63,7 +70,7 @@ interface LegGait {
 
 /** Wall-side leg: the long pushing leg. It travels along the wall and stays behind the hip. */
 const WALL_LEG: LegGait = {
-    front: 0.26, back: 0.64, drop: 1.12, stanceDrop: 0.06, heelUp: 0.14,
+    front: 0.26, back: 0.64, drop: 1.06, stanceDrop: 0.06, heelUp: 0.14,
     flightUp: 0.50, flightOut: 0.20, base: 0.20, stance: 0.52,
 } as const;
 
@@ -74,17 +81,17 @@ const FREE_LEG: LegGait = {
 } as const;
 
 const GAIT = {
-    rate: 0.62,        // cycles per second of clip time
-    wallGap: 0.20,     // the ankle rides this far off the facade so the sole and toes land on it
+    rate: 0.95,        // cycles per second of clip time (the run is ~1.6x faster now, so the stride keeps up)
+    wallGap: 0.18,     // the ankle rides this far off the facade so the sole and toes land on it
 } as const;
 
-/** Wall-side hand: planted on the facade ahead of and above the shoulder, elbow bent. */
+/** Wall-side hand: reaching across the gap toward the facade ahead of and above the shoulder, elbow bent. */
 const WALL_ARM = {
-    lead: 0.12,        // metres ahead along the run: the ref. brace arm reaches out sideways, barely ahead
-    rise: 0.24,        // metres above the shoulder: the palm lands at head height, clear of the hood
+    lead: 0.14,        // metres ahead along the run: the ref. brace arm reaches out sideways, barely ahead
+    rise: 0.02,        // metres above the shoulder: on the 45 deg diagonal the shoulder is already high
     swing: 0.12,       // stride sway along the run
     gap: 0.09,         // wrist stands off the surface so the palm and fingers land ON it, not through it
-    reach: 0.97,       // fraction of arm length the target is kept inside
+    reach: 0.80,       // fraction of arm length the target is kept inside - the 45 deg body cannot plant the palm
 } as const;
 
 /** Free arm: counter-swing on the balancing side, elbow bent. */
@@ -276,19 +283,19 @@ export function applyWallRunPose(sim: any, rig: WallRunRig, weight: number, wall
     const phase = ((cyc % 1) + 1) % 1;
     const swing = Math.sin(phase * Math.PI * 2);          // -1..1 through the cycle, for the arms / twist
 
-    // --- torso: tipped into the facade, twisted through the stride ------------------------------
+    // --- torso: the 45 deg diagonal, out over open air, twisted through the stride ------------------
     const poseRoot = rig.poseRoot;
     if (poseRoot) {
-        poseRoot.rotation.z += (-wallSide * BODY.roll - poseRoot.rotation.z) * weight;
+        poseRoot.rotation.z += (wallSide * BODY.roll - poseRoot.rotation.z) * weight;   // + = the top of the body falls AWAY from the facade
         poseRoot.rotation.x += (BODY.pitch - poseRoot.rotation.x) * weight;
     }
     blend(rig.b.hips, 'x', BODY.pitch * 0.45, weight);                          // the running clip's deep forward pitch is replaced
     blend(rig.b.spine, 'x', BODY.pitch * 0.5, weight);                          // by an upright back: a wall-runner is tall over the wall
     blend(rig.b.chest, 'x', BODY.pitch * 0.25, weight);
-    blend(rig.b.hips, 'z', -wallSide * BODY.spineRoll, weight);
+    blend(rig.b.hips, 'z', wallSide * BODY.spineRoll, weight);
     blend(rig.b.hips, 'y', wallSide * BODY.twist * swing, weight);          // pelvis leads with the stride
-    blend(rig.b.spine, 'z', -wallSide * BODY.spineRoll, weight);
-    blend(rig.b.chest, 'z', -wallSide * BODY.chestRoll, weight);
+    blend(rig.b.spine, 'z', wallSide * BODY.spineRoll, weight);
+    blend(rig.b.chest, 'z', wallSide * BODY.chestRoll, weight);
     blend(rig.b.chest, 'y', -wallSide * BODY.twist * 1.2 * swing, weight);  // chest counters the pelvis
     blend(rig.b.neck, 'x', -BODY.pitch * 0.5, weight);
     blend(rig.b.head, 'x', -BODY.pitch * 0.4 + BODY.headUp * 0.5, weight);
