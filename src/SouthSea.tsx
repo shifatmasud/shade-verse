@@ -17,7 +17,7 @@ import { Bridge } from './world/southSea/bridge';
 import { FarmIsle } from './world/farmIsle';
 import { IceIsle } from './world/iceIsle';
 import { PirateShip } from './world/pirateShip';
-import { BEACH_T, GRASS_T, GRASS_U, MIST_MAT, SPRAY_MAT, beachShader, dockGeo, fallsSheet, islandTerrainGeo, lighthouseGeo, riverGeo, shacksGeo, sprayGeo, type Inst } from './world/southSea/islandGeo';
+import { BEACH_T, GRASS_T, GRASS_U, MIST_MAT, SPRAY_MAT, beachShader, dockGeo, fallsRockGeo, fallsSheet, islandTerrainGeo, lighthouseGeo, riverGeo, shacksGeo, sprayGeo, type Inst } from './world/southSea/islandGeo';
 export { hazeShader, CITY_LOD };
 export type { SouthSeaKit };
 
@@ -26,8 +26,10 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
     const terrainMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#1d1b16' }); m.onBeforeCompile = hazeShader(kit.tod, beachShader, true); return m; }, []);
     useFrame((st, dt) => { BEACH_T.value += Math.min(dt, 0.1); if (terrRef.current) { const c = st.camera.position; terrRef.current.geometry = Math.hypot(c.x - ISLAND.cx, c.z - ISLAND.cz) > 420 ? terrainFar : terrain; } });
     const lh = useMemo(lighthouseGeo, []), shacks = useMemo(shacksGeo, []), dock = useMemo(dockGeo, []);
-    const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.05, 0.0), fallsSheet(FALLS.w * 0.92, 0.55), fallsSheet(FALLS.w * 0.82, 1.1)], []);
-    const spray = useMemo(() => sprayGeo(PHONE ? 50 : 110, FALLS.w), []), mist = useMemo(() => sprayGeo(PHONE ? 14 : 30, FALLS.w * 1.6), []), river = useMemo(riverGeo, []);
+    // Nov 18: an inner core sheet + an outer breaking veil, splayed differently so the cascade reads as a thick 3D body from the side and 3/4 views
+    const sheets = useMemo(() => [fallsSheet(FALLS.w * 1.16, 0.0, 26, 14, 1.35), fallsSheet(FALLS.w * 0.92, 0.55, 26, 14, 1.0), fallsSheet(FALLS.w * 0.80, 1.1, 26, 14, 0.7)], []);
+    const rocks = useMemo(fallsRockGeo, []);
+    const spray = useMemo(() => sprayGeo(PHONE ? 220 : 460, FALLS.w), []), mist = useMemo(() => sprayGeo(PHONE ? 46 : 96, FALLS.w * 1.6), []), river = useMemo(riverGeo, []);   /* Nov 18 (Shifat: 'water fall water impact should have more water spray particles'): ~1.8x the impact emitters - crisp drops + soft mist at the plunge base */
     const foamPos = useMemo(() => [POOL.cx + (-FALLS.dx) * FALL_LANDING, POOL.y + 0.06, POOL.cz + (-FALLS.dz) * FALL_LANDING] as [number, number, number], []);
     const propMat = useMemo(() => { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.onBeforeCompile = hazeShader(kit.tod); return m; }, []);
     const lampMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fff3c4' }), []);
@@ -146,8 +148,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         if (nearRef.current) nearRef.current.visible = d < 260;
         const t = sim.t, day = kit.tod.day.value; GRASS_T.value = t; GRASS_U.uTime.value = t; GRASS_U.uHero.value.set(sim.pos[0], sim.pos[1], sim.pos[2]); GRASS_U.uCam.value.copy(camera.position);
         for (const m of FALLS_MATS) { m.uniforms.uT.value = t; m.uniforms.uDay.value = day; }
-        FOAM_MAT.uniforms.uT.value = t; FOAM_MAT.uniforms.uDay.value = day; SPRAY_MAT.uniforms.uT.value = t; MIST_MAT.uniforms.uT.value = t;
-        RIVER_MAT.uniforms.uT.value = t; RIVER_MAT.uniforms.uDay.value = day; (RIVER_MAT.uniforms.uSky.value as THREE.Color).copy(kit.tod.fog).lerp(SKY_BLUE, 0.45);
+        FOAM_MAT.uniforms.uT.value = t; FOAM_MAT.uniforms.uDay.value = day; SPRAY_MAT.uniforms.uT.value = t; SPRAY_MAT.uniforms.uDay.value = day; MIST_MAT.uniforms.uT.value = t; MIST_MAT.uniforms.uDay.value = day;   /* Nov 18: the impact spray follows the light level too (it used to glow pure white at night) */        RIVER_MAT.uniforms.uT.value = t; RIVER_MAT.uniforms.uDay.value = day; (RIVER_MAT.uniforms.uSky.value as THREE.Color).copy(kit.tod.fog).lerp(SKY_BLUE, 0.45);
         for (const w of waters) { const u = (w.material as THREE.ShaderMaterial).uniforms; u.uT.value = t; u.uDay.value = day; u.uSky.value.copy(kit.tod.fog).lerp(SKY_BLUE, 0.45); u.uSun.value.copy(kit.tod.sun); }
         { const night = 1 - day; lampMat.color.setRGB(1, 0.95, 0.75).multiplyScalar(0.8 + 0.6 * night); }
     });
@@ -159,6 +160,7 @@ function Island({ sim, kit }: { sim: Sim; kit: SouthSeaKit }) {
         <LightShafts kit={kit} lampY={lh.lampY} />
         <mesh geometry={shacks} material={propMat} />
         <mesh geometry={dock} material={propMat} />
+        <mesh geometry={rocks} material={propMat} />   {/* wet basalt frame: boulders along the crest and round the plunge base */}
         <group>
             {vegBatch.meshes.map((m, i) => <primitive key={'vb' + i} object={m} />)}
             {vegSpecs.filter((s) => !vegBatch.keys.has(s[0])).map((s) => <React.Fragment key={s[0]}>{I(s[0], s[1], s[2], s[3].length)}</React.Fragment>)}

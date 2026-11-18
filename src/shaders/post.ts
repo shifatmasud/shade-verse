@@ -56,9 +56,12 @@ vec3 uwRays(vec3 ro, vec3 rd, float L, float jit){
   L = clamp(L, 0.0, 30.0); float dt = L / max(uUwSteps, 1.0), acc = 0.0;
   for (int i = 0; i < 16; i++) { if (float(i) >= uUwSteps) break;
     float t = (float(i) + jit) * dt; vec3 p = ro + rd * t; float dp = uUwP.y - p.y;
+    /* smooth end windows: a hard first/last sample prints a straight band across the beam (Nov 18) */
+    float u0 = (float(i) + jit) / max(uUwSteps, 1.0), win = smoothstep(0.0, 0.18, u0) * (1.0 - smoothstep(0.82, 1.0, u0));
     if (dp > 0.0) { vec3 s = p - r * (dp / -r.y);   /* where this sample's sunlight came through the surface */
       float f = uwFocus(s.xz);
-      acc += f * exp(-dp * 0.055 - t * 0.028) * smoothstep(0.0, 1.2, dp); } }
+      acc += f * exp(-dp * 0.055 - t * 0.028) * smoothstep(0.0, 1.2, dp) * win; } }
+  acc *= 1.22;   /* the windows cost ~18% of the mean sample weight; put the beam's brightness back (Nov 18) */
   float ph = 0.5 + 0.8 * pow(max(dot(rd, -r), 0.0), 5.0);   /* forward scattering: brightest looking up toward the light */
   return mix(vec3(0.55, 0.7, 1.0), vec3(0.62, 0.93, 1.0), uUwDay) * acc * dt * ph * mix(0.6, 1.0, uUwDay * uUwDay) * 0.06; }
 float vz(vec2 uv){ float d = texture2D(tDepth, uv).x; float zn = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - zn * (uFar - uNear)); }
@@ -107,7 +110,14 @@ void main(){
     vec4 land = step(an, vec4(0.43)) * step(vec4(0.19), an);   // neighbour is grass (0.25) or ground (0.375)
     e = max(max((zx1 - z) * (1.0 - land.x), (zx2 - z) * (1.0 - land.y)), max((zy1 - z) * (1.0 - land.z), (zy2 - z) * (1.0 - land.w))) / z;
   }
-  float k = smoothstep(0.12, 0.30, e) * (1.0 - smoothstep(22.0, 55.0, z)) * uOn * lightMask;
+  /* Shifat Nov 18: 'water dont need outline pass'. Water materials stamp the world target's alpha to 0.6 (src/water/common.ts noInk), which already
+     keeps a water pixel from being inked; but the ink is one-sided, so the LAND side of a waterline still drew a black contour along every shore and
+     along the waterfall's edge. A depth step whose far (or near) partner is water is no longer inked at all. */
+  float selfWater = 1.0 - step(0.05, abs(c4.a - 0.6));
+  vec4 wa = vec4(texture2D(tColor, vUv + ox).a, texture2D(tColor, vUv - ox).a, texture2D(tColor, vUv + oy).a, texture2D(tColor, vUv - oy).a);
+  vec4 wclass = vec4(1.0 - step(0.05, abs(wa.x - 0.6)), 1.0 - step(0.05, abs(wa.y - 0.6)), 1.0 - step(0.05, abs(wa.z - 0.6)), 1.0 - step(0.05, abs(wa.w - 0.6)));
+  float waterEdge = max(max(wclass.x, wclass.y), max(wclass.z, wclass.w));
+  float k = smoothstep(0.12, 0.30, e) * (1.0 - smoothstep(22.0, 55.0, z)) * uOn * lightMask * (1.0 - selfWater) * (1.0 - waterEdge);
   c = mix(c, vec3(0.04, 0.05, 0.10), k * 0.85);
   float waterReceiver = 1.0 - step(0.035, abs(c4.a - 0.6)); float shadowReceiver = max(lightMask, waterReceiver);
   float moodLit = 1.0, heroHit = 0.0;
@@ -120,7 +130,10 @@ void main(){
     float dd = texture2D(tDepth, vUv).x; vec3 cam = uCloudCamera, rd = normalize(worldAt(vUv, 0.5) - cam);
     float dist = dd < 0.99999 ? length(worldAt(vUv, dd) - cam) : 1000.0;   /* metres of water this pixel's ray crosses from the lens */
     if (uUwP.x < 0.5 && dd >= 0.99999) c = mix(c, uwSrgb(uwField(rd, uUwC, uSunV, uUwDay)), uwIn);   /* Shifat Nov 15 8:06 PM 'dive must look same from the split water line': every surface in the under half is now lit and fogged by its own material exactly as in the dive (src/water/lens.ts, the fog chunk in src/world/env.ts) - the post pass only fills the open water with the dive's light field (same function as the dive's sky dome) */
-    float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));   /* interleaved gradient noise: 10 samples read as a smooth beam */
+    /* Nov 18 (Shifat: 'cross-hatch banding' on the surface from below): the march offset was a single interleaved-gradient tap, whose regular
+       diagonal pattern is exactly what you see as hatching over the beams. Two decorrelated taps averaged give a fine, unstructured grain (same
+       cost, no extra samples), and the accumulation is windowed at both ends of the ray so the first and last step do not print as bands. */
+    float jit = 0.5 * (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) + fract(52.9829189 * fract(dot(gl_FragCoord.xy + vec2(17.0, 31.0), vec2(0.06711056, 0.00583715)))));
     c += uwRays(cam, rd, dist, jit) * uwIn;
   }
   if (uWL.w > 0.5) {
