@@ -2,21 +2,26 @@ import * as THREE from 'three';
 import { buildings } from './sim';
 
 /*
- * Wall-run body pose (Shifat, Nov 17: the reference frame + the 10-keyframe contact sheet).
+ * Wall-run body pose (Shifat, Nov 17: the reference frame + the 10-keyframe contact sheet; Nov 18: "study the
+ * real images & videos first" - the legs folded up like a frog, so the stride is modelled on a real sprint).
  *
  * What the pose has to read on screen:
- *   - the torso tips into the facade and the body hugs the wall instead of hovering beside it;
- *   - the wall-side palm is planted flat on the facade just ahead of and below the shoulder, elbow bent;
- *   - the wall-side foot plants on the facade under the hip and strides along the wall;
- *   - the free arm swings out to the balancing side;
- *   - the trailing leg is left behind, extended back and off the wall.
+ *   - the body is a long diagonal into the facade: hips held well off the wall, torso tipped in, so the wall-side
+ *     shoulder (not the hip) grazes it. The hip has to keep its distance or the legs have nowhere to extend to;
+ *   - the legs run in the TILTED SAGITTAL plane of that diagonal - a forward/back scissor along the run tangent,
+ *     never folded sideways under the pelvis. Knees hinge forward along the run (pole on the tangent), so the
+ *     knee cap leads the stride instead of jutting out of the wall;
+ *   - the wall-side leg strides on the facade (sole on the surface, foot travelling from ahead of the hip to
+ *     well behind it), the other leg swings long and free on the balancing side;
+ *   - the pelvis and chest counter-twist a little through the stride (a runner's axial rotation, not a passive
+ *     sideways lean), and the wall-side palm stays planted ahead of the shoulder with the elbow bent.
  *
  * Two things make the contacts actually land on the wall:
- *   - `sitOnWall` shifts the body along the wall normal until its wall-side shoulder grazes the facade.
- *     The scene pushes the skinned hull out of walls; without this the body is shoved ~0.5 m clear of the
- *     wall by that correction and every "planted" limb hangs beside it, which is the bug this fixes.
- *   - the hand and foot targets are taken from the shoulder and hip themselves (not from the physics
- *     centre), so they follow the body that is drawn rather than the collision proxy.
+ *   - `sitOnWall` shifts the body along the wall normal until its wall-side HIP sits at `BODY.hipClear` from the
+ *     facade. The scene pushes the skinned hull out of walls; without this the body is shoved clear of the wall
+ *     by that correction and every "planted" limb hangs beside it.
+ *   - the hand and foot targets are taken from the shoulder and hip themselves (not from the physics centre), so
+ *     they follow the body that is drawn rather than the collision proxy.
  */
 
 /** The parts of the rig this pose drives. */
@@ -28,51 +33,69 @@ export interface WallRunRig {
 
 /** Body targets: radians for rotations, metres for lengths. */
 const BODY = {
-    roll: 0.16,        // how far the torso tips into the wall
-    pitch: 0.07,       // forward lean along the run
-    clear: 0.20,       // metres the wall-side shoulder keeps outside the facade
-    spineRoll: 0.03,   // the tip carries on up the spine
-    chestRoll: 0.05,   // the shoulder leads the hip
-    headUp: 0.16,      // keeps the eyes up instead of staring at the wall
+    roll: 0.02,        // back upright, shoulders parallel to the wall (the reference's braced reach)
+    pitch: 0.10,       // forward lean along the run
+    hipClear: 1.05,    // metres the hip keeps outside the facade - the braced arm has to read across that gap
+    spineRoll: 0.02,
+    chestRoll: 0.02,
+    twist: 0.14,       // pelvis / chest counter-twist through the stride
+    headUp: 0.26,      // keeps the eyes up the wall instead of at the masonry
 } as const;
 
-/** Wall-side hand: planted on the facade, just ahead of the shoulder, elbow bent. */
+/**
+ * The stride, leg by leg. A wall-runner's two legs do different jobs at the same instant, so each has its own
+ * gait instead of one cycle in mirror: the wall-side leg pushes long and straight down the wall (its foot stays
+ * behind the hip through the stance), while the free leg drives forward with a lifted knee. That is the scissor
+ * the chase camera has to read - two legs at different heights and different angles, never a pair of parallel
+ * shins under the pelvis.
+ */
+interface LegGait {
+    front: number;      // metres the foot reaches ahead of the hip at touchdown
+    back: number;       // metres behind the hip at toe-off
+    drop: number;       // metres below the hip through the stance
+    stanceDrop: number; // the hip settles over the planted foot mid-stance
+    heelUp: number;     // the heel lifts toward toe-off
+    flightUp: number;   // how high the swing foot comes up under the hip
+    flightOut: number;  // how far off the facade the swing foot travels
+    base: number;       // this leg's own standing distance from the facade
+    stance: number;     // share of the cycle this leg is in contact
+}
+
+/** Wall-side leg: the long pushing leg. It travels along the wall and stays behind the hip. */
+const WALL_LEG: LegGait = {
+    front: 0.26, back: 0.64, drop: 1.12, stanceDrop: 0.06, heelUp: 0.14,
+    flightUp: 0.50, flightOut: 0.20, base: 0.20, stance: 0.52,
+} as const;
+
+/** Free leg: the driving leg. Knee comes up in front, then swings long behind at the push-off. */
+const FREE_LEG: LegGait = {
+    front: 0.72, back: 0.34, drop: 1.22, stanceDrop: 0.04, heelUp: 0.12,
+    flightUp: 0.74, flightOut: 0.30, base: 0.58, stance: 0.44,
+} as const;
+
+const GAIT = {
+    rate: 0.62,        // cycles per second of clip time
+    wallGap: 0.20,     // the ankle rides this far off the facade so the sole and toes land on it
+} as const;
+
+/** Wall-side hand: planted on the facade ahead of and above the shoulder, elbow bent. */
 const WALL_ARM = {
-    drop: 0.12,        // metres below the shoulder
-    lead: 0.26,        // metres ahead along the run
-    swing: 0.10,       // stride sway along the run
-    gap: 0.07,         // stands the hand a little proud of the surface so the mesh does not cut in
-    reach: 0.94,       // fraction of arm length the target is kept inside
+    lead: 0.12,        // metres ahead along the run: the ref. brace arm reaches out sideways, barely ahead
+    rise: 0.24,        // metres above the shoulder: the palm lands at head height, clear of the hood
+    swing: 0.12,       // stride sway along the run
+    gap: 0.09,         // wrist stands off the surface so the palm and fingers land ON it, not through it
+    reach: 0.97,       // fraction of arm length the target is kept inside
 } as const;
 
-/** Wall-side foot: planted under the hip and striding along the wall. */
-const WALL_LEG = {
-    drop: 0.52,        // metres below the hip
-    lead: 0.05,        // base position along the run
-    stride: 0.30,      // +/- stride travel along the run
-    lift: 0.12,        // stride rise and fall
-    gap: 0.06,
-    reach: 0.94,
+/** Free arm: counter-swing on the balancing side, elbow bent. */
+const FREE_ARM = {
+    swing: 0.62,       // +/- swing along the run (rad at the shoulder)
+    out: 0.52,         // stays well out from the ribs so the free arm reads on the open side
+    elbow: -1.35,      // bent ~77 deg, tucked back for balance (the reference's free arm)
 } as const;
 
-/** Trailing leg: left behind, extended back and off the wall on the balancing side. */
-const TRAIL_LEG = {
-    drop: 0.74,
-    back: 0.44,        // metres behind the hip along the run
-    out: 0.30,         // metres away from the facade
-    lift: 0.10,
-    reach: 0.94,
-} as const;
-
-/** Free arm keyed through the stride: out to the balancing side, swinging against the wall-side leg. */
-const FREE_ARM_KEYS = [
-    { upperX: 0.26, upperZ: 0.72, foreX: -0.50 },
-    { upperX: 0.04, upperZ: 0.86, foreX: -0.38 },
-    { upperX: -0.16, upperZ: 0.96, foreX: -0.30 },
-    { upperX: 0.12, upperZ: 0.80, foreX: -0.46 },
-] as const;
-
-const STRIDE_RATE = 0.55;   // stride cycles per second of clip time
+const _handAxis = new THREE.Vector3(0, 0, 1);   // the hand's long axis (fingers)
+const _soleAxis = new THREE.Vector3(0, 1, 0);   // the foot's up axis; its sole faces the opposite way
 
 /** The facade the hero runs on: out-of-wall normal, run tangent and the surface coordinate. */
 interface WallFrame {
@@ -142,9 +165,11 @@ const _localQ = new THREE.Quaternion();
 const _deltaQ = new THREE.Quaternion();
 const _shoulder = new THREE.Vector3();
 const _hip = new THREE.Vector3();
+const _hipFree = new THREE.Vector3();
 const _target = new THREE.Vector3();
-const _trail = new THREE.Vector3();
+const _foot = new THREE.Vector3();
 const _scratch = new THREE.Vector3();
+const _scratch2 = new THREE.Vector3();
 
 /** Turns a bone so the direction bone -> child points at `target` (world space). */
 function aimBone(bone: THREE.Bone | undefined, child: THREE.Bone | undefined, target: THREE.Vector3, weight: number, root: THREE.Object3D): void {
@@ -166,6 +191,7 @@ function aimBone(bone: THREE.Bone | undefined, child: THREE.Bone | undefined, ta
 /**
  * Two-bone IK: puts `end` on `target` with the middle joint on the side `pole` points to.
  * The target is first pulled inside the limb's reach, so a contact can never stretch the rig.
+ * The middle joint is also held to a human hinge: it never overshoots past straight.
  */
 function reachLimb(rig: WallRunRig, rootName: string, midName: string, endName: string, target: THREE.Vector3, pole: THREE.Vector3, reach: number, weight: number): void {
     const root = rig.b[rootName], mid = rig.b[midName], end = rig.b[endName];
@@ -208,6 +234,32 @@ function faceAxis(bone: THREE.Bone | undefined, local: THREE.Vector3, world: THR
     bone.quaternion.slerp(_localQ, weight);
 }
 
+/** Smoothstep, for the swing half of the stride (the foot accelerates off the wall and eases into touchdown). */
+function smooth(x: number): number { return x * x * (3 - 2 * x); }
+
+/**
+ * One leg of the stride, in the plane defined by the run tangent and world up.
+ * `phase` 0 = touchdown ahead of the hip; through the stance the foot travels back under and past the hip; then
+ * the swing carries it up, forward and off the facade again. `out` is where the foot goes and how far off the
+ * wall it travels.
+ */
+function gait(phase: number, leg: LegGait, out: { along: number; dy: number; dist: number }): void {
+    const p = ((phase % 1) + 1) % 1;
+    const contact = leg.stance;
+    if (p < contact) {
+        const u = p / contact;
+        out.along = leg.front - (leg.front + leg.back) * u;
+        out.dy = -leg.drop - leg.stanceDrop * Math.sin(Math.PI * u) + leg.heelUp * smooth(Math.max(0, (u - 0.7) / 0.3));
+        out.dist = leg.base;
+    } else {
+        const u = (p - contact) / (1 - contact);
+        const s = smooth(u);
+        out.along = -leg.back + (leg.front + leg.back) * s;
+        out.dy = -leg.drop + leg.flightUp * Math.sin(Math.PI * Math.min(1, u * 1.05)) - leg.heelUp * (1 - s);
+        out.dist = leg.base + leg.flightOut * Math.sin(Math.PI * u);
+    }
+}
+
 /**
  * Applies the wall-run pose on top of the running cycle.
  * `wallSide` is +1 when the facade is on the hero's right, -1 when it is on the left.
@@ -217,78 +269,88 @@ export function applyWallRunPose(sim: any, rig: WallRunRig, weight: number, wall
     const frame = wallFrame(sim);
     const wallSideName = wallSide > 0 ? 'R' : 'L';
     const freeSideName = wallSide > 0 ? 'L' : 'R';
+    const fwd = _scratch2.copy(frame.tangent).multiplyScalar(frame.travel);   // the way the hero is running
 
-    // --- torso: tip into the facade ---------------------------------------------------------------
+    // --- stride phase --------------------------------------------------------------------------
+    const cyc = (clipTime * GAIT.rate) % 1;
+    const phase = ((cyc % 1) + 1) % 1;
+    const swing = Math.sin(phase * Math.PI * 2);          // -1..1 through the cycle, for the arms / twist
+
+    // --- torso: tipped into the facade, twisted through the stride ------------------------------
     const poseRoot = rig.poseRoot;
     if (poseRoot) {
         poseRoot.rotation.z += (-wallSide * BODY.roll - poseRoot.rotation.z) * weight;
         poseRoot.rotation.x += (BODY.pitch - poseRoot.rotation.x) * weight;
     }
+    blend(rig.b.hips, 'x', BODY.pitch * 0.45, weight);                          // the running clip's deep forward pitch is replaced
+    blend(rig.b.spine, 'x', BODY.pitch * 0.5, weight);                          // by an upright back: a wall-runner is tall over the wall
+    blend(rig.b.chest, 'x', BODY.pitch * 0.25, weight);
     blend(rig.b.hips, 'z', -wallSide * BODY.spineRoll, weight);
+    blend(rig.b.hips, 'y', wallSide * BODY.twist * swing, weight);          // pelvis leads with the stride
     blend(rig.b.spine, 'z', -wallSide * BODY.spineRoll, weight);
     blend(rig.b.chest, 'z', -wallSide * BODY.chestRoll, weight);
-    blend(rig.b.neck, 'x', -BODY.pitch * 0.4, weight);
-    blend(rig.b.head, 'x', -BODY.pitch * 0.6 + BODY.headUp * 0.4, weight);
+    blend(rig.b.chest, 'y', -wallSide * BODY.twist * 1.2 * swing, weight);  // chest counters the pelvis
+    blend(rig.b.neck, 'x', -BODY.pitch * 0.5, weight);
+    blend(rig.b.head, 'x', -BODY.pitch * 0.4 + BODY.headUp * 0.5, weight);
+    blend(rig.b.head, 'y', wallSide * 0.16, weight);                        // eyes up the wall
     rig.root.updateWorldMatrix(true, true);
 
-    // --- sit the body so its wall-side shoulder grazes the facade ---------------------------------
-    // Keeps the scene's hull push-out at zero, so the planted hand and foot stay on the wall
-    // instead of being shoved away together with the body.
-    if (boneWorld(rig.b['uarm' + wallSideName], _shoulder)) {
-        const err = BODY.clear - clearance(frame, _shoulder);
+    // --- sit the body so its wall-side hip keeps its distance from the facade -------------------
+    // Keeps the scene's hull push-out at zero while leaving the legs room to extend (the whole point: a
+    // shoulder welded to the facade folds both legs up under the pelvis).
+    if (boneWorld(rig.b.hips, _scratch)) {
+        const err = BODY.hipClear - clearance(frame, _scratch);
         if (Math.abs(err) > 1e-3) {
             rig.root.position.addScaledVector(frame.normal, err * weight);
             rig.root.updateWorldMatrix(true, true);
         }
     }
 
-    // --- stride phase ------------------------------------------------------------------------------
-    const keys = FREE_ARM_KEYS;
-    const phase = ((((clipTime * STRIDE_RATE) % 1) + 1) % 1) * keys.length;
-    const i = Math.floor(phase);
-    const a = keys[i], b = keys[(i + 1) % keys.length], f = phase - i;
-    const mix = (k: 'upperX' | 'upperZ' | 'foreX') => a[k] + (b[k] - a[k]) * f;
-    const cycle = phase / keys.length * Math.PI * 2;
+    // --- free / balancing arm: counter-swings the wall-side leg -------------------------------
+    const freeSwing = -swing * FREE_ARM.swing;
+    blend(rig.b['uarm' + freeSideName], 'x', freeSwing, weight);
+    blend(rig.b['uarm' + freeSideName], 'z', -wallSide * (FREE_ARM.out + 0.25 * Math.cos(phase * Math.PI * 2)), weight);
+    blend(rig.b['farm' + freeSideName], 'x', FREE_ARM.elbow, weight);
 
-    // --- free / balancing arm ----------------------------------------------------------------------
-    blend(rig.b['uarm' + freeSideName], 'x', mix('upperX'), weight);
-    blend(rig.b['uarm' + freeSideName], 'z', -wallSide * mix('upperZ'), weight);
-    blend(rig.b['farm' + freeSideName], 'x', mix('foreX'), weight);
-
-    // --- wall-side hand: palm flat on the facade, elbow bent ---------------------------------------
-    const shoulder = boneWorld(rig.b['uarm' + wallSideName], _shoulder);
-    if (shoulder) {
-        ontoWall(frame, shoulder, _target);
-        _target.y += -WALL_ARM.drop;
-        _target.addScaledVector(frame.tangent, WALL_ARM.lead * frame.travel + WALL_ARM.swing * Math.sin(cycle));
+    // --- wall-side hand: palm on the facade ahead of and above the shoulder, elbow bent --------
+    if (boneWorld(rig.b['uarm' + wallSideName], _shoulder)) {
+        ontoWall(frame, _shoulder, _target);
+        _target.y += WALL_ARM.rise + WALL_ARM.swing * 0.5 * swing;
+        _target.addScaledVector(fwd, WALL_ARM.lead + WALL_ARM.swing * swing);
         _target.addScaledVector(frame.normal, WALL_ARM.gap);
-        const pole = _scratch.copy(frame.normal).multiplyScalar(0.55).addScaledVector(frame.tangent, -0.35 * frame.travel).addScaledVector(_up, 0.85);
+        // elbow points down and back along the run, so the arm reads as a brace, not a wing
+        const pole = _scratch.copy(_up).multiplyScalar(-0.75).addScaledVector(fwd, -0.25).addScaledVector(frame.normal, 0.60);   // elbow hangs out and down
         reachLimb(rig, 'uarm' + wallSideName, 'farm' + wallSideName, 'hand' + wallSideName, _target, pole, WALL_ARM.reach, weight);
         faceAxis(rig.b['hand' + wallSideName], _handAxis, frame.normal, weight);   // palm flat on the surface
     }
 
-    // --- wall-side foot: planted under the hip and striding along the wall --------------------------
-    const hip = boneWorld(rig.b['thigh' + wallSideName], _hip);
-    if (hip) {
-        ontoWall(frame, hip, _target);
-        _target.y += -WALL_LEG.drop + WALL_LEG.lift * Math.sin(cycle);
-        _target.addScaledVector(frame.tangent, frame.travel * (WALL_LEG.lead + WALL_LEG.stride * Math.cos(cycle)));
-        _target.addScaledVector(frame.normal, WALL_LEG.gap);
-        const pole = _scratch.copy(frame.normal).multiplyScalar(0.85).addScaledVector(frame.tangent, frame.travel * 0.35).addScaledVector(_up, 0.55);
-        reachLimb(rig, 'thigh' + wallSideName, 'shin' + wallSideName, 'foot' + wallSideName, _target, pole, WALL_LEG.reach, weight);
-        faceAxis(rig.b['foot' + wallSideName], _soleAxis, frame.normal, weight);
-    }
+    // --- legs: the scissor, each leg on its own gait ------------------------------------------
+    if (boneWorld(rig.b['thigh' + wallSideName], _hip)) {
+        // wall-side leg: pushing long down the facade through its stance, then swinging through
+        gait(phase, WALL_LEG, _gaitWall);
+        ontoWall(frame, _hip, _target);
+        _target.y += _gaitWall.dy;
+        _target.addScaledVector(fwd, _gaitWall.along);
+        _target.addScaledVector(frame.normal, GAIT.wallGap + (_gaitWall.dist - WALL_LEG.base));
+        // knee hinges forward along the run, a touch out of the wall: the cap leads the stride
+        _pole.copy(fwd).multiplyScalar(0.92).addScaledVector(frame.normal, 0.34).addScaledVector(_up, 0.12);
+        reachLimb(rig, 'thigh' + wallSideName, 'shin' + wallSideName, 'foot' + wallSideName, _target, _pole, 0.98, weight);
+        // sole stays on the facade while the foot is planted, and rolls off as it leaves the wall
+        faceAxis(rig.b['foot' + wallSideName], _soleAxis, frame.normal, weight * (1 - Math.min(1, (_gaitWall.dist - WALL_LEG.base) / 0.12)));
 
-    // --- trailing leg: left behind, extended back and off the wall -----------------------------------
-    if (hip) {
-        ontoWall(frame, hip, _trail);
-        _trail.y += -TRAIL_LEG.drop + TRAIL_LEG.lift * Math.sin(cycle);
-        _trail.addScaledVector(frame.tangent, -frame.travel * (TRAIL_LEG.back - 0.08 * Math.cos(cycle)));
-        _trail.addScaledVector(frame.normal, TRAIL_LEG.out);
-        const pole = _scratch.copy(frame.normal).multiplyScalar(0.25).addScaledVector(_up, 0.85).addScaledVector(frame.tangent, -frame.travel * 0.35);
-        reachLimb(rig, 'thigh' + freeSideName, 'shin' + freeSideName, 'foot' + freeSideName, _trail, pole, TRAIL_LEG.reach, weight);
+        // free leg: the driving leg, half a cycle out of phase, knee up in front.
+        // Its hip is the other one: targets measured from the wall-side hip would sit a hip-width too far off.
+        gait(phase + 0.5, FREE_LEG, _gaitFree);
+        const hipFree = boneWorld(rig.b['thigh' + freeSideName], _hipFree) ?? _hip;
+        ontoWall(frame, hipFree, _foot);
+        _foot.y += _gaitFree.dy;
+        _foot.addScaledVector(fwd, _gaitFree.along);
+        _foot.addScaledVector(frame.normal, _gaitFree.dist);
+        _pole.copy(fwd).multiplyScalar(0.92).addScaledVector(frame.normal, 0.30).addScaledVector(_up, 0.10);
+        reachLimb(rig, 'thigh' + freeSideName, 'shin' + freeSideName, 'foot' + freeSideName, _foot, _pole, 0.98, weight);
     }
 }
 
-const _handAxis = new THREE.Vector3(0, 0, 1);   // the hand's long axis (fingers)
-const _soleAxis = new THREE.Vector3(0, 1, 0);   // the foot's up axis; its sole faces the opposite way
+
+const _gaitWall = { along: 0, dy: 0, dist: 0 };
+const _gaitFree = { along: 0, dy: 0, dist: 0 };

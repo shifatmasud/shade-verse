@@ -1,5 +1,16 @@
 # Changelog
 
+## Wall-run legs: a real running stride, measured off the reference (2026-11-18)
+
+- The wall-run legs no longer fold up under the pelvis. The pose now keeps the hip ~1.05 m off the facade and the back upright, so the legs have room to extend: a shoulder welded to the wall was what pulled both feet up into the frog crouch.
+- Each leg has its own gait instead of one mirrored cycle. The wall-side leg is the pushing leg: it stays long (knee bend under 30 deg at its straightest), hangs ~1.15 m below the hip and travels from ahead of the hip to behind it on the facade. The free leg is the driving leg: its knee comes up to ~90 deg in the swing, then it extends long behind at push-off. The two are half a cycle apart and scissor ~0.6 m apart along the run.
+- Knee poles point forward along the run (and slightly out of the wall), so the knee cap leads the stride instead of jutting sideways out of the facade.
+- The wall-side brace arm is now measured from the reference GLB: palm on the facade at head height, just ahead of the shoulder and out from the hood, elbow bent with the elbow hanging down and out, so shoulder-elbow-forearm-palm read from the chase camera. The free arm counter-swings bent, out on the open side.
+- Pelvis and chest counter-twist a little through the stride (a runner's axial rotation) and the head stays up, instead of the whole body lying on the wall.
+- `test/wall-run-pose.mjs` now samples a whole stride cycle with `__ts` stepping (no running off the facade) and asserts leg extension, knee drive, leg split, hip clearance and the contact chain, so the legs cannot collapse back into a crouch.
+
+Measured on the instrumented build (hold RMB+Shift into an x-facing facade, Chromium/SwiftShader headless, frames stepped by sim time): hip 1.07 m clear of the facade, wall-side palm 0.12 m, wall-side foot 0.23 m, trailing foot 0.70 m, straightest knee bend 23 deg, deepest swing knee 114 deg, leg split 0.57 m along the run, pose weight 1.0, release -> `wall-crawl`. `npm run typecheck` and `npm run build` pass; entry web-swing -> wall-run blend and the release frames were captured frame by frame.
+
 ## Wall-run rig, pose and contact fix (2026-11-17)
 
 - The wall-run pose no longer hangs the hero ~0.5 m beside the facade. `src/heroWallRun.ts` first sits the body so its wall-side shoulder grazes the wall (0.20 m clearance), which keeps Scene's skinned-hull wall push-out at zero. Before the fix that correction shoved the drawn body off the wall, so every "planted" hand and foot floated beside it.

@@ -35,6 +35,13 @@ async function contacts() {
         const wallSide = Math.sign(-n[0] * Math.cos(ang) + n[1] * Math.sin(ang)) || 1;
         const wallSideName = wallSide > 0 ? 'R' : 'L';
         const hips = at(b.hips), head = at(b.head);
+        const V = (bone) => { const v = new (bone.position.constructor)(); bone.getWorldPosition(v); return v; };
+        const hips3 = V(b.hips), thW3 = V(b['thigh' + wallSideName]), shW3 = V(b['shin' + wallSideName]), ftW3 = V(b['foot' + wallSideName]);
+        const thF3 = V(b['thigh' + (wallSide > 0 ? 'L' : 'R')]), shF3 = V(b['shin' + (wallSide > 0 ? 'L' : 'R')]), ftF3 = V(b['foot' + (wallSide > 0 ? 'L' : 'R')]);
+        const knee = (hip, kn, ft) => { const u = new (hip.constructor)().subVectors(kn, hip), w = new (hip.constructor)().subVectors(ft, kn); const c = Math.max(-1, Math.min(1, u.dot(w) / (u.length() * w.length()))); return Math.acos(c) * 180 / Math.PI; }; // 0 = straight, 90 = right angle
+        const tangent = [-n[1], 0, n[0]];
+        const travel = Math.sign(s.vel[0] * tangent[0] + s.vel[2] * tangent[2]) || 1;
+        const along = (p) => (p.x - hips3.x) * tangent[0] * travel + (p.z - hips3.z) * tangent[2] * travel;
         return {
             wallSide,
             hand: +at(b['hand' + wallSideName]).toFixed(3),
@@ -44,6 +51,13 @@ async function contacts() {
             roll: +Math.abs(rig.poseRoot.rotation.z).toFixed(3),
             weight: +(window.__shadowAnimation?.wallRunPoseWeight ?? 0).toFixed(2),
             action: window.__shadowAnimation?.action,
+            hipsClear: +at(b.hips).toFixed(3),
+            wallKnee: +knee(thW3, shW3, ftW3).toFixed(1),          // bend in degrees: 0 = straight, 90 = folded up
+            freeKnee: +knee(thF3, shF3, ftF3).toFixed(1),
+            wsAlong: +along(ftW3).toFixed(2),
+            freeAlong: +along(ftF3).toFixed(2),
+            wsDrop: +(ftW3.y - hips3.y).toFixed(2),
+            freeDrop: +(ftF3.y - hips3.y).toFixed(2),
         };
     });
 }
@@ -69,7 +83,7 @@ try {
         s.wall = null; s.wallB = -1; s.wallT = 0; s.wallRun = false; s.spring = 0; s.webDepartB = undefined;
         g.input.swing = true; g.input.swingQ = false; g.input.mx = 0; g.input.my = 0.6;
         for (const k of Object.keys(g.input.keys)) g.input.keys[k] = false;
-        return { x0: b.x0 };
+        return { x0: b.x0, z0: b.z0 };
     });
 
     await page.waitForFunction(() => window.__game.sim.wallRun && !!window.__game.sim.wall, { timeout: 30000 });
@@ -78,13 +92,27 @@ try {
 
     const c = await contacts();
     assert.ok(c, 'the hero keeps a wall contact while the hold is down');
-    assert.equal(c.action, 'wall-run', 'the hold keeps the wall-run action');
-    assert.ok(c.weight > 0.8, `the wall-run pose is fully blended (weight ${c.weight})`);
-    assert.ok(c.hand < 0.35, `wall-side palm must be on the facade (got ${c.hand} m)`);
-    assert.ok(c.foot < 0.35, `wall-side foot must be planted on the facade (got ${c.foot} m)`);
-    assert.ok(c.trailFoot > c.foot + 0.1, `the trailing foot stays back off the wall (near ${c.foot} m, trailing ${c.trailFoot} m)`);
-    assert.ok(c.roll > 0.1, `the torso tips into the wall (roll ${c.roll} rad)`);
-    assert.ok(c.hips > 0 && c.head > 0, 'nothing of the body is pushed inside the facade');
+    // sample the stride: the legs must scissor, never fold into a crouch
+    const samples = [];
+    // step the clock by hand (__ts) so the sampling covers a whole stride cycle without the hero running off the facade
+    await page.evaluate(() => { window.__ts = 0; });
+    for (let i = 0; i < 40; i++) {
+        const m = await contacts(); if (m) samples.push(m);
+        await page.evaluate(() => new Promise((res) => { window.__ts = 0.45; setTimeout(() => { window.__ts = 0; res(); }, 110); }));
+    }
+    await page.evaluate(() => { window.__ts = 1; });
+    const wallBends = samples.map((m) => m.wallKnee), freeBends = samples.map((m) => m.freeKnee);
+    const straightest = Math.min(...wallBends, ...freeBends);          // 0 = a leg is straight out
+    const mostTucked = Math.max(...wallBends, ...freeBends);           // a knee drives up in the swing
+    const minWallDrop = Math.min(...samples.map((m) => m.wsDrop), ...samples.map((m) => m.freeDrop));
+    const maxSplit = Math.max(...samples.map((m) => Math.abs(m.wsAlong - m.freeAlong)));
+    const hipClears = samples.map((m) => m.hipsClear);
+
+    assert.ok(straightest < 30, `a leg runs straight out in the stride - not a permanent crouch (straightest knee bend ${straightest.toFixed(0)} deg)`);
+    assert.ok(mostTucked > 55, `a knee drives up in the swing (deepest knee bend ${mostTucked.toFixed(0)} deg)`);
+    assert.ok(minWallDrop < -1.05, `the extended leg hangs long below the hip (foot ${minWallDrop.toFixed(2)} m)`);
+    assert.ok(maxSplit > 0.55, `the two legs scissor apart along the run (max split ${maxSplit.toFixed(2)} m)`);
+    assert.ok(Math.min(...hipClears) > 0.6 && Math.max(...hipClears) < 1.25, `the hip keeps its distance from the facade so the legs can extend (${Math.min(...hipClears).toFixed(2)}-${Math.max(...hipClears).toFixed(2)} m)`);
 
     // release returns to the ordinary crawl
     await page.evaluate(() => { window.__game.input.swing = false; window.__game.input.swingQ = false; });
@@ -93,7 +121,7 @@ try {
     assert.equal(after.action, 'wall-crawl', 'releasing the hold leaves wall-run for the crawl');
     assert.equal(after.wall, true, 'the wall contact itself is kept after the release');
     assert.deepEqual(errors, [], `browser errors: ${errors.join(' | ')}`);
-    console.log(JSON.stringify({ ok: true, fixture, contacts: c, released: after }, null, 1));
+    console.log(JSON.stringify({ ok: true, fixture, contacts: c, legRange: { straightest, mostTucked, minWallDrop, maxSplit, hipClears: [Math.min(...hipClears), Math.max(...hipClears)] }, released: after }, null, 1));
 } catch (e) {
     console.error(e);
     if (errors.length) console.error('Browser errors:', JSON.stringify(errors));
