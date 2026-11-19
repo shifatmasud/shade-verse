@@ -1,27 +1,25 @@
 import * as THREE from 'three';
 import { buildings } from './sim';
 
+const DBG = !!(import.meta as any).env.VITE_DBG;   // stills harness only: a DEBUG build can sweep the wrist roll
+
 /*
- * Wall-run body pose (Shifat, Nov 17: the reference frame + the 10-keyframe contact sheet; Nov 18: "study the
- * real images & videos first" - the legs folded up like a frog, so the stride is modelled on a real sprint).
+ * Wall-run body pose (Shifat, Nov 19: "see this" - the Unreal mannequin wall-run, `downloads/wr-opt-c2.png`).
  *
  * What the pose has to read on screen:
- *   - the body is a long diagonal into the facade: hips held well off the wall, torso tipped in, so the wall-side
- *     shoulder (not the hip) grazes it. The hip has to keep its distance or the legs have nowhere to extend to;
- *   - the legs run in the TILTED SAGITTAL plane of that diagonal - a forward/back scissor along the run tangent,
- *     never folded sideways under the pelvis. Knees hinge forward along the run (pole on the tangent), so the
- *     knee cap leads the stride instead of jutting out of the wall;
- *   - the wall-side leg strides on the facade (sole on the surface, foot travelling from ahead of the hip to
- *     well behind it), the other leg swings long and free on the balancing side;
+ *   - the body is one ~45 deg diagonal out of the facade: the planted foot on the wall, then hips, torso and head
+ *     carried up and out over open air (the cyan mark he drew on his own still);
+ *   - the LOWER BODY is the game's own running clip, not a hand-built stride: the `run` clip keeps playing and this
+ *     pose only rolls the whole body onto that diagonal, so the legs cycle in exactly the sprint he already runs -
+ *     the tilted plane puts the wall-side foot down on the facade and swings the outer leg out into open air;
+ *   - the wall-side arm reaches out and a little up toward the facade with an open hand, clearly in the gap between
+ *     the torso and the wall (his mannequin reference); the outer arm pumps at the elbow beside the ribs;
  *   - the pelvis and chest counter-twist a little through the stride (a runner's axial rotation, not a passive
- *     sideways lean), and the wall-side palm stays planted ahead of the shoulder with the elbow bent.
+ *     sideways lean).
  *
- * Two things make the contacts actually land on the wall:
- *   - `sitOnWall` shifts the body along the wall normal until its wall-side HIP sits at `BODY.hipClear` from the
- *     facade. The scene pushes the skinned hull out of walls; without this the body is shoved clear of the wall
- *     by that correction and every "planted" limb hangs beside it.
- *   - the hand and foot targets are taken from the shoulder and hip themselves (not from the physics centre), so
- *     they follow the body that is drawn rather than the collision proxy.
+ * `BODY.hipClear` is what makes the diagonal work: the roll points the body's own "down" 45 deg into the facade, so
+ * the hip has to stand off far enough that the running legs reach the wall surface instead of through it. The scene
+ * pushes the skinned hull out of walls, so a body sitting too close would be shoved clear of the wall every frame.
  */
 
 /** The parts of the rig this pose drives. */
@@ -46,63 +44,46 @@ const BODY = {
     headUp: 0.26,      // keeps the eyes up the wall instead of at the masonry
 } as const;
 
+/** The run clip's cycle rate in cycles per second of clip time (20 frames at 30 fps). */
+const RUN_CLIP_RATE = 30 / 20;
+
+/** The wall-side boot is planted this far off the facade when the running cycle would push it closer. */
+const FOOT_PLANT = { gap: 0.12 } as const;
+
 /** The pose's total sideways lean, in radians: the root diagonal plus the spine chain. 0.775 rad = 44.4 deg. */
 export const WALLRUN_LEAN = BODY.roll + 2 * BODY.spineRoll + BODY.chestRoll;
 
-/**
- * The stride, leg by leg. A wall-runner's two legs do different jobs at the same instant, so each has its own
- * gait instead of one cycle in mirror: the wall-side leg pushes long and straight down the wall (its foot stays
- * behind the hip through the stance), while the free leg drives forward with a lifted knee. That is the scissor
- * the chase camera has to read - two legs at different heights and different angles, never a pair of parallel
- * shins under the pelvis.
+/*
+ * Arms, from Shifat's mannequin reference (`attachments/2026-11-19/...11204139...jpg`): the wall-side arm reaches out
+ * toward the facade and slightly up, hand open, held in the gap between the torso and the wall where it reads in
+ * silhouette from behind; the outer arm is bent at the elbow beside the ribs, pumping with the stride.
+ *
+ * Both are posed by world-space targets measured from the shoulder, so the direction of the arm follows where the
+ * hand goes rather than how a shoulder rotation happens to compose with the 45 deg body roll.
  */
-interface LegGait {
-    front: number;      // metres the foot reaches ahead of the hip at touchdown
-    back: number;       // metres behind the hip at toe-off
-    drop: number;       // metres below the hip through the stance
-    stanceDrop: number; // the hip settles over the planted foot mid-stance
-    heelUp: number;     // the heel lifts toward toe-off
-    flightUp: number;   // how high the swing foot comes up under the hip
-    flightOut: number;  // how far off the facade the swing foot travels
-    base: number;       // this leg's own standing distance from the facade
-    stance: number;     // share of the cycle this leg is in contact
-}
 
-/** Wall-side leg: the long pushing leg. It travels along the wall and stays behind the hip. */
-const WALL_LEG: LegGait = {
-    front: 0.26, back: 0.64, drop: 1.06, stanceDrop: 0.06, heelUp: 0.14,
-    flightUp: 0.50, flightOut: 0.20, base: 0.20, stance: 0.52,
-} as const;
-
-/** Free leg: the driving leg. Knee comes up in front, then swings long behind at the push-off. */
-const FREE_LEG: LegGait = {
-    front: 0.72, back: 0.34, drop: 1.22, stanceDrop: 0.04, heelUp: 0.12,
-    flightUp: 0.74, flightOut: 0.30, base: 0.58, stance: 0.44,
-} as const;
-
-const GAIT = {
-    rate: 0.95,        // cycles per second of clip time (the run is ~1.6x faster now, so the stride keeps up)
-    wallGap: 0.18,     // the ankle rides this far off the facade so the sole and toes land on it
-} as const;
-
-/** Wall-side hand: reaching across the gap toward the facade ahead of and above the shoulder, elbow bent. */
+/** Wall-side arm: reaching out toward the facade and a little up, soft elbow, open hand in the wall gap. */
 const WALL_ARM = {
-    lead: 0.14,        // metres ahead along the run: the ref. brace arm reaches out sideways, barely ahead
-    rise: 0.02,        // metres above the shoulder: on the 45 deg diagonal the shoulder is already high
-    swing: 0.12,       // stride sway along the run
-    gap: 0.09,         // wrist stands off the surface so the palm and fingers land ON it, not through it
-    reach: 0.80,       // fraction of arm length the target is kept inside - the 45 deg body cannot plant the palm
+    in: 0.80,          // metres of the shoulder's stand-off it reaches back toward the facade: the hand stays ~0.45 m
+                       // off the wall, out in the gap where it is visible from behind (and clear of clipping)
+    rise: 0.30,        // metres above the shoulder - "out and slightly up", the hand at about head height
+    lead: 0.18,        // metres ahead along the run: the arm reaches slightly forward, not straight out to the side
+    swing: 0.06,       // stride sway along the run
+    roll: 0.0,         // wrist roll about the forearm, turning the open palm toward the facade
+    reach: 0.99,       // full arm length is offered; the bend comes from the resting distance
 } as const;
 
-/** Free arm: counter-swing on the balancing side, elbow bent. */
+/** Outer arm: sprint pump - bent elbow beside the ribs, hand swinging between the chest and the hip. */
 const FREE_ARM = {
-    swing: 0.62,       // +/- swing along the run (rad at the shoulder)
-    out: 0.52,         // stays well out from the ribs so the free arm reads on the open side
-    elbow: -1.35,      // bent ~77 deg, tucked back for balance (the reference's free arm)
+    down: 0.44,        // metres below the shoulder: the bent elbow keeps the hand at chest-to-waist height
+    out: 0.24,         // metres away from the facade, clear of the ribs on the open side
+    swing: 0.20,       // +/- metres of fore/aft pump along the run through the stride
+    roll: 0.0,         // wrist roll about the forearm
+    reach: 0.99,
 } as const;
 
-const _handAxis = new THREE.Vector3(0, 0, 1);   // the hand's long axis (fingers)
 const _soleAxis = new THREE.Vector3(0, 1, 0);   // the foot's up axis; its sole faces the opposite way
+const _handRollAxis = new THREE.Vector3(0, 0, 1);
 
 /** The facade the hero runs on: out-of-wall normal, run tangent and the surface coordinate. */
 interface WallFrame {
@@ -171,6 +152,9 @@ const _parentQ = new THREE.Quaternion();
 const _localQ = new THREE.Quaternion();
 const _deltaQ = new THREE.Quaternion();
 const _shoulder = new THREE.Vector3();
+const _shoulder2 = new THREE.Vector3();
+const _armPole = new THREE.Vector3();
+const _footPos = new THREE.Vector3();
 const _hip = new THREE.Vector3();
 const _hipFree = new THREE.Vector3();
 const _target = new THREE.Vector3();
@@ -241,32 +225,6 @@ function faceAxis(bone: THREE.Bone | undefined, local: THREE.Vector3, world: THR
     bone.quaternion.slerp(_localQ, weight);
 }
 
-/** Smoothstep, for the swing half of the stride (the foot accelerates off the wall and eases into touchdown). */
-function smooth(x: number): number { return x * x * (3 - 2 * x); }
-
-/**
- * One leg of the stride, in the plane defined by the run tangent and world up.
- * `phase` 0 = touchdown ahead of the hip; through the stance the foot travels back under and past the hip; then
- * the swing carries it up, forward and off the facade again. `out` is where the foot goes and how far off the
- * wall it travels.
- */
-function gait(phase: number, leg: LegGait, out: { along: number; dy: number; dist: number }): void {
-    const p = ((phase % 1) + 1) % 1;
-    const contact = leg.stance;
-    if (p < contact) {
-        const u = p / contact;
-        out.along = leg.front - (leg.front + leg.back) * u;
-        out.dy = -leg.drop - leg.stanceDrop * Math.sin(Math.PI * u) + leg.heelUp * smooth(Math.max(0, (u - 0.7) / 0.3));
-        out.dist = leg.base;
-    } else {
-        const u = (p - contact) / (1 - contact);
-        const s = smooth(u);
-        out.along = -leg.back + (leg.front + leg.back) * s;
-        out.dy = -leg.drop + leg.flightUp * Math.sin(Math.PI * Math.min(1, u * 1.05)) - leg.heelUp * (1 - s);
-        out.dist = leg.base + leg.flightOut * Math.sin(Math.PI * u);
-    }
-}
-
 /**
  * Applies the wall-run pose on top of the running cycle.
  * `wallSide` is +1 when the facade is on the hero's right, -1 when it is on the left.
@@ -278,9 +236,9 @@ export function applyWallRunPose(sim: any, rig: WallRunRig, weight: number, wall
     const freeSideName = wallSide > 0 ? 'L' : 'R';
     const fwd = _scratch2.copy(frame.tangent).multiplyScalar(frame.travel);   // the way the hero is running
 
-    // --- stride phase --------------------------------------------------------------------------
-    const cyc = (clipTime * GAIT.rate) % 1;
-    const phase = ((cyc % 1) + 1) % 1;
+    // --- stride phase: the run clip's own cycle, so the arms pump with the legs it is playing --------
+    // (the `run` clip is 20 frames at 30 fps, i.e. 1.5 cycles per second of clip time)
+    const phase = ((clipTime * RUN_CLIP_RATE) % 1 + 1) % 1;
     const swing = Math.sin(phase * Math.PI * 2);          // -1..1 through the cycle, for the arms / twist
 
     // --- torso: the 45 deg diagonal, out over open air, twisted through the stride ------------------
@@ -303,8 +261,8 @@ export function applyWallRunPose(sim: any, rig: WallRunRig, weight: number, wall
     rig.root.updateWorldMatrix(true, true);
 
     // --- sit the body so its wall-side hip keeps its distance from the facade -------------------
-    // Keeps the scene's hull push-out at zero while leaving the legs room to extend (the whole point: a
-    // shoulder welded to the facade folds both legs up under the pelvis).
+    // The 45 deg roll points the body's own "down" into the facade, so this stand-off is what lets the running legs
+    // reach the wall surface instead of through it (and keeps the scene's hull push-out at zero).
     if (boneWorld(rig.b.hips, _scratch)) {
         const err = BODY.hipClear - clearance(frame, _scratch);
         if (Math.abs(err) > 1e-3) {
@@ -313,51 +271,71 @@ export function applyWallRunPose(sim: any, rig: WallRunRig, weight: number, wall
         }
     }
 
-    // --- free / balancing arm: counter-swings the wall-side leg -------------------------------
-    const freeSwing = -swing * FREE_ARM.swing;
-    blend(rig.b['uarm' + freeSideName], 'x', freeSwing, weight);
-    blend(rig.b['uarm' + freeSideName], 'z', -wallSide * (FREE_ARM.out + 0.25 * Math.cos(phase * Math.PI * 2)), weight);
-    blend(rig.b['farm' + freeSideName], 'x', FREE_ARM.elbow, weight);
-
-    // --- wall-side hand: palm on the facade ahead of and above the shoulder, elbow bent --------
+    // --- wall-side arm: reaches out toward the facade and a little up, open hand in the wall gap ----
     if (boneWorld(rig.b['uarm' + wallSideName], _shoulder)) {
-        ontoWall(frame, _shoulder, _target);
-        _target.y += WALL_ARM.rise + WALL_ARM.swing * 0.5 * swing;
-        _target.addScaledVector(fwd, WALL_ARM.lead + WALL_ARM.swing * swing);
-        _target.addScaledVector(frame.normal, WALL_ARM.gap);
-        // elbow points down and back along the run, so the arm reads as a brace, not a wing
-        const pole = _scratch.copy(_up).multiplyScalar(-0.75).addScaledVector(fwd, -0.25).addScaledVector(frame.normal, 0.60);   // elbow hangs out and down
+        _target.copy(_shoulder)
+            .addScaledVector(frame.normal, -WALL_ARM.in)
+            .addScaledVector(fwd, WALL_ARM.lead + WALL_ARM.swing * swing)
+            .addScaledVector(_up, WALL_ARM.rise);
+        // elbow hangs below the shoulder-to-hand line, so the forearm lifts out to the facade
+        const pole = _armPole.copy(_up).multiplyScalar(-0.85).addScaledVector(fwd, -0.35).addScaledVector(frame.normal, 0.25);
         reachLimb(rig, 'uarm' + wallSideName, 'farm' + wallSideName, 'hand' + wallSideName, _target, pole, WALL_ARM.reach, weight);
-        faceAxis(rig.b['hand' + wallSideName], _handAxis, frame.normal, weight);   // palm flat on the surface
+        // the wrist bends of the run clip are taken out so the hand carries on along the forearm (no hooked claw)
+        settleWrist(rig, 'hand' + wallSideName, DBG && typeof (globalThis as any).__wallRoll === 'number' ? (globalThis as any).__wallRoll : WALL_ARM.roll, weight);
     }
 
-    // --- legs: the scissor, each leg on its own gait ------------------------------------------
-    if (boneWorld(rig.b['thigh' + wallSideName], _hip)) {
-        // wall-side leg: pushing long down the facade through its stance, then swinging through
-        gait(phase, WALL_LEG, _gaitWall);
-        ontoWall(frame, _hip, _target);
-        _target.y += _gaitWall.dy;
-        _target.addScaledVector(fwd, _gaitWall.along);
-        _target.addScaledVector(frame.normal, GAIT.wallGap + (_gaitWall.dist - WALL_LEG.base));
-        // knee hinges forward along the run, a touch out of the wall: the cap leads the stride
-        _pole.copy(fwd).multiplyScalar(0.92).addScaledVector(frame.normal, 0.34).addScaledVector(_up, 0.12);
-        reachLimb(rig, 'thigh' + wallSideName, 'shin' + wallSideName, 'foot' + wallSideName, _target, _pole, 0.98, weight);
-        // sole stays on the facade while the foot is planted, and rolls off as it leaves the wall
-        faceAxis(rig.b['foot' + wallSideName], _soleAxis, frame.normal, weight * (1 - Math.min(1, (_gaitWall.dist - WALL_LEG.base) / 0.12)));
+    // --- outer arm: sprint pump, bent at the elbow beside the ribs ---------------------------------
+    if (boneWorld(rig.b['uarm' + freeSideName], _shoulder2)) {
+        _target.copy(_shoulder2)
+            .addScaledVector(frame.normal, FREE_ARM.out)
+            .addScaledVector(fwd, FREE_ARM.swing * swing)
+            .addScaledVector(_up, -FREE_ARM.down);
+        // elbow breaks back and out: the arm reads as a pumping sprint arm, not a wing
+        const pole = _armPole.copy(fwd).multiplyScalar(-0.9).addScaledVector(frame.normal, 0.35).addScaledVector(_up, -0.2);
+        reachLimb(rig, 'uarm' + freeSideName, 'farm' + freeSideName, 'hand' + freeSideName, _target, pole, FREE_ARM.reach, weight);
+        settleWrist(rig, 'hand' + freeSideName, DBG && typeof (globalThis as any).__freeRoll === 'number' ? (globalThis as any).__freeRoll : FREE_ARM.roll, weight);   // clean line through the wrist on the pumping arm too
+    }
 
-        // free leg: the driving leg, half a cycle out of phase, knee up in front.
-        // Its hip is the other one: targets measured from the wall-side hip would sit a hip-width too far off.
-        gait(phase + 0.5, FREE_LEG, _gaitFree);
-        const hipFree = boneWorld(rig.b['thigh' + freeSideName], _hipFree) ?? _hip;
-        ontoWall(frame, hipFree, _foot);
-        _foot.y += _gaitFree.dy;
-        _foot.addScaledVector(fwd, _gaitFree.along);
-        _foot.addScaledVector(frame.normal, _gaitFree.dist);
-        _pole.copy(fwd).multiplyScalar(0.92).addScaledVector(frame.normal, 0.30).addScaledVector(_up, 0.10);
-        reachLimb(rig, 'thigh' + freeSideName, 'shin' + freeSideName, 'foot' + freeSideName, _foot, _pole, 0.98, weight);
+    // --- wall-side foot: the facade is its floor -------------------------------------------------
+    // The run clip is a ground cycle and its ankle is dragged across the body's midline as it swings, which - on the 45 deg
+    // diagonal - would carry the boot through the wall. Kept exactly as the clip has it everywhere else, the wall-side leg
+    // is only re-aimed where the boot would come closer than `FOOT_PLANT.gap`: the sole lands on the facade on that beat of
+    // the stride, which is the contact the reference shows. The ankle is also rolled so the sole, not the toe, is what
+    // faces the wall.
+    if (boneWorld(rig.b['foot' + wallSideName], _footPos)) {
+        const gap = clearance(frame, _footPos);
+        if (gap < FOOT_PLANT.gap) {
+            _target.copy(_footPos).addScaledVector(frame.normal, FOOT_PLANT.gap - gap);   // same place along the run, out to the gap
+            // knee hinges forward along the run, so the leg folds the way a runner's does under the body
+            _armPole.copy(fwd).multiplyScalar(0.92).addScaledVector(frame.normal, 0.30).addScaledVector(_up, 0.10);
+            reachLimb(rig, 'thigh' + wallSideName, 'shin' + wallSideName, 'foot' + wallSideName, _target, _armPole, 0.995, weight);
+        }
+        const near = THREE.MathUtils.clamp((0.42 - gap) / 0.24, 0, 1);
+        if (near > 0.01) faceAxis(rig.b['foot' + wallSideName], _soleAxis, frame.normal, weight * near);   // sole to the wall
     }
 }
 
-
-const _gaitWall = { along: 0, dy: 0, dist: 0 };
-const _gaitFree = { along: 0, dy: 0, dist: 0 };
+/**
+ * Takes the wrist bends back out of the hand (the run clip curls it for ground running, and on the IK'd forearm that
+ * curl reads as a hooked, drooping claw), then rolls the palm about the forearm's own line - a wrist roll, never a
+ * bend - so the open hand can be turned toward the facade while it keeps the forearm's line.
+ */
+function settleWrist(rig: WallRunRig, name: string, roll: number, weight: number): void {
+    const hand = rig.b[name];
+    const farm = rig.b['farm' + name.slice(-1)];
+    if (!hand || !farm) return;
+    hand.quaternion.slerp(_identityQ, weight);                 // hand straight on the forearm
+    if (!roll) return;
+    rig.root.updateWorldMatrix(true, true);
+    farm.getWorldPosition(_wrist);
+    hand.getWorldPosition(_end);
+    _axis.copy(_end).sub(_wrist);                              // the forearm's line
+    if (_axis.lengthSq() < 1e-8) return;
+    _axis.normalize();
+    hand.getWorldQuaternion(_worldQ);
+    _deltaQ.setFromAxisAngle(_axis, roll * weight);
+    _worldQ.premultiply(_deltaQ);
+    hand.parent!.getWorldQuaternion(_parentQ);
+    _localQ.copy(_parentQ).invert().multiply(_worldQ);
+    hand.quaternion.copy(_localQ);
+}

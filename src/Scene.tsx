@@ -316,7 +316,7 @@ export function animateHeroBones(sim: any, rig: any, dt: number, frame: HeroAnim
     if (wallRunPoseWeight > 0.001 && wallSide) applyWallRunPose(sim, rig, wallRunPoseWeight, wallSide, cs.t);
     shotRecoilBones(sim, rig, dt);   // web-shot recoil on top of the aim (src/heroRecoil.ts)
     if (!sourceClipState) heroHurtBones(sim, rig, dt);   // hurt flinch on top of every pose (src/heroHurt.ts); not on Ghost's mirrored frames
-    aimHandsOnLine(rig, sim.anchor, Math.min(1, slingW * 4) * aimW);   // slingshot: both fists on the line, LAST so no layer can pull them off it (weight eases off after the release)
+    aimHandsOnLine(rig, sim.anchor, Math.min(1, slingW * 4) * aimW * (1 - wallRunPoseWeight));   // slingshot: both fists on the line, LAST so no layer can pull them off it (weight eases off after the release) - but the wall-run pose owns the hands while it is on (a live web line must not glue them to the old anchor)
     if (publishState && !sourceClipState) {
         sa.__heroClipState = { key: cs.key, t: cs.t, w: cs.w };
         const sharedPose = sa.__heroPoseState ?? (sa.__heroPoseState = { w: 0, c: new Float32Array(activePoseState.c.length), t: new Float32Array(activePoseState.t.length) });
@@ -849,7 +849,11 @@ function SceneImpl({ sim, ev, coarse, fx, perf }: SceneProps) {
             h.updateMatrixWorld(true);
             let md = -1e9;
             for (const e of rig.hull) { tp.set(0, 0, 0); for (let k = 0; k < 4; k++) { if (e.bw[k] <= 0) continue; _wv2.copy(e.p).applyMatrix4(rig.skel.boneInverses[e.bi[k]]).applyMatrix4(rig.skel.bones[e.bi[k]].matrixWorld); tp.addScaledVector(_wv2, e.bw[k]); } const dd = fx !== 0 ? (tp.x - pl) * fx : (tp.z - pl) * fz; if (dd > md) md = dd; }
-            const want = Math.max(-1.2, Math.min(1.2, -(md + 0.03)));
+            // Wall-run owns its own stand-off (heroWallRun.ts sits the hip and the running legs reach the facade from there), so here
+            // the guard only pushes OUT of the wall: pulling the body in on the frame where no skin point touches it would fight that
+            // pose every frame and drag the hero 0.3-0.5 m along the normal as the stride cycled.
+            const want0 = Math.max(-1.2, Math.min(1.2, -(md + 0.03)));
+            const want = sim.wallRun ? Math.min(0, want0) : want0;
             if (want < wallCorr.current) wallCorr.current = want; else wallCorr.current += (want - wallCorr.current) * Math.min(1, dt * 14);   // push out instantly, ease back in
             if (DBG && (window as any).__dbgWall) (window as any).__wc = { corr: +wallCorr.current.toFixed(3), hull: +md.toFixed(3) };
         } else wallCorr.current += (0 - wallCorr.current) * Math.min(1, dt * (sim.wallT > 0 ? 3 : 10));   // after a wall jump keep the push-out until the exit velocity clears the hull
