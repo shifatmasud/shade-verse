@@ -852,17 +852,17 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         const n = s.wall, tx = -n[1], tz = n[0];
         if (s.wallRun && swingHeld) {
             const along = v[0] * tx + v[2] * tz, steer = wx * tx + wz * tz;
-            const target = Math.abs(steer) > 0.12 ? steer * 18 : along;
-            const speed = (Math.abs(steer) > 0.12 ? along + (target - along) * Math.min(1, dt * 5) : along * Math.pow(0.997, dt * 60));
+            const target = Math.abs(steer) > 0.12 ? steer * 28 : along;   // Shifat Nov 19: wall-run must be fast (18 -> 28 m/s)
+            const speed = (Math.abs(steer) > 0.12 ? along + (target - along) * Math.min(1, dt * 7) : along * Math.pow(0.9995, dt * 60));   // quicker pickup, almost no coast decay
             v[0] = tx * speed - n[0] * 1.5; v[2] = tz * speed - n[1] * 1.5; v[1] += (0 - v[1]) * Math.min(1, dt * 12);
             s.runPhase += Math.abs(speed) * dt * 0.9;
         } else {
             const push = -(wx * n[0] + wz * n[1]), lat = wx * tx + wz * tz;
             if (push < -0.3) { s.wall = null; s.wallRun = false; s.wallT = 0.2; v[0] = n[0] * 3; v[2] = n[1] * 3; v[1] = 0; }
             else {
-                const up = push > 0.3 ? push * 16 : 0;
-                v[0] = tx * lat * 18 - n[0] * 2; v[2] = tz * lat * 18 - n[1] * 2; v[1] += (up - v[1]) * Math.min(1, dt * 12);
-                s.runPhase += (Math.abs(up) + Math.abs(lat) * 18) * dt * 0.52;
+                const up = push > 0.3 ? push * 26 : 0;   // Shifat Nov 19: wall-crawl climbs fast (16 -> 26 m/s)
+                v[0] = tx * lat * 24 - n[0] * 2; v[2] = tz * lat * 24 - n[1] * 2; v[1] += (up - v[1]) * Math.min(1, dt * 12);   // lateral crawl 18 -> 24 m/s
+                s.runPhase += (Math.abs(up) + Math.abs(lat) * 24) * dt * 0.52;
             }
         }
     } else if (s.ground && !s.web) {
@@ -912,7 +912,9 @@ function stepSimInner(s: Sim, dt: number, ev: Events, controls: Input = input, o
         if (s.wallRun) {
             s.web = false; s.webDepartB = hitB;
             const fallback = Math.sign(steerTangent) || Math.sign(fx * tx + fz * tz) || 1;
-            const speed = Math.abs(incomingTangent) >= 3 ? incomingTangent : fallback * Math.max(14, Math.abs(steerTangent) * 18);
+            // Shifat Nov 19: a swing catch must not dump the speed he arrived with - keep a fast tangent, never
+            // enter the run slower than the 22 m/s floor (formerly: keep any 3 m/s and fall back to 14).
+            const speed = Math.abs(incomingTangent) >= 22 ? incomingTangent : fallback * Math.max(22, Math.abs(steerTangent) * 28);
             v[0] = tx * speed - hitN[0] * 1.5; v[1] = 0; v[2] = tz * speed - hitN[1] * 1.5;
             s.ang = Math.atan2(tx * Math.sign(speed), tz * Math.sign(speed));
         } else { v[0] = -hitN[0] * 2; v[1] = 0; v[2] = -hitN[1] * 2; }
